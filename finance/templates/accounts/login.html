@@ -1,0 +1,38 @@
+{% extends 'finance/base.html' %}
+
+{% block title %}Logowanie{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="bi bi-box-arrow-in-right"></i> Zaloguj się</h4>
+            </div>
+            <div class="card-body">
+                <form method="post" novalidate>
+                    {% csrf_token %}
+                    {{ form.non_field_errors }}
+                    <div class="mb-3">
+                        {{ form.username.label_tag }}
+                        {{ form.username }}
+                        {{ form.username.errors }}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.password.label_tag }}
+                        {{ form.password }}
+                        {{ form.password.errors }}
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-box-arrow-in-right"></i> Zaloguj
+                    </button>
+                </form>
+                <hr>
+                <p class="text-center">
+                    Nie masz konta? <a href="{% url 'signup' %}">Zarejestruj się</a>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,150 @@
+{% extends 'finance/base.html' %}
+
+{% block title %}Lista Wydatków{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-cash-stack"></i> Lista Wydatków</h2>
+    <a href="{% url 'add_expense' %}" class="btn btn-danger">
+        <i class="bi bi-plus-circle"></i> Dodaj Wydatek
+    </a>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-4">
+                <label for="month" class="form-label">Miesiąc</label>
+                <select class="form-select" id="month" name="month">
+                    <option value="">Wszystkie miesiące</option>
+                    {% for month in months %}
+                        <option value="{{ month.date|date:'Y-m' }}" 
+                                {% if current_month_filter == month.date|date:'Y-m' %}selected{% endif %}>
+                            {{ month.date|date:"F Y" }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label for="category" class="form-label">Kategoria</label>
+                <select class="form-select" id="category" name="category">
+                    <option value="">Wszystkie kategorie</option>
+                    {% for cat in categories %}
+                        <option value="{{ cat }}" 
+                                {% if current_category_filter == cat %}selected{% endif %}>
+                            {{ cat }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary me-2">
+                    <i class="bi bi-funnel"></i> Filtruj
+                </button>
+                <a href="{% url 'expense_list' %}" class="btn btn-secondary">
+                    <i class="bi bi-x-circle"></i> Wyczyść
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Summary expenses -->
+{% if expenses %}
+<div class="row mb-3">
+    <div class="col-md-4">
+        <div class="card bg-danger text-white">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2">Suma wydatków (widocznych)</h6>
+                <h3>{{ total_filtered|floatformat:2 }} zł</h3>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Expenses table -->
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Tytuł</th>
+                        <th>Kategoria</th>
+                        <th>Sklep</th>
+                        <th>Kwota</th>
+                        <th>Miesiąc</th>
+                        <th>Akcje</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for expense in expenses %}
+                    <tr>
+                        <td>{{ expense.date|date:"d.m.Y" }}</td>
+                        <td>{{ expense.title }}</td>
+                        <td><span class="badge bg-info">{{ expense.category }}</span></td>
+                        <td>{{ expense.store|default:"-" }}</td>
+                        <td class="text-danger fw-bold">-{{ expense.cost|floatformat:2 }} zł</td>
+                        <td>{{ expense.month.date|date:"F Y" }}</td>
+                        <td>
+                            <a href="{% url 'edit_expense' expense.id %}" 
+                               class="btn btn-sm btn-primary" title="Edytuj">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <a href="{% url 'delete_expense' expense.id %}" 
+                               class="btn btn-sm btn-danger" title="Usuń">
+                                <i class="bi bi-trash"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-4">
+                            <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+                            <p class="mt-2">Brak wydatków do wyświetlenia</p>
+                            <a href="{% url 'add_expense' %}" class="btn btn-danger btn-sm">
+                                <i class="bi bi-plus-circle"></i> Dodaj pierwszy wydatek
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination info -->
+        {% if is_paginated %}
+        <nav aria-label="Nawigacja strony">
+            <ul class="pagination justify-content-center">
+                {% if page_obj.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page=1">&laquo; Pierwsza</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Poprzednia</a>
+                    </li>
+                {% endif %}
+                
+                <li class="page-item active">
+                    <span class="page-link">
+                        Strona {{ page_obj.number }} z {{ page_obj.paginator.num_pages }}
+                    </span>
+                </li>
+                
+                {% if page_obj.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.next_page_number }}">Następna</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">Ostatnia &raquo;</a>
+                    </li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

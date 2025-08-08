@@ -1,0 +1,160 @@
+{% extends 'finance/base.html' %}
+
+{% block title %}Raporty{% endblock %}
+
+{% block content %}
+<h2 class="mb-4"><i class="bi bi-graph-up"></i> Raporty Finansowe</h2>
+
+<!-- Summary expenses, incomes and balance -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card border-success">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2 text-muted">Całkowite przychody</h6>
+                <h3 class="text-success">{{ total_income_all|floatformat:2 }} zł</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-danger">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2 text-muted">Całkowite wydatki</h6>
+                <h3 class="text-danger">{{ total_expense_all|floatformat:2 }} zł</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-primary">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2 text-muted">Bilans całkowity</h6>
+                <h3 class="{% if balance_all >= 0 %}text-success{% else %}text-danger{% endif %}">
+                    {{ balance_all|floatformat:2 }} zł
+                </h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Chart of income and expense for lat 6 months -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Przychody vs Wydatki (ostatnie 6 miesięcy)</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="incomeExpenseChart" height="100"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Top 5 expensive category -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Top 5 Kategorii Wydatków</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Kategoria</th>
+                            <th class="text-end">Kwota</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for category in top_categories %}
+                        <tr>
+                            <td>
+                                <span class="badge bg-secondary">{{ category.category }}</span>
+                            </td>
+                            <td class="text-end text-danger">{{ category.total|floatformat:2 }} zł</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Summary expenses, incomes and balance for every monht -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Podsumowanie Miesięczne</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Miesiąc</th>
+                            <th class="text-end">Przychody</th>
+                            <th class="text-end">Wydatki</th>
+                            <th class="text-end">Bilans</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for record in monthly_records %}
+                        <tr>
+                            <td>{{ record.date|date:"F Y" }}</td>
+                            <td class="text-end text-success">{{ record.total_income|floatformat:2 }} zł</td>
+                            <td class="text-end text-danger">{{ record.total_expense|floatformat:2 }} zł</td>
+                            <td class="text-end {% if record.total_income >= record.total_expense %}text-success{% else %}text-danger{% endif %}">
+                                {{ record.monthly_balance|floatformat:2 }} zł
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // Chart for income and expense
+    const ctx = document.getElementById('incomeExpenseChart').getContext('2d');
+    const incomeExpenseChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: {{ months_labels|safe }},
+            datasets: [{
+                label: 'Przychody',
+                data: {{ income_data|safe }},
+                borderColor: 'rgb(75, 192, 192)',
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                tension: 0.1
+            }, {
+                label: 'Wydatki',
+                data: {{ expense_data|safe }},
+                borderColor: 'rgb(255, 99, 132)',
+                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                tension: 0.1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return value + ' zł';
+                        }
+                    }
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}
