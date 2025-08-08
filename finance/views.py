@@ -225,6 +225,7 @@ def edit_expense(request, expense_id):
         'Rachunki',
         'Zdrowie',
         'Edukacja',
+        'Rodzice',
         'Inne'
     ]
     
@@ -455,6 +456,7 @@ def add_income(request):
         'Inwestycje',
         'Zwrot podatku',
         'Sprzedaż',
+        'Rodzice',
         'Inne'
     ]
     
