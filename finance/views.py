@@ -109,7 +109,7 @@ def expense_list(request):
     
     context = {
         'expenses': expenses,
-        'categories': categories,
+        'categories': set(categories),
         'months': months,
         'current_month_filter': month_filter,
         'current_category_filter': category_filter,
@@ -323,7 +323,7 @@ def income_list(request):
     
     context = {
         'incomes': incomes,
-        'sources': sources,
+        'sources': set(sources),
         'months': months,
         'current_month_filter': month_filter,
         'current_source_filter': source_filter,
