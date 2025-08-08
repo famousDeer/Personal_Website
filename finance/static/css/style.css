@@ -1,0 +1,9 @@
+.card-body form .mb-3 label { display: block; margin-bottom: .375rem; }
+.card-body form .mb-3 input[type="text"],
+.card-body form .mb-3 input[type="password"],
+.card-body form .mb-3 input[type="email"],
+.card-body form .mb-3 select,
+.card-body form .mb-3 textarea {
+    width: 100%;
+    box-sizing: border-box;
+}

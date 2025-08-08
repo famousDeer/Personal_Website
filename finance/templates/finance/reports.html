@@ -10,26 +10,32 @@
     <div class="col-md-4">
         <div class="card border-success">
             <div class="card-body">
-                <h6 class="card-subtitle mb-2 text-muted">Całkowite przychody</h6>
-                <h3 class="text-success">{{ total_income_all|floatformat:2 }} zł</h3>
+                <h5 class="card-title text-success">
+                    <i class="bi bi-arrow-up-circle"></i> Całkowite przychody
+                </h5>
+                <h2 class="text-success">{{ total_income_all|floatformat:2 }} zł</h2>
             </div>
         </div>
     </div>
     <div class="col-md-4">
         <div class="card border-danger">
             <div class="card-body">
-                <h6 class="card-subtitle mb-2 text-muted">Całkowite wydatki</h6>
-                <h3 class="text-danger">{{ total_expense_all|floatformat:2 }} zł</h3>
+                <h5 class="card-title text-danger">
+                   <i class="bi bi-arrow-down-circle"></i> Całkowite wydatki
+                </h6>
+                <h2 class="text-danger">{{ total_expense_all|floatformat:2 }} zł</h2>
             </div>
         </div>
     </div>
     <div class="col-md-4">
         <div class="card border-primary">
             <div class="card-body">
-                <h6 class="card-subtitle mb-2 text-muted">Bilans całkowity</h6>
-                <h3 class="{% if balance_all >= 0 %}text-success{% else %}text-danger{% endif %}">
+                <h5 class="card-title text-primary">
+                    <i class="bi bi-wallet2"></i> Bilans całkowity
+                </h5>
+                <h2 class="{% if balance_all >= 0 %}text-success{% else %}text-danger{% endif %}">
                     {{ balance_all|floatformat:2 }} zł
-                </h3>
+                </h2>
             </div>
         </div>
     </div>

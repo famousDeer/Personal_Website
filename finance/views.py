@@ -7,6 +7,7 @@ from datetime import datetime
 from .models import Monthly, Daily, Income
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 import json
 
 def index(request):
@@ -83,7 +84,7 @@ def expense_list(request):
     month_filter = request.GET.get('month', '')
     category_filter = request.GET.get('category', '')
 
-    expenses = Daily.objects.filter(user=request.user)
+    expenses = Daily.objects.filter(user=request.user).select_related('month')
     
     if month_filter:
         try:
@@ -103,7 +104,7 @@ def expense_list(request):
     
     expenses = expenses.order_by('-date')
     total_filtered = expenses.aggregate(Sum('cost'))['cost__sum'] or 0
-    categories = Daily.objects.values_list('category', flat=True).distinct()
+    categories = Daily.objects.filter(user=request.user).values_list('category', flat=True).distinct()
     months = Monthly.objects.filter(user=request.user).order_by('-date')
     
     context = {
@@ -129,7 +130,7 @@ def add_expense(request):
         'Inne'
     ]
     
-    today = datetime.now().date()
+    today = timezone.now().date()
     
     if request.method == 'POST':
         try:
@@ -177,9 +178,10 @@ def add_expense(request):
     return render(request, 'finance/add_expense.html', context)
 
 def edit_expense(request, expense_id):
-    expense = get_object_or_404(Daily, id=expense_id)
+    expense = get_object_or_404(Daily, id=expense_id, user=request.user)
     
     if request.method == 'POST':
+        old_monthly = expense.month
         expense.date = datetime.strptime(request.POST.get('date'), '%Y-%m-%d').date()
         expense.title = request.POST.get('title')
         expense.category = request.POST.get('category')
@@ -188,18 +190,20 @@ def edit_expense(request, expense_id):
         
         try:
             new_month_date = expense.date.replace(day=1)
-            if expense.month.date != new_month_date:
+            if old_monthly.date != new_month_date:
                 new_monthly, created = Monthly.objects.get_or_create(
                     user=request.user,
                     date=new_month_date,
                     defaults={'total_income': 0, 'total_expense': 0}
                 )
-                old_monthly = expense.month
                 expense.month = new_monthly
-            
             expense.save()
             
-            for monthly in [expense.month]:
+            months_to_recalc = {expense.month}
+            if old_monthly != expense.month:
+                months_to_recalc.add(old_monthly)
+
+            for monthly in months_to_recalc:
                 monthly.total_expense = Daily.objects.filter(
                     user=request.user,
                     month=monthly
@@ -231,7 +235,7 @@ def edit_expense(request, expense_id):
     return render(request, 'finance/edit_expense.html', context)
 
 def delete_expense(request, expense_id):
-    expense = get_object_or_404(Daily, id=expense_id)
+    expense = get_object_or_404(Daily, id=expense_id, user=request.user)
     
     if request.method == 'POST':
         monthly_record = expense.month
@@ -292,7 +296,7 @@ def income_list(request):
     month_filter = request.GET.get('month', '')
     source_filter = request.GET.get('source', '')
     
-    incomes = Income.objects.filter(user=request.user)
+    incomes = Income.objects.filter(user=request.user).select_related('month')
     
     if month_filter:
         try:
@@ -312,7 +316,7 @@ def income_list(request):
     
     incomes = incomes.order_by('-date')
     total_filtered = incomes.aggregate(Sum('amount'))['amount__sum'] or 0
-    sources = Income.objects.values_list('source', flat=True).distinct()
+    sources = Income.objects.filter(user=request.user).values_list('source', flat=True).distinct()
     months = Monthly.objects.filter(user=request.user).order_by('-date')
     
     context = {
@@ -327,9 +331,10 @@ def income_list(request):
     return render(request, 'finance/income_list.html', context)
 
 def edit_income(request, income_id):
-    income = get_object_or_404(Income, id=income_id)
+    income = get_object_or_404(Income, id=income_id, user=request.user)
     
     if request.method == 'POST':
+        old_monthly = income.month
         income.date = datetime.strptime(request.POST.get('date'), '%Y-%m-%d').date()
         income.title = request.POST.get('title')
         income.source = request.POST.get('source')
@@ -337,17 +342,19 @@ def edit_income(request, income_id):
         
         try:
             new_month_date = income.date.replace(day=1)
-            if income.month.date != new_month_date:
+            if old_monthly.date != new_month_date:
                 new_monthly, created = Monthly.objects.get_or_create(
                     user=request.user,
                     date=new_month_date,
                     defaults={'total_income': 0, 'total_expense': 0}
                 )
-                old_monthly = income.month
                 income.month = new_monthly
-            
             income.save()
             
+            months_to_recalc = {income.month}
+            if old_monthly != income.month:
+                months_to_recalc.add(old_monthly)
+
             for monthly in [income.month]:
                 monthly.total_income = Income.objects.filter(
                     user=request.user,
@@ -379,7 +386,7 @@ def edit_income(request, income_id):
     return render(request, 'finance/edit_income.html', context)
 
 def delete_income(request, income_id):
-    income = get_object_or_404(Income, id=income_id)
+    income = get_object_or_404(Income, id=income_id, user=request.user)
     
     if request.method == 'POST':
         monthly_record = income.month
@@ -455,8 +462,9 @@ def add_income(request):
     })
 
 class DailyRecordAPI(APIView):
+    permission_classes = [IsAuthenticated]
     def get(self, request):
-        records = Daily.objects.all().values(
+        records = Daily.objects.filter(user=request.user).values(
             'id', 'date', 'title', 'cost', 'store', 'category'
         )
         return Response(list(records))
@@ -500,8 +508,9 @@ class DailyRecordAPI(APIView):
             }, status=400)
 
 class MonthlyRecordAPI(APIView):
+    permission_classes = [IsAuthenticated]
     def get(self, request):
-        records = Monthly.objects.all().values(
+        records = Monthly.objects.filter(user=request.user).values(
             'id', 'date', 'total_income', 'total_expense'
         )
         return Response(list(records))
