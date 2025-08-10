@@ -357,7 +357,7 @@ def edit_income(request, income_id):
             if old_monthly != income.month:
                 months_to_recalc.add(old_monthly)
 
-            for monthly in [income.month]:
+            for monthly in months_to_recalc:
                 monthly.total_income = Income.objects.filter(
                     user=request.user,
                     month=monthly
