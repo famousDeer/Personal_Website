@@ -1,0 +1,69 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Finanse{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+<body>
+    <div id="dollar-rain" class="dollar-rain" aria-hidden="true"></div>
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <div class="container">
+            <a class="navbar-brand" href="{% url 'index' %}"><i class="bi bi-house"></i></a>
+        {% if request.path == '/' %}
+            <a class="navbar-brand" href="{% url 'index' %}"><i class="bi bi-box"></i> Strona główna</a>
+        {% else %}
+            {% block navbar_brand %}
+            {% endblock %}
+        {% endif %}
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbars">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbars">
+            <ul class="navbar-nav">
+                {% if user.is_authenticated %}
+                    {% if request.path == '/' or request.path == '/' %}
+                        <li class="nav-item"><a class="nav-link" href="{% url 'finance:index' %}">Finanse</a></li>
+                        <li class="nav-item"><a class="nav-link" href="{% url 'habits:index' %}">Nawyki</a></li>
+                    {% endif %}
+                    {% block navbar %}
+                    {% endblock %}
+            </ul>
+            <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <form method="post" action="{% url 'logout' %}" style="display:inline;">
+                            {% csrf_token %}
+                            <button type="submit" class="nav-link">
+                                <i class="bi bi-box-arrow-right"></i> Wyloguj ({{ user.username }})
+                            </button>
+                        </form>
+                    </li>
+                {% else %}
+                    <li class="nav-item"><a class="nav-link" href="{% url 'login' %}"><i class="bi bi-box-arrow-in-right"></i> Zaloguj</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{% url 'signup' %}"><i class="bi bi-person-plus"></i> Rejestracja</a></li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<div class="container my-4 page-content">
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+    {% block content %}{% endblock %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>
