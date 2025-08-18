@@ -1,6 +1,78 @@
-{% extends 'finance/base.html' %}
+{% extends 'base.html' %}
 
-{% block title %}Strona Główna{% endblock %}
+{% block title %}Finanse{% endblock %}
+
+{% block navbar_brand %}
+<a class="navbar-brand" href="{% url 'finance:index' %}"><i class="bi bi-wallet2"></i> Finanse</a>
+{% endblock %}
+
+{% block navbar %}
+<li class="nav-item"><a class="nav-link" href="{% url 'finance:dashboard' %}"><i class="bi bi-speedometer2"></i> Dashboard</a></li>
+<li class="nav-item"><a class="nav-link" href="{% url 'finance:expense_list' %}"><i class="bi bi-cash-stack"></i> Wydatki</a></li>
+<li class="nav-item"><a class="nav-link" href="{% url 'finance:income_list' %}"><i class="bi bi-cash-stack"></i> Przychody</a></li>
+<li class="nav-item"><a class="nav-link" href="{% url 'finance:reports' %}"><i class="bi bi-graph-up"></i> Raporty</a></li>
+{% endblock %}
 
 {% block content %}
+  {% block content_finance %}
+  <div class="row g-4">
+    
+    <div class="col-md-3">
+      <a class="text-decoration-none" href="{% url 'finance:dashboard' %}">
+        <div class="card h-100 border-success">
+          <div class="card-body">
+            <h5 class="card-title text-success"><i class="bi bi-speedometer2"></i> Dashboard</h5>
+            <p class="card-text text-muted mb-0">Podsumowanie bieżącego miesiąca.</p>
+          </div>
+        </div>
+      </a>
+    </div>
+
+    <div class="col-md-3">
+      <a class="text-decoration-none" href="{% url 'finance:expense_list' %}">
+        <div class="card h-100 border-danger">
+          <div class="card-body">
+            <h5 class="card-title text-danger"><i class="bi bi-cash-stack"></i> Wydatki</h5>
+            <p class="card-text text-muted mb-0">Przeglądaj i filtruj wydatki.</p>
+          </div>
+        </div>
+      </a>
+    </div>
+
+    <div class="col-md-3">
+      <a class="text-decoration-none" href="{% url 'finance:income_list' %}">
+        <div class="card h-100 border-success">
+          <div class="card-body">
+            <h5 class="card-title text-success"><i class="bi bi-cash-coin"></i> Przychody</h5>
+            <p class="card-text text-muted mb-0">Przeglądaj i filtruj przychody.</p>
+          </div>
+        </div>
+      </a>
+    </div>
+
+    <div class="col-md-3">
+      <a class="text-decoration-none" href="{% url 'finance:reports' %}">
+        <div class="card h-100 border-primary">
+          <div class="card-body">
+            <h5 class="card-title text-primary"><i class="bi bi-graph-up"></i> Raporty</h5>
+            <p class="card-text text-muted mb-0">Wykresy i podsumowania.</p>
+          </div>
+        </div>
+      </a>
+    </div>
+  </div>
+
+  <div class="row g-4 mt-2">
+    <div class="col-md-6">
+      <a class="btn btn-danger w-100" href="{% url 'finance:add_expense' %}">
+        <i class="bi bi-plus-circle"></i> Dodaj wydatek
+      </a>
+    </div>
+    <div class="col-md-6">
+      <a class="btn btn-success w-100" href="{% url 'finance:add_income' %}">
+        <i class="bi bi-plus-circle"></i> Dodaj przychód
+      </a>
+    </div>
+  </div>
+  {% endblock %}
 {% endblock %}

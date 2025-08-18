@@ -1,8 +1,8 @@
-{% extends 'finance/base.html' %}
+{% extends 'finance/index.html' %}
 
 {% block title %}Dashboard{% endblock %}
 
-{% block content %}
+{% block content_finance %}
 
 <h2 class="mb-4"><i class="bi bi-speedometer2"></i> Dashboard - {{ current_month|date:"F Y" }}</h2>
 
@@ -71,6 +71,19 @@
     </div>
 </div>
 
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Przychody vs Wydatki (ostatnie 6 miesięcy)</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="incomeExpenseChart" height="100"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Last expenses -->
 <div class="row">
     <div class="col-md-12">
@@ -107,7 +120,7 @@
                 </table>
                 {% if recent_expenses %}
                 <div class="text-end mt-2">
-                    <a href="{% url 'expense_list' %}" class="btn btn-sm btn-primary">
+                    <a href="{% url 'finance:expense_list' %}" class="btn btn-sm btn-primary">
                         Zobacz wszystkie wydatki <i class="bi bi-arrow-right"></i>
                     </a>
                 </div>
@@ -151,7 +164,7 @@
                 </table>
                 {% if recent_incomes %}
                 <div class="text-end mt-2">
-                    <a href="{% url 'income_list' %}" class="btn btn-sm btn-primary">
+                    <a href="{% url 'finance:income_list' %}" class="btn btn-sm btn-primary">
                         Zobacz wszystkie zarobki <i class="bi bi-arrow-right"></i>
                     </a>
                 </div>
@@ -181,6 +194,11 @@
         options: {
             responsive: true,
             plugins: {
+                legend: {
+                    display: !window.matchMedia("(max-width: 576px)").matches,
+                    position: 'left',
+                    align: 'center'
+                },
                 tooltip: {
                     callbacks: {
                         label: function(context) {
@@ -209,6 +227,11 @@
         options: {
             responsive: true,
             plugins: {
+                legend: {
+                    display: !window.matchMedia("(max-width: 576px)").matches,
+                    postion: 'left',
+                    align: 'center'
+                },
                 tooltip: {
                     callbacks: {
                         label: function(context) {
@@ -230,5 +253,6 @@
     document.getElementById('incomeChart').parentElement.innerHTML =
         '<p class="text-muted text-center my-5">Brak danych o przychodach</p>';
     {% endif %}
+    
 </script>
 {% endblock %}

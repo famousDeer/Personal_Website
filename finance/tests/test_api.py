@@ -6,7 +6,6 @@ from finance.models import Monthly, Daily, Income
 
 User = get_user_model()
 
-# Adjust these if your URLs differ
 API_URL_DAILY = "/api/daily/"
 API_URL_MONTHLY = "/api/monthly/"
 

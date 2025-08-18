@@ -1,8 +1,8 @@
-{% extends 'finance/base.html' %}
+{% extends 'finance/index.html' %}
 
 {% block title %}Dodaj Wydatek{% endblock %}
 
-{% block content %}
+{% block content_finance %}
 <div class="row justify-content-center">
     <div class="col-md-6">
         <div class="card">
@@ -44,7 +44,7 @@
                     <button type="submit" class="btn btn-danger">
                         <i class="bi bi-save"></i> Dodaj Wydatek
                     </button>
-                    <a href="{% url 'expense_list' %}" class="btn btn-secondary">
+                    <a href="{% url 'finance:expense_list' %}" class="btn btn-secondary">
                         <i class="bi bi-x-circle"></i> Anuluj
                     </a>
                 </form>
