@@ -13,7 +13,7 @@ def signup(request):
             user = form.save()
             login(request, user)
             messages.success(request, "Konto zostało utworzone, witaj w serwisie")
-            return redirect('dashboard')
+            return redirect('index')
         else:
             messages.error(request, "Popraw błędy w formularzu.")
     else:
