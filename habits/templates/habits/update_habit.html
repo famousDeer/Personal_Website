@@ -1,0 +1,93 @@
+{% extends 'habits/index.html' %}
+
+{% block title %}Dodaj Nawyk{% endblock %}
+{% block content_habits %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <form method="post">
+                {% csrf_token %}
+                <div class="card-header">
+                    <label for="habit_name" class="form-label">Nazwa nawyku</label>
+                    <input type="text" class="form-control" id="habit_name" name="habit_name" 
+                    placeholder="Nazwa nawyku" value="{{ habit.name}}" required>
+                </div>
+                <div class="card-body">
+                    <div class="form-check form-switch mb-3">
+                        <!-- ensures FALSE is sent when unchecked -->
+                        <input type="hidden" name="is_active" value="False">
+                        <input
+                            class="form-check-input"
+                            type="checkbox"
+                            role="switch"
+                            id="is_active"
+                            name="is_active"
+                            value="True"
+                            {% if habit.is_active %}checked{% endif %}
+                        >
+                        <label class="form-check-label" for="is_active">Aktywny</label>
+                    </div>
+                    <div class="mb-3">
+                        <label for="start_date" class="form-label">Data rozpoczęcia</label>
+                        <input type="date" class="form-control" id="start_date" name="start_date" 
+                                value="{{ habit.start_date|date:'Y-m-d' }}" required>
+                    </div>
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" role="switch" id="no_end_date" checked>
+                        <label class="form-check-label" for="no_end_date">Brak daty zakończenia</label>
+                    </div>
+                    <div class="mb-3" id="end_date_group" style="display:none;">
+                        <label for="end_date" class="form-label">Data zakończenia</label>
+                        <input type="date" class="form-control" id="end_date" name="end_date"
+                               value="{{ habit.end_date|date:'Y-m-d' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label for="category" class="form-label">Rodzaj nawyku</label>
+                        <select class="form-select" id="category" name="category" required>
+                            <option value="{{ habit.category }}">{{ habit.category }}</option>
+                            {% for type in habits_category %}
+                                {% if type != habit.category %}
+                                <option value="{{ type }}">{{ type }}</option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Opis</label>
+                        <textarea class="form-control" id="description" name="description" rows="2" 
+                                    style="overflow:hidden;resize:none;">{{ habit.description }}</textarea>
+                    </div>
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-save"></i> Zapisz zmiany
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+    // Toggle end date visibility
+(function () {
+    const checkbox = document.getElementById('no_end_date');
+    const group = document.getElementById('end_date_group');
+    const input = document.getElementById('end_date');
+
+    if (!checkbox || !group || !input) return;
+
+    const toggle = () => {
+        const show = !checkbox.checked;
+        group.style.display = show ? '' : 'none';
+        input.required = show;
+        if (!show) input.value = '';
+    };
+
+    checkbox.addEventListener('change', toggle);
+    if (input.value) {
+        checkbox.checked = false;
+    }
+    toggle();
+})();
+</script>
+{% endblock %}

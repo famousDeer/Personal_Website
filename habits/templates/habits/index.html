@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block navbar_brand %}
+<a class="navbar-brand" href="{% url 'habits:index' %}"><i class="bi bi-book-half"></i> Nawyki</a>
+{% endblock %}
+
+{% block navbar %}
+<li class="nav-item"><a class="nav-link" href="{% url 'habits:list' %}"><i class="bi bi-list-check"></i> Lista Nawyków</a></li>
+<li class="nav-item"><a class="nav-link" href="#"><i class="bi bi-graph-up"></i> Statystyki</a></li>
+{% endblock %}
+
+{% block content %}
+{% block content_habits %}
+<div class="row g-4">
+    <div class="col-md-6">
+        <a class="text-decoration-none" href="{% url 'habits:list' %}">
+        <div class="card h-100 border-secondary">
+            <div class="card-body">
+            <h5 class="card-title text-secondary"><i class="bi bi-list-check"></i> Lista nawyków</h5>
+            <p class="card-text text-muted mb-0">Lista wszystkich nawyków</p>
+            </div>
+        </div>
+        </a>
+    </div>
+</div>
+<div class="row g-4 mt-2">
+    <div class="col-md-6">
+        <a class="btn btn-success w-100" href="{% url 'habits:add' %}">
+        <i class="bi bi-plus-circle"></i> Dodaj Nawyk
+        </a>
+    </div>
+</div>
+{% endblock %}
+{% endblock %}
