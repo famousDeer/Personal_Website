@@ -8,6 +8,5 @@ __pycache__/
 *.sqlite3
 *.log
 *.sql
-migrations/
 .DS_Store
 **/.DS_Store
