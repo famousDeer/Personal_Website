@@ -29,7 +29,7 @@ jobs:
       POSTGRES_DB: finance_db
       POSTGRES_USER: finance_user
       POSTGRES_PASSWORD: finance_pass
-      POSTGRES_HOST: localhost 
+      POSTGRES_HOST: postgres 
 
     steps:
       - uses: actions/checkout@v3
@@ -45,7 +45,7 @@ jobs:
       - name: Make migrations
         run: |
           python manage.py makemigrations
-          
+
       - name: Apply migrations
         run: |
           python manage.py migrate
