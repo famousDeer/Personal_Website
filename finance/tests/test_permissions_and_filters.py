@@ -17,10 +17,10 @@ class PermissionsAndFiltersTests(TestCase):
         exp = Daily.objects.create(user=self.u2, date=date(2025, 6, 2), title="X", category="Inne", store="", cost=10, month=m)
 
         # u1 próbuje edytować cudzy rekord -> 404
-        resp = self.client.get(reverse("edit_expense", args=[exp.id]))
+        resp = self.client.get(reverse("finance:edit_expense", args=[exp.id]))
         self.assertEqual(resp.status_code, 404)
 
-        resp = self.client.post(reverse("delete_expense", args=[exp.id]))
+        resp = self.client.post(reverse("finance:delete_expense", args=[exp.id]))
         self.assertEqual(resp.status_code, 404)
 
     def test_expense_list_filters_by_month_and_category(self):
@@ -29,7 +29,7 @@ class PermissionsAndFiltersTests(TestCase):
         Daily.objects.create(user=self.u1, date=date(2025, 6, 10), title="Food", category="Jedzenie", store="", cost=20, month=m6)
         Daily.objects.create(user=self.u1, date=date(2025, 7, 10), title="Bus", category="Transport", store="", cost=15, month=m7)
 
-        resp = self.client.get(reverse("expense_list"), {"month": "2025-06", "category": "Jedzenie"})
+        resp = self.client.get(reverse("finance:expense_list"), {"month": "2025-06", "category": "Jedzenie"})
         self.assertEqual(resp.status_code, 200)
         expenses = list(resp.context["expenses"])
         self.assertEqual(len(expenses), 1)
@@ -42,7 +42,7 @@ class PermissionsAndFiltersTests(TestCase):
         Income.objects.create(user=self.u1, date=date(2025, 6, 15), title="Salary", source="Pensja", amount=1000, month=m6)
         Income.objects.create(user=self.u1, date=date(2025, 7, 15), title="Freelance", source="Freelance", amount=500, month=m7)
 
-        resp = self.client.get(reverse("income_list"), {"month": "2025-06", "source": "Pensja"})
+        resp = self.client.get(reverse("finance:income_list"), {"month": "2025-06", "source": "Pensja"})
         self.assertEqual(resp.status_code, 200)
         incomes = list(resp.context["incomes"])
         self.assertEqual(len(incomes), 1)

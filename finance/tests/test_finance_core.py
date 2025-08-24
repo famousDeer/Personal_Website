@@ -13,7 +13,7 @@ class FinanceCoreTests(TestCase):
         self.client.login(username="u1", password="pass123")
 
     def test_add_expense_creates_monthly_and_updates_total(self):
-        resp = self.client.post(reverse("add_expense"), {
+        resp = self.client.post(reverse("finance:add_expense"), {
             "date": "2025-06-15",
             "title": "Lunch",
             "category": "Jedzenie",
@@ -39,7 +39,7 @@ class FinanceCoreTests(TestCase):
         may.save()
 
         # move to June
-        resp = self.client.post(reverse("edit_expense", args=[exp.id]), {
+        resp = self.client.post(reverse("finance:edit_expense", args=[exp.id]), {
             "date": "2025-06-02",
             "title": "Ticket",
             "category": "Transport",
@@ -63,7 +63,7 @@ class FinanceCoreTests(TestCase):
         m.total_expense = 15
         m.save()
 
-        resp = self.client.post(reverse("delete_expense", args=[e1.id]), follow=True)
+        resp = self.client.post(reverse("finance:delete_expense", args=[e1.id]), follow=True)
         self.assertEqual(resp.status_code, 200)
 
         m.refresh_from_db()
@@ -71,7 +71,7 @@ class FinanceCoreTests(TestCase):
         self.assertFalse(Daily.objects.filter(id=e1.id).exists())
 
     def test_add_income_updates_month_total(self):
-        resp = self.client.post(reverse("add_income"), {
+        resp = self.client.post(reverse("finance:add_income"), {
             "date": "2025-06-20",
             "title": "Salary",
             "amount": "3000",
@@ -90,7 +90,7 @@ class FinanceCoreTests(TestCase):
         may.total_income = 200
         may.save()
 
-        resp = self.client.post(reverse("edit_income", args=[inc.id]), {
+        resp = self.client.post(reverse("finance:edit_income", args=[inc.id]), {
             "date": "2025-06-01",
             "title": "Bonus",
             "source": "Premia",
@@ -110,7 +110,7 @@ class FinanceCoreTests(TestCase):
     def test_dashboard_sets_context(self):
         today = timezone.now().date()
         Monthly.objects.get_or_create(user=self.user, date=today.replace(day=1), defaults={"total_income": 0, "total_expense": 0})
-        resp = self.client.get(reverse("dashboard"))
+        resp = self.client.get(reverse("finance:dashboard"))
         self.assertEqual(resp.status_code, 200)
         self.assertIn("total_income", resp.context)
         self.assertIn("total_expense", resp.context)
