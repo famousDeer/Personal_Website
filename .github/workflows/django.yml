@@ -42,6 +42,9 @@ jobs:
         run: |
           pip install -r requirements.txt
       
+      - name: Django fake secret key
+        run: |
+          "SECRET_KEY=topsecretvalue" >> $GITHUB_ENV   
       - name: Make migrations
         run: |
           python manage.py makemigrations
