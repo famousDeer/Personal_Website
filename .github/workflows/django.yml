@@ -44,7 +44,7 @@ jobs:
       
       - name: Django fake secret key
         run: |
-          "SECRET_KEY=topsecretvalue" >> $GITHUB_ENV   
+          echo "SECRET_KEY=topsecretvalue" >> $GITHUB_ENV   
       - name: Make migrations
         run: |
           python manage.py makemigrations
