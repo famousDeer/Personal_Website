@@ -66,10 +66,16 @@ def add_habit(request):
     return render(request, 'habits/add_habit.html', context)
 
 def habit_list(request):
-    habits = Habit.objects.filter(user=request.user).order_by('start_date')
-    context = {
-        'habits': habits,
-    }
+    try:
+        habits = Habit.objects.filter(user=request.user).order_by('start_date')
+        context = {
+            'habits': habits,
+        }
+    except Habit.DoesNotExist:
+        messages.error(request, 'Nie masz żadnych nawyków.')
+        context = {
+            'habits': []
+        }
     return render(request, 'habits/habits_list.html', context)
 
 @method_decorator(login_required, name='dispatch')
