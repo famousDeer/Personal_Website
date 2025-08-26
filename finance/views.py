@@ -18,12 +18,13 @@ import json
 
 CATEGORIES_EXPENSES = [
         'Jedzenie', 'Transport', 'Rozrywka', 'Zakupy',
-        'Rachunki', 'Zdrowie', 'Edukacja', 'Rodzice', 'Inne'
+        'Rachunki', 'Zdrowie', 'Edukacja', 'Rodzice', 
+        'Ubrania', 'Delegacje', 'Inwestycje', 'Inne'
 ]
 
 INCOME_SOURCES = [
         'Pensja', 'Premia', 'Freelance', 'Inwestycje',
-        'Zwrot podatku', 'Sprzedaż', 'Rodzice', 'Inne'
+        'Zwrot podatku', 'Sprzedaż', 'Rodzina', 'Inne'
 ]
 
 @login_required
