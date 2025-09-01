@@ -38,6 +38,11 @@
                     {% endfor %}
                 </select>
             </div>
+            <div class="col-md-4">
+                <label for="date" class="form-label">Data</label>
+                <input type="date" class="form-control" id="date" name="date" 
+                       value="{{ current_date_filter|date:'Y-m-d' }}">                
+            </div>
             <div class="col-md-4 d-flex align-items-end">
                 <button type="submit" class="btn btn-primary me-2">
                     <i class="bi bi-funnel"></i> Filtruj
@@ -64,6 +69,48 @@
 </div>
 {% endif %}
 
+<!-- Pagination info -->
+<nav aria-label="Nawigacja strony">
+    <ul class="pagination justify-content-end">
+        {% if expenses.has_previous %}
+            <li class="page-item">
+                <a class="page-link" href="?page=1">&laquo;</a>
+            </li>
+            <li class="page-item">
+                <a class="page-link" href="?page={{ expenses.previous_page_number }}">Poprzednia</a>
+            </li>
+        {% else %}
+            <li class="page-item disabled">
+                <span class="page-link">&laquo;</span>
+            </li>
+            <li class="page-item disabled">
+                <span class="page-link">Poprzednia</span>
+            </li>
+        {% endif %}
+        
+        <li class="page-item active">
+            <span class="page-link">
+                Strona {{ expenses.number }} z {{ expenses.paginator.num_pages }}
+            </span>
+        </li>
+        
+        {% if expenses.has_next %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ expenses.next_page_number }}">Następna</a>
+            </li>
+            <li class="page-item">
+                <a class="page-link" href="?page={{ expenses.paginator.num_pages }}">&raquo;</a>
+            </li>
+        {% else %}
+            <li class="page-item disabled">
+                <span class="page-link">Następna</span>
+            </li> 
+            <li class="page-item disabled">
+                <span class="page-link">&raquo;</span>
+            </li>                                       
+        {% endif %}
+    </ul>
+</nav>
 <!-- Expenses table -->
 <div class="card">
     <div class="card-body">
@@ -81,7 +128,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for expense in expenses %}
+                    {% for expense in expenses.object_list %}
                     <tr>
                         <td>{{ expense.date|date:"d.m.Y" }}</td>
                         <td>{{ expense.title }}</td>
@@ -114,37 +161,6 @@
                 </tbody>
             </table>
         </div>
-
-        <!-- Pagination info -->
-        {% if is_paginated %}
-        <nav aria-label="Nawigacja strony">
-            <ul class="pagination justify-content-center">
-                {% if page_obj.has_previous %}
-                    <li class="page-item">
-                        <a class="page-link" href="?page=1">&laquo; Pierwsza</a>
-                    </li>
-                    <li class="page-item">
-                        <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Poprzednia</a>
-                    </li>
-                {% endif %}
-                
-                <li class="page-item active">
-                    <span class="page-link">
-                        Strona {{ page_obj.number }} z {{ page_obj.paginator.num_pages }}
-                    </span>
-                </li>
-                
-                {% if page_obj.has_next %}
-                    <li class="page-item">
-                        <a class="page-link" href="?page={{ page_obj.next_page_number }}">Następna</a>
-                    </li>
-                    <li class="page-item">
-                        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">Ostatnia &raquo;</a>
-                    </li>
-                {% endif %}
-            </ul>
-        </nav>
-        {% endif %}
     </div>
 </div>
 {% endblock %}

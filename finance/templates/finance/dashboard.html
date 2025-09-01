@@ -75,10 +75,10 @@
     <div class="col-md-12">
         <div class="card">
             <div class="card-header">
-                <h5 class="mb-0">Przychody vs Wydatki (ostatnie 6 miesięcy)</h5>
+                <h5 class="mb-0">Przychody vs Wydatki</h5>
             </div>
             <div class="card-body">
-                <canvas id="incomeExpenseChart" height="100"></canvas>
+                <canvas id="incomeExpenseChart" height="500"></canvas>
             </div>
         </div>
     </div>
@@ -253,6 +253,61 @@
     document.getElementById('incomeChart').parentElement.innerHTML =
         '<p class="text-muted text-center my-5">Brak danych o przychodach</p>';
     {% endif %}
-    
+
+// Chart for income and expense
+const ctx = document.getElementById('incomeExpenseChart').getContext('2d');
+const incomeExpenseChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+        labels: {{ days_in_month|safe }},
+        datasets: [{
+            label: 'Przychody',
+            data: {{ daily_incomes_data|safe }},
+            borderColor: 'rgb(75, 192, 192)',
+            backgroundColor: 'rgb(75, 192, 192, 0.7)',
+            tension: 0.1,
+            yAxisID: 'y',
+        }, {
+            label: 'Wydatki',
+            data: {{ daily_expenses_data|safe }},
+            borderColor: 'rgb(255, 99, 132',
+            backgroundColor: 'rgb(255, 99, 132, 0.7)',
+            tension: 0.1,
+            yAxisID: 'y1',
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false, 
+        plugins: {
+            legend: {
+                display: true,
+                position: 'top',
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    callback: function(value) {
+                        return value + ' zł';
+                    }
+                }
+            },
+            y1: {
+                type: 'linear',
+                position: 'right',
+                ticks: {
+                    callback: function(value) {
+                        return value + ' zł';
+                    }
+                },
+                grid: {
+                    display: false,
+                }
+            }
+        }
+    }
+});
 </script>
 {% endblock %}

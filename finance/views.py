@@ -1,4 +1,5 @@
 from django.shortcuts import render, redirect, get_object_or_404
+from django.core.paginator import Paginator
 from django.views import View
 from django.db.models import Sum
 from django.contrib import messages
@@ -51,7 +52,33 @@ class DashboardView(View):
         # if monthly_record.total_expense != daily_expenses:
         #     monthly_record.total_expense = daily_expenses
         #     monthly_record.save()
+        days = calendar.monthrange(current_month_date.year, current_month_date.month)[1]
+        days_in_month = [i for i in range(1, days+1)]
+        daily_expenses_data = [0.0] * days
+        daily_incomes_data = [0.0] * days
+        daily_cost = (
+            Daily.objects
+            .filter(user=request.user,month=monthly_record)
+            .values('date')
+            .annotate(cost=Sum('cost'))
+            .order_by('-date')
+        )
+        daily_incomes = (
+            Income.objects
+            .filter(user=request.user,month=monthly_record)
+            .values('date')
+            .annotate(income=Sum('amount'))
+            .order_by('-date')
+        )
         
+        for record in daily_cost:
+            day = record['date'].day
+            daily_expenses_data[day-1] = float(record['cost'] or 0.0)
+
+        for record in daily_incomes:
+            day = record['date'].day
+            daily_incomes_data[day-1] = float(record['income'] or 0.0)
+
         expenses_by_category = Daily.objects.filter(
             user=request.user,
             month=monthly_record
@@ -95,7 +122,10 @@ class DashboardView(View):
             'income_sources': json.dumps(income_sources) if income_sources else json.dumps([]),
             'income_amounts': json.dumps(income_amounts) if income_amounts else json.dumps([]),
             'recent_expenses': Daily.objects.filter(user=request.user, month=monthly_record).order_by('-date')[:5],
-            'recent_incomes': recent_incomes
+            'recent_incomes': recent_incomes,
+            'days_in_month': json.dumps(days_in_month),
+            'daily_expenses_data': json.dumps(daily_expenses_data),
+            'daily_incomes_data': json.dumps(daily_incomes_data),
         }
         
         return render(request, 'finance/dashboard.html', context)
@@ -105,6 +135,7 @@ class ExpenseListView(View):
     def get(self, request):
         month_filter = request.GET.get('month', '')
         category_filter = request.GET.get('category', '')
+        date_filter = request.GET.get('date', '')
 
         expenses = Daily.objects.filter(user=request.user).select_related('month')
         
@@ -124,18 +155,25 @@ class ExpenseListView(View):
         if category_filter:
             expenses = expenses.filter(category=category_filter)
         
+        if date_filter:
+            specific_date = datetime.strptime(date_filter, '%Y-%m-%d').date()
+            expenses = expenses.filter(date=specific_date)
+
+        
         expenses = expenses.order_by('-date')
         total_filtered = expenses.aggregate(Sum('cost'))['cost__sum'] or 0
         categories = set(Daily.objects.filter(user=request.user).values_list('category', flat=True).distinct())
         months = Monthly.objects.filter(user=request.user).order_by('-date')
         
         context = {
-            'expenses': expenses,
+            'expenses': Paginator(expenses, 5).get_page(request.GET.get('page')),
             'categories': categories,
             'months': months,
             'current_month_filter': month_filter,
             'current_category_filter': category_filter,
+            'current_date_filter': specific_date if date_filter else '',
             'total_filtered': total_filtered,
+            'today': timezone.now().date()
         }
         
         return render(request, 'finance/expense_list.html', context)
