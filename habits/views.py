@@ -68,10 +68,8 @@ def add_habit(request):
 def habit_list(request):
     try:
         habits = Habit.objects.filter(user=request.user).order_by('start_date')
-        habit_time_left = {habit.id: (habit.end_date - timezone.now().date()).days if habit.end_date else 'N/A' for habit in habits}
         context = {
             'habits': habits,
-            'habits_time_left': habit_time_left,
         }
     except Habit.DoesNotExist:
         messages.error(request, 'Nie masz żadnych nawyków.')
@@ -108,5 +106,5 @@ class UpdateHabitView(View):
             messages.error(request, 'Nieprawidłowy format daty. Użyj YYYY-MM-DD.')
         habit.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         habit.save()
-        messages.success(request, f'Pomyślnie zapisano zmiany dla nawyku "{habit.name}"!')
-        return redirect('habits:list')
+        messages.success(request, f'Pomyślnie zapisano zmiany!')
+        return redirect('habits:update', habit_id=habit.id)
