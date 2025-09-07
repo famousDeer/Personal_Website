@@ -24,6 +24,27 @@
         </div>
         </a>
     </div>
+    <dvi class="col-md-6">
+        <a class="text-decoration-none">
+        <div class="card h-100 border-white">
+            <div class="card-boyd">
+                <h5 class="card-title text-dark"><i class="bi bi-info-square-fill"></i> Twoje nawyki</h5>
+                {% for habit in habits %}
+                    <div class="input-group mb-3">
+                        <span class="input-group-text" id="basic-addon1">{{ habit.name }}</span>
+                        <span class="input-group-text" id="basic-addon1">Status</span>
+                        <div class="input-group-text">
+                            <input class="mt-0" type="checkbox" value="" aria-label="Checkbox for following text input">
+                        </div>
+                        <input type="text" class="form-control" placeholder="Progress" aria-label="Progress" aria-describedby="basic-addon2">
+                    </div>
+                {% empty %}
+                    <p class="card-text text-muted mb-0">Brak nawyków do wyświetlenia</p>
+                {% endfor %}
+            </div>
+        </div>
+        </a>
+    </dvi>
 </div>
 <div class="row g-4 mt-2">
     <div class="col-md-6">

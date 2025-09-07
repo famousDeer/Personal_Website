@@ -39,6 +39,28 @@
                             {% endfor %}
                         </select>
                     </div>
+                    <!-- Running inputs -->
+                    <div class="mb-3">
+                        <label class="form-label d-block">Cel</label>
+                        <div class="btn-group" role="group" aria-label="Dni biegania">
+                            {% for day in days %}
+                                <input
+                                    type="radio"
+                                    class="btn-check"
+                                    id="running_{{ forloop.counter }}"
+                                    name="running_days"
+                                    value="{{ day }}"
+                                    autocomplete="off">
+                                <label class="btn btn-outline-success" for="running_{{ forloop.counter }}">{{ day }}</label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="goal" class="form-label">Ilość kilometrów</label>
+                        <input type="text" class="form-control" id="goal" name="goal" 
+                               placeholder="np. 5km" required>
+                    </div>
+                    <!-- Description -->
                     <div class="mb-3">
                         <label for="description" class="form-label">Opis</label>
                         <textarea class="form-control" id="description" name="description" rows="2" style="overflow:hidden;resize:none;"></textarea>
@@ -88,6 +110,34 @@
         checkbox.checked = false;
     }
     toggle();
+})();
+// Show running days and goal based on category
+(function () {
+    const category = document.getElementById('category');
+    const goalInput = document.getElementById('goal');
+    const firstRunningDay = document.querySelector('input[name="running_days"]');
+
+    if (!category || !goalInput || !firstRunningDay) return;
+
+    const runningDaysGroup = firstRunningDay.closest('.mb-3');
+    const goalGroup = goalInput.closest('.mb-3');
+
+    const updateVisibility = () => {
+        const isRunning = category.value === 'Bieganie';
+
+        if (runningDaysGroup) runningDaysGroup.style.display = isRunning ? '' : 'none';
+        if (goalGroup) goalGroup.style.display = isRunning ? '' : 'none';
+
+        goalInput.required = isRunning;
+
+        if (!isRunning) {
+            goalInput.value = '';
+            document.querySelectorAll('input[name="running_days"]').forEach(cb => cb.checked = false);
+        }
+    };
+
+    category.addEventListener('change', updateVisibility);
+    updateVisibility();
 })();
 </script>
 {% endblock %}

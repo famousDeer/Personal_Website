@@ -9,27 +9,33 @@ from django.utils.decorators import method_decorator
 from datetime import datetime
 from .models import Habit, HabitRecord
 
-HABITS_CATEGORY = [
-    'Zdrowie',
-    'Finanse',
-    'Nauka',
-    'Hobby',
-    'Praca',
-    'Relacje',
-    'Rozwój osobisty',
-    'Inne'
-]
-
 def index(request):
-    return render(request, 'habits/index.html')
+    habits = Habit.objects.filter(user=request.user, is_active=True).order_by('start_date')
+    context = {
+        'habits': habits,
+    }
+    return render(request, 'habits/index.html', context)
 
 def add_habit(request):
+    HABITS_CATEGORY = [
+        'Czytanie ksiazek', 'Kroki', 'Picie wody', 'Bieganie',
+        'Yoga', 'Medytaca', 'Nauka'
+    ]
+    GOAL = ['Dziennie', 'Tygodniowo', 'Miesiecznie']
+    if request.method == 'GET':
+        context = {
+            'habits_category': sorted(HABITS_CATEGORY),
+            'default_date': timezone.now().date().strftime('%Y-%m-%d'),
+            'days': GOAL,
+        }
+        return render(request, 'habits/add_habit.html', context)
     if request.method == 'POST':
         habit_name = request.POST.get('habit_name')
         description = request.POST.get('description', '')
         start_date = request.POST.get('start_date')
         end_date = request.POST.get('end_date')
         category = request.POST.get('category')
+        running_days = request.POST.getlist('running_days')
 
         try:
             start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
