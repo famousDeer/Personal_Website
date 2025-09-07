@@ -9,33 +9,27 @@ from django.utils.decorators import method_decorator
 from datetime import datetime
 from .models import Habit, HabitRecord
 
+HABITS_CATEGORY = [
+    'Zdrowie',
+    'Finanse',
+    'Nauka',
+    'Hobby',
+    'Praca',
+    'Relacje',
+    'Rozwój osobisty',
+    'Inne'
+]
+
 def index(request):
-    habits = Habit.objects.filter(user=request.user, is_active=True).order_by('start_date')
-    context = {
-        'habits': habits,
-    }
-    return render(request, 'habits/index.html', context)
+    return render(request, 'habits/index.html')
 
 def add_habit(request):
-    HABITS_CATEGORY = [
-        'Czytanie ksiazek', 'Kroki', 'Picie wody', 'Bieganie',
-        'Yoga', 'Medytaca', 'Nauka'
-    ]
-    GOAL = ['Dziennie', 'Tygodniowo', 'Miesiecznie']
-    if request.method == 'GET':
-        context = {
-            'habits_category': sorted(HABITS_CATEGORY),
-            'default_date': timezone.now().date().strftime('%Y-%m-%d'),
-            'days': GOAL,
-        }
-        return render(request, 'habits/add_habit.html', context)
     if request.method == 'POST':
         habit_name = request.POST.get('habit_name')
         description = request.POST.get('description', '')
         start_date = request.POST.get('start_date')
         end_date = request.POST.get('end_date')
         category = request.POST.get('category')
-        running_days = request.POST.getlist('running_days')
 
         try:
             start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
@@ -74,10 +68,8 @@ def add_habit(request):
 def habit_list(request):
     try:
         habits = Habit.objects.filter(user=request.user).order_by('start_date')
-        habit_time_left = {habit.id: (habit.end_date - timezone.now().date()).days if habit.end_date else 'N/A' for habit in habits}
         context = {
             'habits': habits,
-            'habits_time_left': habit_time_left,
         }
     except Habit.DoesNotExist:
         messages.error(request, 'Nie masz żadnych nawyków.')
@@ -114,5 +106,5 @@ class UpdateHabitView(View):
             messages.error(request, 'Nieprawidłowy format daty. Użyj YYYY-MM-DD.')
         habit.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         habit.save()
-        messages.success(request, f'Pomyślnie zapisano zmiany dla nawyku "{habit.name}"!')
-        return redirect('habits:list')
+        messages.success(request, f'Pomyślnie zapisano zmiany!')
+        return redirect('habits:update', habit_id=habit.id)

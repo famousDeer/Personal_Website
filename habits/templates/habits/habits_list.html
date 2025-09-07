@@ -12,7 +12,6 @@
                 <th>Nazwa</th>
                 <th>Kategoria</th>
                 <th>Opis</th>
-                <th>Pozostało czasu</th>
                 <th>Przyciski</th>
             </tr>
         </thead>
@@ -31,15 +30,6 @@
                 <td>{{ habit.name }}</td>
                 <td>{{ habit.category }}</td>
                 <td>{{ habit.description }}</td>
-                <td>
-                    {% with key=habit.id %}
-                        {% for k, v in habits_time_left.items %}
-                            {% if k == key %}
-                                {{ v }} dni
-                            {% endif %}
-                        {% endfor %}
-                    {% endwith %}
-                </td>
                 <td>
                     <a href="{% url 'habits:update' habit.id %}" 
                         class="btn btn-sm btn-warining" title="Edytuj">
