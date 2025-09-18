@@ -48,3 +48,17 @@ class PermissionsAndFiltersTests(TestCase):
         self.assertEqual(len(incomes), 1)
         self.assertEqual(incomes[0].title, "Salary")
         self.assertEqual(float(resp.context["total_filtered"]), 1000.0)
+
+    def test_expense_list_pagination_view(self):
+        m = Monthly.objects.create(user=self.u1, date=date(2025, 6, 1), total_income=0, total_expense=0)
+        for i in range(15):
+            Daily.objects.create(user=self.u1, date=date(2025, 6, i+1), title=f"Expense {i+1}", category="Inne", store="", cost=10, month=m)
+
+        resp = self.client.get(reverse("finance:expense_list"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.context["expenses"]), 5)  # Assuming pagination is set to 10 per page
+
+        resp = self.client.get(reverse("finance:expense_list") + "?page=2")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.context["expenses"]), 5)  # Remaining 5 on the second page
+
