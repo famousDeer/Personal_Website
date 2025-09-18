@@ -44,14 +44,6 @@ class DashboardView(View):
             defaults={'total_income': 0, 'total_expense': 0}
         )
         
-        # daily_expenses = Daily.objects.filter(
-        #     user=request.user,
-        #     month=monthly_record
-        # ).aggregate(total=Sum('cost'))['total'] or 0
-        
-        # if monthly_record.total_expense != daily_expenses:
-        #     monthly_record.total_expense = daily_expenses
-        #     monthly_record.save()
         days = calendar.monthrange(current_month_date.year, current_month_date.month)[1]
         days_in_month = [i for i in range(1, days+1)]
         daily_expenses_data = [0.0] * days
@@ -99,15 +91,6 @@ class DashboardView(View):
         income_sources = [item['source'] for item in income_by_source]
         income_amounts = [float(item['total']) for item in income_by_source]
         
-        # total_income_calculated = Income.objects.filter(
-        #     user=request.user,
-        #     month=monthly_record
-        # ).aggregate(total=Sum('amount'))['total'] or 0
-        
-        # if monthly_record.total_income != total_income_calculated:
-        #     monthly_record.total_income = total_income_calculated
-        #     monthly_record.save()
-        
         balance = monthly_record.total_income - monthly_record.total_expense
         
         recent_incomes = Income.objects.filter(user=request.user, month=monthly_record).order_by('-date')[:5]
@@ -133,6 +116,7 @@ class DashboardView(View):
 @method_decorator(login_required, name='dispatch')
 class ExpenseListView(View):
     def get(self, request):
+        per_page_view = 10
         month_filter = request.GET.get('month', '')
         category_filter = request.GET.get('category', '')
         date_filter = request.GET.get('date', '')
@@ -160,20 +144,26 @@ class ExpenseListView(View):
             expenses = expenses.filter(date=specific_date)
 
         
-        expenses = expenses.order_by('-date')
+        expenses = expenses.order_by('-date', 'title')
         total_filtered = expenses.aggregate(Sum('cost'))['cost__sum'] or 0
         categories = set(Daily.objects.filter(user=request.user).values_list('category', flat=True).distinct())
         months = Monthly.objects.filter(user=request.user).order_by('-date')
         
+        expenses_page = Paginator(expenses, per_page_view).get_page(request.GET.get('page'))
+        qs = request.GET.copy()
+        qs.pop('page', None) 
+        querystring = qs.urlencode()
+
         context = {
-            'expenses': Paginator(expenses, 5).get_page(request.GET.get('page')),
+            'expenses': expenses_page,
             'categories': categories,
             'months': months,
             'current_month_filter': month_filter,
             'current_category_filter': category_filter,
             'current_date_filter': specific_date if date_filter else '',
             'total_filtered': total_filtered,
-            'today': timezone.now().date()
+            'today': timezone.now().date(),
+            'querystring': querystring,
         }
         
         return render(request, 'finance/expense_list.html', context)
