@@ -18,13 +18,14 @@ from utils.tools import month_start, parse_decimal
 import json
 
 CATEGORIES_EXPENSES = [
-        'Jedzenie', 'Transport', 'Rozrywka', 'Zakupy',
+        'Zakupy spozywcze', 'Jedzenie na miescie', 'Transport miejski',
+        'Rozrywka', 'Podroze', 'Paliwo',
         'Rachunki', 'Zdrowie', 'Edukacja', 'Rodzice', 
         'Ubrania', 'Delegacje', 'Inwestycje', 'Inne'
 ]
 
 INCOME_SOURCES = [
-        'Pensja', 'Premia', 'Freelance', 'Inwestycje',
+        'Pensja', 'Premia', 'Dieta', 'Inwestycje',
         'Zwrot podatku', 'Sprzedaż', 'Rodzina', 'Inne'
 ]
 
