@@ -43,7 +43,7 @@ services:
 
   web-test:
     build: .
-    command: sh -c "python manage.py test -v 2"
+    command: sh -c "python manage.py test -v 3"
     env_file:
       - .env
     environment:

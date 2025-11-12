@@ -7,9 +7,11 @@ from django.utils import timezone
 from django.db import transaction
 from django.contrib.auth.decorators import login_required
 from django.utils.decorators import method_decorator
+from django_countries import countries as django_countries
 from datetime import datetime
 import calendar
-from .models import Monthly, Daily, Income
+from .models import Monthly, Daily, Income, TravelDestinations
+from .forms import TravelDestinationForm
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -19,9 +21,10 @@ import json
 
 CATEGORIES_EXPENSES = [
         'Zakupy spozywcze', 'Jedzenie na miescie', 'Transport miejski',
-        'Rozrywka', 'Podroze', 'Paliwo',
-        'Rachunki', 'Zdrowie', 'Edukacja', 'Rodzice', 
-        'Ubrania', 'Delegacje', 'Inwestycje', 'Inne'
+        'Rozrywka', 'Podroze - nocleg', 'Podroze - jedzenie', 
+        'Podroze - atrakcje', 'Podroze - pamiatki', 'Podroze - transport',
+        'Paliwo', 'Rachunki', 'Zdrowie', 'Edukacja', 'Rodzice', 'Ubrania', 
+        'Delegacje', 'Inwestycje', 'Inne'
 ]
 
 INCOME_SOURCES = [
@@ -493,6 +496,102 @@ class ReportsView(View):
         
         return render(request, 'finance/reports.html', context)
 
+@method_decorator(login_required, name='dispatch')
+class TravelView(View):
+    def get(self, request):
+        country_filter = request.GET.get('country', '')
+        destinations = TravelDestinations.objects.filter(user=request.user)
+        country_objs = []
+        for code in destinations.values_list('country', flat=True).distinct():
+            name = dict(django_countries).get(code, code)
+            country_objs.append({'code': code, 'name': name})
+
+        if country_filter:
+            destinations = destinations.filter(country=country_filter)
+
+        destinations = destinations.order_by('-start_date')
+        paginator = Paginator(destinations, 10)
+        page_number = request.GET.get('page')
+        destinations = paginator.get_page(page_number)
+
+        qs = request.GET.copy()
+        qs.pop('page', None)
+        querystring = qs.urlencode()
+
+        context = {
+            'countries': country_objs,
+            'destinations': destinations,
+            'querystring': querystring,
+            'current_country_filter': country_filter,
+        }
+
+        return render(request, 'finance/travel.html', context=context)
+
+@method_decorator(login_required, name='dispatch')
+class AddTravelView(View):
+    def get(self, request):
+        form = TravelDestinationForm()
+        return render(request, 'finance/add_travel.html', {'form': form})
+    
+    @transaction.atomic
+    def post(self, request):
+        try:
+            form = TravelDestinationForm(request.POST)
+            if form.is_valid():
+                travel_destination = form.save(commit=False)
+                travel_destination.user = request.user
+                travel_destination.save()
+                
+                messages.success(request, 'Nowa podróz została dodana pomyślnie!')
+                return redirect('finance:travels')
+            else:
+                messages.error(request, 'Formularz zawiera błędy. Proszę poprawić i spróbować ponownie.')
+        except Exception as e:
+            messages.error(request, f'Błąd podczas dodawania wydatku podróży: {str(e)}')
+        return render(request, 'finance/add_travel.html', {'form': form})
+
+@method_decorator(login_required, name='dispatch')
+class EditTravelView(View):
+    def get(self, request, travel_id):
+        travel = get_object_or_404(TravelDestinations, id=travel_id, user=request.user)
+        travel.start_date = travel.start_date.strftime('%Y-%m-%d')
+        travel.end_date = travel.end_date.strftime('%Y-%m-%d')
+        form = TravelDestinationForm(instance=travel)
+        return render(request, 'finance/edit_travel.html', {'form': form, 'travel': travel})
+    
+    @transaction.atomic
+    def post(self, request, travel_id):
+        travel = get_object_or_404(TravelDestinations, id=travel_id, user=request.user)
+        try:
+            form = TravelDestinationForm(request.POST, instance=travel)
+            if form.is_valid():
+                form.save()
+                messages.success(request, 'Podróż została zaktualizowana pomyślnie!')
+                return redirect('finance:travels')
+            else:
+                messages.error(request, 'Formularz zawiera błędy. Proszę poprawić i spróbować ponownie.')
+        except Exception as e:
+            messages.error(request, f'Błąd podczas aktualizacji podróży: {str(e)}')
+        return render(request, 'finance/edit_travel.html', {'form': form, 'travel': travel})
+
+@method_decorator(login_required, name='dispatch')
+class DeleteTravelView(View):
+    def get(self, request, travel_id):
+        travel = get_object_or_404(TravelDestinations, id=travel_id, user=request.user)
+        context = {
+            'travel': travel
+        }
+        return render(request, 'finance/delete_travel.html', context)
+    
+    @transaction.atomic
+    def post(self, request, travel_id):
+        travel = get_object_or_404(TravelDestinations, id=travel_id, user=request.user)
+        travel_name = f"{travel.city}, {travel.country}"
+        travel.delete()
+        
+        messages.success(request, f'Podróż "{travel_name}" została usunięta!')
+        return redirect('finance:travels')
+    
 class DailyRecordAPI(APIView):
     permission_classes = [IsAuthenticated]
     def get(self, request):

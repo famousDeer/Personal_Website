@@ -23,6 +23,12 @@ urlpatterns = [
     # Reports
     path('reports/', views.ReportsView.as_view(), name='reports'),
 
+    # Travels
+    path('travel/', views.TravelView.as_view(), name='travels'),
+    path('travel/add/', views.AddTravelView.as_view(), name='add_travel'),
+    path('travel/edit/<int:travel_id>/', views.EditTravelView.as_view(), name='edit_travel'),
+    path('travel/delete/<int:travel_id>/', views.DeleteTravelView.as_view(), name='delete_travel'),
+
     # API
     path('api/daily/', views.DailyRecordAPI.as_view(), name='api_daily'),
     path('api/monthly/', views.MonthlyRecordAPI.as_view(), name='api_monthly'),

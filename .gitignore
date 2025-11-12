@@ -10,3 +10,4 @@ __pycache__/
 *.sql
 .DS_Store
 **/.DS_Store
+/db_backups/
