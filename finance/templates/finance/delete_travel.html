@@ -1,0 +1,45 @@
+{% extends 'finance/index.html' %}
+
+{% block title %}Usuń Podróz{% endblock %}
+
+{% block content_finance %}
+{% load date_extras %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card border-danger">
+            <div class="card-header bg-danger text-white">
+                <h4 class="mb-0"><i class="bi bi-trash"></i> Usuń Podróz</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i> 
+                    Czy na pewno chcesz usunąć tą podróz? Tej operacji nie można cofnąć.
+                </div>
+                
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ travel.country.name }}</h5>
+                        <p class="card-text">
+                            <strong>Miasto:</strong> {{ travel.city }}<br>
+                            <strong>Data rozpoczęcia:</strong>{{ travel.start_date|date:"d.m.Y" }}</span><br>
+                            <strong>Data zakończenia:</strong>{{ travel.end_date|date:"d.m.Y" }}</span><br>
+                            <strong>Ilosć dni:</strong> {{ travel.start_date|days_between:travel.end_date }}<br>
+                            <strong>Budzet:</strong>{{ travel.budget }}
+                        </p>
+                    </div>
+                </div>
+                
+                <form method="post">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-trash"></i> Tak, usuń
+                    </button>
+                    <a href="{% url 'finance:travels' %}" class="btn btn-secondary">
+                        <i class="bi bi-arrow-left"></i> Anuluj
+                    </a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

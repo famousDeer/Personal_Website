@@ -1,0 +1,133 @@
+{% extends 'finance/index.html' %}
+
+{% block title %}Wydatki na podróze{% endblock %}
+
+{% block content_finance %}
+{% load date_extras %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-suitcase-fill"></i> Lista krajów</h2>
+    <a href="{% url 'finance:add_travel' %}" class="btn btn-success">
+        <i class="bi bi-plus-circle"></i> Dodaj Podróz
+    </a>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-4">
+                <label for="country" class="form-label">Kraje</label>
+                <select class="form-select" id="country" name="country">
+                    <option value="">Wszystkie Kraje</option>
+                    {% for country in countries %}
+                        <option value="{{ country.code }}"
+                            {% if current_country_filter == country.code %}selected{% endif %}>
+                            {{ country.name }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary me-2">
+                    <i class="bi bi-funnel"></i> Filtruj
+                </button>
+                <a href="{% url 'finance:travels' %}" class="btn btn-secondary">
+                    <i class="bi bi-x-circle"></i> Wyczyść
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Summary destinations -->
+
+<!-- Pagination info -->
+<nav id="destinations-pagination" aria-label="Nawigacja strony">
+    <ul class="pagination justify-content-end">
+        {% if destinations.has_previous %}
+            <li class="page-item">
+                <a class="page-link" href="?{% if querystring %}{{ querystring }}&{% endif %}page=1#destinations-pagination">&laquo;</a>
+            </li>
+            <li class="page-item">
+                <a class="page-link" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ destinations.previous_page_number }}#destinations-pagination">Poprzednia</a>
+            </li>
+        {% else %}
+            <li class="page-item disabled"><span class="page-link">&laquo;</span></li>
+            <li class="page-item disabled"><span class="page-link">Poprzednia</span></li>
+        {% endif %}
+
+        <li class="page-item active">
+            <span class="page-link">Strona {{ destinations.number }} z {{ destinations.paginator.num_pages }}</span>
+        </li>
+
+        {% if destinations.has_next %}
+            <li class="page-item">
+                <a class="page-link" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ destinations.next_page_number }}#destinations-pagination">Następna</a>
+            </li>
+            <li class="page-item">
+                <a class="page-link" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ destinations.paginator.num_pages }}#destinations-pagination">&raquo;</a>
+            </li>
+        {% else %}
+            <li class="page-item disabled"><span class="page-link">Następna</span></li>
+            <li class="page-item disabled"><span class="page-link">&raquo;</span></li>
+        {% endif %}
+    </ul>
+</nav>
+
+<!-- Destinations table -->
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Kraj</th>
+                        <th>Miasto</th>
+                        <th>Początek podrózy</th>
+                        <th>Koniec podrózy</th>
+                        <th>Ilosc dni</th>
+                        <th>Budzet</th>
+                        <th>Akcje</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for destination in destinations.object_list %}
+                    <tr>
+                        <td>
+                            <img src="{{ destination.country.flag }}" alt="Flaga {{ destination.country.name }}" style="height: 24px;">
+                            {{ destination.country.name }}
+                        </td>
+                        <td>{{ destination.city }}</td>
+                        <td>{{ destination.start_date|date:"d.m.Y" }}</td>
+                        <td>{{ destination.end_date|date:"d.m.Y" }}</td>
+                        <td>{{ destination.start_date|days_between:destination.end_date }}</td>
+                        <td>{{ destination.budget }}</td>
+                        <td>
+                            <a href="{% url 'finance:edit_travel' destination.id %}" 
+                               class="btn btn-sm btn-primary" title="Edytuj">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <a href="{% url 'finance:delete_travel' destination.id %}" 
+                               class="btn btn-sm btn-danger" title="Usuń">
+                                <i class="bi bi-trash"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-4">
+                            <i class="bi bi-airplane" style="font-size: 2rem;"></i>
+                            <p class="mt-2">Brak podrózy do wyświetlenia</p>
+                            <a href="{% url 'finance:add_travel' %}" class="btn btn-success btn-sm">
+                                <i class="bi bi-plus-circle"></i> Dodaj pierwszą podróz
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
