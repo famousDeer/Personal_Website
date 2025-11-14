@@ -128,7 +128,7 @@
                         <td class="text-danger fw-bold">-{{ expense.cost|floatformat:2 }} zł</td>
                         <td>{{ expense.month.date|date:"F Y" }}</td>
                         <td>
-                            <a href="{% url 'finance:edit_expense' expense.id %}" 
+                            <a href="{% url 'finance:edit_expense' expense.id %}?{{ request.GET.urlencode}}" 
                                class="btn btn-sm btn-primary" title="Edytuj">
                                 <i class="bi bi-pencil"></i>
                             </a>

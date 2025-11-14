@@ -12,6 +12,7 @@
             <div class="card-body">
                 <form method="post">
                     {% csrf_token %}
+                    <input type="hidden" name="querystring" value="{{ querystring }}">
                     <div class="mb-3">
                         <label for="date" class="form-label">Data</label>
                         <input type="date" class="form-control" id="date" name="date" 
@@ -46,7 +47,7 @@
                     <button type="submit" class="btn btn-warning">
                         <i class="bi bi-save"></i> Zaktualizuj
                     </button>
-                    <a href="{% url 'finance:expense_list' %}" class="btn btn-secondary">
+                    <a href="{% url 'finance:expense_list' %}{% if querystring %}?{{ querystring }}{% endif %}" class="btn btn-secondary">
                         <i class="bi bi-x-circle"></i> Anuluj
                     </a>
                 </form>

@@ -17,6 +17,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import serializers
 from utils.tools import month_start, parse_decimal
+from django.urls import reverse
 import json
 
 CATEGORIES_EXPENSES = [
@@ -24,7 +25,8 @@ CATEGORIES_EXPENSES = [
         'Rozrywka', 'Podroze - nocleg', 'Podroze - jedzenie', 
         'Podroze - atrakcje', 'Podroze - pamiatki', 'Podroze - transport',
         'Paliwo', 'Rachunki', 'Zdrowie', 'Edukacja', 'Rodzice', 'Ubrania', 
-        'Delegacje', 'Inwestycje', 'Inne'
+        'Delegacje', 'Inwestycje', 'Inne', 'Rata kredytu konsumenckiego',
+        'Wyposaenie domu', 'Sport', 'Hobby', 'Prezenty'
 ]
 
 INCOME_SOURCES = [
@@ -150,7 +152,7 @@ class ExpenseListView(View):
         
         expenses = expenses.order_by('-date', 'title')
         total_filtered = expenses.aggregate(Sum('cost'))['cost__sum'] or 0
-        categories = set(Daily.objects.filter(user=request.user).values_list('category', flat=True).distinct())
+        categories = Daily.objects.filter(user=request.user).order_by('category').values_list('category', flat=True).distinct()
         months = Monthly.objects.filter(user=request.user).order_by('-date')
         
         expenses_page = Paginator(expenses, per_page_view).get_page(request.GET.get('page'))
@@ -225,12 +227,12 @@ class AddExpenseView(View):
 class EditExpenseView(View):
     def get(self, request, expense_id):
         expense = get_object_or_404(Daily, id=expense_id, user=request.user)
-        
+        querystring = request.GET.urlencode()
         context = {
             'expense': expense,
-            'categories': CATEGORIES_EXPENSES
+            'categories': CATEGORIES_EXPENSES,
+            'querystring': querystring,
         }
-        
         return render(request, 'finance/edit_expense.html', context)
     
     @transaction.atomic
@@ -242,7 +244,7 @@ class EditExpenseView(View):
         expense.category = request.POST.get('category')
         expense.store = request.POST.get('store', '')
         expense.cost = parse_decimal(request.POST.get('cost'))
-        
+        querystring = request.POST.get('querystring', '')
         try:
             new_month_date = month_start(expense.date)
             if old_monthly.date != new_month_date:
@@ -266,10 +268,19 @@ class EditExpenseView(View):
                 monthly.save()
             
             messages.success(request, 'Wydatek został zaktualizowany!')
-            return redirect('finance:expense_list')
+            redirect_url = reverse('finance:expense_list')
+            if querystring:
+                redirect_url += f'?{querystring}'
+            return redirect(redirect_url)
             
         except Exception as e:
             messages.error(request, f'Błąd podczas aktualizacji: {str(e)}')
+        context = {
+            'expense': expense,
+            'categories': CATEGORIES_EXPENSES,
+            'querystring': querystring,
+        }
+        return render(request, 'finance/edit_expense.html', context)
 
 @method_decorator(login_required, name='dispatch')
 class DeleteExpenseView(View):
@@ -322,12 +333,12 @@ class IncomeListView(View):
         
         incomes = incomes.order_by('-date')
         total_filtered = incomes.aggregate(Sum('amount'))['amount__sum'] or 0
-        sources = Income.objects.filter(user=request.user).values_list('source', flat=True).distinct()
+        sources = Income.objects.filter(user=request.user).order_by('source').values_list('source', flat=True).distinct()
         months = Monthly.objects.filter(user=request.user).order_by('-date')
         
         context = {
             'incomes': incomes,
-            'sources': set(sources),
+            'sources': sources,
             'months': months,
             'current_month_filter': month_filter,
             'current_source_filter': source_filter,
@@ -502,7 +513,9 @@ class TravelView(View):
         country_filter = request.GET.get('country', '')
         destinations = TravelDestinations.objects.filter(user=request.user)
         country_objs = []
-        for code in destinations.values_list('country', flat=True).distinct():
+        distinct_countries = destinations.order_by('country').values_list('country', flat=True).distinct('country')
+        print(distinct_countries)
+        for code in distinct_countries:
             name = dict(django_countries).get(code, code)
             country_objs.append({'code': code, 'name': name})
 
