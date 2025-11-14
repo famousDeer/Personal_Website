@@ -26,7 +26,7 @@ CATEGORIES_EXPENSES = [
         'Podroze - atrakcje', 'Podroze - pamiatki', 'Podroze - transport',
         'Paliwo', 'Rachunki', 'Zdrowie', 'Edukacja', 'Rodzice', 'Ubrania', 
         'Delegacje', 'Inwestycje', 'Inne', 'Rata kredytu konsumenckiego',
-        'Wyposaenie domu', 'Sport', 'Hobby', 'Prezenty'
+        'Wyposazenie domu', 'Sport', 'Hobby', 'Prezenty', 'Spłata karty kredytowej'
 ]
 
 INCOME_SOURCES = [
