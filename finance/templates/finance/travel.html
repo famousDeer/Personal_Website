@@ -1,23 +1,29 @@
 {% extends 'finance/index.html' %}
 
-{% block title %}Wydatki na podróze{% endblock %}
+{% block title %}Wydatki na podróże{% endblock %}
 
 {% block content_finance %}
-{% load date_extras %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h2><i class="bi bi-suitcase-fill"></i> Lista krajów</h2>
-    <a href="{% url 'finance:add_travel' %}" class="btn btn-success">
-        <i class="bi bi-plus-circle"></i> Dodaj Podróz
-    </a>
+{% load date_extras humanize %}
+
+<div class="row align-items-center mb-4 animate-fade-in">
+    <div class="col-md-6">
+        <h2 class="fw-bold mb-0"><i class="bi bi-suitcase-fill text-primary me-2"></i>Moje Podróże</h2>
+        <p class="text-muted small mb-0">Zarządzaj wydatkami i celami podróży</p>
+    </div>
+    
+    <div class="col-md-6 d-flex justify-content-md-end align-items-center mt-3 mt-md-0">
+        <a href="{% url 'finance:add_travel' %}" class="btn btn-primary rounded-pill shadow-sm px-4 fw-bold">
+            <i class="bi bi-plus-lg me-1"></i> Dodaj Podróż
+        </a>
+    </div>
 </div>
 
-<!-- Filters -->
-<div class="card mb-4">
-    <div class="card-body">
-        <form method="get" class="row g-3">
-            <div class="col-md-4">
-                <label for="country" class="form-label">Kraje</label>
-                <select class="form-select" id="country" name="country">
+<div class="card border-0 shadow-sm action-card overflow-hidden animate-fade-in-up mb-4">
+    <div class="card-body p-4">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-5 col-lg-4">
+                <label for="country" class="form-label small text-uppercase fw-bold text-muted">Kraj Docelowy</label>
+                <select class="form-select form-select-sm border-0 shadow-sm bg-body-tertiary" id="country" name="country">
                     <option value="">Wszystkie Kraje</option>
                     {% for country in countries %}
                         <option value="{{ country.code }}"
@@ -27,100 +33,87 @@
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-md-4 d-flex align-items-end">
-                <button type="submit" class="btn btn-primary me-2">
-                    <i class="bi bi-funnel"></i> Filtruj
+            
+            <div class="col-md-7 col-lg-8 d-flex gap-2">
+                <button type="submit" class="btn btn-sm btn-primary rounded-3 shadow-sm px-3">
+                    <i class="bi bi-funnel-fill me-1"></i> Filtruj
                 </button>
-                <a href="{% url 'finance:travels' %}" class="btn btn-secondary">
-                    <i class="bi bi-x-circle"></i> Wyczyść
+                <a href="{% url 'finance:travels' %}" class="btn btn-sm btn-outline-secondary rounded-3 px-3">
+                    <i class="bi bi-x-circle me-1"></i> Wyczyść
                 </a>
             </div>
         </form>
     </div>
 </div>
 
-<!-- Summary destinations -->
-
-<!-- Pagination info -->
-<nav id="destinations-pagination" aria-label="Nawigacja strony">
-    <ul class="pagination justify-content-end">
-        {% if destinations.has_previous %}
-            <li class="page-item">
-                <a class="page-link" href="?{% if querystring %}{{ querystring }}&{% endif %}page=1#destinations-pagination">&laquo;</a>
-            </li>
-            <li class="page-item">
-                <a class="page-link" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ destinations.previous_page_number }}#destinations-pagination">Poprzednia</a>
-            </li>
-        {% else %}
-            <li class="page-item disabled"><span class="page-link">&laquo;</span></li>
-            <li class="page-item disabled"><span class="page-link">Poprzednia</span></li>
-        {% endif %}
-
-        <li class="page-item active">
-            <span class="page-link">Strona {{ destinations.number }} z {{ destinations.paginator.num_pages }}</span>
-        </li>
-
-        {% if destinations.has_next %}
-            <li class="page-item">
-                <a class="page-link" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ destinations.next_page_number }}#destinations-pagination">Następna</a>
-            </li>
-            <li class="page-item">
-                <a class="page-link" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ destinations.paginator.num_pages }}#destinations-pagination">&raquo;</a>
-            </li>
-        {% else %}
-            <li class="page-item disabled"><span class="page-link">Następna</span></li>
-            <li class="page-item disabled"><span class="page-link">&raquo;</span></li>
-        {% endif %}
-    </ul>
-</nav>
-
-<!-- Destinations table -->
-<div class="card">
-    <div class="card-body">
+<div class="card border-0 shadow-sm action-card animate-fade-in-up d-none d-md-block"> 
+    <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover">
-                <thead>
+            <table class="table table-hover align-middle mb-0 custom-table">
+                <thead class="bg-light">
                     <tr>
-                        <th>Kraj</th>
-                        <th>Miasto</th>
-                        <th>Początek podrózy</th>
-                        <th>Koniec podrózy</th>
-                        <th>Ilosc dni</th>
-                        <th>Budzet</th>
-                        <th>Akcje</th>
+                        <th class="ps-4 py-3 text-muted text-uppercase small fw-bold" style="width: 35%;">Kraj & Miasto</th>
+                        <th class="py-3 text-muted text-uppercase small fw-bold text-center" style="width: 25%;">Data</th>
+                        <th class="py-3 text-muted text-uppercase small fw-bold text-end" style="width: 10%;">Dni</th>
+                        <th class="pe-4 py-3 text-muted text-uppercase small fw-bold text-end" style="width: 30%;">Budżet & Akcje</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for destination in destinations.object_list %}
                     <tr>
-                        <td>
-                            <img src="{{ destination.country.flag }}" alt="Flaga {{ destination.country.name }}" style="height: 24px;">
-                            {{ destination.country.name }}
+                        <td class="ps-4">
+                            <div class="d-flex align-items-center">
+                                <img src="{{ destination.country.flag }}" alt="Flaga {{ destination.country.name }}" class="me-2 rounded-1" style="height: 20px; width: 30px; object-fit: cover; border: 1px solid #eee;">
+                                <div class="d-flex flex-column">
+                                    <span class="fw-medium">{{ destination.city }}</span>
+                                    <span class="text-muted small">{{ destination.country.name }}</span>
+                                </div>
+                            </div>
                         </td>
-                        <td>{{ destination.city }}</td>
-                        <td>{{ destination.start_date|date:"d.m.Y" }}</td>
-                        <td>{{ destination.end_date|date:"d.m.Y" }}</td>
-                        <td>{{ destination.start_date|days_between:destination.end_date }}</td>
-                        <td>{{ destination.budget }}</td>
-                        <td>
-                            <a href="{% url 'finance:edit_travel' destination.id %}" 
-                               class="btn btn-sm btn-primary" title="Edytuj">
-                                <i class="bi bi-pencil"></i>
-                            </a>
-                            <a href="{% url 'finance:delete_travel' destination.id %}" 
-                               class="btn btn-sm btn-danger" title="Usuń">
-                                <i class="bi bi-trash"></i>
-                            </a>
+                        
+                        <td class="text-center">
+                            <span class="badge bg-primary-subtle text-primary rounded-pill fw-medium">
+                                {{ destination.start_date|date:"d.m" }} - {{ destination.end_date|date:"d.m" }}
+                            </span>
+                            <span class="d-block small text-muted mt-1">{{ destination.start_date|date:"Y" }}</span>
+                        </td>
+                        
+                        <td class="text-end fw-medium" style="font-variant-numeric: tabular-nums;">
+                            {{ destination.start_date|days_between:destination.end_date }}
+                        </td>
+                        
+                        <td class="pe-4 text-end">
+                            <div class="d-flex justify-content-end align-items-center">
+                                <span class="fw-bold fs-6 me-3 text-dark" style="font-variant-numeric: tabular-nums;">
+                                    {{ destination.budget|floatformat:0|intcomma }} zł
+                                </span>
+                                
+                                <a href="{% url 'finance:edit_travel' destination.id %}" 
+                                   class="btn btn-light btn-sm text-primary rounded-circle" 
+                                   data-bs-toggle="tooltip" title="Edytuj">
+                                    <i class="bi bi-pencil-fill"></i>
+                                </a>
+                                <button type="button" 
+                                        class="btn btn-light btn-sm text-danger rounded-circle ms-1" 
+                                        title="Usuń"
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#deleteTravelModal-{{ destination.id }}">
+                                    <i class="bi bi-trash-fill"></i>
+                                </button>
+                            </div>
                         </td>
                     </tr>
+                    
                     {% empty %}
                     <tr>
-                        <td colspan="7" class="text-center text-muted py-4">
-                            <i class="bi bi-airplane" style="font-size: 2rem;"></i>
-                            <p class="mt-2">Brak podrózy do wyświetlenia</p>
-                            <a href="{% url 'finance:add_travel' %}" class="btn btn-success btn-sm">
-                                <i class="bi bi-plus-circle"></i> Dodaj pierwszą podróz
-                            </a>
+                        <td colspan="4" class="text-center py-5">
+                            <div class="text-muted opacity-50">
+                                <i class="bi bi-airplane-engines" style="font-size: 3rem;"></i>
+                                <p class="mt-3 fw-medium">Brak podróży do wyświetlenia.</p>
+                                <a href="{% url 'finance:add_travel' %}" class="btn btn-sm btn-outline-primary mt-2 rounded-pill">
+                                    <i class="bi bi-plus-circle"></i> Dodaj pierwszą podróż
+                                </a>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
@@ -130,4 +123,151 @@
     </div>
 </div>
 
-{% endblock %}
+<div class="d-block d-md-none animate-fade-in-up">
+    {% for destination in destinations.object_list %}
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body p-3">
+            <div class="d-flex justify-content-between align-items-start">
+                
+                <div>
+                    <div class="d-flex align-items-center mb-1">
+                        <img src="{{ destination.country.flag }}" alt="Flaga {{ destination.country.name }}" class="me-2 rounded-1" style="height: 24px; width: 36px; object-fit: cover; border: 1px solid #eee;">
+                        <span class="fw-bold fs-5">{{ destination.city }}</span>
+                    </div>
+                    <span class="text-muted small d-block mb-2">{{ destination.country.name }}</span>
+                    
+                    <div class="d-flex gap-2 small">
+                        <span class="badge bg-light text-dark fw-medium">
+                            <i class="bi bi-calendar-range me-1"></i> 
+                            {{ destination.start_date|date:"d.m" }} - {{ destination.end_date|date:"d.m.Y" }}
+                        </span>
+                        <span class="badge bg-light text-dark fw-medium">
+                            <i class="bi bi-clock me-1"></i> 
+                            {{ destination.start_date|days_between:destination.end_date }}
+                        </span>
+                    </div>
+                </div>
+
+                <div class="text-end">
+                    <span class="fw-bold fs-4 text-dark d-block mb-2" style="font-variant-numeric: tabular-nums;">
+                        {{ destination.budget|floatformat:0|intcomma }} zł
+                    </span>
+                    <div class="btn-group btn-group-sm">
+                        <a href="{% url 'finance:edit_travel' destination.id %}" 
+                           class="btn btn-outline-primary rounded-start-pill" title="Edytuj">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                        <button type="button" 
+                                class="btn btn-outline-danger rounded-end-pill" 
+                                title="Usuń"
+                                data-bs-toggle="modal" 
+                                data-bs-target="#deleteTravelModal-{{ destination.id }}">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="text-center py-5">
+        <div class="text-muted opacity-50">
+            <i class="bi bi-airplane-engines" style="font-size: 3rem;"></i>
+            <p class="mt-3 fw-medium">Brak podróży do wyświetlenia.</p>
+            <a href="{% url 'finance:add_travel' %}" class="btn btn-sm btn-outline-primary mt-2 rounded-pill">
+                <i class="bi bi-plus-circle"></i> Dodaj pierwszą podróż
+            </a>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+
+{% if destinations.has_other_pages %}
+<div class="card-footer bg-transparent border-top border-light-subtle p-3 mt-3">
+    <nav aria-label="Nawigacja strony">
+        <ul class="pagination justify-content-center mb-0">
+            
+            {% if destinations.has_previous %}
+                <li class="page-item">
+                    <a class="page-link rounded-circle mx-1 border-0 shadow-sm" 
+                       href="?{% if querystring %}{{ querystring }}&{% endif %}page=1">
+                        <i class="bi bi-chevron-bar-left"></i>
+                    </a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link rounded-circle mx-1 border-0 shadow-sm" 
+                       href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ destinations.previous_page_number }}">
+                        <i class="bi bi-chevron-left"></i>
+                    </a>
+                </li>
+            {% else %}
+                <li class="page-item disabled"><span class="page-link rounded-circle mx-1 border-0 text-muted"><i class="bi bi-chevron-bar-left"></i></span></li>
+                <li class="page-item disabled"><span class="page-link rounded-circle mx-1 border-0 text-muted"><i class="bi bi-chevron-left"></i></span></li>
+            {% endif %}
+
+            <li class="page-item active">
+                <span class="page-link rounded-pill mx-1 border-0 shadow-sm bg-primary">
+                    {{ destinations.number }} / {{ destinations.paginator.num_pages }}
+                </span>
+            </li>
+
+            {% if destinations.has_next %}
+                <li class="page-item">
+                    <a class="page-link rounded-circle mx-1 border-0 shadow-sm" 
+                       href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ destinations.next_page_number }}">
+                        <i class="bi bi-chevron-right"></i>
+                    </a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link rounded-circle mx-1 border-0 shadow-sm" 
+                       href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ destinations.paginator.num_pages }}">
+                        <i class="bi bi-chevron-bar-right"></i>
+                    </a>
+                </li>
+            {% else %}
+                <li class="page-item disabled"><span class="page-link rounded-circle mx-1 border-0 text-muted"><i class="bi bi-chevron-right"></i></span></li>
+                <li class="page-item disabled"><span class="page-link rounded-circle mx-1 border-0 text-muted"><i class="bi bi-chevron-bar-right"></i></span></li>
+            {% endif %}
+        </ul>
+    </nav>
+</div>
+{% endif %}
+
+
+{% for destination in destinations.object_list %}
+<div class="modal fade" id="deleteTravelModal-{{ destination.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            <div class="modal-body p-4 text-center">
+                
+                <div class="icon-box bg-danger-subtle text-danger mx-auto mb-3 rounded-circle" style="width: 80px; height: 80px; display: flex; align-items: center; justify-content: center;">
+                    <i class="bi bi-exclamation-triangle-fill fs-1"></i>
+                </div>
+                
+                <h4 class="fw-bold mb-2">Usuń podróż do {{ destination.city }}?</h4>
+                <p class="text-muted mb-4">
+                    Czy na pewno chcesz usunąć cel podróży do 
+                    <strong class="text-dark">{{ destination.country.name }}</strong> ({{ destination.start_date|date:"Y" }})? <br>
+                    <span class="small text-danger">Wydatki powiązane z tą podróżą pozostaną.</span>
+                </p>
+
+                <div class="d-flex gap-2 justify-content-center">
+                    <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Anuluj</button>
+                    
+                    <form action="{% url 'finance:delete_travel' destination.id %}" method="post">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-danger rounded-pill px-4 fw-bold">
+                            Tak, usuń
+                        </button>
+                    </form>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+{% endblock content_finance %}

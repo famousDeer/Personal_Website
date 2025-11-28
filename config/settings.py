@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'habits',
     'rest_framework',
     'accounts',
+    'cooking',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -45,6 +46,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django_countries',
+    'django.contrib.humanize',
 ]
 
 MIDDLEWARE = [
@@ -130,13 +132,17 @@ TIME_ZONE = 'Europe/Warsaw'
 USE_I18N = True
 
 USE_TZ = True
+USE_L10N = True
+USE_THOUSAND_SEPARATOR = True
 
+# Media files
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
-
 STATIC_URL = 'static/'
-STATICFILES_DIRS = [BASE_DIR / 'finance/static']
+STATICFILES_DIRS = [BASE_DIR / 'finance/static', BASE_DIR / 'cooking/static_cooking']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 WHITENOISE_MAX_AGE = 60 * 60 * 24 * 7
 

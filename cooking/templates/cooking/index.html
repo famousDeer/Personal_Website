@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+
+{% block title %}Gotowanie{% endblock %}
+
+{% block navbar_brand %}
+<a class="navbar-brand" href="{% url 'cooking:index' %}"><i class="bi bi-egg-fried"></i> Gotowanie</a>
+{% endblock %}
+
+{% block content %}
+{% block content_cooking %}
+{% endblock %}
+{% endblock %}

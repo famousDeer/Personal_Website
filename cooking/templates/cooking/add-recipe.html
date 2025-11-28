@@ -1,0 +1,236 @@
+{% extends 'cooking/index.html' %} {% block title %}Dodaj nowy przepis{% endblock %}
+
+{% block content_cooking %}
+
+<div class="row justify-content-center">
+    <div class="col-lg-10 col-xl-9">
+        
+        <div class="text-center mb-4 animate-fade-in">
+            <div class="icon-box bg-warning-subtle text-warning mx-auto mb-3 shadow-sm" 
+                 style="width: 70px; height: 70px; font-size: 2rem; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                <i class="bi bi-journal-plus"></i>
+            </div>
+            <h2 class="fw-bold mb-1 recipe-title" style="color: #d35400;">Nowy Przepis</h2>
+            <p class="text-muted small">Podziel się swoim kulinarnym dziełem</p>
+        </div>
+
+        <form method="post" enctype="multipart/form-data" class="animate-fade-in-up">
+            {% csrf_token %}
+
+            <div class="row g-4">
+                
+                <div class="col-md-5">
+                    
+                    <div class="card border-0 shadow-sm action-card mb-3 overflow-hidden">
+                        <div class="card-body p-0">
+                            <div class="image-upload-container position-relative bg-light" style="height: 300px; border-bottom: 2px dashed #ddd;">
+                                <img id="imagePreview" src="#" alt="Podgląd" 
+                                     class="w-100 h-100 object-fit-cover d-none">
+                                
+                                <div id="uploadPlaceholder" class="position-absolute top-50 start-50 translate-middle text-center w-100 p-3">
+                                    <i class="bi bi-camera text-muted opacity-50" style="font-size: 3rem;"></i>
+                                    <p class="text-muted small mt-2">Kliknij, aby dodać zdjęcie dania</p>
+                                </div>
+
+                                <input type="file" name="image" id="id_image" accept="image/*" 
+                                       class="position-absolute top-0 start-0 w-100 h-100 opacity-0" 
+                                       style="cursor: pointer;"
+                                       onchange="previewImage(this)">
+                            </div>
+                            <div class="p-3 bg-white text-center">
+                                <small class="text-muted fst-italic">Formaty: JPG, PNG. Max 5MB.</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card border-0 shadow-sm action-card">
+                        <div class="card-body p-4">
+                            <h6 class="fw-bold text-uppercase small text-muted mb-3"><i class="bi bi-sliders me-2"></i>Szczegóły</h6>
+                            
+                            <div class="mb-3">
+                                <label class="form-label small">Czas przygotowania (min)</label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-light border-0"><i class="bi bi-stopwatch"></i></span>
+                                    <input type="number" name="preparation_time" class="form-control bg-light border-0" value="30">
+                                </div>
+                            </div>
+
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <label class="form-label small">Porcje</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-light border-0"><i class="bi bi-people"></i></span>
+                                        <input type="number" name="portions" class="form-control bg-light border-0" value="2">
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small">Kcal (porcja)</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-light border-0"><i class="bi bi-lightning-charge"></i></span>
+                                        <input type="number" name="kcal" class="form-control bg-light border-0" placeholder="0">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="col-md-7">
+                    <div class="card border-0 shadow-lg action-card h-100">
+                        <div class="card-body p-4 p-md-5">
+                            
+                            <div class="form-floating mb-3">
+                                <input type="text" name="title" class="form-control fs-5 fw-bold" id="title" placeholder="Nazwa" required>
+                                <label for="title">Nazwa dania</label>
+                            </div>
+
+                            <div class="form-floating mb-4">
+                                <textarea name="description" class="form-control auto-expand" placeholder="Opis" id="desc" rows="2" style="overflow:hidden;resize:none;"></textarea>
+                                <label for="desc">Krótki opis (zajawka)</label>
+                            </div>
+
+                            <hr class="my-4 opacity-10">
+
+                            <h5 class="mb-3 fw-bold" style="color: #d35400;">Kategoryzacja</h5>
+                            <div class="row g-3 mb-4">
+                                <div class="col-md-4">
+                                    <div class="form-floating">
+                                        <select class="form-select" id="kitchen_region" name="kitchen_region">
+                                            <option value="" selected>-- Wybierz --</option>
+                                            {% for region in regions %}
+                                                <option value="{{ region }}">{{ region }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <label for="kitchen_region">Region</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-floating">
+                                        <select class="form-select" id="meal_type" name="meal_type">
+                                            <option value="" selected>-- Wybierz --</option>
+                                            {% for meal in meal_types %}
+                                                <option value="{{ meal }}">{{ meal }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <label for="meal_type">Typ posiłku</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-floating">
+                                        <select class="form-select" id="type_of_dish" name="type_of_dish">
+                                            <option value="" selected>-- Wybierz --</option>
+                                            {% for type in dish_types %}
+                                                <option value="{{ type }}">{{ type }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <label for="type_of_dish">Rodzaj</label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row g-3">
+                                <div class="col-12">
+                                    <label class="form-label fw-bold text-success"><i class="bi bi-basket me-1"></i> Składniki</label>
+                                    <textarea name="ingredients" class="form-control bg-light auto-expand" rows="3" 
+                                              placeholder="- 500g mąki&#10;- 2 jajka&#10;- szczypta soli" style="overflow:hidden;resize:none;"
+                                            required></textarea>
+                                    <div class="form-text small">Wpisuj każdy składnik w nowej linii (możesz użyć myślników).</div>
+                                </div>
+                                
+                                <div class="col-12 mt-4">
+                                    <label class="form-label fw-bold text-primary"><i class="bi bi-list-ol me-1"></i> Instrukcje</label>
+                                    <textarea name="instructions" class="form-control bg-light auto-expand" rows="3" 
+                                              placeholder="1. Rozgrzej piekarnik...&#10;2. Wymieszaj składniki...&#10;3. Piecz przez 30 minut..."
+                                              style="overflow:hidden;resize:none;" required></textarea>
+                                    <div class="form-text small">Opisz kroki przygotowania jeden pod drugim.</div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="fixed-bottom-bar bg-white shadow-lg p-2 d-flex gap-3 mt-3 rounded-pill mx-auto animate-fade-in-up" 
+                style="position: sticky; bottom: 20px; z-index: 100; width: fit-content; border: 1px solid rgba(0,0,0,0.08);">
+                
+                <a href="{% url 'cooking:recipe-list' %}" class="btn btn-light rounded-pill px-4 fw-medium">
+                    Anuluj
+                </a>
+                
+                <button type="submit" class="btn btn-dark rounded-pill px-5 fw-bold" 
+                        style="background-color: #d35400; border: none; box-shadow: 0 4px 12px rgba(211, 84, 0, 0.3);">
+                    <i class="bi bi-plus-lg me-1"></i> Dodaj Przepis
+                </button>
+                
+            </div>
+
+        </form>
+
+    </div>
+</div>
+
+<script>
+    // Skrypt do podglądu zdjęcia przed uploadem
+    function previewImage(input) {
+        const preview = document.getElementById('imagePreview');
+        const placeholder = document.getElementById('uploadPlaceholder');
+        
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                preview.src = e.target.result;
+                preview.classList.remove('d-none');
+                placeholder.classList.add('d-none');
+            }
+            
+            reader.readAsDataURL(input.files[0]);
+        } else {
+            preview.src = "#";
+            preview.classList.add('d-none');
+            placeholder.classList.remove('d-none');
+        }
+    }
+    // Auto resize textarea
+(function () {
+    // Zmieniamy selektor na klasę .auto-expand
+    const textareas = document.querySelectorAll('.auto-expand'); 
+
+    const resize = (element) => {
+        element.style.height = 'auto';
+        element.style.height = element.scrollHeight + 'px';
+    };
+
+    textareas.forEach(ta => {
+        ta.addEventListener('input', () => resize(ta));
+        // Ważne: opóźnienie minimalne, aby upewnić się, że style CSS się załadowały
+        requestAnimationFrame(() => resize(ta));
+    });
+})();
+</script>
+
+<style>
+    /* Drobne poprawki CSS specyficzne dla tego widoku */
+    .image-upload-container:hover {
+        background-color: #e9ecef !important;
+        transition: background-color 0.3s;
+    }
+    
+    /* Fix dla sticky bara w trybie ciemnym */
+    [data-theme="dark"] .fixed-bottom-bar {
+        background-color: #212529 !important;
+        border-top-color: rgba(255,255,255,0.1) !important;
+    }
+
+    [data-theme="dark"] textarea.bg-light,
+    [data-theme="dark"] input.bg-light,
+    [data-theme="dark"] .input-group-text.bg-light {
+        background-color: #2b3035 !important;
+        color: #fff;
+    }
+</style>
+
+{% endblock %}

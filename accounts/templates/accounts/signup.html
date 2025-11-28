@@ -3,67 +3,114 @@
 {% block title %}Rejestracja{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-md-6">
-
-        <div class="card">
-            <div class="card-header bg-success text-white">
-                <h4 class="mb-0"><i class="bi bi-person-plus"></i> Utwórz konto</h4>
+<div class="row justify-content-center align-items-center" style="min-height: 85vh;">
+    <div class="col-lg-5 col-md-7">
+        
+        <div class="text-center mb-4 animate-fade-in">
+            <div class="icon-box bg-primary-subtle text-primary mx-auto mb-3 shadow-sm" 
+                 style="width: 80px; height: 80px; font-size: 2.5rem; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                <i class="bi bi-person-plus"></i>
             </div>
-            <div class="card-body">
+            <h2 class="fw-bold mb-1">Dołącz do nas</h2>
+            <p class="text-muted small">Utwórz nowe konto i przejmij kontrolę nad finansami</p>
+        </div>
+
+        <div class="card border-0 shadow-lg action-card animate-fade-in-up">
+            <div class="card-body p-4 p-md-5">
+                
                 <form method="post" novalidate>
                     {% csrf_token %}
 
                     {% if form.non_field_errors %}
-                        <div class="alert alert-danger">
-                            {{ form.non_field_errors }}
+                        <div class="alert alert-danger d-flex align-items-center rounded-3 mb-4 small" role="alert">
+                            <i class="bi bi-exclamation-triangle-fill me-2 fs-5"></i>
+                            <div>
+                                {% for error in form.non_field_errors %}
+                                    {{ error }}
+                                {% endfor %}
+                            </div>
                         </div>
                     {% endif %}
 
-                    <div class="mb-3">
-                        {{ form.username.label_tag }}
-                        {{ form.username }}
-                        {% for error in form.username.errors %}
-                            <div class="text-danger small">{{ error }}</div>
-                        {% endfor %}
+                    <div class="form-floating mb-3">
+                        <input type="text" name="username" class="form-control {% if form.username.errors %}is-invalid{% endif %}" 
+                               id="id_username" placeholder="Login" value="{{ form.username.value|default:'' }}" required>
+                        <label for="id_username"><i class="bi bi-person me-1"></i> Nazwa użytkownika</label>
+                        
+                        {% if form.username.errors %}
+                            <div class="invalid-feedback text-start ms-1">
+                                {{ form.username.errors|striptags }}
+                            </div>
+                        {% endif %}
+                        <div class="form-text small text-muted ms-1">
+                            {{ form.username.help_text|safe }}
+                        </div>
                     </div>
 
-                    <div class="mb-3">
-                        {{ form.email.label_tag }}
-                        {{ form.email }}
-                        {% for error in form.email.errors %}
-                            <div class="text-danger small">{{ error }}</div>
-                        {% endfor %}
+                    <div class="form-floating mb-3">
+                        <input type="email" name="email" class="form-control {% if form.email.errors %}is-invalid{% endif %}" 
+                               id="id_email" placeholder="Email" value="{{ form.email.value|default:'' }}">
+                        <label for="id_email"><i class="bi bi-envelope me-1"></i> Adres email</label>
+                        
+                        {% if form.email.errors %}
+                            <div class="invalid-feedback text-start ms-1">
+                                {{ form.email.errors|striptags }}
+                            </div>
+                        {% endif %}
                     </div>
 
-                    <div class="mb-3">
-                        {{ form.password1.label_tag }}
-                        {{ form.password1 }}
-                        {% for error in form.password1.errors %}
-                            <div class="text-danger small">{{ error }}</div>
-                        {% endfor %}
+                    <div class="form-floating mb-3">
+                        <input type="password" name="password1" class="form-control {% if form.password1.errors %}is-invalid{% endif %}" 
+                               id="id_password1" placeholder="Hasło" required>
+                        <label for="id_password1"><i class="bi bi-lock me-1"></i> Hasło</label>
+                        
+                        {% if form.password1.errors %}
+                            <div class="invalid-feedback text-start ms-1">
+                                {{ form.password1.errors|striptags }}
+                            </div>
+                        {% else %}
+                            <div class="form-text small text-muted ms-1" style="font-size: 0.75rem;">
+                                <ul>
+                                    <li>Hasło nie może być zbyt podobne do innych danych.</li>
+                                    <li>Musi mieć co najmniej 8 znaków.</li>
+                                    <li>Nie może być powszechnie używanym hasłem.</li>
+                                    <li>Nie może składać się wyłącznie z cyfr.</li>
+                                </ul>
+                            </div>
+                        {% endif %}
                     </div>
 
-                    <div class="mb-3">
-                        {{ form.password2.label_tag }}
-                        {{ form.password2 }}
-                        {% for error in form.password2.errors %}
-                            <div class="text-danger small">{{ error }}</div>
-                        {% endfor %}
+                    <div class="form-floating mb-4">
+                        <input type="password" name="password2" class="form-control {% if form.password2.errors %}is-invalid{% endif %}" 
+                               id="id_password2" placeholder="Powtórz hasło" required>
+                        <label for="id_password2"><i class="bi bi-check2-circle me-1"></i> Powtórz hasło</label>
+                        
+                        {% if form.password2.errors %}
+                            <div class="invalid-feedback text-start ms-1">
+                                {{ form.password2.errors|striptags }}
+                            </div>
+                        {% endif %}
                     </div>
 
-                    <button type="submit" class="btn btn-success w-100">
-                        <i class="bi bi-person-check"></i> Zarejestruj się
-                    </button>
+                    <div class="d-grid mb-4">
+                        <button type="submit" class="btn btn-primary btn-lg rounded-pill shadow-sm fw-bold">
+                            Utwórz konto <i class="bi bi-person-check ms-1"></i>
+                        </button>
+                    </div>
+
                 </form>
 
-                <hr>
-                <p class="text-center mb-0">
-                    Masz już konto? <a href="{% url 'login' %}">Zaloguj się</a>
-                </p>
+                <div class="text-center border-top border-light-subtle pt-3">
+                    <p class="text-muted small mb-0">
+                        Masz już konto? 
+                        <a href="{% url 'login' %}" class="text-primary text-decoration-none fw-bold hover-link">
+                            Zaloguj się tutaj
+                        </a>
+                    </p>
+                </div>
+
             </div>
         </div>
-        
     </div>
 </div>
 {% endblock %}

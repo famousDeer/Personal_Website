@@ -1,0 +1,250 @@
+{% extends 'cooking/index.html' %}
+
+{% block title %}Przepisnik{% endblock %}
+
+{% block content_cooking %}
+
+<link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,700;1,300&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+
+<div class="container-fluid p-0 book-wrapper d-flex flex-column">
+    
+    <div class="container py-3 animate-fade-in" style="max-width: 1000px;">
+        <div class="card border-0 shadow-sm rounded-4" style="background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px);">
+            <div class="card-body p-3">
+                <form method="get" class="row g-2 align-items-center">
+                    <div class="row g-2 w-100">
+                    <div>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="q" class="form-control border-start-0 ps-0 text-center" 
+                                   placeholder="Szukaj przepisu..." value="{{ search_query|default:'' }}">
+                        </div>
+                    </div>
+                    </div>
+
+                    <div class="row g-2 w-100 mb-2">
+                    <div class="col-md-3">
+                        <select name="region" class="form-select form-select-sm" onchange="this.form.submit()">
+                            <option value="">Wszystkie regiony</option>
+                            {% for r in regions %}
+                                <option value="{{ r }}" {% if current_region == r %}selected{% endif %}>{{ r }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-3">
+                        <select name="meal" class="form-select form-select-sm" onchange="this.form.submit()">
+                            <option value="">Wszystkie posiłki</option>
+                            {% for m in meal_types %}
+                                <option value="{{ m }}" {% if current_meal == m %}selected{% endif %}>{{ m }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-3">
+                        <select name="type" class="form-select form-select-sm" onchange="this.form.submit()">
+                            <option value="">Wszystkie rodzaje</option>
+                            {% for t in dish_types %}
+                                <option value="{{ t }}" {% if current_type == t %}selected{% endif %}>{{ t }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-3 justify-content-end d-flex align-items-center">
+                        {% if current_region or current_meal or current_type or search_query %}
+                            <a href="{% url 'cooking:recipe-list' %}" class="btn btn-sm btn-outline-secondary" title="Wyczyść filtry">
+                                <i class="bi bi-x-lg"></i>
+                            </a>
+                        {% endif %}
+                        
+                        <a href="{% url 'cooking:add-recipe' %}" class="btn btn-sm btn-warning text-white fw-bold px-3 rounded-pill shadow-sm" style="background-color: #e67e22; border: none;">
+                            <i class="bi bi-plus-lg me-1"></i> Dodaj
+                        </a>
+                    </div>
+                    </div>
+
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="book-container position-relative flex-grow-1 d-flex align-items-center">
+
+        <div id="recipeBook" class="carousel slide w-100" data-bs-ride="false" data-bs-interval="false">
+
+            <div class="carousel-inner">
+
+                {% for recipe in recipes %}
+                <div class="carousel-item {% if forloop.first %}active{% endif %}">
+                    <div class="recipe-card border-0">
+                        <div class="row g-0 h-100">
+                            
+                            <div class="col-md-5 recipe-image-col position-relative">
+                                {% if recipe.image %}
+                                    <img src="{{ recipe.image.url }}" class="recipe-image" alt="{{ recipe.title }}">
+                                {% else %}
+                                    <div class="recipe-image bg-light d-flex align-items-center justify-content-center text-muted">
+                                        <div class="text-center">
+                                            <i class="bi bi-camera fs-1 opacity-25"></i>
+                                            <p class="small mt-2">Brak zdjęcia</p>
+                                        </div>
+                                    </div>
+                                {% endif %}
+                                
+                                <div class="position-absolute bottom-0 start-0 w-100 p-3 text-white d-flex justify-content-around" 
+                                     style="background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);">
+                                    <small><i class="bi bi-stopwatch me-1"></i> {{ recipe.preparation_time }} min</small>
+                                    <small><i class="bi bi-people me-1"></i> {{ recipe.portions }} os.</small>
+                                    <small><i class="bi bi-fire me-1"></i> {{ recipe.kcal }} kcal</small>
+                                </div>
+                            </div>
+
+                            <div class="col-md-7 recipe-content-col position-relative">
+                                
+                                <div class="sticky-top p-3 dropdown" style="z-index: 10; top: 0;">
+                                    <div class="float-end">
+                                        <button class="btn btn-sm btn-light rounded-circle shadow-sm" data-bs-toggle="dropdown">
+                                            <i class="bi bi-three-dots-vertical"></i>
+                                        </button>
+                                        <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+                                            <li><a class="dropdown-item" href="{% url 'cooking:edit-recipe' recipe.id %}"><i class="bi bi-pencil me-2"></i>Edytuj</a></li>
+                                            <li><hr class="dropdown-divider"></li>
+                                            <li>
+                                                <button type="button" class="dropdown-item text-danger" data-bs-toggle="modal" data-bs-target="#deleteModal-{{ recipe.id }}">
+                                                    <i class="bi bi-trash me-2"></i>Usuń
+                                                </button>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </div>
+
+                                <div class="p-4 p-md-5">
+                                    <div class="mb-2">
+                                        {% if recipe.kitchen_region %}
+                                            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill fw-normal">{{ recipe.kitchen_region }}</span>
+                                        {% endif %}
+                                        {% if recipe.meal_type %}
+                                            <span class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle rounded-pill fw-normal">{{ recipe.meal_type }}</span>
+                                        {% endif %}
+                                        {% if recipe.type_of_dish %}
+                                            <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle rounded-pill fw-normal">{{ recipe.type_of_dish }}</span>
+                                        {% endif %}
+                                    </div>
+
+                                    <h2 class="recipe-title fw-bold mb-2">{{ recipe.title }}</h2>
+                                    
+                                    {% if recipe.description %}
+                                        <p class="text-muted small fst-italic mb-4 border-start border-3 border-warning ps-3">
+                                            {{ recipe.description }}
+                                        </p>
+                                    {% endif %}
+                                    
+                                    <div class="row mt-4">
+                                        <div class="col-12">
+                                            <h5 class="fw-bold text-uppercase fs-6" style="color: #d35400;">
+                                                <i class="bi bi-basket me-2"></i>Składniki
+                                            </h5>
+                                            <div class="ingredients-list small text-muted">
+                                                {{ recipe.ingredients|linebreaks }}
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="col-12 mt-4">
+                                            <h5 class="fw-bold text-uppercase fs-6" style="color: #d35400;">
+                                                <i class="bi bi-list-ol me-2"></i>Przygotowanie
+                                            </h5>
+                                            <div class="small text-muted" style="line-height: 1.8;">
+                                                {{ recipe.instructions|linebreaks }}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal fade" id="deleteModal-{{ recipe.id }}" tabindex="-1" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+                                <div class="modal-body p-4 text-center">
+                                    
+                                    <div class="icon-box bg-danger-subtle text-danger mx-auto mb-3 rounded-circle" style="width: 80px; height: 80px; display: flex; align-items: center; justify-content: center;">
+                                        <i class="bi bi-exclamation-triangle-fill fs-1"></i>
+                                    </div>
+                                    
+                                    <h4 class="fw-bold mb-2">Usuń przepis?</h4>
+                                    <p class="text-muted mb-4">
+                                        Czy na pewno chcesz usunąć przepis: <br>
+                                        <strong class="text-dark">{{ recipe.title }}</strong>? <br>
+                                        <span class="small text-danger">Tej operacji nie można cofnąć.</span>
+                                    </p>
+
+                                    <div class="d-flex gap-2 justify-content-center">
+                                        <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Anuluj</button>
+                                        
+                                        <form action="{% url 'cooking:delete-recipe' recipe.id %}" method="post">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-danger rounded-pill px-4 fw-bold">
+                                                Tak, usuń
+                                            </button>
+                                        </form>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+                </div>
+                
+                {% empty %}
+                <div class="carousel-item active">
+                     <div class="recipe-card border-0 d-flex align-items-center justify-content-center text-center">
+                        <div class="p-5">
+                            <div class="icon-box bg-light text-muted mx-auto mb-3 rounded-circle" style="width: 100px; height: 100px; display: flex; align-items: center; justify-content: center;">
+                                <i class="bi bi-journal-x fs-1"></i>
+                            </div>
+                            {% if current_region or current_meal or current_type or search_query %}
+                                <h3>Nie znaleziono przepisów</h3>
+                                <p class="text-muted">Żaden przepis nie pasuje do wybranych filtrów.</p>
+                                <a href="{% url 'cooking:recipe-list' %}" class="btn btn-outline-secondary rounded-pill px-4 mt-2">
+                                    Wyczyść filtry
+                                </a>
+                            {% else %}
+                                <h3>Twój przepiśnik jest pusty</h3>
+                                <p class="text-muted">Dodaj swój pierwszy przepis, aby zacząć kulinarną przygodę.</p>
+                                <a href="{% url 'cooking:add-recipe' %}" class="btn btn-warning text-white rounded-pill px-4 mt-3" style="background-color: #e67e22; border: none;">
+                                    <i class="bi bi-plus-lg me-1"></i> Dodaj przepis
+                                </a>
+                            {% endif %}
+                        </div>
+                     </div>
+                </div>
+                {% endfor %}
+
+            </div>
+
+            {% if recipes.count > 1 %}
+                <button class="carousel-control-prev custom-arrow" type="button" data-bs-target="#recipeBook" data-bs-slide="prev">
+                    <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+                </button>
+                <button class="carousel-control-next custom-arrow" type="button" data-bs-target="#recipeBook" data-bs-slide="next">
+                    <span class="carousel-control-next-icon" aria-hidden="true"></span>
+                </button>
+
+                <div class="mobile-nav-controls d-md-none">
+                    <button class="btn btn-outline-secondary w-50" type="button" data-bs-target="#recipeBook" data-bs-slide="prev">Poprzedni</button>
+                    <button class="btn btn-dark w-50" style="background-color: var(--recipe-accent); border: none;" type="button" data-bs-target="#recipeBook" data-bs-slide="next">Następny</button>
+                </div>
+            {% endif %}
+
+        </div>
+    </div>
+</div>
+
+<style>
+    [data-theme="dark"] .card {
+        background-color: rgba(33, 37, 41, 0.95) !important;
+        border: 1px solid rgba(255,255,255,0.1) !important;
+    }
+</style>
+
+{% endblock %}

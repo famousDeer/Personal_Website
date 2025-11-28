@@ -3,20 +3,39 @@
 {% block title %}Lista Przychodów{% endblock %}
 
 {% block content_finance %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h2><i class="bi bi-cash-stack"></i> Lista Przychodów</h2>
-    <a href="{% url 'finance:add_income' %}" class="btn btn-success">
-        <i class="bi bi-plus-circle"></i> Dodaj Przychód
-    </a>
+{% load humanize %}
+<div class="row align-items-center mb-4 animate-fade-in">
+    <div class="col-md-6">
+        <h2 class="fw-bold mb-0"><i class="bi bi-cash-stack text-success me-2"></i>Lista Przychodów</h2>
+        <p class="text-muted small mb-0">Zarządzaj swoimi wpływami</p>
+    </div>
+    
+    <div class="col-md-6 d-flex justify-content-md-end align-items-center gap-3 mt-3 mt-md-0">
+        {% if total_filtered > 0 %}
+        <div class="d-flex align-items-center px-3 py-2 rounded-pill bg-success-subtle text-success border border-success-subtle">
+            <i class="bi bi-graph-up-arrow me-2 fs-5"></i>
+            <div>
+                <small class="d-block lh-1 opacity-75" style="font-size: 0.7rem;">SUMA (Widok)</small>
+                <span class="fw-bold fs-5" style="font-variant-numeric: tabular-nums;">
+                    +{{ total_filtered|floatformat:2|intcomma }} zł
+                </span>
+            </div>
+        </div>
+        {% endif %}
+        
+        <a href="{% url 'finance:add_income' %}" class="btn btn-success rounded-pill shadow-sm px-4 fw-bold">
+            <i class="bi bi-plus-lg me-1"></i> Dodaj
+        </a>
+    </div>
 </div>
 
-<!-- Filters -->
-<div class="card mb-4">
-    <div class="card-body">
-        <form method="get" class="row g-3">
+<div class="card border-0 shadow-sm action-card overflow-hidden animate-fade-in-up">
+    
+    <div class="card-header bg-body-tertiary border-bottom border-light-subtle p-4">
+        <form method="get" class="row g-3 align-items-end">
             <div class="col-md-4">
-                <label for="month" class="form-label">Miesiąc</label>
-                <select class="form-select" id="month" name="month">
+                <label class="form-label small text-uppercase fw-bold text-muted">Miesiąc</label>
+                <select class="form-select form-select-sm border-0 shadow-sm" name="month">
                     <option value="">Wszystkie miesiące</option>
                     {% for month in months %}
                         <option value="{{ month.date|date:'Y-m' }}" 
@@ -27,8 +46,8 @@
                 </select>
             </div>
             <div class="col-md-4">
-                <label for="source" class="form-label">Źródło</label>
-                <select class="form-select" id="source" name="source">
+                <label class="form-label small text-uppercase fw-bold text-muted">Źródło</label>
+                <select class="form-select form-select-sm border-0 shadow-sm" name="source">
                     <option value="">Wszystkie źródła</option>
                     {% for source in sources %}
                         <option value="{{ source }}" 
@@ -38,113 +57,161 @@
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-md-4 d-flex align-items-end">
-                <button type="submit" class="btn btn-primary me-2">
-                    <i class="bi bi-funnel"></i> Filtruj
+            <div class="col-md-4 d-flex gap-2">
+                <button type="submit" class="btn btn-sm btn-primary w-100 rounded-3 shadow-sm">
+                    <i class="bi bi-funnel-fill"></i> Filtruj
                 </button>
-                <a href="{% url 'finance:income_list' %}" class="btn btn-secondary">
-                    <i class="bi bi-x-circle"></i> Wyczyść
+                <a href="{% url 'finance:income_list' %}" class="btn btn-sm btn-outline-secondary w-100 rounded-3">
+                    Wyczyść
                 </a>
             </div>
         </form>
     </div>
-</div>
 
-<!-- Summary incomes -->
-{% if incomes %}
-<div class="row mb-3">
-    <div class="col-md-4">
-        <div class="card bg-success text-white">
-            <div class="card-body">
-                <h6 class="card-subtitle mb-2">Suma przychodów (widocznych)</h6>
-                <h3>{{ total_filtered|floatformat:2 }} zł</h3>
-            </div>
-        </div>
-    </div>
-</div>
-{% endif %}
-
-<!-- Incomes table -->
-<div class="card">
-    <div class="card-body">
+    <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover">
-                <thead>
+            <table class="table table-hover align-middle mb-0 custom-table">
+                <thead class="bg-light">
                     <tr>
-                        <th>Data</th>
-                        <th>Tytuł</th>
-                        <th>Źródło</th>
-                        <th>Kwota</th>
-                        <th>Miesiąc</th>
-                        <th>Akcje</th>
+                        <th class="ps-4 py-3 text-muted text-uppercase small fw-bold">Data</th>
+                        <th class="py-3 text-muted text-uppercase small fw-bold">Tytuł & Źródło</th>
+                        <th class="py-3 text-muted text-uppercase small fw-bold text-end">Kwota</th>
+                        <th class="pe-4 py-3 text-muted text-uppercase small fw-bold text-end">Akcje</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for income in incomes %}
                     <tr>
-                        <td>{{ income.date|date:"d.m.Y" }}</td>
-                        <td>{{ income.title }}</td>
-                        <td>
-                            <span class="badge bg-success">{{ income.source }}</span>
+                        <td class="ps-4" style="width: 100px;">
+                            <div class="d-flex flex-column">
+                                <span class="fw-bold fs-5 lh-1">{{ income.date|date:"d" }}</span>
+                                <span class="text-muted small text-uppercase">{{ income.date|date:"b. Y" }}</span>
+                            </div>
                         </td>
-                        <td class="text-success fw-bold">+{{ income.amount|floatformat:2 }} zł</td>
-                        <td>{{ income.month.date|date:"F Y" }}</td>
+                        
                         <td>
-                            <a href="{% url 'finance:edit_income' income.id %}" 
-                               class="btn btn-sm btn-primary" title="Edytuj">
-                                <i class="bi bi-pencil"></i>
-                            </a>
-                            <a href="{% url 'finance:delete_income' income.id %}" 
-                               class="btn btn-sm btn-danger" title="Usuń">
-                                <i class="bi bi-trash"></i>
-                            </a>
+                            <div class="d-flex flex-column">
+                                <span class="fw-medium">{{ income.title }}</span>
+                                <div class="mt-1">
+                                    <span class="badge bg-success-subtle text-success rounded-pill fw-normal border border-success-subtle">
+                                        {{ income.source }}
+                                    </span>
+                                </div>
+                            </div>
+                        </td>
+
+                        <td class="text-end">
+                            <span class="fw-bold text-success fs-6">+{{ income.amount|floatformat:2|intcomma }} zł</span>
+                        </td>
+
+                        <td class="pe-4 text-end" style="width: 120px;">
+                            <div class="btn-group">
+                                <a href="{% url 'finance:edit_income' income.id %}?{{ request.GET.urlencode }}" 
+                                   class="btn btn-light btn-sm text-primary rounded-circle" 
+                                   data-bs-toggle="tooltip" title="Edytuj">
+                                    <i class="bi bi-pencil-fill"></i>
+                                </a>
+                                <button type="button" 
+                                        class="btn btn-light btn-sm text-danger rounded-circle ms-1" 
+                                        title="Usuń" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#deleteIncomeModal-{{ income.id }}">
+                                    <i class="bi bi-trash-fill"></i>
+                                </button>
+                            </div>
                         </td>
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="6" class="text-center text-muted py-4">
-                            <i class="bi bi-inbox" style="font-size: 2rem;"></i>
-                            <p class="mt-2">Brak przychodów do wyświetlenia</p>
-                            <a href="{% url 'finance:add_income' %}" class="btn btn-success btn-sm">
-                                <i class="bi bi-plus-circle"></i> Dodaj pierwszy przychód
-                            </a>
+                        <td colspan="4" class="text-center py-5">
+                            <div class="text-muted opacity-50">
+                                <i class="bi bi-safe" style="font-size: 3rem;"></i>
+                                <p class="mt-2 fw-medium">Brak przychodów spełniających kryteria.</p>
+                                <a href="{% url 'finance:add_income' %}" class="btn btn-sm btn-outline-success mt-2">
+                                    Dodaj pierwszy wpływ
+                                </a>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
-        
-        <!-- Pagination info -->
-        {% if is_paginated %}
+    </div>
+
+    {% if incomes.has_other_pages %}
+    <div class="card-footer bg-transparent border-top border-light-subtle p-3">
         <nav aria-label="Nawigacja strony">
-            <ul class="pagination justify-content-center">
-                {% if page_obj.has_previous %}
+            <ul class="pagination justify-content-center mb-0">
+                
+                {% if incomes.has_previous %}
                     <li class="page-item">
-                        <a class="page-link" href="?page=1">&laquo; Pierwsza</a>
+                        <a class="page-link rounded-circle mx-1 border-0 shadow-sm" 
+                           href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ incomes.previous_page_number }}">
+                            <i class="bi bi-chevron-left"></i>
+                        </a>
                     </li>
-                    <li class="page-item">
-                        <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Poprzednia</a>
+                {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link rounded-circle mx-1 border-0 text-muted"><i class="bi bi-chevron-left"></i></span>
                     </li>
                 {% endif %}
-                
+
                 <li class="page-item active">
-                    <span class="page-link">
-                        Strona {{ page_obj.number }} z {{ page_obj.paginator.num_pages }}
+                    <span class="page-link rounded-pill mx-1 border-0 shadow-sm bg-success">
+                        {{ incomes.number }} / {{ incomes.paginator.num_pages }}
                     </span>
                 </li>
-                
-                {% if page_obj.has_next %}
+
+                {% if incomes.has_next %}
                     <li class="page-item">
-                        <a class="page-link" href="?page={{ page_obj.next_page_number }}">Następna</a>
+                        <a class="page-link rounded-circle mx-1 border-0 shadow-sm" 
+                           href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ incomes.next_page_number }}">
+                            <i class="bi bi-chevron-right"></i>
+                        </a>
                     </li>
-                    <li class="page-item">
-                        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">Ostatnia &raquo;</a>
+                {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link rounded-circle mx-1 border-0 text-muted"><i class="bi bi-chevron-right"></i></span>
                     </li>
                 {% endif %}
             </ul>
         </nav>
-        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% for income in incomes %}
+<div class="modal fade" id="deleteIncomeModal-{{ income.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            <div class="modal-body p-4 text-center">
+                
+                <div class="icon-box bg-danger-subtle text-danger mx-auto mb-3 rounded-circle" style="width: 80px; height: 80px; display: flex; align-items: center; justify-content: center;">
+                    <i class="bi bi-exclamation-triangle-fill fs-1"></i>
+                </div>
+                
+                <h4 class="fw-bold mb-2">Usuń przychód?</h4>
+                <p class="text-muted mb-4">
+                    Czy na pewno chcesz usunąć przychód z dnia 
+                    <strong class="text-dark">{{ income.date|date:"d.m.Y" }}</strong> 
+                    o kwocie <strong class="text-success">{{ income.amount }} zł</strong>? <br>
+                    <span class="small text-danger">Tej operacji nie można cofnąć.</span>
+                </p>
+
+                <div class="d-flex gap-2 justify-content-center">
+                    <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Anuluj</button>
+                    
+                    <form action="{% url 'finance:delete_income' income.id %}" method="post">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-danger rounded-pill px-4 fw-bold">
+                            Tak, usuń
+                        </button>
+                    </form>
+                </div>
+
+            </div>
+        </div>
     </div>
 </div>
+{% endfor %}
 {% endblock %}

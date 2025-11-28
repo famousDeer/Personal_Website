@@ -1,0 +1,201 @@
+{% extends 'cooking/index.html' %} 
+
+{% block title %}Edytuj przepis{% endblock %}
+
+{% block content_cooking %}
+
+<div class="row justify-content-center">
+    <div class="col-lg-10 col-xl-9">
+        
+        <div class="text-center mb-4 animate-fade-in">
+            <h2 class="fw-bold mb-1 recipe-title" style="color: #d35400;">Edycja Przepisu</h2>
+            <p class="text-muted small">Wprowadź poprawki do: <strong>{{ recipe.title }}</strong></p>
+        </div>
+
+        <form method="post" enctype="multipart/form-data" class="animate-fade-in-up">
+            {% csrf_token %}
+
+            <div class="row g-4">
+                
+                <div class="col-md-5">
+                    <div class="card border-0 shadow-sm action-card mb-3 overflow-hidden">
+                        <div class="card-body p-0">
+                            <div class="image-upload-container position-relative bg-light" style="height: 300px; border-bottom: 2px dashed #ddd;">
+                                <img id="imagePreview" 
+                                     src="{% if recipe.image %}{{ recipe.image.url }}{% else %}#{% endif %}" 
+                                     class="w-100 h-100 object-fit-cover {% if not recipe.image %}d-none{% endif %}">
+                                
+                                <div id="uploadPlaceholder" class="position-absolute top-50 start-50 translate-middle text-center w-100 p-3 {% if recipe.image %}d-none{% endif %}">
+                                    <i class="bi bi-camera text-muted opacity-50" style="font-size: 3rem;"></i>
+                                    <p class="text-muted small mt-2">Zmień zdjęcie</p>
+                                </div>
+
+                                <input type="file" name="image" id="id_image" accept="image/*" 
+                                       class="position-absolute top-0 start-0 w-100 h-100 opacity-0" 
+                                       style="cursor: pointer;" onchange="previewImage(this)">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card border-0 shadow-sm action-card">
+                        <div class="card-body p-4">
+                            <h6 class="fw-bold text-uppercase small text-muted mb-3">Szczegóły</h6>
+                            <div class="mb-3">
+                                <label class="form-label small">Czas (min)</label>
+                                <input type="number" name="preparation_time" class="form-control bg-light border-0" value="{{ recipe.preparation_time }}">
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <label class="form-label small">Porcje</label>
+                                    <input type="number" name="portions" class="form-control bg-light border-0" value="{{ recipe.portions }}">
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small">Kcal</label>
+                                    <input type="number" name="kcal" class="form-control bg-light border-0" value="{{ recipe.kcal }}">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-7">
+                    <div class="card border-0 shadow-lg action-card h-100">
+                        <div class="card-body p-4 p-md-5">
+                            
+                            <div class="form-floating mb-3">
+                                <input type="text" name="title" class="form-control fw-bold" id="title" value="{{ recipe.title }}" required>
+                                <label for="title">Nazwa dania</label>
+                            </div>
+
+                            <div class="form-floating mb-4">
+                                <textarea name="description" class="form-control auto-resize auto-expand" id="desc" style="overflow:hidden;resize:none;">{{ recipe.description }}</textarea>
+                                <label for="desc">Krótki opis</label>
+                            </div>
+
+                            <hr class="my-4 opacity-10">
+                            
+                            <div class="row g-3 mb-4">
+                                <div class="col-md-4">
+                                    <div class="form-floating">
+                                        <select class="form-select" id="kitchen_region" name="kitchen_region">
+                                            <option value="">-- Wybierz --</option>
+                                            {% for region in regions %}
+                                                <option value="{{ region }}" {% if recipe.kitchen_region == region %}selected{% endif %}>{{ region }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <label>Region</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-floating">
+                                        <select class="form-select" id="meal_type" name="meal_type">
+                                            <option value="">-- Wybierz --</option>
+                                            {% for meal in meal_types %}
+                                                <option value="{{ meal }}" {% if recipe.meal_type == meal %}selected{% endif %}>{{ meal }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <label>Typ</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-floating">
+                                        <select class="form-select" id="type_of_dish" name="type_of_dish">
+                                            <option value="">-- Wybierz --</option>
+                                            {% for type in dish_types %}
+                                                <option value="{{ type }}" {% if recipe.type_of_dish == type %}selected{% endif %}>{{ type }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <label>Rodzaj</label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row g-3">
+                                <div class="col-12">
+                                    <label class="form-label fw-bold text-success">Składniki</label>
+                                    <textarea name="ingredients" class="form-control bg-light auto-resize auto-expand" rows="3" required style="overflow:hidden;resize:none;">{{ recipe.ingredients }}</textarea>
+                                </div>
+                                <div class="col-12 mt-4">
+                                    <label class="form-label fw-bold text-primary">Instrukcje</label>
+                                    <textarea name="instructions" class="form-control bg-light auto-resize auto-expand" rows="3" required style="overflow:hidden;resize:none;">{{ recipe.instructions }}</textarea>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="fixed-bottom-bar bg-white shadow-lg p-2 d-flex gap-3 mt-3 rounded-pill mx-auto animate-fade-in-up" 
+                style="position: sticky; bottom: 20px; z-index: 100; width: fit-content; border: 1px solid rgba(0,0,0,0.08);">
+                
+                <a href="{% url 'cooking:recipe-list' %}" class="btn btn-light rounded-pill px-4 fw-medium">
+                    Anuluj
+                </a>
+                
+                <button type="submit" class="btn btn-dark rounded-pill px-5 fw-bold" 
+                        style="background-color: #d35400; border: none; box-shadow: 0 4px 12px rgba(211, 84, 0, 0.3);">
+                    <i class="bi bi-check-lg me-1"></i> Zapisz zmiany
+                </button>
+                
+            </div>
+
+        </form>
+
+    </div>
+</div>
+
+<script>
+    // 1. Podgląd zdjęcia
+    function previewImage(input) {
+        const preview = document.getElementById('imagePreview');
+        const placeholder = document.getElementById('uploadPlaceholder');
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                preview.src = e.target.result;
+                preview.classList.remove('d-none');
+                if(placeholder) placeholder.classList.add('d-none');
+            }
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+
+    // 2. Automatyczne rozszerzanie wszystkich textarea
+    document.addEventListener("DOMContentLoaded", function() {
+        const textareas = document.querySelectorAll("textarea");
+
+        const resize = (element) => {
+            element.style.height = "auto";
+            element.style.height = element.scrollHeight + "px";
+        };
+
+        textareas.forEach((ta) => {
+            // Dodaj nasłuchiwanie na wpisywanie
+            ta.addEventListener("input", () => resize(ta));
+            
+            // Uruchom od razu, aby dopasować wysokość do wczytanej treści z bazy
+            // Opóźnienie minimalne pozwala przeglądarce poprawnie przeliczyć style
+            requestAnimationFrame(() => resize(ta));
+        });
+    });
+        // Auto resize textarea
+(function () {
+    // Zmieniamy selektor na klasę .auto-expand
+    const textareas = document.querySelectorAll('.auto-expand'); 
+
+    const resize = (element) => {
+        element.style.height = 'auto';
+        element.style.height = element.scrollHeight + 'px';
+    };
+
+    textareas.forEach(ta => {
+        ta.addEventListener('input', () => resize(ta));
+        // Ważne: opóźnienie minimalne, aby upewnić się, że style CSS się załadowały
+        requestAnimationFrame(() => resize(ta));
+    });
+})();
+</script>
+
+{% endblock %}

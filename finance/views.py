@@ -101,6 +101,21 @@ class DashboardView(View):
         
         recent_incomes = Income.objects.filter(user=request.user, month=monthly_record).order_by('-date')[:5]
         
+        # 1. Stopa Oszczędności
+        savings_rate = 0
+        if monthly_record.total_income > 0:
+            savings_rate = ((monthly_record.total_income - monthly_record.total_expense) / monthly_record.total_income) * 100
+        # 2. Średnie dzienne wydatki
+        today = current_date.today()
+        # Jeśli przeglądamy obecny miesiąc, dzielimy przez dzisiejszy dzień,
+        # jeśli przeszły - przez liczbę dni w tamtym miesiącu.
+        # (Poniżej uproszczona wersja dla bieżącego miesiąca)
+        day_of_month = today.day
+        daily_average = monthly_record.total_expense / day_of_month if day_of_month > 0 else 0
+        # 3. Projekcja (estymacja wydatków na koniec miesiąca)
+        last_day = calendar.monthrange(today.year, today.month)[1]
+        projected_expense = daily_average * last_day
+
         context = {
             'current_month': monthly_record.date,
             'total_income': monthly_record.total_income,
@@ -115,6 +130,9 @@ class DashboardView(View):
             'days_in_month': json.dumps(days_in_month),
             'daily_expenses_data': json.dumps(daily_expenses_data),
             'daily_incomes_data': json.dumps(daily_incomes_data),
+            'savings_rate': savings_rate,
+            'daily_average': daily_average,
+            'projected_expense': projected_expense,
         }
         
         return render(request, 'finance/dashboard.html', context)
@@ -286,10 +304,8 @@ class EditExpenseView(View):
 class DeleteExpenseView(View):
     def get(self, request, expense_id):
         expense = get_object_or_404(Daily, id=expense_id, user=request.user)
-        context = {
-            'expense': expense
-        }
-        return render(request, 'finance/delete_expense.html', context)
+        expense.delete()
+        return redirect('finance:expense_list')
     
     @transaction.atomic
     def post(self, request, expense_id):
@@ -313,11 +329,14 @@ class IncomeListView(View):
         month_filter = request.GET.get('month', '')
         source_filter = request.GET.get('source', '')
         
+        # 1. Pobieramy bazową listę
         incomes = Income.objects.filter(user=request.user).select_related('month')
         
+        # 2. Filtrowanie
         if month_filter:
             try:
                 month_date = datetime.strptime(month_filter, '%Y-%m').date()
+                # Zakładam, że Monthly łączy się z Userem i Datą
                 month_obj = Monthly.objects.filter(
                     user=request.user,
                     date__year=month_date.year, 
@@ -331,18 +350,37 @@ class IncomeListView(View):
         if source_filter:
             incomes = incomes.filter(source=source_filter)
         
+        # Sortowanie
         incomes = incomes.order_by('-date')
+
+        # 3. Suma (przed paginacją, żeby pokazać sumę wszystkich znalezionych, a nie tylko tych na 1 stronie)
         total_filtered = incomes.aggregate(Sum('amount'))['amount__sum'] or 0
+
+        # 4. Paginacja
+        paginator = Paginator(incomes, 10) # Np. 10 wyników na stronę
+        page_number = request.GET.get('page')
+        page_obj = paginator.get_page(page_number)
+
+        # 5. Zachowanie filtrów w paginacji (Budowanie query string)
+        # Dzięki temu linki "Następna" będą wyglądać np. ?page=2&month=2023-11&source=Praca
+        querystring = request.GET.copy()
+        if 'page' in querystring:
+            del querystring['page']
+        querystring = querystring.urlencode()
+
+        # Listy do selectów
         sources = Income.objects.filter(user=request.user).order_by('source').values_list('source', flat=True).distinct()
         months = Monthly.objects.filter(user=request.user).order_by('-date')
         
         context = {
-            'incomes': incomes,
+            'incomes': page_obj, # Przekazujemy obiekt strony, a nie całe QuerySet
+            'page_obj': page_obj, # Dla kompatybilności z template
             'sources': sources,
             'months': months,
             'current_month_filter': month_filter,
             'current_source_filter': source_filter,
             'total_filtered': total_filtered,
+            'querystring': querystring, # Przekazujemy parametry URL
         }
         
         return render(request, 'finance/income_list.html', context)
@@ -446,10 +484,8 @@ class EditIncomeView(View):
 class DeleteIncomeView(View):
     def get(self, request, income_id):
         income = get_object_or_404(Income, id=income_id, user=request.user)
-        context = {
-        'income': income
-        }
-        return render(request, 'finance/delete_income.html', context)
+        income.delete()
+        return redirect('finance:income_list')
     
     @transaction.atomic
     def post(self, request, income_id):

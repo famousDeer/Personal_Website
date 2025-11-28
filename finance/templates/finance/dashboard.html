@@ -1,208 +1,293 @@
 {% extends 'finance/index.html' %}
 
-{% block title %}Dashboard{% endblock %}
+{% block title %}Panel finansowy{% endblock %}
 
 {% block content_finance %}
 
-<h2 class="mb-4"><i class="bi bi-speedometer2"></i> Dashboard - {{ current_month|date:"F Y" }}</h2>
-
-<div class="row mb-4">
-    <!-- Income info -->
-    <div class="col-md-4">
-        <div class="card border-success">
-            <div class="card-body">
-                <h5 class="card-title text-success">
-                    <i class="bi bi-arrow-up-circle"></i> Przychody
-                </h5>
-                <h2 class="text-success">{{ total_income|floatformat:2 }} zł</h2>
-            </div>
-        </div>
-    </div>
-
-    <!-- Expense info -->
-    <div class="col-md-4">
-        <div class="card border-danger">
-            <div class="card-body">
-                <h5 class="card-title text-danger">
-                    <i class="bi bi-arrow-down-circle"></i> Wydatki
-                </h5>
-                <h2 class="text-danger">{{ total_expense|floatformat:2 }} zł</h2>
-            </div>
-        </div>
-    </div>
-
-    <!-- Balance info -->
-    <div class="col-md-4">
-        <div class="card border-primary">
-            <div class="card-body">
-                <h5 class="card-title text-primary">
-                    <i class="bi bi-wallet2"></i> Bilans
-                </h5>
-                <h2 class="{% if balance >= 0 %}text-success{% else %}text-danger{% endif %}">
-                    {{ balance|floatformat:2 }} zł</h2>
-            </div>
-        </div>
+<div class="d-flex justify-content-between align-items-center mb-4 animate-fade-in">
+    <div>
+        <h2 class="fw-bold mb-0 text-primary">Panel finansowy</h2>
+        <p class="text-muted mb-0">Podsumowanie: <span class="fw-bold text-body">{{ current_month|date:"F Y" }}</span></p>
     </div>
 </div>
 
-<div class="row mb-4">
-    <!-- Expense pie-chart -->
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header bg-danger text-white">
-                <h5 class="mb-0"><i class="bi bi-pie-chart"></i> Wydatki według kategorii</h5>
+<div class="row mb-4 animate-fade-in-up" style="animation-delay: 0.1s;">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm action-card">
+            <div class="card-header bg-transparent border-0 pt-4 px-4 pb-0 d-flex justify-content-between align-items-center">
+                <h5 class="fw-bold mb-0"><i class="bi bi-bar-chart-line me-2 text-primary"></i>Przychody vs Wydatki</h5>
             </div>
-            <div class="card-body text-center">
-                <canvas id="expenseChart" style="max-height: 300px; max-width: 300px; margin: auto;"></canvas>
-            </div>
-        </div>
-    </div>
-
-    <!-- Income pie-chart -->
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header bg-success text-white">
-                <h5 class="mb-0"><i class="bi bi-pie-chart"></i> Przychody według źródeł</h5>
-            </div>
-            <div class="card-body text-center">
-                <canvas id="incomeChart" style="max-height: 300px; max-width: 300px; margin: auto;"></canvas>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row mb-4">
-    <div class="col-md-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">Przychody vs Wydatki</h5>
-            </div>
-            <div class="card-body">
-                <canvas id="incomeExpenseChart" height="500"></canvas>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Last expenses -->
-<div class="row">
-    <div class="col-md-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="bi bi-clock-history"></i> Ostatnie wydatki</h5>
-            </div>
-            <div class="card-body">
-                <table class="table table-hover">
-                    <thead>
-                        <tr>
-                            <th>Data</th>
-                            <th>Tytuł</th>
-                            <th>Kategoria</th>
-                            <th>Sklep</th>
-                            <th>Kwota</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for expense in recent_expenses %}
-                        <tr>
-                            <td>{{ expense.date|date:"d.m.Y" }}</td>
-                            <td>{{ expense.title }}</td>
-                            <td><span class="badge bg-primary">{{ expense.category }}</span></td>
-                            <td>{{ expense.store|default:"-" }}</td>
-                            <td class="text-danger fw-bold">-{{ expense.cost|floatformat:2 }} zł</td>
-                        </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="5" class="text-center text-muted">Brak ostatnich wydatków</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                {% if recent_expenses %}
-                <div class="text-end mt-2">
-                    <a href="{% url 'finance:expense_list' %}" class="btn btn-sm btn-primary">
-                        Zobacz wszystkie wydatki <i class="bi bi-arrow-right"></i>
-                    </a>
+            <div class="card-body p-4">
+                <div style="height: 400px;">
+                    <canvas id="incomeExpenseChart"></canvas>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4 animate-fade-in-up" style="animation-delay: 0.05s;">
+{% load l10n %} 
+<div class="col-md-6">
+    <div class="card border-0 shadow-sm action-card h-100">
+        <div class="card-body d-flex align-items-center p-3">
+            <div class="icon-box bg-primary-subtle text-primary me-3" style="width: 50px; height: 50px;">
+                <i class="bi bi-piggy-bank fs-4"></i>
+            </div>
+            <div class="flex-grow-1">
+                <h6 class="text-muted text-uppercase small fw-bold mb-1">Stopa Oszczędności</h6>
+                <div class="d-flex align-items-center">
+                    <h4 class="mb-0 fw-bold me-2 {% if savings_rate < 0 %}text-danger{% endif %}">
+                        {{ savings_rate|floatformat:1 }}%
+                    </h4>
+                    
+                    <div class="progress flex-grow-1" style="height: 8px; background-color: #e9ecef;">
+                        <div class="progress-bar 
+                             {% if savings_rate >= 20 %}bg-success
+                             {% elif savings_rate > 0 %}bg-warning
+                             {% else %}bg-danger{% endif %}" 
+                             
+                             role="progressbar" 
+                             
+                             /* LOGIKA OBLICZANIA SZEROKOŚCI */
+                             style="width: 
+                                {% if savings_rate < 0 %}
+                                    100% /* Alarm: pełny pasek na czerwono */
+                                {% elif savings_rate >= 20 %}
+                                    100% /* Cel osiągnięty: pełny pasek na zielono */
+                                {% else %}
+                                    /* Obliczamy % realizacji celu: (savings_rate / 20) * 100 */
+                                    {% widthratio savings_rate 20 100 %}%
+                                {% endif %}"
+                             
+                             /* Dostępność: Teraz max to 20 (Twój cel) */
+                             aria-valuenow="{{ savings_rate|unlocalize }}" 
+                             aria-valuemin="0" 
+                             aria-valuemax="20">
+                        </div>
+                    </div>
+                </div>
+                
+                <small class="text-muted" style="font-size: 0.75rem;">
+                    {% if savings_rate < 0 %}
+                        <span class="text-danger fw-bold">Przekroczono budżet!</span>
+                    {% elif savings_rate >= 20 %}
+                        <span class="text-success fw-bold">Cel osiągnięty!</span>
+                    {% else %}
+                        Cel: 20% (Realizacja: {% widthratio savings_rate 20 100 %}%)
+                    {% endif %}
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm action-card h-100">
+            <div class="card-body d-flex align-items-center p-3">
+                <div class="icon-box bg-warning-subtle text-warning me-3" style="width: 50px; height: 50px;">
+                    <i class="bi bi-calendar-day fs-4"></i>
+                </div>
+                <div>
+                    <h6 class="text-muted text-uppercase small fw-bold mb-1">Średnie wydatki dzienne</h6>
+                    <h4 class="mb-0 fw-bold">{{ daily_average|floatformat:2 }} zł</h4>
+                    <small class="text-muted" style="font-size: 0.75rem;">
+                        Prognoza na koniec mies.: <span class="fw-bold">{{ projected_expense|floatformat:0 }} zł</span>
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% load humanize %} <div class="row mb-4 animate-fade-in-up" style="animation-delay: 0.05s;">
+    
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm action-card h-100">
+            <div class="card-body d-flex align-items-center p-3">
+                <div class="icon-box bg-success-subtle text-success me-3" style="width: 50px; height: 50px;">
+                    <i class="bi bi-graph-up-arrow fs-4"></i>
+                </div>
+                <div class="flex-grow-1">
+                    <h6 class="text-muted text-uppercase small fw-bold mb-1">Przychody</h6>
+                    <div class="d-flex align-items-center">
+                        <h4 class="mb-0 fw-bold me-2 text-success">
+                            {{ total_income|floatformat:2|intcomma }} zł
+                        </h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm action-card h-100">
+            <div class="card-body d-flex align-items-center p-3">
+                <div class="icon-box bg-danger-subtle text-danger me-3" style="width: 50px; height: 50px;">
+                    <i class="bi bi-graph-down-arrow fs-4"></i>
+                </div>
+                <div>
+                    <h6 class="text-muted text-uppercase small fw-bold mb-1">Wydatki</h6>
+                    <h4 class="mb-0 fw-bold text-danger">
+                        {{ total_expense|floatformat:2|intcomma }} zł
+                    </h4>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4 g-4 animate-fade-in-up" style="animation-delay: 0.2s;">
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm action-card h-100">
+            <div class="card-header bg-transparent border-0 pt-4 px-4 pb-0 text-center">
+                <h5 class="fw-bold mb-0"><i class="bi bi-pie-chart me-2 text-danger"></i>Kategorie Wydatków</h5>
+            </div>
+            <div class="card-body d-flex flex-column justify-content-center align-items-center p-4">
+                <div style="position: relative; height: 300px; width: 100%; max-width: 350px;">
+                    <canvas id="expenseChart"></canvas>
+                </div>
+                {% if not categories %}
+                    <div class="text-center mt-3 text-muted small">Brak danych</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm action-card h-100">
+            <div class="card-header bg-transparent border-0 pt-4 px-4 pb-0 text-center">
+                <h5 class="fw-bold mb-0"><i class="bi bi-pie-chart me-2 text-success"></i>Źródła Przychodów</h5>
+            </div>
+            <div class="card-body d-flex flex-column justify-content-center align-items-center p-4">
+                <div style="position: relative; height: 300px; width: 100%; max-width: 350px;">
+                    <canvas id="incomeChart"></canvas>
+                </div>
+                {% if not income_sources %}
+                    <div class="text-center mt-3 text-muted small">Brak danych</div>
                 {% endif %}
             </div>
         </div>
     </div>
 </div>
 
-<!-- Last Incomes -->
-<div class="row mt-5">
-    <div class="col-md-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="bi bi-clock-history"></i> Ostatnie zarobki</h5>
+<div class="row g-4 animate-fade-in-up" style="animation-delay: 0.3s;">
+    
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm action-card h-100 overflow-hidden rounded-4">
+            <div class="card-header bg-transparent border-0 pt-4 px-4 pb-3 d-flex justify-content-between align-items-center">
+                <h5 class="fw-bold mb-0 text-danger"><i class="bi bi-clock-history me-2"></i>Ostatnie wydatki</h5>
+                <a href="{% url 'finance:expense_list' %}" class="btn btn-sm btn-light text-muted rounded-pill px-3">Więcej</a>
             </div>
-            <div class="card-body">
-                <table class="table table-hover">
-                    <thead>
-                        <tr>
-                            <th>Data</th>
-                            <th>Tytuł</th>
-                            <th>Żródło</th>
-                            <th>Kwota</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for expense in recent_incomes %}
-                        <tr>
-                            <td>{{ expense.date|date:"d.m.Y" }}</td>
-                            <td>{{ expense.title }}</td>
-                            <td>{{ expense.source|default:"-" }}</td>
-                            <td class="text-success fw-bold">{{ expense.amount|floatformat:2 }} zł</td>
-                        </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="5" class="text-center text-muted">Brak ostatnich zarobków</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                {% if recent_incomes %}
-                <div class="text-end mt-2">
-                    <a href="{% url 'finance:income_list' %}" class="btn btn-sm btn-primary">
-                        Zobacz wszystkie zarobki <i class="bi bi-arrow-right"></i>
-                    </a>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle custom-table mb-0">
+                        <thead class="bg-light">
+                            <tr>
+                                <th class="ps-4 text-muted small border-0">Data</th>
+                                <th class="text-muted small border-0">Opis</th>
+                                <th class="pe-4 text-end text-muted small border-0">Kwota</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for expense in recent_expenses|slice:":5" %}
+                            <tr>
+                                <td class="ps-4 text-muted small border-bottom-0">{{ expense.date|date:"d.m" }}</td>
+                                <td class="border-bottom-0">
+                                    <div class="d-flex flex-column">
+                                        <span class="fw-medium small">{{ expense.title|truncatechars:20 }}</span>
+                                        <span class="badge bg-danger-subtle text-danger rounded-pill mt-1" style="width: fit-content; font-size: 0.65rem;">{{ expense.category }}</span>
+                                    </div>
+                                </td>
+                                <td class="pe-4 text-end fw-bold text-danger small border-bottom-0">-{{ expense.cost|floatformat:2 }} zł</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="3" class="text-center py-4 text-muted small border-bottom-0">Brak ostatnich wydatków</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
-                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm action-card h-100 overflow-hidden rounded-4">
+            <div class="card-header bg-transparent border-0 pt-4 px-4 pb-3 d-flex justify-content-between align-items-center">
+                <h5 class="fw-bold mb-0 text-success"><i class="bi bi-clock-history me-2"></i>Ostatnie wpływy</h5>
+                <a href="{% url 'finance:income_list' %}" class="btn btn-sm btn-light text-muted rounded-pill px-3">Więcej</a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle custom-table mb-0">
+                        <thead class="bg-light">
+                            <tr>
+                                <th class="ps-4 text-muted small border-0">Data</th>
+                                <th class="text-muted small border-0">Źródło</th>
+                                <th class="pe-4 text-end text-muted small border-0">Kwota</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for income in recent_incomes|slice:":5" %}
+                            <tr>
+                                <td class="ps-4 text-muted small border-bottom-0">{{ income.date|date:"d.m" }}</td>
+                                <td class="border-bottom-0">
+                                    <div class="d-flex flex-column">
+                                        <span class="fw-medium small">{{ income.title|truncatechars:20 }}</span>
+                                        <span class="text-muted fst-italic" style="font-size: 0.7rem;">{{ income.source }}</span>
+                                    </div>
+                                </td>
+                                <td class="pe-4 text-end fw-bold text-success small border-bottom-0">+{{ income.amount|floatformat:2 }} zł</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="3" class="text-center py-4 text-muted small border-bottom-0">Brak ostatnich wpływów</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
 </div>
-
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-    // Expense pie-chart config
+    // --- KONFIGURACJA CHART.JS ---
+    
+    // Wykrywanie trybu ciemnego
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const textColor = isDark ? '#e0e0e0' : '#666';
+    const gridColor = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
+
+    Chart.defaults.color = textColor;
+    Chart.defaults.borderColor = gridColor;
+    Chart.defaults.font.family = "'Segoe UI', 'Roboto', 'sans-serif'";
+
+    // --- 1. WYKRES KOŁOWY WYDATKÓW (Pie + Bez Legendy) ---
     const expenseCtx = document.getElementById('expenseChart').getContext('2d');
-    const expenseChart = new Chart(expenseCtx, {
-        type: 'pie',
+    new Chart(expenseCtx, {
+        type: 'pie', // Zostajemy przy klasycznym kole
         data: {
             labels: {{ categories|safe }},
             datasets: [{
-                label: 'Wydatki',
                 data: {{ amounts|safe }},
                 backgroundColor: [
                     '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
                     '#FF9F40', '#C9CBCF', '#E5E7EB', '#FBBF24', '#10B981'
-                ]
+                ],
+                borderWidth: 2,
+                borderColor: isDark ? '#212529' : '#fff' // Ramka pasująca do tła karty
             }]
         },
         options: {
             responsive: true,
+            maintainAspectRatio: false,
             plugins: {
-                legend: {
-                    display: false,
-                    position: 'left',
-                    align: 'center'
-                },
+                legend: { display: false }, // UKRYCIE LEGENDY
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            return `${context.label}: ${context.parsed} zł`;
+                            let value = context.parsed;
+                            return ` ${context.label}: ${value.toFixed(2)} zł`;
                         }
                     }
                 }
@@ -210,32 +295,29 @@
         }
     });
 
-    // Income pir-chart config
+    // --- 2. WYKRES KOŁOWY PRZYCHODÓW (Pie + Bez Legendy) ---
     const incomeCtx = document.getElementById('incomeChart').getContext('2d');
-    const incomeChart = new Chart(incomeCtx, {
+    new Chart(incomeCtx, {
         type: 'pie',
         data: {
             labels: {{ income_sources|safe }},
             datasets: [{
-                label: 'Przychody',
                 data: {{ income_amounts|safe }},
-                backgroundColor: [
-                    '#28a745', '#17a2b8', '#6c757d', '#ffc107', '#dc3545', '#343a40'
-                ]
+                backgroundColor: ['#28a745', '#17a2b8', '#6c757d', '#ffc107', '#dc3545'],
+                borderWidth: 2,
+                borderColor: isDark ? '#212529' : '#fff'
             }]
         },
         options: {
             responsive: true,
+            maintainAspectRatio: false,
             plugins: {
-                legend: {
-                    display: false,
-                    postion: 'left',
-                    align: 'center'
-                },
+                legend: { display: false }, // UKRYCIE LEGENDY
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            return `${context.label}: ${context.parsed} zł`;
+                            let value = context.parsed;
+                            return ` ${context.label}: ${value.toFixed(2)} zł`;
                         }
                     }
                 }
@@ -243,71 +325,46 @@
         }
     });
 
-    // Hide pie-chart if no data
-    {% if not categories %}
-    document.getElementById('expenseChart').parentElement.innerHTML =
-        '<p class="text-muted text-center my-5">Brak danych o wydatkach</p>';
-    {% endif %}
-
-    {% if not income_sources %}
-    document.getElementById('incomeChart').parentElement.innerHTML =
-        '<p class="text-muted text-center my-5">Brak danych o przychodach</p>';
-    {% endif %}
-
-// Chart for income and expense
-const ctx = document.getElementById('incomeExpenseChart').getContext('2d');
-const incomeExpenseChart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-        labels: {{ days_in_month|safe }},
-        datasets: [{
-            label: 'Przychody',
-            data: {{ daily_incomes_data|safe }},
-            borderColor: 'rgb(75, 192, 192)',
-            backgroundColor: 'rgb(75, 192, 192, 0.7)',
-            tension: 0.1,
-            yAxisID: 'y',
-        }, {
-            label: 'Wydatki',
-            data: {{ daily_expenses_data|safe }},
-            borderColor: 'rgb(255, 99, 132',
-            backgroundColor: 'rgb(255, 99, 132, 0.7)',
-            tension: 0.1,
-            yAxisID: 'y1',
-        }]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false, 
-        plugins: {
-            legend: {
-                display: true,
-                position: 'top',
-            }
+    // --- 3. WYKRES SŁUPKOWY (BAR CHART) ---
+    const mainCtx = document.getElementById('incomeExpenseChart').getContext('2d');
+    new Chart(mainCtx, {
+        type: 'bar', // Powrót do słupków
+        data: {
+            labels: {{ days_in_month|safe }},
+            datasets: [{
+                label: 'Przychody',
+                data: {{ daily_incomes_data|safe }},
+                backgroundColor: 'rgba(75, 192, 192, 0.7)',
+                borderColor: 'rgba(75, 192, 192, 1)',
+                borderWidth: 1,
+                borderRadius: 4, // Zaokrąglenie góry słupka
+            }, {
+                label: 'Wydatki',
+                data: {{ daily_expenses_data|safe }},
+                backgroundColor: 'rgba(255, 99, 132, 0.7)',
+                borderColor: 'rgba(255, 99, 132, 1)',
+                borderWidth: 1,
+                borderRadius: 4,
+            }]
         },
-        scales: {
-            y: {
-                beginAtZero: true,
-                ticks: {
-                    callback: function(value) {
-                        return value + ' zł';
-                    }
-                }
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'top' },
             },
-            y1: {
-                type: 'linear',
-                position: 'right',
-                ticks: {
-                    callback: function(value) {
-                        return value + ' zł';
-                    }
+            scales: {
+                x: { 
+                    grid: { display: false } 
                 },
-                grid: {
-                    display: false,
+                y: { 
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) { return value + ' zł'; }
+                    }
                 }
             }
         }
-    }
-});
+    });
 </script>
 {% endblock %}

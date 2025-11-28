@@ -40,6 +40,13 @@
                             <div class="text-danger">{{ form.city.errors }}</div>
                         {% endif %}
                     </div>
+                    <div class="mb-3">
+                        <label for="{{ form.budget.id_for_label }}" class="form-label">{{ form.budget.label }}</label>
+                        {{ form.budget }}
+                        {% if form.budget.errors %}
+                            <div class="text-danger">{{ form.budget.errors }}</div>
+                        {% endif %}
+                    </div>
                     <button type="submit" class="btn btn-success">
                         <i class="bi bi-save"></i> Dodaj podróz
                     </button>
