@@ -7,7 +7,7 @@
 <div class="d-flex justify-content-between align-items-center mb-4 animate-fade-in">
     <div>
         <h2 class="fw-bold mb-0 text-primary">Panel finansowy</h2>
-        <p class="text-muted mb-0">Podsumowanie: <span class="fw-bold text-body">{{ current_month|date:"F Y" }}</span></p>
+        <p class="text-muted mb-0">Podsumowanie: <span class="fw-bold text-muted">{{ current_month|date:"F Y" }}</span></p>
     </div>
 </div>
 
@@ -177,7 +177,7 @@
         <div class="card border-0 shadow-sm action-card h-100 overflow-hidden rounded-4">
             <div class="card-header bg-transparent border-0 pt-4 px-4 pb-3 d-flex justify-content-between align-items-center">
                 <h5 class="fw-bold mb-0 text-danger"><i class="bi bi-clock-history me-2"></i>Ostatnie wydatki</h5>
-                <a href="{% url 'finance:expense_list' %}" class="btn btn-sm btn-light text-muted rounded-pill px-3">Więcej</a>
+                <a href="{% url 'finance:expense_list' %}" class="btn btn-sm btn-outline-secondary text-muted rounded-pill px-3">Więcej</a>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
@@ -215,7 +215,7 @@
         <div class="card border-0 shadow-sm action-card h-100 overflow-hidden rounded-4">
             <div class="card-header bg-transparent border-0 pt-4 px-4 pb-3 d-flex justify-content-between align-items-center">
                 <h5 class="fw-bold mb-0 text-success"><i class="bi bi-clock-history me-2"></i>Ostatnie wpływy</h5>
-                <a href="{% url 'finance:income_list' %}" class="btn btn-sm btn-light text-muted rounded-pill px-3">Więcej</a>
+                <a href="{% url 'finance:income_list' %}" class="btn btn-sm btn-outline-secondary text-muted rounded-pill px-3">Więcej</a>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
