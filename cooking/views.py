@@ -112,6 +112,7 @@ class EditRecipeView(LoginRequiredMixin, View):
     def get(self, request, recipe_id):
         # Pobieramy przepis, upewniając się, że należy do użytkownika
         recipe = get_object_or_404(Recipe, id=recipe_id, user=request.user)
+        recipe.kcal = str(recipe.kcal)
         context = {
             'recipe': recipe,
             'regions': KITCHEN_REGIONS,

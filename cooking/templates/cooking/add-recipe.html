@@ -67,7 +67,7 @@
                                     <label class="form-label small">Kcal (porcja)</label>
                                     <div class="input-group">
                                         <span class="input-group-text bg-light border-0"><i class="bi bi-lightning-charge"></i></span>
-                                        <input type="number" name="kcal" class="form-control bg-light border-0" placeholder="0">
+                                        <input type="number" name="kcal" class="form-control bg-light border-0" value="0">
                                     </div>
                                 </div>
                             </div>
@@ -129,23 +129,22 @@
                                 </div>
                             </div>
 
-                            <div class="row g-3">
-                                <div class="col-12">
-                                    <label class="form-label fw-bold text-success"><i class="bi bi-basket me-1"></i> Składniki</label>
-                                    <textarea name="ingredients" class="form-control bg-light auto-expand" rows="3" 
-                                              placeholder="- 500g mąki&#10;- 2 jajka&#10;- szczypta soli" style="overflow:hidden;resize:none;"
-                                            required></textarea>
-                                    <div class="form-text small">Wpisuj każdy składnik w nowej linii (możesz użyć myślników).</div>
+                                <div class="row g-3">
+                                    
+                                    <div class="col-12">
+                                        <label class="form-label fw-bold text-success">
+                                            <i class="bi bi-basket me-1"></i> Składniki
+                                        </label>
+                                        <textarea name="ingredients" id="summernote-ingredients">{{ recipe.ingredients }}</textarea>
+                                    </div>
+                                    
+                                    <div class="col-12 mt-4">
+                                        <label class="form-label fw-bold text-primary">
+                                            <i class="bi bi-list-ol me-1"></i> Instrukcje
+                                        </label>
+                                        <textarea name="instructions" id="summernote-instructions">{{ recipe.instructions }}</textarea>
+                                    </div>
                                 </div>
-                                
-                                <div class="col-12 mt-4">
-                                    <label class="form-label fw-bold text-primary"><i class="bi bi-list-ol me-1"></i> Instrukcje</label>
-                                    <textarea name="instructions" class="form-control bg-light auto-expand" rows="3" 
-                                              placeholder="1. Rozgrzej piekarnik...&#10;2. Wymieszaj składniki...&#10;3. Piecz przez 30 minut..."
-                                              style="overflow:hidden;resize:none;" required></textarea>
-                                    <div class="form-text small">Opisz kroki przygotowania jeden pod drugim.</div>
-                                </div>
-                            </div>
 
                         </div>
                     </div>
@@ -173,43 +172,66 @@
 </div>
 
 <script>
-    // Skrypt do podglądu zdjęcia przed uploadem
+// Inicjalizacja Summernote
+    $(document).ready(function() {
+        $('#summernote-ingredients').summernote({
+            placeholder: 'Wprowadź listę składników (możesz użyć kropek)',
+            tabsize: 2,
+            height: 200, // Wysokość edytora
+            toolbar: [
+                ['style', ['bold', 'italic', 'underline', 'clear']],
+                ['font', ['strikethrough', 'superscript', 'subscript']],
+                ['fontsize', ['fontsize']],
+                ['color', ['color']],
+                ['para', ['ul', 'ol', 'paragraph']], // Lista, numeracja
+                ['height', ['height']]
+            ]
+        });
+
+        $('#summernote-instructions').summernote({
+            placeholder: 'Wprowadź instrukcje krok po kroku',
+            tabsize: 2,
+            height: 300,
+            toolbar: [
+                ['style', ['bold', 'italic', 'underline', 'clear']],
+                ['font', ['strikethrough', 'superscript', 'subscript']],
+                ['para', ['ul', 'ol', 'paragraph']], // Lista, numeracja
+                ['insert', ['link', 'hr']], // Dodaj link i linię poziomą
+                ['view', ['fullscreen', 'codeview', 'help']] // Opcje widoku
+            ]
+        });
+    });
+
+    // Skrypt do podglądu zdjęcia (ten co miałeś wcześniej)
     function previewImage(input) {
         const preview = document.getElementById('imagePreview');
         const placeholder = document.getElementById('uploadPlaceholder');
-        
         if (input.files && input.files[0]) {
             const reader = new FileReader();
-            
             reader.onload = function(e) {
                 preview.src = e.target.result;
                 preview.classList.remove('d-none');
-                placeholder.classList.add('d-none');
+                if(placeholder) placeholder.classList.add('d-none');
             }
-            
             reader.readAsDataURL(input.files[0]);
-        } else {
-            preview.src = "#";
-            preview.classList.add('d-none');
-            placeholder.classList.remove('d-none');
         }
     }
-    // Auto resize textarea
-(function () {
-    // Zmieniamy selektor na klasę .auto-expand
-    const textareas = document.querySelectorAll('.auto-expand'); 
+// Skonsolidowany Auto-resize (jeden wystarczy)
+    document.addEventListener("DOMContentLoaded", function() {
+        const textareas = document.querySelectorAll(".auto-resize, .auto-expand"); // Obsługuje obie klasy
 
-    const resize = (element) => {
-        element.style.height = 'auto';
-        element.style.height = element.scrollHeight + 'px';
-    };
+        const resize = (element) => {
+            element.style.height = "auto";
+            element.style.height = element.scrollHeight + "px";
+        };
 
-    textareas.forEach(ta => {
-        ta.addEventListener('input', () => resize(ta));
-        // Ważne: opóźnienie minimalne, aby upewnić się, że style CSS się załadowały
-        requestAnimationFrame(() => resize(ta));
+        textareas.forEach((ta) => {
+            ta.addEventListener("input", () => resize(ta));
+            // Ważne: opóźnienie minimalne, aby upewnić się, że style CSS się załadowały
+            // Uruchamiamy resize po załadowaniu strony
+            setTimeout(() => resize(ta), 100); 
+        });
     });
-})();
 </script>
 
 <style>

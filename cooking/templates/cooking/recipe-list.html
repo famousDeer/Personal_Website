@@ -49,17 +49,18 @@
                         </select>
                     </div>
 
-                    <div class="col-md-3 justify-content-end d-flex align-items-center">
+                    <div class="col-md-3 d-flex align-items-center">
                         {% if current_region or current_meal or current_type or search_query %}
                             <a href="{% url 'cooking:recipe-list' %}" class="btn btn-sm btn-outline-secondary" title="Wyczyść filtry">
                                 <i class="bi bi-x-lg"></i>
                             </a>
                         {% endif %}
-                        
+                    </div>
+                    </div>
+                    <div class="row w-100 g-2 align-items-center">
                         <a href="{% url 'cooking:add-recipe' %}" class="btn btn-sm btn-warning text-white fw-bold px-3 rounded-pill shadow-sm" style="background-color: #e67e22; border: none;">
                             <i class="bi bi-plus-lg me-1"></i> Dodaj
                         </a>
-                    </div>
                     </div>
 
                 </form>
@@ -144,7 +145,7 @@
                                                 <i class="bi bi-basket me-2"></i>Składniki
                                             </h5>
                                             <div class="ingredients-list small text-muted">
-                                                {{ recipe.ingredients|linebreaks }}
+                                                {{ recipe.ingredients|safe }}
                                             </div>
                                         </div>
                                         
@@ -153,7 +154,7 @@
                                                 <i class="bi bi-list-ol me-2"></i>Przygotowanie
                                             </h5>
                                             <div class="small text-muted" style="line-height: 1.8;">
-                                                {{ recipe.instructions|linebreaks }}
+                                                {{ recipe.instructions|safe }}
                                             </div>
                                         </div>
                                     </div>
@@ -231,7 +232,7 @@
                 </button>
 
                 <div class="mobile-nav-controls d-md-none">
-                    <button class="btn btn-outline-secondary w-50" type="button" data-bs-target="#recipeBook" data-bs-slide="prev">Poprzedni</button>
+                    <button class="btn btn-secondary w-50" type="button" data-bs-target="#recipeBook" data-bs-slide="prev">Poprzedni</button>
                     <button class="btn btn-dark w-50" style="background-color: var(--recipe-accent); border: none;" type="button" data-bs-target="#recipeBook" data-bs-slide="next">Następny</button>
                 </div>
             {% endif %}

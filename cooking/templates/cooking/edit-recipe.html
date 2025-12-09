@@ -110,16 +110,22 @@
                                 </div>
                             </div>
 
-                            <div class="row g-3">
-                                <div class="col-12">
-                                    <label class="form-label fw-bold text-success">Składniki</label>
-                                    <textarea name="ingredients" class="form-control bg-light auto-resize auto-expand" rows="3" required style="overflow:hidden;resize:none;">{{ recipe.ingredients }}</textarea>
+                                <div class="row g-3">
+                                    
+                                    <div class="col-12">
+                                        <label class="form-label fw-bold text-success">
+                                            <i class="bi bi-basket me-1"></i> Składniki
+                                        </label>
+                                        <textarea name="ingredients" id="summernote-ingredients">{{ recipe.ingredients }}</textarea>
+                                    </div>
+                                    
+                                    <div class="col-12 mt-4">
+                                        <label class="form-label fw-bold text-primary">
+                                            <i class="bi bi-list-ol me-1"></i> Instrukcje
+                                        </label>
+                                        <textarea name="instructions" id="summernote-instructions">{{ recipe.instructions }}</textarea>
+                                    </div>
                                 </div>
-                                <div class="col-12 mt-4">
-                                    <label class="form-label fw-bold text-primary">Instrukcje</label>
-                                    <textarea name="instructions" class="form-control bg-light auto-resize auto-expand" rows="3" required style="overflow:hidden;resize:none;">{{ recipe.instructions }}</textarea>
-                                </div>
-                            </div>
 
                         </div>
                     </div>
@@ -147,7 +153,37 @@
 </div>
 
 <script>
-    // 1. Podgląd zdjęcia
+// Inicjalizacja Summernote
+    $(document).ready(function() {
+        $('#summernote-ingredients').summernote({
+            placeholder: 'Wprowadź listę składników (możesz użyć kropek)',
+            tabsize: 2,
+            height: 200, // Wysokość edytora
+            toolbar: [
+                ['style', ['bold', 'italic', 'underline', 'clear']],
+                ['font', ['strikethrough', 'superscript', 'subscript']],
+                ['fontsize', ['fontsize']],
+                ['color', ['color']],
+                ['para', ['ul', 'ol', 'paragraph']], // Lista, numeracja
+                ['height', ['height']]
+            ]
+        });
+
+        $('#summernote-instructions').summernote({
+            placeholder: 'Wprowadź instrukcje krok po kroku',
+            tabsize: 2,
+            height: 300,
+            toolbar: [
+                ['style', ['bold', 'italic', 'underline', 'clear']],
+                ['font', ['strikethrough', 'superscript', 'subscript']],
+                ['para', ['ul', 'ol', 'paragraph']], // Lista, numeracja
+                ['insert', ['link', 'hr']], // Dodaj link i linię poziomą
+                ['view', ['fullscreen', 'codeview', 'help']] // Opcje widoku
+            ]
+        });
+    });
+
+    // Skrypt do podglądu zdjęcia (ten co miałeś wcześniej)
     function previewImage(input) {
         const preview = document.getElementById('imagePreview');
         const placeholder = document.getElementById('uploadPlaceholder');
@@ -161,10 +197,9 @@
             reader.readAsDataURL(input.files[0]);
         }
     }
-
-    // 2. Automatyczne rozszerzanie wszystkich textarea
+// Skonsolidowany Auto-resize (jeden wystarczy)
     document.addEventListener("DOMContentLoaded", function() {
-        const textareas = document.querySelectorAll("textarea");
+        const textareas = document.querySelectorAll(".auto-resize, .auto-expand"); // Obsługuje obie klasy
 
         const resize = (element) => {
             element.style.height = "auto";
@@ -172,30 +207,12 @@
         };
 
         textareas.forEach((ta) => {
-            // Dodaj nasłuchiwanie na wpisywanie
             ta.addEventListener("input", () => resize(ta));
-            
-            // Uruchom od razu, aby dopasować wysokość do wczytanej treści z bazy
-            // Opóźnienie minimalne pozwala przeglądarce poprawnie przeliczyć style
-            requestAnimationFrame(() => resize(ta));
+            // Ważne: opóźnienie minimalne, aby upewnić się, że style CSS się załadowały
+            // Uruchamiamy resize po załadowaniu strony
+            setTimeout(() => resize(ta), 100); 
         });
     });
-        // Auto resize textarea
-(function () {
-    // Zmieniamy selektor na klasę .auto-expand
-    const textareas = document.querySelectorAll('.auto-expand'); 
-
-    const resize = (element) => {
-        element.style.height = 'auto';
-        element.style.height = element.scrollHeight + 'px';
-    };
-
-    textareas.forEach(ta => {
-        ta.addEventListener('input', () => resize(ta));
-        // Ważne: opóźnienie minimalne, aby upewnić się, że style CSS się załadowały
-        requestAnimationFrame(() => resize(ta));
-    });
-})();
 </script>
 
 {% endblock %}
