@@ -1,0 +1,223 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}{{ car.brand }} {{ car.model }}{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4 animate-fade-in">
+    <div class="d-flex align-items-center">
+        <a href="{% url 'cars:garage' %}" class="btn btn-light rounded-circle shadow-sm me-3 text-muted">
+            <i class="bi bi-arrow-left"></i>
+        </a>
+        <div>
+            <h2 class="fw-bold mb-0">{{ car.brand }} <span class="text-primary">{{ car.model }}</span></h2>
+            <div class="text-muted small">
+                <i class="bi bi-calendar4 me-1"></i> {{ car.yaer }} | 
+                <i class="bi bi-fuel-pump me-1"></i> {{ car.fuel_type }}
+            </div>
+        </div>
+    </div>
+    <div class="dropdown">
+        <button class="btn btn-light rounded-circle shadow-sm" data-bs-toggle="dropdown">
+            <i class="bi bi-three-dots-vertical"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end border-0 shadow">
+            <li><a class="dropdown-item" href="#"><i class="bi bi-pencil me-2"></i>Edytuj dane auta</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item text-danger" href="#"><i class="bi bi-trash me-2"></i>Usuń auto</a></li>
+        </ul>
+    </div>
+</div>
+
+<div class="row g-3 mb-4 animate-fade-in-up">
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100 bg-body-tertiary">
+            <div class="card-body p-3">
+                <small class="text-muted text-uppercase fw-bold" style="font-size: 0.65rem;">Przebieg</small>
+                <h5 class="fw-bold mb-0 mt-1">{{ car.odometer|intcomma }} km</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100 bg-body-tertiary">
+            <div class="card-body p-3">
+                <small class="text-muted text-uppercase fw-bold" style="font-size: 0.65rem;">Śr. Spalanie</small>
+                <h5 class="fw-bold mb-0 mt-1 {% if avg_consumption > 10 %}text-warning{% else %}text-success{% endif %}">
+                    {{ avg_consumption|floatformat:1 }} L/100
+                </h5>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-6">
+        <div class="card border-0 shadow-sm h-100 bg-primary-subtle-gradient">
+            <div class="card-body p-3 d-flex align-items-center justify-content-between">
+                <div>
+                    <small class="text-primary-emphasis text-uppercase fw-bold" style="font-size: 0.65rem;">Łączne Koszty</small>
+                    <h4 class="fw-bold mb-0 text-primary">{{ total_cost|floatformat:2|intcomma }} zł</h4>
+                </div>
+                <div class="icon-box bg-white text-primary rounded-circle shadow-sm" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
+                    <i class="bi bi-wallet2"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<ul class="nav nav-pills nav-fill mb-4 p-1 bg-white rounded-pill shadow-sm border mx-auto animate-fade-in" id="carTabs" role="tablist" style="max-width: 600px;">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active rounded-pill small fw-bold" id="fuel-tab" data-bs-toggle="tab" data-bs-target="#fuel" type="button">
+            <i class="bi bi-fuel-pump me-1"></i> Paliwo
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link rounded-pill small fw-bold" id="service-tab" data-bs-toggle="tab" data-bs-target="#service" type="button">
+            <i class="bi bi-wrench-adjustable me-1"></i> Serwis
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link rounded-pill small fw-bold" id="tyres-tab" data-bs-toggle="tab" data-bs-target="#tyres" type="button">
+            <i class="bi bi-disc me-1"></i> Opony
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content animate-fade-in" id="carTabsContent">
+    
+    <div class="tab-pane fade show active" id="fuel" role="tabpanel">
+        <div class="card border-0 shadow-sm action-card overflow-hidden">
+            <div class="card-header bg-transparent border-0 p-4 d-flex justify-content-between align-items-center">
+                <h5 class="fw-bold mb-0">Historia tankowania</h5>
+                <a href="{% url 'cars:add_fuel' car.id %}" class="btn btn-sm btn-warning text-white rounded-pill fw-bold px-3">
+                    <i class="bi bi-plus-lg me-1"></i> Dodaj
+                </a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0 custom-table">
+                        <thead class="bg-light">
+                            <tr>
+                                <th class="ps-4 text-muted small">Data</th>
+                                <th class="text-muted small">Stacja</th>
+                                <th class="text-end text-muted small">Ilość</th>
+                                <th class="text-end text-muted small pe-4">Koszt</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for log in fuel_logs %}
+                            <tr>
+                                <td class="ps-4 fw-bold">{{ log.date|date:"d.m.y" }}</td>
+                                <td>
+                                    <div class="d-flex flex-column">
+                                        <span>{{ log.fuel_staton }}</span>
+                                        <small class="text-muted" style="font-size: 0.7rem;">{{ log.odometer }} km</small>
+                                    </div>
+                                </td>
+                                <td class="text-end">
+                                    {{ log.liters }} L
+                                    {% if log.consumption %}
+                                    <span class="d-block text-muted small" style="font-size: 0.65rem;">{{ log.consumption }} l/100</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end pe-4 fw-bold text-danger">-{{ log.price|floatformat:2 }} zł</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="4" class="text-center py-4 text-muted">Brak wpisów tankowania.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tab-pane fade" id="service" role="tabpanel">
+        <div class="card border-0 shadow-sm action-card overflow-hidden">
+            <div class="card-header bg-transparent border-0 p-4 d-flex justify-content-between align-items-center">
+                <h5 class="fw-bold mb-0">Książka serwisowa</h5>
+                <a href="#" class="btn btn-sm btn-danger rounded-pill fw-bold px-3">
+                    <i class="bi bi-plus-lg me-1"></i> Dodaj
+                </a>
+            </div>
+            <div class="card-body p-0">
+                <div class="list-group list-group-flush">
+                    {% for service in services %}
+                    <div class="list-group-item p-3 border-light-subtle">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="d-flex gap-3">
+                                <div class="icon-box bg-danger-subtle text-danger rounded-circle flex-shrink-0" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
+                                    <i class="bi bi-tools"></i>
+                                </div>
+                                <div>
+                                    <h6 class="fw-bold mb-1">{{ service.service_type }}</h6>
+                                    <p class="text-muted small mb-1">{{ service.description|truncatechars:60 }}</p>
+                                    <span class="badge bg-light text-muted border fw-normal">{{ service.date|date:"d.m.Y" }}</span>
+                                </div>
+                            </div>
+                            <span class="fw-bold text-danger fs-6 text-nowrap">-{{ service.cost|floatformat:0 }} zł</span>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="text-center py-5 text-muted">Brak wpisów serwisowych.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tab-pane fade" id="tyres" role="tabpanel">
+        <div class="text-end mb-3">
+            <a href="#" class="btn btn-sm btn-dark rounded-pill fw-bold px-3">
+                <i class="bi bi-plus-lg me-1"></i> Dodaj Opony
+            </a>
+        </div>
+        <div class="row g-3">
+            {% for tyre in tyres %}
+            <div class="col-md-6">
+                <div class="card border-0 shadow-sm action-card h-100">
+                    <div class="card-body p-3">
+                        <div class="d-flex justify-content-between mb-2">
+                            <h6 class="fw-bold mb-0">{{ tyre.brand }}</h6>
+                            {% if tyre.is_winter %}
+                                <span class="badge bg-info-subtle text-info border border-info-subtle"><i class="bi bi-snow me-1"></i> Zimowe</span>
+                            {% else %}
+                                <span class="badge bg-warning-subtle text-warning border border-warning-subtle"><i class="bi bi-sun me-1"></i> Letnie</span>
+                            {% endif %}
+                        </div>
+                        <div class="text-muted small mb-3">{{ tyre.size }}</div>
+                        <div class="d-flex justify-content-between align-items-end border-top pt-2">
+                            <div class="small text-muted lh-1">
+                                <span class="d-block" style="font-size: 0.65rem;">Kupiono:</span>
+                                {{ tyre.purchase_date|date:"Y" }}
+                            </div>
+                            <span class="fw-bold">{{ tyre.price|floatformat:0 }} zł</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="col-12 text-center py-5 text-muted">
+                <i class="bi bi-disc fs-1 opacity-25"></i>
+                <p class="mt-2">Nie dodałeś jeszcze opon.</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+</div>
+
+<style>
+    /* Dark mode fix dla Tabs Container */
+    [data-theme="dark"] #carTabs {
+        background-color: #212529 !important;
+        border-color: rgba(255,255,255,0.1) !important;
+    }
+    .nav-pills .nav-link { color: var(--text-muted); transition: all 0.2s; }
+    .nav-pills .nav-link.active {
+        background-color: var(--bs-primary);
+        color: white !important;
+        box-shadow: 0 4px 10px rgba(13, 110, 253, 0.3);
+    }
+</style>
+
+{% endblock %}
