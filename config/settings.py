@@ -34,6 +34,7 @@ ALLOWED_HOSTS = [h for h in os.environ.get('ALLOWED_HOSTS', '*').split(',') if h
 # Application definition
 
 INSTALLED_APPS = [
+    'cars',
     'finance',
     'habits',
     'rest_framework',
@@ -142,7 +143,7 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 STATIC_URL = 'static/'
-STATICFILES_DIRS = [BASE_DIR / 'finance/static', BASE_DIR / 'cooking/static_cooking']
+STATICFILES_DIRS = [BASE_DIR / 'finance/static', BASE_DIR / 'cooking/static_cooking', BASE_DIR / 'cars/static_cars']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 WHITENOISE_MAX_AGE = 60 * 60 * 24 * 7
 
