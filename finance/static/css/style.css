@@ -33,7 +33,7 @@
     --recipe-accent: #e67e22;  /* Jaśniejszy pomarańcz */
 
     /* Bootstrap Overwrite Variables */
-    --bs-body-bg: #121212;
+    --bs-body-bg: #0079ff1a;
     --bs-body-color: #e0e0e0;
     --bs-link-color: #6ea8fe;
     --bs-link-hover-color: #9ec5fe;
@@ -152,7 +152,7 @@ a { text-decoration: none; }
    ========================================= */
 /* Karty Akcji */
 .action-card {
-    background-color: #ffffff; 
+    background-color: #ffffff5e; 
     transition: transform 0.3s ease, box-shadow 0.3s ease, background-color 0.3s;
     border-radius: 16px; 
     animation: fadeIn 0.5s ease-out both;

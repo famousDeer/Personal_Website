@@ -2,6 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.core.paginator import Paginator
 from django.views import View
 from django.db.models import Sum
+from django.db.models.functions import ExtractYear
 from django.contrib import messages
 from django.utils import timezone
 from django.db import transaction
@@ -9,6 +10,7 @@ from django.contrib.auth.decorators import login_required
 from django.utils.decorators import method_decorator
 from django_countries import countries as django_countries
 from datetime import datetime
+from datetime import date, timedelta
 import calendar
 from .models import Monthly, Daily, Income, TravelDestinations
 from .forms import TravelDestinationForm
@@ -550,7 +552,6 @@ class TravelView(View):
         destinations = TravelDestinations.objects.filter(user=request.user)
         country_objs = []
         distinct_countries = destinations.order_by('country').values_list('country', flat=True).distinct('country')
-        print(distinct_countries)
         for code in distinct_countries:
             name = dict(django_countries).get(code, code)
             country_objs.append({'code': code, 'name': name})
