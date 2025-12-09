@@ -4,7 +4,6 @@
 :root {
     /* Light Mode (Default) */
     --bg-body: #eaebed;
-    --bg-recipe-card: #efe1c8;
     --text-main: #2c3e50;
     --text-muted: #6c757d;
     
@@ -12,14 +11,15 @@
     --nav-bg: rgba(255, 255, 255, 0.70);
     --nav-border: rgba(255, 255, 255, 0.3);
     --nav-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
- 
-    --recipe-accent: #d35400a9; /* Pomarańczowy akcent dla tytułów */
+
+    /* Cooking App Colors */
+    --bg-recipe-card: #fdfbf7; /* Kremowy papier */
+    --recipe-accent: #d35400;  /* Pomarańczowy akcent */
 }
 
 [data-theme="dark"] {
     /* Dark Mode Colors */
-    --bg-body: #2f2b2b; /* Poprawiony na ciemniejszy dla lepszego kontrastu */
-    --bg-recipe-card: #714d05;
+    --bg-body: #121212; 
     --text-main: #e0e0e0;
     --text-muted: #adb5bd;
     
@@ -28,8 +28,12 @@
     --nav-border: rgba(255, 255, 255, 0.1);
     --nav-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
     
+    /* Cooking App Dark Colors */
+    --bg-recipe-card: #cf864a59; /* Ciemnoszary papier */
+    --recipe-accent: #e67e22;  /* Jaśniejszy pomarańcz */
+
     /* Bootstrap Overwrite Variables */
-    --bs-body-bg: #1b1d28;
+    --bs-body-bg: #0079ff1a;
     --bs-body-color: #e0e0e0;
     --bs-link-color: #6ea8fe;
     --bs-link-hover-color: #9ec5fe;
@@ -42,6 +46,7 @@ body {
     background-color: var(--bg-body);
     color: var(--text-main);
     transition: background-color 0.3s ease, color 0.3s ease;
+    padding-top: 70px; /* Fix dla ucinania treści przez fixed-navbar */
 }
 
 /* Linki i nawigacja */
@@ -86,6 +91,10 @@ a { text-decoration: none; }
 
 .nav-link:hover, .nav-link.show {
     color: #0d6efd !important;
+}
+
+[data-theme="dark"] .navbar-toggler-icon {
+    filter: invert(1) grayscale(100%) brightness(200%); 
 }
 
 #theme-icon {
@@ -143,7 +152,7 @@ a { text-decoration: none; }
    ========================================= */
 /* Karty Akcji */
 .action-card {
-    background-color: #ffffff; 
+    background-color: #ffffff5e; 
     transition: transform 0.3s ease, box-shadow 0.3s ease, background-color 0.3s;
     border-radius: 16px; 
     animation: fadeIn 0.5s ease-out both;
@@ -210,14 +219,7 @@ a { text-decoration: none; }
 }
 .custom-table tbody tr:nth-child(1) { animation-delay: 0.05s; }
 .custom-table tbody tr:nth-child(2) { animation-delay: 0.1s; }
-.custom-table tbody tr:nth-child(3) { animation-delay: 0.15s; }
-.custom-table tbody tr:nth-child(4) { animation-delay: 0.2s; }
-.custom-table tbody tr:nth-child(5) { animation-delay: 0.25s; }
-.custom-table tbody tr:nth-child(6) { animation-delay: 0.3s; }
-.custom-table tbody tr:nth-child(7) { animation-delay: 0.35s; }
-.custom-table tbody tr:nth-child(8) { animation-delay: 0.4s; }
-.custom-table tbody tr:nth-child(9) { animation-delay: 0.45s; }
-.custom-table tbody tr:nth-child(10) { animation-delay: 0.5s; }
+/* ... (opcjonalnie więcej delayów) */
 
 /* Przyciski w tabeli */
 .custom-table .btn-light {
@@ -279,7 +281,120 @@ a { text-decoration: none; }
 }
 
 /* =========================================
-   7. ANIMATIONS
+   7. RECIPE BOOK STYLES (Przepiśnik)
+   ========================================= */
+
+/* Kontener główny */
+.book-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--bg-body);
+    min-height: 100vh;
+    transition: background-color 0.3s ease;
+}
+
+/* Karta przepisu ("kartka papieru") */
+.recipe-card {
+    background-color: var(--bg-recipe-card) !important; /* Ważne dla Dark Mode */
+    color: var(--text-main);
+    font-family: 'Merriweather', serif;
+    overflow: hidden;
+    transition: background-color 0.3s ease, color 0.3s ease;
+    border-radius: 12px; /* Domyślnie zaokrąglona */
+}
+
+/* Typografia w przepisie */
+.recipe-title {
+    font-family: 'Playfair Display', serif;
+    color: var(--recipe-accent);
+}
+
+.ingredients-list li {
+    margin-bottom: 0.5rem;
+    padding-left: 0.5rem;
+    border-left: 3px solid var(--recipe-accent);
+}
+
+/* --- RESPONSYWNOŚĆ PRZEPISNIKA --- */
+
+/* DESKTOP (> 768px) */
+@media (min-width: 768px) {
+    .book-container {
+        width: 100%;
+        max-width: 950px;
+        padding: 2rem;
+    }
+
+    .recipe-card {
+        height: 650px;
+        box-shadow: 0 15px 35px rgba(0,0,0,0.15);
+    }
+
+    .recipe-image-col, .recipe-image { height: 100%; }
+    .recipe-image { width: 100%; object-fit: cover; }
+
+    .recipe-content-col {
+        height: 100%;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: var(--recipe-accent) var(--bg-recipe-card);
+    }
+    
+    /* Scrollbar */
+    .recipe-content-col::-webkit-scrollbar { width: 8px; }
+    .recipe-content-col::-webkit-scrollbar-track { background: var(--bg-recipe-card); }
+    .recipe-content-col::-webkit-scrollbar-thumb { background-color: var(--recipe-accent); border-radius: 4px; }
+
+    /* Strzałki nawigacyjne */
+    .custom-arrow {
+        width: 50px; height: 50px;
+        background-color: rgba(0,0,0,0.05);
+        border-radius: 50%;
+        top: 50%; transform: translateY(-50%);
+        position: absolute; z-index: 5;
+        border: none;
+        display: flex; align-items: center; justify-content: center;
+        transition: background-color 0.3s;
+    }
+    .custom-arrow:hover { background-color: rgba(0,0,0,0.1); }
+    .carousel-control-prev { left: -70px; }
+    .carousel-control-next { right: -70px; }
+    .carousel-control-prev-icon, .carousel-control-next-icon { filter: invert(1) grayscale(100%); }
+}
+
+/* MOBILE (< 768px) */
+@media (max-width: 767.98px) {
+    .book-wrapper {
+        background-color: var(--bg-recipe-card); /* Cały ekran to papier */
+        display: block;
+        min-height: auto;
+        padding-top: 20px !important; /* Odstęp od navbara */
+    }
+    
+    .book-container { padding: 0; width: 100%; }
+
+    .recipe-card {
+        height: auto;
+        border-radius: 0;
+        box-shadow: none;
+        border: none;
+    }
+
+    .recipe-image { width: 100%; height: 300px; object-fit: cover; }
+
+    .mobile-nav-controls {
+        position: sticky; bottom: 0;
+        background: var(--bg-recipe-card);
+        padding: 15px;
+        border-top: 1px solid rgba(0,0,0,0.1);
+        display: flex; gap: 10px; z-index: 100;
+    }
+    .custom-arrow { display: none; }
+}
+
+/* =========================================
+   8. ANIMATIONS
    ========================================= */
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(10px); }
@@ -291,7 +406,7 @@ a { text-decoration: none; }
 
 
 /* =========================================
-   8. DARK MODE OVERRIDES (Skonsolidowane)
+   9. DARK MODE OVERRIDES (Skonsolidowane)
    ========================================= */
 [data-theme="dark"] {
     /* --- Cards --- */
@@ -303,7 +418,7 @@ a { text-decoration: none; }
     .bg-danger-subtle { background-color: rgba(220, 53, 69, 0.2) !important; color: #ea868f !important; }
     .bg-primary-subtle { background-color: rgba(13, 110, 253, 0.2) !important; color: #9ec5fe !important; }
 
-    /* Gradients Dark */
+    /* Gradients */
     .bg-success-subtle-gradient { background: linear-gradient(145deg, #212529 0%, #1b2e23 100%); }
     .bg-danger-subtle-gradient { background: linear-gradient(145deg, #212529 0%, #3a1d20 100%); }
     .bg-primary-subtle-gradient { background: linear-gradient(145deg, #212529 0%, #1c2636 100%); }
@@ -321,60 +436,31 @@ a { text-decoration: none; }
     .dropdown-divider { border-top-color: rgba(255,255,255, 0.15); }
 
     /* --- Tables --- */
-    .table {
-        color: #e0e0e0 !important;
-        border-color: rgba(255, 255, 255, 0.1);
-    }
+    .table { color: #e0e0e0 !important; border-color: rgba(255, 255, 255, 0.1); }
     .custom-table { color: var(--text-main); }
-    .custom-table thead,
-    .table thead th {
+    .custom-table thead, .table thead th {
         background-color: rgba(255,255,255,0.05) !important;
-        color: #fff;
-        border-bottom-color: rgba(255, 255, 255, 0.1);
+        color: #fff; border-bottom-color: rgba(255, 255, 255, 0.1);
     }
-    .custom-table tbody tr:hover,
-    .table-hover > tbody > tr:hover > * {
-        background-color: rgba(255,255,255,0.05);
-        color: #fff;
-    }
-    .card-header.bg-body-tertiary {
-        background-color: rgba(255,255,255,0.03) !important;
-    }
+    .custom-table tbody tr:hover { background-color: rgba(255,255,255,0.05); color: #fff; }
+    .card-header.bg-body-tertiary { background-color: rgba(255,255,255,0.03) !important; }
 
     /* --- Forms --- */
-    .form-control, 
-    .form-select,
-    .input-group-text {
+    .form-control, .form-select, .input-group-text {
         background-color: #2b3035 !important;
         border-color: rgba(255,255,255,0.1);
         color: #fff !important;
     }
-    
-    .form-control:focus, 
-    .form-select:focus {
+    .form-control:focus, .form-select:focus {
         background-color: #32383e;
         border-color: #75b798;
     }
     
-    ::placeholder {
-        color: rgba(255, 255, 255, 0.4) !important;
-        opacity: 1;
-    }
+    /* Placeholdery */
+    ::placeholder { color: rgba(255, 255, 255, 0.4) !important; opacity: 1; }
 
-    /* Autofill Fix for Chrome (Dark Mode) */
-    input:-webkit-autofill,
-    input:-webkit-autofill:hover, 
-    input:-webkit-autofill:focus, 
-    input:-webkit-autofill:active {
-        -webkit-text-fill-color: #fff !important;
-        -webkit-box-shadow: 0 0 0px 1000px #2b3035 inset !important;
-        transition: background-color 5000s ease-in-out 0s;
-    }
-
-    /* Floating Labels Dark Fix */
-    .form-floating > label {
-        color: rgba(255, 255, 255, 0.6) !important;
-    }
+    /* Fix dla Floating Labels */
+    .form-floating > label { color: rgba(255, 255, 255, 0.6) !important; }
     .form-floating > .form-control:focus ~ label,
     .form-floating > .form-control:not(:placeholder-shown) ~ label,
     .form-floating > .form-select ~ label {
@@ -382,196 +468,66 @@ a { text-decoration: none; }
         background-color: transparent !important;
     }
 
-    /* --- Typography & Utilities --- */
+    /* Fix dla Autofill */
+    input:-webkit-autofill, input:-webkit-autofill:hover, 
+    input:-webkit-autofill:focus, input:-webkit-autofill:active {
+        -webkit-text-fill-color: #fff !important;
+        -webkit-box-shadow: 0 0 0px 1000px #2b3035 inset !important;
+        transition: background-color 5000s ease-in-out 0s;
+    }
+
+    /* --- Modals --- */
+    .modal-content {
+        background-color: #212529;
+        border: 1px solid rgba(255,255,255,0.1);
+    }
+    .modal-content .text-dark { color: #fff !important; }
+
+    /* --- Recipe Specific Dark Mode --- */
+    
+    /* 1. Karta przepisu w nocy */
+    .recipe-card {
+        box-shadow: 0 15px 35px rgba(0,0,0,0.5);
+        border: 1px solid rgba(255,255,255,0.05);
+    }
+    
+    /* 2. Pole wyszukiwania w karuzeli (Fix czytelności) */
+    .recipe-card .form-control {
+        background-color: var(--bs-gray-700) !important; 
+        color: var(--bs-body-color) !important; 
+        border-color: var(--bs-border-color-translucent) !important;
+    }
+    .recipe-card .form-control::placeholder {
+        color: var(--bs-gray-500) !important; opacity: 1;
+    }
+
+    /* 3. Nawigacja mobilna przepisu */
+    .mobile-nav-controls { border-top-color: rgba(255,255,255,0.1); }
+    
+    /* 4. Strzałki nawigacyjne (desktop) */
+    .custom-arrow { background-color: rgba(255,255,255,0.1); }
+    .custom-arrow:hover { background-color: rgba(255,255,255,0.2); }
+    .carousel-control-prev-icon, .carousel-control-next-icon { filter: none; }
+
+    /* 5. Sticky bar (dodawanie/edycja) */
+    .fixed-bottom-bar {
+        background-color: #212529 !important;
+        border-top-color: rgba(255,255,255,0.1) !important;
+        border-color: rgba(255,255,255,0.1) !important;
+    }
+    
+    /* --- Typography Colors --- */
     .text-muted { color: #adb5bd !important; }
     .text-dark { color: #f8f9fa !important; }
     .text-success { color: #75b798 !important; }
     .text-danger { color: #ea868f !important; }
     .text-primary { color: #6ea8fe !important; }
-
-    h1, h2, h3, h4, h5, h6, .card-title {
-        color: #fff; /* Domyślny biały dla nagłówków, chyba że mają klasę koloru */
-    }
+    h1, h2, h3, h4, h5, h6, .card-title { color: #fff; }
 
     /* --- Pagination --- */
-    .page-link {
-        background-color: #212529;
-        border-color: #495057;
-        color: #e0e0e0;
-    }
-    .page-item.active .page-link {
-        background-color: #0d6efd;
-        border-color: #0d6efd;
-    }
-    .page-item.disabled .page-link {
-        background-color: #2b3035;
-        border-color: #495057;
-        color: #6c757d;
-    }
+    .page-link { background-color: #212529; border-color: #495057; color: #e0e0e0; }
+    .page-item.active .page-link { background-color: #0d6efd; border-color: #0d6efd; }
+    .page-item.disabled .page-link { background-color: #2b3035; border-color: #495057; color: #6c757d; }
     
-    /* --- Buttons --- */
-    .btn-danger {
-        background-color: #b02a37;
-        border-color: #a52834;
-    }
-}
-
-/* =========================================
-   9. RECIPE BOOK STYLES
-   ========================================= */
-
-/* Kontener główny ("blat stołu") */
-.book-wrapper {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background-color: var(--bg-body); /* Używa zmiennej globalnej */
-    min-height: 100vh; /* Centrowanie w pionie na dużym ekranie */
-    transition: background-color 0.3s ease;
-}
-
-/* Karta przepisu ("kartka papieru") */
-.recipe-card {
-    background-color: var(--bg-recipe-card); /* ZMIENNA: Papier jasny/ciemny */
-    color: var(--text-main);
-    font-family: 'Merriweather', serif;
-    overflow: hidden;
-    transition: background-color 0.3s ease, color 0.3s ease;
-}
-
-/* Typografia */
-.recipe-title {
-    font-family: 'Playfair Display', serif;
-    color: var(--recipe-accent);
-}
-
-.ingredients-list li {
-    margin-bottom: 0.5rem;
-    padding-left: 0.5rem;
-    border-left: 3px solid var(--recipe-accent);
-}
-
-/* --- RESPONSYWNOŚĆ --- */
-
-/* 1. DESKTOP (Szerokość > 768px) */
-@media (min-width: 768px) {
-    .book-container {
-        width: 100%;
-        max-width: 950px;
-        padding: 2rem;
-    }
-
-    .recipe-card {
-        height: 650px;
-        border-radius: 12px;
-        box-shadow: 0 15px 35px rgba(0,0,0,0.15);
-    }
-    
-    /* Cień pod książką w trybie ciemnym */
-    [data-theme="dark"] .recipe-card {
-        box-shadow: 0 15px 35px rgba(0,0,0,0.5);
-        border: 1px solid rgba(255,255,255,0.05);
-    }
-
-    .recipe-image-col, .recipe-image {
-        height: 100%;
-    }
-    
-    .recipe-image {
-        width: 100%;
-        object-fit: cover;
-    }
-
-    .recipe-content-col {
-        height: 100%;
-        overflow-y: auto;
-        /* Stylizacja paska przewijania (Firefox) */
-        scrollbar-width: thin;
-        scrollbar-color: var(--recipe-accent) var(--bg-recipe-card);
-    }
-
-    /* Stylizacja paska przewijania (Webkit/Chrome) */
-    .recipe-content-col::-webkit-scrollbar { width: 8px; }
-    .recipe-content-col::-webkit-scrollbar-track { background: var(--bg-recipe-card); }
-    .recipe-content-col::-webkit-scrollbar-thumb { background-color: var(--recipe-accent); border-radius: 4px; }
-
-    /* Strzałki nawigacyjne */
-    .custom-arrow {
-        width: 50px;
-        height: 50px;
-        background-color: rgba(0,0,0,0.05);
-        border-radius: 50%;
-        top: 50%;
-        transform: translateY(-50%);
-        position: absolute;
-        z-index: 5;
-        border: none;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: background-color 0.3s;
-    }
-    
-    .custom-arrow:hover { background-color: rgba(0,0,0,0.1); }
-
-    [data-theme="dark"] .custom-arrow { background-color: rgba(255,255,255,0.1); }
-    [data-theme="dark"] .custom-arrow:hover { background-color: rgba(255,255,255,0.2); }
-    
-    .carousel-control-prev { left: -70px; }
-    .carousel-control-next { right: -70px; }
-
-    .carousel-control-prev-icon,
-    .carousel-control-next-icon {
-        filter: invert(1) grayscale(100%); /* Czarne strzałki */
-    }
-    
-    [data-theme="dark"] .carousel-control-prev-icon,
-    [data-theme="dark"] .carousel-control-next-icon {
-        filter: none; /* Białe strzałki w trybie ciemnym */
-    }
-}
-
-/* 2. MOBILE (Szerokość < 768px) */
-@media (max-width: 767.98px) {
-    .book-wrapper {
-        background-color: var(--bg-recipe-card); /* Tło zmienia się na kolor papieru */
-        display: block;
-        min-height: auto;
-    }
-    
-    .book-container {
-        padding: 0;
-        width: 100%;
-    }
-
-    .recipe-card {
-        height: auto;
-        border-radius: 0;
-        box-shadow: none;
-        border: none;
-    }
-
-    .recipe-image {
-        width: 100%;
-        height: 300px;
-        object-fit: cover;
-    }
-
-    /* Sticky Bottom Navigation */
-    .mobile-nav-controls {
-        position: sticky;
-        bottom: 0;
-        background: var(--bg-recipe-card); /* Dopasowanie do tła */
-        padding: 15px;
-        border-top: 1px solid rgba(0,0,0,0.1);
-        display: flex;
-        gap: 10px;
-        z-index: 100;
-    }
-    
-    [data-theme="dark"] .mobile-nav-controls {
-        border-top-color: rgba(255,255,255,0.1);
-    }
-
-    .custom-arrow { display: none; }
+    .btn-danger { background-color: #b02a37; border-color: #a52834; }
 }
