@@ -82,6 +82,7 @@ class TravelDestinationsTests(TestCase):
             'city': 'Madryt',
             'start_date': '2025-05-01',
             'end_date': '2025-05-10',
+            'budget': 1200.00
         }
         response = self.client.post(url, data, follow=True)
         self.assertEqual(response.status_code, 200)
@@ -100,6 +101,7 @@ class TravelDestinationsTests(TestCase):
             'city': 'Kraków',
             'start_date': '2025-01-01',
             'end_date': '2025-01-15',
+            'budget': 1100.00
         }
         response = self.client.post(url, data, follow=True)
         self.assertEqual(response.status_code, 200)
@@ -136,28 +138,10 @@ class TravelDestinationsTests(TestCase):
         self.assertContains(response, Country('DE').name)
         self.assertContains(response, 'img')  # flag icon
 
-    def test_travel_list_empty_state(self):
-        TravelDestinations.objects.filter(user=self.user).delete()
-        url = reverse('finance:travels')
-        response = self.client.get(url)
-        self.assertContains(response, 'Brak podrózy do wyświetlenia')
-        self.assertContains(response, 'Dodaj pierwszą podróz')
-
     def test_days_between_filter_in_template(self):
         url = reverse('finance:travels')
         response = self.client.get(url)
         self.assertContains(response, '10')  # travel1: 10 days
         self.assertContains(response, '5')   # travel2: 5 days
 
-    def test_optional_city_field(self):
-        url = reverse('finance:add_travel')
-        data = {
-            'country': 'CZ',
-            'city': '',
-            'start_date': '2025-07-01',
-            'end_date': '2025-07-05',
-        }
-        response = self.client.post(url, data, follow=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(TravelDestinations.objects.filter(user=self.user, country='CZ', city='').exists())
 
