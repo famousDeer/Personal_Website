@@ -107,16 +107,44 @@ class DashboardView(View):
         savings_rate = 0
         if monthly_record.total_income > 0:
             savings_rate = ((monthly_record.total_income - monthly_record.total_expense) / monthly_record.total_income) * 100
-        # 2. Średnie dzienne wydatki
-        today = current_date.today()
-        # Jeśli przeglądamy obecny miesiąc, dzielimy przez dzisiejszy dzień,
-        # jeśli przeszły - przez liczbę dni w tamtym miesiącu.
-        # (Poniżej uproszczona wersja dla bieżącego miesiąca)
+        today = current_date  
         day_of_month = today.day
-        daily_average = monthly_record.total_expense / day_of_month if day_of_month > 0 else 0
-        # 3. Projekcja (estymacja wydatków na koniec miesiąca)
-        last_day = calendar.monthrange(today.year, today.month)[1]
-        projected_expense = daily_average * last_day
+        days_in_current_month = days
+
+        # 1. Pobieramy listę wydatków TYLKO z dni, które już minęły (od 1. do dziś)
+        past_days_expenses = daily_expenses_data[:day_of_month]
+
+        adjusted_daily_avg = 0.0
+
+        if day_of_month > 0:
+            # 2. Sortujemy od najmniejszego do największego
+            sorted_expenses = sorted(past_days_expenses)
+            
+            # 3. Ucinamy skrajne wartości
+            cutoff = 0
+            if day_of_month > 5:
+                cutoff = max(1, int(day_of_month * 0.15)) 
+            
+            # Tworzymy listę "normalnych dni"
+            if cutoff > 0:
+                normal_days = sorted_expenses[:-cutoff]
+            else:
+                normal_days = sorted_expenses
+
+            # 4. Liczymy "skorygowaną średnią" (tylko z normalnych dni)
+            if normal_days:
+                adjusted_daily_avg = sum(normal_days) / len(normal_days)
+            else:
+                adjusted_daily_avg = 0.0
+        
+        daily_average = adjusted_daily_avg
+        # 5. Projekcja (Estymacja)
+        days_remaining = days_in_current_month - day_of_month
+        
+        # Pobieramy float z Decimala bazy danych dla obliczeń
+        total_spent_real = float(monthly_record.total_expense)
+        
+        projected_expense = total_spent_real + (adjusted_daily_avg * days_remaining)
 
         context = {
             'current_month': monthly_record.date,
