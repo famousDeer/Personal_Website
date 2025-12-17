@@ -43,29 +43,64 @@ def index(request):
 @method_decorator(login_required, name='dispatch')
 class DashboardView(View):
     def get(self, request):
-        current_date = timezone.now().date()
-        current_month_date = month_start(current_date)
+        # === 0. OBSŁUGA WYBORU MIESIĄCA ===
+        real_today = timezone.now().date() # Prawdziwe "dzisiaj"
+        selected_month_str = request.GET.get('month') # Pobieramy parametr z URL
+
+        current_month_date = None
         
+        if selected_month_str:
+            try:
+                # Próbujemy sparsować datę z formatu YYYY-MM
+                y, m = map(int, selected_month_str.split('-'))
+                current_month_date = date(y, m, 1)
+            except ValueError:
+                current_month_date = month_start(real_today)
+        else:
+            # Domyślnie obecny miesiąc
+            current_month_date = month_start(real_today)
+
+        # Pobieramy listę wszystkich miesięcy do dropdowna (dla historii)
+        # Zakładam, że chcesz widzieć tylko miesiące, w których są rekordy Monthly
+        available_months = Monthly.objects.filter(user=request.user).order_by('-date')
+
+        # Pobieramy lub tworzymy rekord dla WYBRANEGO miesiąca
         monthly_record, created = Monthly.objects.get_or_create(
             user=request.user,
             date=current_month_date,
             defaults={'total_income': 0, 'total_expense': 0}
         )
         
-        days = calendar.monthrange(current_month_date.year, current_month_date.month)[1]
-        days_in_month = [i for i in range(1, days+1)]
-        daily_expenses_data = [0.0] * days
-        daily_incomes_data = [0.0] * days
+        # Ustawiamy 'current_date' jako datę analizy (ułatwienie dla reszty kodu)
+        # UWAGA: Jeśli analizujemy przeszłość, 'today' w kontekście analizy to ostatni dzień tamtego miesiąca
+        days_in_month_count = calendar.monthrange(current_month_date.year, current_month_date.month)[1]
+        
+        # Logika "ile dni minęło w analizowanym miesiącu"
+        if current_month_date.year == real_today.year and current_month_date.month == real_today.month:
+            # Jeśli to bieżący miesiąc -> dni minęło tyle, ile mamy dzisiaj
+            days_passed = real_today.day
+        elif current_month_date < month_start(real_today):
+            # Jeśli to przeszły miesiąc -> minęły wszystkie dni
+            days_passed = days_in_month_count
+        else:
+            # Przyszłość -> 0 dni
+            days_passed = 0
+
+        # ... (Generowanie list daily_expenses_data, daily_incomes_data - BEZ ZMIAN) ...
+        days_in_month = [i for i in range(1, days_in_month_count+1)]
+        daily_expenses_data = [0.0] * days_in_month_count
+        daily_incomes_data = [0.0] * days_in_month_count
+        
         daily_cost = (
             Daily.objects
-            .filter(user=request.user,month=monthly_record)
+            .filter(user=request.user, month=monthly_record)
             .values('date')
             .annotate(cost=Sum('cost'))
             .order_by('-date')
         )
         daily_incomes = (
             Income.objects
-            .filter(user=request.user,month=monthly_record)
+            .filter(user=request.user, month=monthly_record)
             .values('date')
             .annotate(income=Sum('amount'))
             .order_by('-date')
@@ -79,75 +114,60 @@ class DashboardView(View):
             day = record['date'].day
             daily_incomes_data[day-1] = float(record['income'] or 0.0)
 
-        expenses_by_category = Daily.objects.filter(
-            user=request.user,
-            month=monthly_record
-        ).values('category').annotate(
-            total=Sum('cost')
-        ).order_by('-total')
-        
+        # ... (Pobieranie kategorii i źródeł - BEZ ZMIAN) ...
+        expenses_by_category = Daily.objects.filter(user=request.user, month=monthly_record).values('category').annotate(total=Sum('cost')).order_by('-total')
         categories = [item['category'] for item in expenses_by_category]
         amounts = [float(item['total']) for item in expenses_by_category]
         
-        income_by_source = Income.objects.filter(
-            user=request.user,
-            month=monthly_record
-        ).values('source').annotate(
-            total=Sum('amount')
-        ).order_by('-total')
-        
+        income_by_source = Income.objects.filter(user=request.user, month=monthly_record).values('source').annotate(total=Sum('amount')).order_by('-total')
         income_sources = [item['source'] for item in income_by_source]
         income_amounts = [float(item['total']) for item in income_by_source]
         
         balance = monthly_record.total_income - monthly_record.total_expense
-        
         recent_incomes = Income.objects.filter(user=request.user, month=monthly_record).order_by('-date')[:5]
         
-        # 1. Stopa Oszczędności
+        # 1. Stopa Oszczędności (Bez zmian)
         savings_rate = 0
         if monthly_record.total_income > 0:
             savings_rate = ((monthly_record.total_income - monthly_record.total_expense) / monthly_record.total_income) * 100
-        today = current_date  
-        day_of_month = today.day
-        days_in_current_month = days
-
-        # 1. Pobieramy listę wydatków TYLKO z dni, które już minęły (od 1. do dziś)
-        past_days_expenses = daily_expenses_data[:day_of_month]
-
+            
+        # 2. Średnie dzienne wydatki (ZAKTUALIZOWANE O LOGIKĘ PRZESZŁOŚCI)
+        # Bierzemy dane tylko do dnia, który "minął" w analizowanym miesiącu
+        past_days_expenses = daily_expenses_data[:days_passed]
+        
         adjusted_daily_avg = 0.0
-
-        if day_of_month > 0:
-            # 2. Sortujemy od najmniejszego do największego
+        if days_passed > 0:
             sorted_expenses = sorted(past_days_expenses)
             
-            # 3. Ucinamy skrajne wartości
+            # Logika odcinania outlierów (Trimmed Mean)
             cutoff = 0
-            if day_of_month > 5:
-                cutoff = max(1, int(day_of_month * 0.15)) 
+            # Jeśli analizujemy pełny przeszły miesiąc, mamy 30/31 dni, więc cutoff zadziała lepiej
+            if days_passed > 5:
+                cutoff = max(1, int(days_passed * 0.15))
             
-            # Tworzymy listę "normalnych dni"
             if cutoff > 0:
                 normal_days = sorted_expenses[:-cutoff]
             else:
                 normal_days = sorted_expenses
 
-            # 4. Liczymy "skorygowaną średnią" (tylko z normalnych dni)
             if normal_days:
                 adjusted_daily_avg = sum(normal_days) / len(normal_days)
-            else:
-                adjusted_daily_avg = 0.0
-        
+
         daily_average = adjusted_daily_avg
-        # 5. Projekcja (Estymacja)
-        days_remaining = days_in_current_month - day_of_month
-        
-        # Pobieramy float z Decimala bazy danych dla obliczeń
+
+        # 3. Projekcja
+        # Jeśli miesiąc jest przeszły -> Projekcja to po prostu całkowity koszt (bo days_remaining = 0)
+        days_remaining = days_in_month_count - days_passed
         total_spent_real = float(monthly_record.total_expense)
-        
         projected_expense = total_spent_real + (adjusted_daily_avg * days_remaining)
 
         context = {
             'current_month': monthly_record.date,
+            # Przekazujemy przefiltrowaną wartość, aby select wiedział co zaznaczyć
+            'current_month_filter': current_month_date.strftime('%Y-%m'), 
+            # Lista miesięcy do dropdowna
+            'months': available_months, 
+            
             'total_income': monthly_record.total_income,
             'total_expense': monthly_record.total_expense,
             'balance': balance,

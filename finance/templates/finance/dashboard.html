@@ -7,7 +7,21 @@
 <div class="d-flex justify-content-between align-items-center mb-4 animate-fade-in">
     <div>
         <h2 class="fw-bold mb-0 text-primary">Panel finansowy</h2>
-        <p class="text-muted mb-0">Podsumowanie: <span class="fw-bold text-muted">{{ current_month|date:"F Y" }}</span></p>
+        <p class="text-muted mb-0">Podsumowanie: 
+            <form method="get" action="." class="d-inline-block">
+                <select class="form-select form-select-sm border-0 shadow-sm" name="month" onchange="this.form.submit()">
+                    {% now "Y-m" as current_ym %}
+                    <option value="{{ current_ym }}" {% if not current_month_filter or current_month_filter == current_ym %}selected{% endif %}>
+                        Bieżący (Now)
+                    </option>
+                    {% for month in months %}
+                        <option value="{{ month.date|date:'Y-m' }}" {% if current_month_filter == month.date|date:'Y-m' %}selected{% endif %}>
+                            {{ month.date|date:"F Y" }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </form>
+        </p>
     </div>
 </div>
 
