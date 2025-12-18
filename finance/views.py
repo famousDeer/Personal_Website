@@ -225,7 +225,8 @@ class ExpenseListView(View):
         
         expenses_page = Paginator(expenses, per_page_view).get_page(request.GET.get('page'))
         qs = request.GET.copy()
-        qs.pop('page', None) 
+        if 'page' in qs:
+            del qs['page']
         querystring = qs.urlencode()
 
         context = {

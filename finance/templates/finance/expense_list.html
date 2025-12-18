@@ -211,7 +211,7 @@
                 {% if expenses.has_previous %}
                     <li class="page-item">
                         <a class="page-link rounded-circle mx-1 border-0 shadow-sm" 
-                           href="?page={{ expenses.previous_page_number }}">
+                           href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ expenses.previous_page_number }}">
                             <i class="bi bi-chevron-left"></i>
                         </a>
                     </li>
@@ -226,7 +226,7 @@
                 {% if expenses.has_next %}
                     <li class="page-item">
                         <a class="page-link rounded-circle mx-1 border-0 shadow-sm" 
-                           href="?page={{ expenses.next_page_number }}">
+                           href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ expenses.next_page_number }}">
                             <i class="bi bi-chevron-right"></i>
                         </a>
                     </li>
