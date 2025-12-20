@@ -26,9 +26,11 @@ CATEGORIES_EXPENSES = sorted([
         'Zakupy spozywcze', 'Jedzenie na miescie', 'Transport miejski',
         'Rozrywka', 'Podroze - nocleg', 'Podroze - jedzenie', 
         'Podroze - atrakcje', 'Podroze - pamiatki', 'Podroze - transport',
-        'Paliwo', 'Rachunki', 'Zdrowie', 'Edukacja', 'Rodzice', 'Ubrania', 
+        'Paliwo', 'Rachunki', 'Zdrowie', 'Edukacja', 'Rodzina', 'Ubrania', 
         'Delegacje', 'Inwestycje', 'Inne', 'Rata kredytu konsumenckiego',
-        'Wyposazenie domu', 'Sport', 'Hobby', 'Prezenty', 'Spłata karty kredytowej'
+        'Wyposazenie domu', 'Sport', 'Hobby', 'Prezenty', 'Spłata karty kredytowej',
+        'Uroda', 'Drogeria', 'Pielęgnacja auta', 'Serwis auta', 'Części do auta',
+        'Subskrypcje', 
 ])
 
 INCOME_SOURCES = sorted([
