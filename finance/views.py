@@ -29,12 +29,16 @@ CATEGORIES_EXPENSES = [
         'Paliwo', 'Rachunki', 'Zdrowie', 'Edukacja', 'Rodzice', 'Ubrania', 
         'Delegacje', 'Inwestycje', 'Inne', 'Rata kredytu konsumenckiego',
         'Wyposazenie domu', 'Sport', 'Hobby', 'Prezenty', 'Spłata karty kredytowej'
-]
+].sort()
 
 INCOME_SOURCES = [
         'Pensja', 'Premia', 'Dieta', 'Inwestycje',
         'Zwrot podatku', 'Sprzedaż', 'Rodzina', 'Inne'
-]
+].sort()
+
+COST_OF_LIVING_CATEGORIES = [
+    'Zakupy spozywcze', 'Paliwo', 'Rachunki', 'Zdrowie'
+    ]
 
 @login_required
 def index(request):
@@ -155,6 +159,13 @@ class DashboardView(View):
 
         daily_average = adjusted_daily_avg
 
+        # Koszty zycia (Cost of Living) - suma wybranych kategorii
+        cost_of_living = Daily.objects.filter(
+            user=request.user,
+            month=monthly_record,
+            category__in=COST_OF_LIVING_CATEGORIES
+        ).aggregate(Sum('cost'))['cost__sum'] or 0
+
         # 3. Projekcja
         # Jeśli miesiąc jest przeszły -> Projekcja to po prostu całkowity koszt (bo days_remaining = 0)
         days_remaining = days_in_month_count - days_passed
@@ -183,6 +194,7 @@ class DashboardView(View):
             'savings_rate': savings_rate,
             'daily_average': daily_average,
             'projected_expense': projected_expense,
+            'cost_of_living': cost_of_living,
         }
         
         return render(request, 'finance/dashboard.html', context)

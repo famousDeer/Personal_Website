@@ -531,3 +531,30 @@ a { text-decoration: none; }
     
     .btn-danger { background-color: #b02a37; border-color: #a52834; }
 }
+
+/* =========================================
+   10. Chart.js CUSTOM STYLES
+   ========================================= */
+/* Styl dla trybu pełnoekranowego */
+.chart-fullscreen-mode {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    width: 100vw !important;
+    height: 100vh !important;
+    background-color: #fff; /* Tło musi być pełne, żeby zakryć stronę */
+    z-index: 9999; /* Musi być na samej górze */
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+/* Dostosowanie dla trybu ciemnego (jeśli używasz) */
+[data-bs-theme="dark"] .chart-fullscreen-mode {
+    background-color: #212529;
+}
+/* Ważne: w trybie pełnoekranowym canvas musi zająć całą wysokość */
+.chart-fullscreen-mode canvas {
+    height: 100% !important;
+    width: 100% !important;
+}

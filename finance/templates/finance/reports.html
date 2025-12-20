@@ -49,12 +49,19 @@
 <!-- Chart of income and expense for lat 6 months -->
 <div class="row mb-4">
     <div class="col-md-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">Przychody vs Wydatki (ostatnie 6 miesięcy)</h5>
+        <div class="card shadow-sm border-0"> <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 text-primary fw-bold">Przychody vs Wydatki (6 m-cy)</h5>
+                <button class="btn btn-sm btn-outline-secondary rounded-circle" onclick="toggleChartFullscreen()" title="Powiększ wykres">
+                    <i class="bi bi-arrows-fullscreen" id="fullscreenIcon"></i>
+                </button>
             </div>
-            <div class="card-body" style="width: 100%; min-width: 900px; height: 400px; overflow-x: auto;">
-                <canvas id="incomeExpenseChart" height="100"></canvas>
+            
+            <div class="card-body p-3" id="chartContainer" style="position: relative; height: 400px; width: 100%;">
+                <button id="closeFullscreenBtn" class="btn btn-light shadow position-absolute top-0 end-0 m-3 d-none" onclick="toggleChartFullscreen()" style="z-index: 10000;">
+                    <i class="bi bi-x-lg"></i> Zamknij
+                </button>
+                
+                <canvas id="incomeExpenseChart"></canvas>
             </div>
         </div>
     </div>
@@ -126,11 +133,47 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-    // Chart for income and expense
+    // --- FUNKCJA DO OBSŁUGI FULLSCREEN ---
+    function toggleChartFullscreen() {
+        const container = document.getElementById('chartContainer');
+        const icon = document.getElementById('fullscreenIcon');
+        const closeBtn = document.getElementById('closeFullscreenBtn');
+        
+        // Przełącz klasę CSS
+        container.classList.toggle('chart-fullscreen-mode');
+        
+        // Logika zmiany ikon i przycisków
+        if (container.classList.contains('chart-fullscreen-mode')) {
+            icon.classList.remove('bi-arrows-fullscreen');
+            icon.classList.add('bi-fullscreen-exit');
+            closeBtn.classList.remove('d-none'); // Pokaż przycisk X
+            
+            // Wymuś na telefonie orientację poziomą (opcjonalne, działa tylko w niektórych przeglądarkach)
+            if (screen.orientation && screen.orientation.lock) {
+                screen.orientation.lock('landscape').catch(e => console.log(e));
+            }
+        } else {
+            icon.classList.add('bi-arrows-fullscreen');
+            icon.classList.remove('bi-fullscreen-exit');
+            closeBtn.classList.add('d-none'); // Ukryj przycisk X
+            
+            if (screen.orientation && screen.orientation.unlock) {
+                screen.orientation.unlock();
+            }
+        }
+    }
+
+    // --- TWOJA KONFIGURACJA WYKRESU ---
     const income = {{ income_data|safe }};
     const expense = {{ expense_data|safe }};
-    const rawMax = Math.max(...income, ...expense);
-    const maxValue = Math.ceil(rawMax / 2000) * 2000;
+    // Zabezpieczenie przed pustymi danymi przy Math.max
+    const safeIncome = income.length ? income : [0];
+    const safeExpense = expense.length ? expense : [0];
+    
+    const rawMax = Math.max(...safeIncome, ...safeExpense);
+    // Jeśli max to 0, ustawmy domyślnie np. 2000 żeby wykres nie był płaski
+    const maxValue = rawMax > 0 ? Math.ceil(rawMax / 2000) * 2000 : 2000;
+
     const ctx = document.getElementById('incomeExpenseChart').getContext('2d');
     const incomeExpenseChart = new Chart(ctx, {
         type: 'bar',
@@ -138,21 +181,26 @@
             labels: {{ months_labels|safe }},
             datasets: [{
                 label: 'Przychody',
-                data: {{ income_data|safe }},
+                data: income,
                 borderColor: 'rgb(75, 192, 192)',
                 backgroundColor: 'rgba(75, 192, 192, 0.7)',
-                tension: 0.1
+                tension: 0.1,
+                borderRadius: 5, // Ładniejsze słupki
             }, {
                 label: 'Wydatki',
-                data: {{ expense_data|safe }},
+                data: expense,
                 borderColor: 'rgb(255, 99, 132)',
                 backgroundColor: 'rgba(255, 99, 132, 0.7)',
-                tension: 0.1
+                tension: 0.1,
+                borderRadius: 5,
             }]
         },
         options: {
             responsive: true,
-            maintainAspectRatio: false,
+            maintainAspectRatio: false, // KLUCZOWE: pozwala wykresowi wypełnić kontener fullscreen
+            layout: {
+                padding: 10
+            },
             plugins: {
                 legend: {
                     display: true,
@@ -161,13 +209,19 @@
             },
             scales: {
                 y: {
-                    min: 0,
+                    beginAtZero: true, // Zamiast min: 0
                     max: maxValue,
                     ticks: {
-                        stepSize: 2000,
+                        // Zmniejszamy liczbę linii na małych ekranach
+                        maxTicksLimit: 8,
                         callback: function(value) {
                             return value + ' zł';
                         }
+                    }
+                },
+                x: {
+                    grid: {
+                        display: false // Wygląda czyściej na mobile
                     }
                 }
             }
