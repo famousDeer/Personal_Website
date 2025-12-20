@@ -57,7 +57,7 @@
             </div>
             <div class="col-md-3">
                 <label class="form-label small text-uppercase fw-bold text-muted">Data</label>
-                <input type="date" class="form-control form-control-sm border-0 shadow-sm" name="date" value="{{ current_date_filter|date:'Y-m-d' }}">
+                <input type="date" class="form-control form-control-sm border-0 shadow-sm" name="date" value="{% if current_date_filter %}{{ current_date_filter|date:'Y-m-d' }}{% else %}{{ today|date:'Y-m-d' }}{% endif %}">
             </div>
             <div class="col-md-3 d-flex gap-2">
                 <button type="submit" class="btn btn-sm btn-primary w-100 rounded-3 shadow-sm">
