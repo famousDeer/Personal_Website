@@ -22,19 +22,19 @@ from utils.tools import month_start, parse_decimal
 from django.urls import reverse
 import json
 
-CATEGORIES_EXPENSES = [
+CATEGORIES_EXPENSES = sorted([
         'Zakupy spozywcze', 'Jedzenie na miescie', 'Transport miejski',
         'Rozrywka', 'Podroze - nocleg', 'Podroze - jedzenie', 
         'Podroze - atrakcje', 'Podroze - pamiatki', 'Podroze - transport',
         'Paliwo', 'Rachunki', 'Zdrowie', 'Edukacja', 'Rodzice', 'Ubrania', 
         'Delegacje', 'Inwestycje', 'Inne', 'Rata kredytu konsumenckiego',
         'Wyposazenie domu', 'Sport', 'Hobby', 'Prezenty', 'Spłata karty kredytowej'
-].sort()
+])
 
-INCOME_SOURCES = [
+INCOME_SOURCES = sorted([
         'Pensja', 'Premia', 'Dieta', 'Inwestycje',
         'Zwrot podatku', 'Sprzedaż', 'Rodzina', 'Inne'
-].sort()
+])
 
 COST_OF_LIVING_CATEGORIES = [
     'Zakupy spozywcze', 'Paliwo', 'Rachunki', 'Zdrowie'
