@@ -530,6 +530,7 @@ a { text-decoration: none; }
     .page-item.disabled .page-link { background-color: #2b3035; border-color: #495057; color: #6c757d; }
     
     .btn-danger { background-color: #b02a37; border-color: #a52834; }
+    .chart-fullscreen-mode { background-color: #212529; }
 }
 
 /* =========================================
@@ -548,10 +549,6 @@ a { text-decoration: none; }
     display: flex;
     flex-direction: column;
     justify-content: center;
-}
-/* Dostosowanie dla trybu ciemnego (jeśli używasz) */
-[data-bs-theme="dark"] .chart-fullscreen-mode {
-    background-color: #212529;
 }
 /* Ważne: w trybie pełnoekranowym canvas musi zająć całą wysokość */
 .chart-fullscreen-mode canvas {
