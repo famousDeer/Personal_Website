@@ -7,12 +7,20 @@ User = get_user_model()
 
 # Cars database
 class Cars(models.Model):
+    FUEL_TYPE_CHOICES = [
+        ('Benzyna', 'Benzyna'),
+        ('Diesel', 'Diesel'),
+        ('Elektryczny', 'Elektryczny'),
+        ('Hybryda', 'Hybryda'), 
+        ('LPG', 'LPG'),         
+    ]
+
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='cars')
     brand = models.CharField(max_length=100)
     model = models.CharField(max_length=100)
-    yaer = models.PositiveIntegerField()
+    year = models.PositiveIntegerField()
     odometer = models.PositiveIntegerField()
-    fuel_type = models.CharField(max_length=50)
+    fuel_type = models.CharField(max_length=50, choices=FUEL_TYPE_CHOICES, default='Benzyna')
     price = models.DecimalField(max_digits=10, decimal_places=2)
 
     class Meta:
@@ -60,7 +68,7 @@ class CarService(models.Model):
     
 class CarFuelConsumption(models.Model):
     car = models.ForeignKey(Cars, on_delete=models.CASCADE, related_name='fuel_consumptions')
-    fuel_staton = models.CharField(max_length=255)
+    fuel_station = models.CharField(max_length=255)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     date = models.DateField()
     liters = models.DecimalField(max_digits=6, decimal_places=2)

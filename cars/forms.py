@@ -11,19 +11,33 @@ class BootstrapFormMixin:
 class CarForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Cars
-        fields = ['brand', 'model', 'yaer', 'odometer', 'fuel_type', 'price']
+        fields = ['brand', 'model', 'year', 'odometer', 'fuel_type', 'price']
         labels = {
-            'yaer': 'Rok produkcji', # Ładna etykieta dla pola z literówką
+            'brand': 'Marka',
+            'model': 'Model',
+            'year': 'Rok produkcji',
             'odometer': 'Przebieg (km)',
             'fuel_type': 'Rodzaj paliwa',
             'price': 'Cena zakupu'
+        }
+        widgets = {
+            'fuel_type': forms.Select(choices=[
+                ('Benzyna', 'Benzyna'),
+                ('Diesel', 'Diesel'),
+                ('Elektryczny', 'Elektryczny'),
+            ])
         }
 
 class FuelForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = CarFuelConsumption
-        fields = ['date', 'fuel_staton', 'liters', 'price', 'odometer', 'consumption']
-        labels = {'fuel_staton': 'Stacja paliw', 'odometer': 'Przebieg przy tankowaniu'}
+        fields = ['date', 'fuel_station', 'liters', 'price', 'odometer', 'consumption']
+        labels = {'date': 'Data',
+                  'fuel_station': 'Stacja paliw', 
+                  'odometer': 'Przebieg przy tankowaniu',
+                  'liters': 'Zatankowane litry',
+                  'price': 'Cena całkowita (PLN)',
+                  'consumption': 'Średnie zużycie (L/100km)'}
         widgets = {'date': forms.DateInput(attrs={'type': 'date'})}
 
 class ServiceForm(BootstrapFormMixin, forms.ModelForm):
