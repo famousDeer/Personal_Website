@@ -19,7 +19,7 @@ def index(request):
 class RecipeListView(LoginRequiredMixin, View):
     def get(self, request):
         # 1. Pobieramy wszystkie przepisy użytkownika
-        recipes = Recipe.objects.filter(user=request.user)
+        recipes = Recipe.objects.all()
 
         # 2. Pobieramy parametry z URL
         region_filter = request.GET.get('region')

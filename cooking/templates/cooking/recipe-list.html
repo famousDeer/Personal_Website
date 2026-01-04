@@ -100,7 +100,7 @@
                             </div>
 
                             <div class="col-md-7 recipe-content-col position-relative">
-                                
+                                {% if user.is_authenticated and user == recipe.user %}
                                 <div class="sticky-top p-3 dropdown" style="z-index: 10; top: 0;">
                                     <div class="float-end">
                                         <button class="btn btn-sm btn-light rounded-circle shadow-sm" data-bs-toggle="dropdown">
@@ -117,6 +117,7 @@
                                         </ul>
                                     </div>
                                 </div>
+                                {% endif %}
 
                                 <div class="p-4 p-md-5">
                                     <div class="mb-2">
