@@ -6,7 +6,13 @@ class BootstrapFormMixin:
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for field in self.fields.values():
-            field.widget.attrs.update({'class': 'form-control', 'placeholder': field.label})
+            if isinstance(field.widget, forms.CheckboxInput):
+                field.widget.attrs.update({'class': 'form-check-input'})
+            else:
+                field.widget.attrs.update({
+                    'class': 'form-control', 
+                    'placeholder': field.label
+                })
 
 class CarForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
@@ -55,5 +61,4 @@ class TyreForm(BootstrapFormMixin, forms.ModelForm):
         fields = ['brand', 'size', 'purchase_date', 'price', 'odometer', 'is_winter']
         widgets = {
             'purchase_date': forms.DateInput(attrs={'type': 'date'}),
-            'is_winter': forms.CheckboxInput(attrs={'class': 'form-check-input'}) # Inny styl dla checkboxa
         }

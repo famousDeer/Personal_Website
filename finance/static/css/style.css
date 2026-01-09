@@ -269,6 +269,11 @@ a { text-decoration: none; }
     border-color: #dc3545 !important;
     box-shadow: 0 4px 15px rgba(220, 53, 69, 0.1) !important;
     background-color: #fff;
+    ::placeholder { color: rgba(255, 255, 255, 0.4) !important; opacity: 1; };
+}
+
+.placeholder-visible::placeholder {
+    color: rgba(255, 255, 255, 0.4) !important; opacity: 1;
 }
 
 .form-floating > label {
@@ -456,9 +461,6 @@ a { text-decoration: none; }
         border-color: #75b798;
     }
     
-    /* Placeholdery */
-    ::placeholder { color: rgba(255, 255, 255, 0.4) !important; opacity: 1; }
-
     /* Fix dla Floating Labels */
     .form-floating > label { color: rgba(255, 255, 255, 0.6) !important; }
     .form-floating > .form-control:focus ~ label,
