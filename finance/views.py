@@ -225,7 +225,10 @@ class ExpenseListView(View):
                 pass
         
         if category_filter:
-            expenses = expenses.filter(category=category_filter)
+            if category_filter == 'Koszty zycia':
+                expenses = expenses.filter(category__in=COST_OF_LIVING_CATEGORIES)
+            else:
+                expenses = expenses.filter(category=category_filter)
         
         if date_filter:
             specific_date = datetime.strptime(date_filter, '%Y-%m-%d').date()
@@ -234,7 +237,8 @@ class ExpenseListView(View):
         
         expenses = expenses.order_by('-date', 'title')
         total_filtered = expenses.aggregate(Sum('cost'))['cost__sum'] or 0
-        categories = Daily.objects.filter(user=request.user).order_by('category').values_list('category', flat=True).distinct()
+        categories = list(Daily.objects.filter(user=request.user).order_by('category').values_list('category', flat=True).distinct())
+        categories.append('Koszty zycia')
         months = Monthly.objects.filter(user=request.user).order_by('-date')
         
         expenses_page = Paginator(expenses, per_page_view).get_page(request.GET.get('page'))
