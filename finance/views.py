@@ -367,11 +367,6 @@ class EditExpenseView(View):
 
 @method_decorator(login_required, name='dispatch')
 class DeleteExpenseView(View):
-    def get(self, request, expense_id):
-        expense = get_object_or_404(Daily, id=expense_id, user=request.user)
-        expense.delete()
-        return redirect('finance:expense_list')
-    
     @transaction.atomic
     def post(self, request, expense_id):
         expense = get_object_or_404(Daily, id=expense_id, user=request.user)
@@ -547,11 +542,6 @@ class EditIncomeView(View):
 
 @method_decorator(login_required, name='dispatch')
 class DeleteIncomeView(View):
-    def get(self, request, income_id):
-        income = get_object_or_404(Income, id=income_id, user=request.user)
-        income.delete()
-        return redirect('finance:income_list')
-    
     @transaction.atomic
     def post(self, request, income_id):
         income = get_object_or_404(Income, id=income_id, user=request.user)

@@ -3,51 +3,451 @@
 {% block title %}Lista nawyków{% endblock %}
 
 {% block content_habits %}
-<div class="container">
-    <h1 class="mt-4">Lista nawyków</h1>
-    <table class="table table-striped table-hover text-center">
-        <thead>
-            <tr>
-                <th>Status</th>
-                <th>Nazwa</th>
-                <th>Kategoria</th>
-                <th>Opis</th>
-                <th>Przyciski</th>
-            </tr>
-        </thead>
-        <tbody class="table-group-divider">
-            {% for habit in habits %}
-            <tr>
-                <td>
-                    <h1>
-                    {% if habit.is_active %}
-                        <i class="bi bi-play-fill text-success" title="Aktywny"></i>
-                    {% else %}
-                        <i class="bi bi-pause-fill text-warning" title="Nieaktywny"></i>
-                    {% endif %}
-                    </h1>
-                </td>
-                <td>{{ habit.name }}</td>
-                <td>{{ habit.category }}</td>
-                <td>{{ habit.description }}</td>
-                <td>
-                    <a href="{% url 'habits:update' habit.id %}" 
-                        class="btn btn-sm btn-warining" title="Edytuj">
-                        <h2>
-                            <i class="bi bi-pencil-square text-warning"></i>
-                        </h2>
-                    </a>
-                </td>
-            </tr>
-            {% empty %}
-            <tr>
-                <td colspan="6" class="text-center">Brak nawyków do wyświetlenia</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
+<style>
+    /* =========================================
+       HABIT SPECIFIC VARIABLES & THEME MAPPING
+       ========================================= */
+    :root {
+        /* Domyślne (Light) kolory stanów nawyków */
+        --habit-bg-done: #d1e7dd;
+        --habit-text-done: #0f5132;
+        --habit-border-done: #badbcc;
+
+        --habit-bg-missed: #f8d7da;
+        --habit-text-missed: #842029;
+        --habit-border-missed: #f5c2c7;
+
+        --habit-bg-future: #f8f9fa;
+        --habit-text-future: #dee2e6;
+        
+        --calendar-day-bg: #ffffff;
+        --calendar-day-border: #dee2e6;
+        --calendar-day-hover: #f8f9fa;
+    }
+
+    [data-theme="dark"] {
+        /* Dark Mode kolory stanów (bazujące na Twoich Bootstrap overrides) */
+        --habit-bg-done: rgba(25, 135, 84, 0.2); 
+        --habit-text-done: #75b798; 
+        --habit-border-done: rgba(25, 135, 84, 0.3);
+
+        --habit-bg-missed: rgba(220, 53, 69, 0.2); 
+        --habit-text-missed: #ea868f; 
+        --habit-border-missed: rgba(220, 53, 69, 0.3);
+
+        --habit-bg-future: #2b3035; /* Ciemne tło dla przyszłości */
+        --habit-text-future: #495057;
+        
+        --calendar-day-bg: #212529; /* Tło kafelka dnia w dark mode */
+        --calendar-day-border: rgba(255, 255, 255, 0.1);
+        --calendar-day-hover: rgba(255, 255, 255, 0.05);
+    }
+
+    /* =========================================
+       GRID & CALENDAR STYLES
+       ========================================= */
+    .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 6px;
+        margin-top: 10px;
+    }
+
+    .day-header {
+        text-align: center;
+        font-size: 0.75rem;
+        color: var(--text-muted); /* Używa Twojej zmiennej */
+        margin-bottom: 2px;
+    }
+
+    .calendar-day {
+        aspect-ratio: 1/1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        border: 1px solid var(--calendar-day-border);
+        background-color: var(--calendar-day-bg);
+        cursor: pointer;
+        transition: all 0.2s;
+        position: relative;
+        color: var(--text-main); /* Tekst dopasowany do motywu */
+    }
+    
+    .calendar-day:hover {
+        background-color: var(--calendar-day-hover);
+    }
+
+    .day-number {
+        font-size: 0.7rem;
+        position: absolute;
+        top: 2px;
+        right: 4px;
+        color: var(--text-muted);
+        opacity: 0.7;
+    }
+    
+    .day-icon {
+        font-size: 1.4rem;
+        transition: transform 0.2s;
+    }
+    .calendar-day:active .day-icon {
+        transform: scale(0.9);
+    }
+
+    /* --- STATES (Using CSS Variables) --- */
+    .habit-done {
+        background-color: var(--habit-bg-done) !important;
+        border-color: var(--habit-border-done) !important;
+        color: var(--habit-text-done) !important;
+    }
+    
+    .habit-missed {
+        background-color: var(--habit-bg-missed) !important;
+        border-color: var(--habit-border-missed) !important;
+        color: var(--habit-text-missed) !important;
+    }
+    
+    .habit-future {
+        background-color: var(--habit-bg-future) !important;
+        color: var(--habit-text-future) !important;
+        cursor: not-allowed;
+        border-color: transparent !important;
+    }
+    .habit-future .day-icon { display: none; }
+    .habit-future:hover { background-color: var(--habit-bg-future) !important; }
+
+    /* DZISIAJ */
+    .is-today {
+        border: 2px solid #0d6efd !important;
+        box-shadow: 0 0 8px rgba(13, 110, 253, 0.2);
+        z-index: 2;
+    }
+
+    /* --- WATER SPECIFIC --- */
+    .water-empty { color: var(--text-muted); opacity: 0.3; }
+    .water-half { color: #36b9cc; } 
+    .water-full { color: #0d6efd; }
+
+    /* Navigation Buttons */
+    .week-nav-btn {
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        cursor: pointer;
+        padding: 0 5px;
+        transition: color 0.2s;
+    }
+    .week-nav-btn:hover { color: #0d6efd; }
+    
+    .nav-pill-container {
+        background-color: rgba(0,0,0,0.05); /* Lekkie tło dla nav */
+        border-radius: 50rem;
+        padding: 0.25rem 0.5rem;
+    }
+    [data-theme="dark"] .nav-pill-container {
+        background-color: rgba(255,255,255,0.1);
+    }
+</style>
+
+<div class="row g-4">
+    
+    <div class="col-12 col-lg-6">
+        <div class="card shadow-sm border-0 action-card h-100"> <div class="card-header bg-transparent border-0 d-flex justify-content-between align-items-center py-3">
+                <div class="d-flex align-items-center">
+                    <div class="icon-box bg-primary-subtle text-primary rounded-circle me-2" style="width:40px; height:40px;">
+                        <i class="bi bi-person-arms-up fs-5"></i>
+                    </div>
+                    <h6 class="mb-0 fw-bold">Bieganie</h6>
+                </div>
+                <div class="d-flex align-items-center nav-pill-container">
+                    <button class="week-nav-btn" onclick="changeWeek(1, -1)"><i class="bi bi-chevron-left"></i></button>
+                    <span class="current-week-label mx-2 small fw-bold" id="week-label-1">...</span>
+                    <button class="week-nav-btn" onclick="changeWeek(1, 1)"><i class="bi bi-chevron-right"></i></button>
+                </div>
+            </div>
+            <div class="card-body pt-0">
+                <div class="calendar-grid" id="grid-habit-1"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-6">
+        <div class="card shadow-sm border-0 action-card h-100">
+            <div class="card-header bg-transparent border-0 d-flex justify-content-between align-items-center py-3">
+                <div class="d-flex align-items-center">
+                    <div class="icon-box bg-info bg-opacity-10 text-info rounded-circle me-2" style="width:40px; height:40px;">
+                        <i class="bi bi-droplet-half fs-5"></i>
+                    </div>
+                    <h6 class="mb-0 fw-bold">Picie Wody</h6>
+                </div>
+                <div class="d-flex align-items-center nav-pill-container">
+                    <button class="week-nav-btn" onclick="changeWeek(2, -1)"><i class="bi bi-chevron-left"></i></button>
+                    <span class="current-week-label mx-2 small fw-bold" id="week-label-2">...</span>
+                    <button class="week-nav-btn" onclick="changeWeek(2, 1)"><i class="bi bi-chevron-right"></i></button>
+                </div>
+            </div>
+            <div class="card-body pt-0">
+                <div class="calendar-grid" id="grid-habit-2"></div>
+                <div class="d-flex justify-content-center mt-3 gap-3 small text-muted">
+                    <span><i class="bi bi-droplet"></i> 0%</span>
+                    <span><i class="bi bi-droplet-half text-info"></i> 50%</span>
+                    <span><i class="bi bi-droplet-fill text-primary"></i> 100%</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-6">
+        <div class="card shadow-sm border-0 habit-card bg-gradient-primary text-white" style="background: linear-gradient(45deg, #4e73df, #224abe);">
+            <div class="card-body d-flex flex-column justify-content-between">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h5 class="opacity-75 mb-1">Kroki (Dziennie)</h5>
+                        <h2 class="fw-bold display-5 mb-0">8,432</h2>
+                    </div>
+                    <div class="icon-box bg-white bg-opacity-25 p-3 rounded-circle">
+                        <i class="bi bi-person-walking fs-3 text-white"></i>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span>Średnia tygodniowa</span>
+                        <span class="fw-bold">10,200</span>
+                    </div>
+                    <div class="progress" style="height: 6px; background: rgba(255,255,255,0.2);">
+                        <div class="progress-bar bg-white" role="progressbar" style="width: 82%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-6">
+        <div class="card shadow-sm border-0 habit-card">
+            <div class="card-body d-flex align-items-center">
+                <div class="flex-grow-1">
+                    <h6 class="text-muted text-uppercase mb-2 ls-1">Przeczytane książki (2024)</h6>
+                    <div class="d-flex align-items-baseline">
+                        <h1 class="fw-bold display-4 mb-0 text-primary">12</h1>
+                        <span class="ms-2 text-muted">/ 24 cel</span>
+                    </div>
+                    <p class="text-success small mb-0 mt-2">
+                        <i class="bi bi-arrow-up-short"></i> Wyprzedzasz plan o 2 książki!
+                    </p>
+                </div>
+                <div class="ms-3">
+                    <div style="width: 80px; height: 80px; border-radius: 50%; background: conic-gradient(#0d6efd 50%, #e9ecef 0);"></div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-0 d-grid">
+                 <button class="btn btn-outline-primary btn-sm rounded-pill">+ Dodaj przeczytaną</button>
+            </div>
+        </div>
+    </div>
+    
+    </div>
 {% endblock %}
 
 {% block extra_js %}
+<script>
+    // === KONFIGURACJA ===
+    const daysNames = ['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'];
+    
+    // Obiekt przechowujący przesunięcie tygodnia dla KAŻDEGO nawyku osobno
+    // Klucz = ID nawyku, Wartość = offset (0 = obecny tydzień)
+    let habitOffsets = {
+        1: 0, 
+        2: 0
+    };
+
+    // Definicja typów nawyków (aby wiedzieć jak renderować)
+    const habitTypes = {
+        1: 'boolean',
+        2: 'water'
+    };
+
+    // Symulacja danych
+    const fakeDbData = {
+        habit1: { '2026-01-08': 1, '2026-01-07': 1 }, 
+        habit2: { '2026-01-08': 2, '2026-01-07': 1 }
+    };
+
+    // === INICJALIZACJA ===
+    document.addEventListener('DOMContentLoaded', () => {
+        // Renderuj wszystkie nawyki na start
+        Object.keys(habitOffsets).forEach(id => {
+            renderCalendar(parseInt(id));
+        });
+    });
+
+    // === ZMIANA TYGODNIA DLA KONKRETNEGO NAWYKU ===
+    function changeWeek(habitId, direction) {
+        // Zmień offset tylko dla tego ID
+        habitOffsets[habitId] += direction;
+        // Przerenderuj tylko ten jeden kalendarz
+        renderCalendar(habitId);
+    }
+
+    // === RENDEROWANIE KALENDARZA ===
+    function renderCalendar(habitId) {
+        const containerId = `grid-habit-${habitId}`;
+        const labelId = `week-label-${habitId}`;
+        const type = habitTypes[habitId];
+        const currentOffset = habitOffsets[habitId];
+
+        const container = document.getElementById(containerId);
+        const label = document.getElementById(labelId);
+        
+        if (!container) return; // Zabezpieczenie
+
+        container.innerHTML = ''; // Wyczyść stare
+
+        // Oblicz poniedziałek dla danego offsetu
+        const today = new Date();
+        const monday = getMonday(new Date());
+        monday.setDate(monday.getDate() + (currentOffset * 7));
+
+        // Ustaw etykietę dat
+        const sunday = new Date(monday);
+        sunday.setDate(monday.getDate() + 6);
+        label.innerText = `${formatDateShort(monday)} - ${formatDateShort(sunday)}`;
+
+        // Dodaj nagłówki dni
+        daysNames.forEach(name => {
+            const div = document.createElement('div');
+            div.className = 'day-header';
+            div.innerText = name;
+            container.appendChild(div);
+        });
+
+        // Generuj 7 dni
+        for (let i = 0; i < 7; i++) {
+            const currentDay = new Date(monday);
+            currentDay.setDate(monday.getDate() + i);
+            const dateStr = currentDay.toISOString().split('T')[0];
+            
+            const isToday = isSameDay(currentDay, today);
+            const isFuture = currentDay > today && !isToday;
+
+            // Pobierz dane z DB
+            let dbKey = `habit${habitId}`;
+            let value = fakeDbData[dbKey] ? (fakeDbData[dbKey][dateStr] || 0) : 0;
+
+            // HTML Element
+            const el = document.createElement('div');
+            el.className = 'calendar-day';
+            el.setAttribute('data-date', dateStr);
+            el.setAttribute('data-habit-id', habitId);
+            el.setAttribute('data-value', value);
+            el.setAttribute('data-type', type);
+
+            // Numer dnia
+            const numSpan = document.createElement('span');
+            numSpan.className = 'day-number';
+            numSpan.innerText = currentDay.getDate();
+            el.appendChild(numSpan);
+
+            // Logika wizualna
+            if (isToday) el.classList.add('is-today');
+            
+            if (isFuture) {
+                el.classList.add('habit-future');
+            } else {
+                el.onclick = function() { handleClick(this); };
+                
+                // Render stanu początkowego
+                if (type === 'boolean') renderBooleanState(el, value, isToday);
+                else if (type === 'water') renderWaterState(el, value);
+            }
+
+            container.appendChild(el);
+        }
+    }
+
+    // === UI HELPERS ===
+    
+    function renderBooleanState(el, val, isToday) {
+        el.classList.remove('habit-done', 'habit-missed');
+        let icon = el.querySelector('.day-icon');
+        if(icon) icon.remove();
+
+        const iconEl = document.createElement('i');
+        iconEl.className = 'bi day-icon';
+
+        if (val === 1) {
+            el.classList.add('habit-done');
+            iconEl.classList.add('bi-check-lg');
+            el.appendChild(iconEl);
+        } else {
+            // Jeśli minęło i nie zrobione -> missed (czerwone)
+            // Jeśli dzisiaj i nie zrobione -> pusto (białe/ciemne)
+            if (!isToday) {
+                el.classList.add('habit-missed');
+                iconEl.classList.add('bi-x-lg');
+                el.appendChild(iconEl);
+            }
+        }
+    }
+
+    function renderWaterState(el, val) {
+        let icon = el.querySelector('.day-icon');
+        if(icon) icon.remove();
+
+        const iconEl = document.createElement('i');
+        iconEl.className = 'bi day-icon';
+
+        if (val === 0) iconEl.classList.add('bi-droplet', 'water-empty');
+        else if (val === 1) iconEl.classList.add('bi-droplet-half', 'water-half');
+        else if (val >= 2) iconEl.classList.add('bi-droplet-fill', 'water-full');
+        
+        el.appendChild(iconEl);
+    }
+
+    // === LOGIKA KLIKNIĘCIA (Bez zmian w logice, tylko renderowanie) ===
+    function handleClick(el) {
+        const type = el.getAttribute('data-type');
+        let val = parseInt(el.getAttribute('data-value'));
+        const habitId = el.getAttribute('data-habit-id');
+        const date = el.getAttribute('data-date');
+        const isToday = el.classList.contains('is-today');
+
+        let newVal;
+
+        if (type === 'boolean') {
+            newVal = val === 0 ? 1 : 0;
+            renderBooleanState(el, newVal, isToday);
+        } else if (type === 'water') {
+            newVal = (val + 1) % 3;
+            renderWaterState(el, newVal);
+        }
+
+        el.setAttribute('data-value', newVal);
+        
+        // Update fake DB
+        let dbKey = `habit${habitId}`;
+        if(!fakeDbData[dbKey]) fakeDbData[dbKey] = {};
+        fakeDbData[dbKey][date] = newVal;
+
+        // saveHabitToDb(habitId, date, newVal); // Odkomentuj jak podepniesz backend
+    }
+
+    // === DATE UTILS ===
+    function getMonday(d) {
+        d = new Date(d);
+        var day = d.getDay(), diff = d.getDate() - day + (day == 0 ? -6 : 1);
+        return new Date(d.setDate(diff));
+    }
+
+    function isSameDay(d1, d2) {
+        return d1.getFullYear() === d2.getFullYear() &&
+               d1.getMonth() === d2.getMonth() &&
+               d1.getDate() === d2.getDate();
+    }
+
+    function formatDateShort(date) {
+        const monthNames = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
+        return `${date.getDate()} ${monthNames[date.getMonth()]}`;
+    }
+</script>
 {% endblock %}

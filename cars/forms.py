@@ -37,13 +37,13 @@ class CarForm(BootstrapFormMixin, forms.ModelForm):
 class FuelForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = CarFuelConsumption
-        fields = ['date', 'fuel_station', 'liters', 'price', 'odometer', 'consumption']
+        fields = ['date', 'fuel_station', 'liters', 'price', 'odometer', 'price_per_liter']
         labels = {'date': 'Data',
                   'fuel_station': 'Stacja paliw', 
                   'odometer': 'Przebieg przy tankowaniu',
                   'liters': 'Zatankowane litry',
                   'price': 'Cena całkowita (PLN)',
-                  'consumption': 'Średnie zużycie (L/100km)'}
+                  'price_per_liter': 'Cena za litr (PLN)'}
         widgets = {'date': forms.DateInput(attrs={'type': 'date'})}
 
 class ServiceForm(BootstrapFormMixin, forms.ModelForm):
@@ -58,7 +58,15 @@ class ServiceForm(BootstrapFormMixin, forms.ModelForm):
 class TyreForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = CarTyres
-        fields = ['brand', 'size', 'purchase_date', 'price', 'odometer', 'is_winter']
+        fields = ['brand', 'width', 'aspect_ratio', 'diameter', 'purchase_date', 'price', 'odometer', 'is_winter']
+        labels = {'brand': 'Marka opon',
+                  'width': 'Szerokość (mm)',
+                  'aspect_ratio': 'Profil (%)',
+                  'diameter': 'Średnica (cale)',
+                  'purchase_date': 'Data zakupu',
+                  'price': 'Cena całkowita (PLN)',
+                  'odometer': 'Przebieg przy montażu (km)',
+                  'is_winter': 'Opony zimowe'}
         widgets = {
             'purchase_date': forms.DateInput(attrs={'type': 'date'}),
         }

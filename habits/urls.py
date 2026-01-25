@@ -9,5 +9,6 @@ urlpatterns = [
     path('', views.index, name='index'),
     path('list/', login_required(views.habit_list), name='list'),
     path('add/', login_required(views.add_habit), name='add'),
-    path('update/<int:habit_id>/', views.UpdateHabitView.as_view(), name='update')
+    path('update/<int:habit_id>/', views.UpdateHabitView.as_view(), name='update'),
+    path('delete/<int:habit_id>/', views.DeleteHabitView.as_view(), name='delete'),
 ]

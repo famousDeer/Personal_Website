@@ -3,7 +3,7 @@
 
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-4 animate-fade-in">
+<div class="d-flex justify-content-between align-items-center mb-4 animate-fade-in" style="position: relative; z-index: 10;">
     <div class="d-flex align-items-center">
         <a href="{% url 'cars:garage' %}" class="btn rounded-circle shadow-sm me-3 text-muted">
             <i class="bi bi-arrow-left"></i>
@@ -11,22 +11,25 @@
         <div>
             <h2 class="fw-bold mb-0">{{ car.brand }} <span class="text-primary">{{ car.model }}</span></h2>
             <div class="text-muted small">
-                <i class="bi bi-calendar4 me-1"></i> {{ car.year }}r
+                {% load l10n %}
+                <i class="bi bi-calendar4 me-1"></i> {{ car.year|unlocalize }}r
                 <i class="bi bi-fuel-pump me-1"></i> {{ car.fuel_type }}
             </div>
         </div>
     </div>
+    {% if user.is_authenticated and user == car.user %}
     <div class="dropdown">
-        <button class="btn rounded-circle shadow-sm" data-bs-toggle="dropdown">
-            <i class="bi bi-three-dots-vertical"></i>
+        <button
+            class="btn btn-light btn-sm rounded-circle shadow-sm table-dropdown-btn"
+            data-edit-url="{% url 'cars:edit' car.id%}"
+            data-delete-url="{% url 'cars:delete' car.id%}"
+            type="button">
+            <i class="bi bi-three-dots-vertical text-muted"></i>
         </button>
-        <ul class="dropdown-menu dropdown-menu-end border-0 shadow">
-            <li><a class="dropdown-item" href="#"><i class="bi bi-pencil me-2"></i>Edytuj dane auta</a></li>
-            <li><hr class="dropdown-divider"></li>
-            <li><a class="dropdown-item text-danger" href="#"><i class="bi bi-trash me-2"></i>Usuń auto</a></li>
-        </ul>
     </div>
+    {% endif %}
 </div>
+
 {% load humanize %}
 <div class="row g-3 mb-4 animate-fade-in-up">
     <div class="col-6 col-md-3">
@@ -83,22 +86,23 @@
 <div class="tab-content animate-fade-in" id="carTabsContent">
     
     <div class="tab-pane fade show active" id="fuel" role="tabpanel">
-        <div class="card border-0 shadow-sm action-card overflow-hidden">
+        <div class="card border-0 shadow-sm action-card">
             <div class="card-header bg-transparent border-0 p-4 d-flex justify-content-between align-items-center">
                 <h5 class="fw-bold mb-0">Historia tankowania</h5>
-                <a href="{% url 'cars:add_fuel' car.id %}" class="btn btn-sm btn-warning text-white rounded-pill fw-bold px-3">
+                <a href="{% url 'cars:add_fuel' car.id %}" class="btn btn-sm btn-primary text-white rounded-pill fw-bold px-3">
                     <i class="bi bi-plus-lg me-1"></i> Dodaj
                 </a>
             </div>
             <div class="card-body p-0">
-                <div class="table-responsive">
+                <div class="table-responsive position-relative">
                     <table class="table table-hover align-middle mb-0 custom-table">
                         <thead class="bg-light">
                             <tr>
                                 <th class="ps-4 text-muted small">Data</th>
-                                <th class="text-muted small">Stacja</th>
+                                <th class="text-muted small">Stacja / Przebieg</th>
                                 <th class="text-end text-muted small">Ilość</th>
-                                <th class="text-end text-muted small pe-4">Koszt</th>
+                                <th class="text-end text-muted small">Koszt</th>
+                                <th class="text-end text-muted small pe-4" style="width: 50px;"></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -107,20 +111,30 @@
                                 <td class="ps-4 fw-bold">{{ log.date|date:"d.m.y" }}</td>
                                 <td>
                                     <div class="d-flex flex-column">
-                                        <span>{{ log.fuel_station }}</span>
-                                        <small class="text-muted" style="font-size: 0.7rem;">{{ log.odometer }} km</small>
+                                        <span class="fw-medium">{{ log.fuel_station }}</span>
+                                        <small class="text-muted" style="font-size: 0.75rem;">{{ log.odometer }} km</small>
                                     </div>
                                 </td>
                                 <td class="text-end">
                                     {{ log.liters }} L
                                     {% if log.consumption %}
-                                    <span class="d-block text-muted small" style="font-size: 0.65rem;">{{ log.consumption }} l/100</span>
+                                    <span class="d-block text-muted small" style="font-size: 0.7rem;">{{ log.consumption }} l/100</span>
                                     {% endif %}
                                 </td>
-                                <td class="text-end pe-4 fw-bold text-danger">-{{ log.price|floatformat:2 }} zł</td>
+                                <td class="text-end fw-bold text-danger">-{{ log.price|floatformat:2 }} zł</td>
+                                <td class="text-end pe-4">
+                                    <button
+                                        class="btn btn-light btn-sm rounded-circle shadow-sm table-dropdown-btn"
+                                        data-edit-url="{% url 'cars:edit_fuel' car.id log.id %}"
+                                        data-delete-url="{% url 'cars:delete_fuel' car.id log.id %}"
+                                        type="button">
+                                        <i class="bi bi-three-dots-vertical text-muted"></i>
+                                    </button>
+
+                                </td>
                             </tr>
                             {% empty %}
-                            <tr><td colspan="4" class="text-center py-4 text-muted">Brak wpisów tankowania.</td></tr>
+                            <tr><td colspan="5" class="text-center py-4 text-muted">Brak wpisów tankowania.</td></tr>
                             {% endfor %}
                         </tbody>
                     </table>
@@ -130,78 +144,172 @@
     </div>
 
     <div class="tab-pane fade" id="service" role="tabpanel">
-        <div class="card border-0 shadow-sm action-card overflow-hidden">
+        <div class="card border-0 shadow-sm action-card ">
             <div class="card-header bg-transparent border-0 p-4 d-flex justify-content-between align-items-center">
                 <h5 class="fw-bold mb-0">Książka serwisowa</h5>
-                <a href="#" class="btn btn-sm btn-danger rounded-pill fw-bold px-3">
+                <a href="{% url 'cars:add_service' car.id%}" class="btn btn-sm btn-primary text-white rounded-pill fw-bold px-3">
                     <i class="bi bi-plus-lg me-1"></i> Dodaj
                 </a>
             </div>
             <div class="card-body p-0">
-                <div class="list-group list-group-flush">
-                    {% for service in services %}
-                    <div class="list-group-item p-3 border-light-subtle">
-                        <div class="d-flex justify-content-between align-items-start">
-                            <div class="d-flex gap-3">
-                                <div class="icon-box bg-danger-subtle text-danger rounded-circle flex-shrink-0" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
-                                    <i class="bi bi-tools"></i>
-                                </div>
-                                <div>
-                                    <h6 class="fw-bold mb-1">{{ service.service_type }}</h6>
-                                    <p class="text-muted small mb-1">{{ service.description|truncatechars:60 }}</p>
-                                    <span class="badge bg-light text-muted border fw-normal">{{ service.date|date:"d.m.Y" }}</span>
-                                </div>
-                            </div>
-                            <span class="fw-bold text-danger fs-6 text-nowrap">-{{ service.cost|floatformat:0 }} zł</span>
-                        </div>
-                    </div>
-                    {% empty %}
-                    <div class="text-center py-5 text-muted">Brak wpisów serwisowych.</div>
-                    {% endfor %}
+                <div class="table-responsive position-relative">
+                    <table class="table table-hover align-middle mb-0 custom-table">
+                        <thead class="bg-light">
+                            <tr>
+                                <th class="ps-4 text-muted small">Data</th>
+                                <th class="text-muted small">Serwis</th>
+                                <th class="text-end text-muted small">Koszt</th>
+                                <th class="text-end text-muted small pe-4" style="width: 50px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for service in services %}
+                            <tr>
+                                <td class="ps-4 fw-bold">{{ service.date|date:"d.m.y" }}</td>
+                                <td>
+                                    <div class="d-flex flex-column">
+                                        <span class="fw-medium">{{ service.service_type }}</span>
+                                        <small class="text-muted text-truncate" style="font-size: 0.75rem; max-width: 250px;">{{ service.description }}</small>
+                                    </div>
+                                </td>
+                                <td class="text-end fw-bold text-danger">-{{ service.cost|floatformat:2 }} zł</td>
+                                <td class="text-end pe-4">
+                                    <button
+                                    class="btn btn-light btn-sm rounded-circle shadow-sm table-dropdown-btn"
+                                    data-edit-url="{% url 'cars:edit_service' car.id service.id %}"
+                                    data-delete-url="{% url 'cars:delete_service' car.id service.id %}"
+                                    type="button">
+                                    <i class="bi bi-three-dots-vertical text-muted"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="4" class="text-center py-4 text-muted">Brak wpisów serwisowych.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
     </div>
 
     <div class="tab-pane fade" id="tyres" role="tabpanel">
-        <div class="text-end mb-3">
-            <a href="#" class="btn btn-sm btn-dark rounded-pill fw-bold px-3">
-                <i class="bi bi-plus-lg me-1"></i> Dodaj Opony
-            </a>
-        </div>
-        <div class="row g-3">
-            {% for tyre in tyres %}
-            <div class="col-md-6">
-                <div class="card border-0 shadow-sm action-card h-100">
-                    <div class="card-body p-3">
-                        <div class="d-flex justify-content-between mb-2">
-                            <h6 class="fw-bold mb-0">{{ tyre.brand }}</h6>
-                            {% if tyre.is_winter %}
-                                <span class="badge bg-info-subtle text-info border border-info-subtle"><i class="bi bi-snow me-1"></i> Zimowe</span>
-                            {% else %}
-                                <span class="badge bg-warning-subtle text-warning border border-warning-subtle"><i class="bi bi-sun me-1"></i> Letnie</span>
-                            {% endif %}
-                        </div>
-                        <div class="text-muted small mb-3">{{ tyre.size }}</div>
-                        <div class="d-flex justify-content-between align-items-end border-top pt-2">
-                            <div class="small text-muted lh-1">
-                                <span class="d-block" style="font-size: 0.65rem;">Kupiono:</span>
-                                {{ tyre.purchase_date|date:"Y" }}
-                            </div>
-                            <span class="fw-bold">{{ tyre.price|floatformat:0 }} zł</span>
-                        </div>
-                    </div>
+        <div class="card border-0 shadow-sm action-card">
+            <div class="card-header bg-transparent border-0 p-4 d-flex justify-content-between align-items-center">
+                <h5 class="fw-bold mb-0">Zestawy opon</h5>
+                <a href="{% url 'cars:add_tyres' car.id %}" class="btn btn-sm btn-primary text-white rounded-pill fw-bold px-3">
+                    <i class="bi bi-plus-lg me-1"></i> Dodaj
+                </a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive position-relative">
+                    <table class="table table-hover align-middle mb-0 custom-table">
+                        <thead class="bg-light">
+                            <tr>
+                                <th class="ps-4 text-muted small">Zakup</th>
+                                <th class="text-muted small">Opony</th>
+                                <th class="text-muted small">Rozmiar / Przebieg</th>
+                                <th class="text-end text-muted small">Koszt</th>
+                                <th class="text-end text-muted small pe-4" style="width: 50px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for tyre in tyres %}
+                            <tr>
+                                <td class="ps-4 fw-bold">{{ tyre.purchase_date|date:"d.m.y" }}</td>
+                                <td>
+                                    <div class="d-flex align-items-center gap-2">
+                                        {% if tyre.is_winter %}
+                                            <span class="badge bg-info-subtle text-info border border-info-subtle" title="Zimowe"><i class="bi bi-snow"></i></span>
+                                        {% else %}
+                                            <span class="badge bg-warning-subtle text-warning border border-warning-subtle" title="Letnie"><i class="bi bi-sun"></i></span>
+                                        {% endif %}
+                                        <span class="fw-medium">{{ tyre.brand }}</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="d-flex flex-column">
+                                        <span>{{ tyre.width }}/{{ tyre.aspect_ratio }}/{{ tyre.diameter }}</span>
+                                        <small class="text-muted" style="font-size: 0.7rem;">przy {{ tyre.odometer }} km</small>
+                                    </div>
+                                </td>
+                                <td class="text-end fw-bold text-danger">-{{ tyre.price|floatformat:2 }} zł</td>
+                                <td class="text-end pe-4">
+                                    <button
+                                        class="btn btn-light btn-sm rounded-circle shadow-sm table-dropdown-btn"
+                                        data-edit-url="{% url 'cars:edit_tyres' car.id tyre.id %}"
+                                        data-delete-url="{% url 'cars:delete_tyres' car.id tyre.id %}"
+                                        type="button">
+                                        <i class="bi bi-three-dots-vertical text-muted"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="5" class="text-center py-4 text-muted">Brak opon w historii.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
-            {% empty %}
-            <div class="col-12 text-center py-5 text-muted">
-                <i class="bi bi-disc fs-1 opacity-25"></i>
-                <p class="mt-2">Nie dodałeś jeszcze opon.</p>
-            </div>
-            {% endfor %}
         </div>
     </div>
 
+</div>
+
+<div id="globalDropdown"
+     class="dropdown-menu shadow border-0"
+     style="
+        position: fixed;
+        display: none;
+        z-index: 9999;
+        min-width: 160px;
+     ">
+
+    <a id="dropdownEdit" class="dropdown-item" href="#">
+        <i class="bi bi-pencil me-2"></i>Edytuj
+    </a>
+
+    <hr class="dropdown-divider">
+
+    <button id="dropdownDelete"
+            class="dropdown-item text-danger"
+            type="button">
+        <i class="bi bi-trash me-2"></i>Usuń
+    </button>
+</div>
+
+<div id="confirmDeletePopover"
+     class="shadow border rounded-4 bg-white p-3"
+     style="
+        position: fixed;
+        display: none;
+        z-index: 10000;
+        width: 260px;
+     ">
+
+    <div class="d-flex align-items-center mb-2">
+        <i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>
+        <strong>Usunąć element?</strong>
+    </div>
+
+    <p class="small text-muted mb-3">
+        Tej operacji nie można cofnąć.
+    </p>
+
+    <div class="d-flex justify-content-end gap-2">
+        <button id="cancelDeleteBtn"
+                class="btn btn-sm btn-light rounded-pill px-3">
+            Anuluj
+        </button>
+
+        <form id="confirmDeleteForm" method="post">
+            {% csrf_token %}
+            <button type="submit"
+                    class="btn btn-sm btn-danger rounded-pill px-3">
+                Usuń
+            </button>
+        </form>
+    </div>
 </div>
 
 <style>
@@ -216,6 +324,155 @@
         color: white !important;
         box-shadow: 0 4px 10px rgba(13, 110, 253, 0.3);
     }
+    
+    /* Styl dla globalnego dropdowna - ważne żeby był na wierzchu */
+    #globalDropdown, #confirmDeletePopover {
+        position: fixed; /* Fixed względem okna przeglądarki, nie tabeli */
+        z-index: 9999;
+    }
+    
+    /* Opcjonalne: ładniejszy cień na mobile */
+    @media (max-width: 768px) {
+        #globalDropdown {
+            min-width: 200px;
+        }
+        #globalDropdown .dropdown-item {
+            padding: 10px 20px; /* Większe pola do klikania palcem */
+        }
+    }
 </style>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
+    const dropdown = document.getElementById("globalDropdown");
+    const confirmBox = document.getElementById("confirmDeletePopover");
+
+    const editBtn = document.getElementById("dropdownEdit");
+    const deleteBtn = document.getElementById("dropdownDelete");
+
+    const cancelBtn = document.getElementById("cancelDeleteBtn");
+    const deleteForm = document.getElementById("confirmDeleteForm");
+
+    // Funkcja pomocnicza do ukrywania wszystkiego
+    function hideAll() {
+        dropdown.style.display = "none";
+        confirmBox.style.display = "none";
+    }
+
+    document.querySelectorAll(".table-dropdown-btn").forEach(btn => {
+        btn.addEventListener("click", e => {
+            e.stopPropagation(); // Zatrzymaj propagację, żeby nie zamknęło od razu
+            hideAll(); // Ukryj inne otwarte
+
+            // 1. Wstępne wyświetlenie (niewidoczne), aby pobrać wymiary
+            dropdown.style.visibility = "hidden";
+            dropdown.style.display = "block";
+
+            const rect = btn.getBoundingClientRect();
+            const dropWidth = dropdown.offsetWidth;
+            const dropHeight = dropdown.offsetHeight;
+            const windowWidth = window.innerWidth;
+            const windowHeight = window.innerHeight;
+
+            // 2. Obliczanie pozycji POZIOMEJ (X)
+            // Domyślnie wyrównaj prawą krawędź menu do prawej krawędzi przycisku
+            let left = rect.right - dropWidth;
+            
+            // Zabezpieczenie: jeśli menu wychodzi poza lewą krawędź ekranu
+            if (left < 10) {
+                left = 10; 
+            }
+
+            // 3. Obliczanie pozycji PIONOWEJ (Y) - tzw. "Flip"
+            // Sprawdź ile miejsca jest pod przyciskiem
+            const spaceBelow = windowHeight - rect.bottom;
+            
+            let top;
+            // Jeśli pod spodem jest mniej miejsca niż wysokość menu, daj je NAD przycisk
+            if (spaceBelow < dropHeight && rect.top > dropHeight) {
+                top = rect.top - dropHeight - 2; // 2px odstępu
+                dropdown.classList.add('dropdown-menu-end'); // Opcjonalne stylowanie
+            } else {
+                top = rect.bottom + 2;
+            }
+
+            // 4. Przypisanie pozycji i pokazanie
+            dropdown.style.top = top + "px";
+            dropdown.style.left = left + "px";
+            dropdown.style.visibility = "visible"; // Pokaż naprawdę
+
+            // Logika przycisków
+            editBtn.href = btn.dataset.editUrl;
+
+            // Obsługa kliknięcia "Usuń" w dropdownie
+            // Musimy usunąć stary listener (klonowanie elementu to prosty sposób na reset eventów)
+            let newDeleteBtn = deleteBtn.cloneNode(true);
+            deleteBtn.parentNode.replaceChild(newDeleteBtn, deleteBtn);
+            
+            newDeleteBtn.addEventListener("click", (ev) => {
+                ev.stopPropagation();
+                dropdown.style.display = "none"; // Schowaj menu
+
+                // Pozycjonowanie okienka potwierdzenia (podobnie jak menu)
+                confirmBox.style.visibility = "hidden";
+                confirmBox.style.display = "block";
+                
+                const confirmWidth = confirmBox.offsetWidth;
+                const confirmHeight = confirmBox.offsetHeight;
+                
+                // Pozycjonowanie ConfirmBox (centrowanie względem przycisku lub ekranu na mobile)
+                let confirmLeft = rect.right - confirmWidth;
+                if (confirmLeft < 10) confirmLeft = 10; // Zabezpieczenie lewej krawędzi
+                
+                // Flip dla ConfirmBox
+                let confirmTop = rect.bottom + 5;
+                if ((windowHeight - rect.bottom) < confirmHeight) {
+                     confirmTop = rect.top - confirmHeight - 5;
+                }
+
+                // Na bardzo małych ekranach wycentruj na środku ekranu
+                if (windowWidth < 400) {
+                    confirmBox.style.left = "50%";
+                    confirmBox.style.top = "50%";
+                    confirmBox.style.transform = "translate(-50%, -50%)";
+                } else {
+                    confirmBox.style.left = confirmLeft + "px";
+                    confirmBox.style.top = confirmTop + "px";
+                    confirmBox.style.transform = "none";
+                }
+
+                confirmBox.style.visibility = "visible";
+                deleteForm.action = btn.dataset.deleteUrl;
+            });
+            
+            // Zaktualizuj referencję do przycisku delete (bo go sklonowaliśmy)
+            // (W tym prostym skrypcie nie jest to konieczne, bo pobieramy go po ID ponownie przy następnym kliknięciu w 3 kropki, ale dla porządku warto wiedzieć)
+        });
+    });
+
+    // Anuluj usuwanie
+    cancelBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        hideAll();
+    });
+
+    // Kliknięcie wewnątrz nie zamyka
+    dropdown.addEventListener("click", e => e.stopPropagation());
+    confirmBox.addEventListener("click", e => e.stopPropagation());
+
+    // Kliknięcie gdziekolwiek indziej zamyka
+    document.addEventListener("click", () => {
+        hideAll();
+    });
+    
+    // Zamknij przy scrollowaniu (opcjonalne, ale przydatne na mobile żeby menu nie "pływało" oderwane od przycisku)
+    window.addEventListener('scroll', () => {
+        hideAll();
+    }, true); 
+
+});
+</script>
+
 
 {% endblock %}

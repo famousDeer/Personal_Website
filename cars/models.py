@@ -35,8 +35,11 @@ class Cars(models.Model):
 class CarTyres(models.Model):
     car = models.ForeignKey(Cars, on_delete=models.CASCADE, related_name='tyres')
     brand = models.CharField(max_length=100)
-    size = models.CharField(max_length=50)
+    width = models.PositiveIntegerField(default=0)
+    aspect_ratio = models.PositiveIntegerField(default=0)
+    diameter = models.PositiveIntegerField(default=0)
     purchase_date = models.DateField()
+    quantity = models.PositiveIntegerField(default=1,validators=[MinValueValidator(1)])
     price = models.DecimalField(max_digits=10, decimal_places=2)
     odometer = models.PositiveIntegerField()
     is_winter = models.BooleanField(default=False)
@@ -48,7 +51,7 @@ class CarTyres(models.Model):
         verbose_name_plural = "Car Tyres"
 
     def __str__(self):
-        return f"{self.brand} {self.size} for {self.car.brand} {self.car.model}"
+        return f"{self.brand} {self.width}/{self.aspect_ratio}/{self.diameter} for {self.car.brand} {self.car.model}"
 
 class CarService(models.Model):
     car = models.ForeignKey(Cars, on_delete=models.CASCADE, related_name='services')
@@ -73,6 +76,7 @@ class CarFuelConsumption(models.Model):
     date = models.DateField()
     liters = models.DecimalField(max_digits=6, decimal_places=2)
     odometer = models.PositiveIntegerField()
+    price_per_liter = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
     consumption = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
 
     class Meta:

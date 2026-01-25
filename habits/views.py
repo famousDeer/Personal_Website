@@ -79,6 +79,15 @@ def habit_list(request):
     return render(request, 'habits/habits_list.html', context)
 
 @method_decorator(login_required, name='dispatch')
+class DeleteHabitView(View):    
+    @transaction.atomic
+    def post(self, request, habit_id):
+        habit = get_object_or_404(Habit, id=habit_id, user=request.user)
+        habit.delete()
+        messages.success(request, f'Pomyślnie usunięto nawyk "{habit.name}"!')
+        return redirect('habits:list')
+
+@method_decorator(login_required, name='dispatch')
 class UpdateHabitView(View):
     def get(self, request, habit_id):
         habit = get_object_or_404(Habit, id=habit_id, user=request.user)
@@ -107,4 +116,4 @@ class UpdateHabitView(View):
         habit.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         habit.save()
         messages.success(request, f'Pomyślnie zapisano zmiany!')
-        return redirect('habits:update', habit_id=habit.id)
+        return redirect('habits:list')

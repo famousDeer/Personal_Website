@@ -108,6 +108,7 @@ a { text-decoration: none; }
     backdrop-filter: blur(10px);
     border: 1px solid rgba(0,0,0,0.1);
     animation: fadeIn 0.3s ease forwards;
+    z-index: 1000;
 }
 
 .dropdown-item {
@@ -269,6 +270,11 @@ a { text-decoration: none; }
     border-color: #dc3545 !important;
     box-shadow: 0 4px 15px rgba(220, 53, 69, 0.1) !important;
     background-color: #fff;
+    ::placeholder { color: rgba(255, 255, 255, 0.4) !important; opacity: 1; };
+}
+
+.placeholder-visible::placeholder {
+    color: rgba(255, 255, 255, 0.4) !important; opacity: 1;
 }
 
 .form-floating > label {
@@ -456,9 +462,6 @@ a { text-decoration: none; }
         border-color: #75b798;
     }
     
-    /* Placeholdery */
-    ::placeholder { color: rgba(255, 255, 255, 0.4) !important; opacity: 1; }
-
     /* Fix dla Floating Labels */
     .form-floating > label { color: rgba(255, 255, 255, 0.6) !important; }
     .form-floating > .form-control:focus ~ label,
@@ -530,4 +533,28 @@ a { text-decoration: none; }
     .page-item.disabled .page-link { background-color: #2b3035; border-color: #495057; color: #6c757d; }
     
     .btn-danger { background-color: #b02a37; border-color: #a52834; }
+    .chart-fullscreen-mode { background-color: #212529; }
+}
+
+/* =========================================
+   10. Chart.js CUSTOM STYLES
+   ========================================= */
+/* Styl dla trybu pełnoekranowego */
+.chart-fullscreen-mode {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    width: 100vw !important;
+    height: 100vh !important;
+    background-color: #fff; /* Tło musi być pełne, żeby zakryć stronę */
+    z-index: 9999; /* Musi być na samej górze */
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+/* Ważne: w trybie pełnoekranowym canvas musi zająć całą wysokość */
+.chart-fullscreen-mode canvas {
+    height: 100% !important;
+    width: 100% !important;
 }
