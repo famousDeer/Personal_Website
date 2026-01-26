@@ -5,6 +5,7 @@ services:
       POSTGRES_DB: finance_db
       POSTGRES_USER: finance
       POSTGRES_PASSWORD: 1234
+      POSTGRES_MAX_CONNECTIONS: 50
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -17,7 +18,7 @@ services:
 
   web:
     build: .
-    command: sh -c "python manage.py makemigrations && python manage.py migrate && python manage.py collectstatic --noinput && gunicorn --bind 0.0.0.0:8000 --workers 1 --timeout 120 --graceful-timeout 120 --keep-alive 5 --access-logfile - --error-logfile - --log-level info config.wsgi:application"
+    command: sh -c "python manage.py makemigrations && python manage.py migrate && python manage.py collectstatic --noinput && gunicorn --bind 0.0.0.0:8000 --workers 2 --threads 2 --timeout 60 --graceful-timeout 120 --keep-alive 2 --access-logfile - --error-logfile - --log-level info config.wsgi:application"
     volumes:
       - ./media:/app/media
     ports:
