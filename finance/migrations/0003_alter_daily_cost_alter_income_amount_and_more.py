@@ -49,7 +49,6 @@ class Migration(migrations.Migration):
             ),
         ),
 
-        # ⬇️ TU JEST KLUCZ
         migrations.SeparateDatabaseAndState(
             database_operations=[],
             state_operations=[
@@ -60,14 +59,14 @@ class Migration(migrations.Migration):
                         name='monthly_rec_user_id_89bb82_idx',
                     ),
                 ),
+                migrations.AddConstraint(
+                    model_name='monthly',
+                    constraint=models.UniqueConstraint(
+                        fields=('user', 'date'),
+                        name='unique_user_month',
+                    ),
+                ),
             ],
         ),
 
-        migrations.AddConstraint(
-            model_name='monthly',
-            constraint=models.UniqueConstraint(
-                fields=('user', 'date'),
-                name='unique_user_month',
-            ),
-        ),
     ]
