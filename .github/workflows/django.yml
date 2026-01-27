@@ -16,7 +16,7 @@ jobs:
         ports:
           - 5432:5432
         env:
-          POSTGRES_DB: finance_db
+          POSTGRES_DB: finance_test_db
           POSTGRES_USER: finance_user
           POSTGRES_PASSWORD: finance_pass
         options: >-
@@ -26,10 +26,13 @@ jobs:
           --health-retries 5
 
     env:
-      POSTGRES_DB: finance_db
+      POSTGRES_DB: finance_test_db
       POSTGRES_USER: finance_user
       POSTGRES_PASSWORD: finance_pass
       POSTGRES_HOST: postgres 
+      POSTGRES_PORT: 5432
+      DATABASE_URL: postgres://finance_user:finance_pass@postgres:5432/finance_test_db
+      DEBUG: "False"
 
     steps:
       - uses: actions/checkout@v3
@@ -45,15 +48,16 @@ jobs:
       - name: Django fake secret key
         run: |
           echo "SECRET_KEY=topsecretvalue" >> $GITHUB_ENV   
-      - name: Make migrations
+
+      - name: Check migrations are committed
         run: |
-          python manage.py makemigrations
+          python manage.py makemigrations --check --dry-run
 
       - name: Apply migrations
         run: |
-          python manage.py migrate
+          python manage.py migrate --noinput
 
       - name: Run tests
         run: |
-          python manage.py test
+          python manage.py test --verbosity 2
 
