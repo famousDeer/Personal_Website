@@ -16,7 +16,7 @@ jobs:
         ports:
           - 5432:5432
         env:
-          POSTGRES_DB: finance_db
+          POSTGRES_DB: finance_test_db
           POSTGRES_USER: finance_user
           POSTGRES_PASSWORD: finance_pass
         options: >-
@@ -26,34 +26,32 @@ jobs:
           --health-retries 5
 
     env:
-      POSTGRES_DB: finance_db
+      DJANGO_SETTINGS_MODULE: config.settings   # <-- dopasuj ścieżkę
+      POSTGRES_DB: finance_test_db
       POSTGRES_USER: finance_user
       POSTGRES_PASSWORD: finance_pass
-      POSTGRES_HOST: postgres 
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      DATABASE_URL: postgres://finance_user:finance_pass@postgres:5432/finance_test_db
+      SECRET_KEY: ci-secret-key
+      DEBUG: "False"
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: 3.11
+          python-version: "3.11"
 
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-      
-      - name: Django fake secret key
-        run: |
-          echo "SECRET_KEY=topsecretvalue" >> $GITHUB_ENV   
-      - name: Make migrations
-        run: |
-          python manage.py makemigrations
 
-      - name: Apply migrations
+      - name: Check migrations are committed
         run: |
-          python manage.py migrate
+          python manage.py makemigrations --check --dry-run
 
       - name: Run tests
         run: |
-          python manage.py test
-
+          python manage.py test --verbosity 2
