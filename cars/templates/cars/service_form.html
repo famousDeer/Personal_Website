@@ -1,0 +1,178 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-xl-9 col-lg-10">
+        <div class="text-center mb-4 animate-fade-in">
+            <div class="icon-box bg-primary-subtle text-primary mx-auto mb-3 shadow-sm" style="width: 74px; height: 74px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2rem;">
+                <i class="bi bi-wrench-adjustable-circle"></i>
+            </div>
+            <h2 class="fw-bold mb-1">{{ title }}</h2>
+            <p class="text-muted mb-0">{{ car.brand }} {{ car.model }}</p>
+        </div>
+
+        <form method="post" class="animate-fade-in-up">
+            {% csrf_token %}
+
+            <div class="card border-0 shadow-lg action-card mb-4">
+                <div class="card-body p-4 p-md-5">
+                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
+                        <div>
+                            <h5 class="fw-bold mb-1">Szczegóły serwisu</h5>
+                            <p class="text-muted small mb-0">Wprowadź podstawowe informacje o wykonanej naprawie.</p>
+                        </div>
+                    </div>
+
+                    {% for field in form %}
+                        <div class="form-floating mb-3">
+                            {{ field }}
+                            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                        </div>
+                        {% if field.errors %}
+                            <div class="text-danger small mt-n2 mb-3 ps-1">{{ field.errors }}</div>
+                        {% endif %}
+                        {% if field.help_text %}
+                            <div class="form-text small mb-3">{{ field.help_text }}</div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-lg action-card">
+                <div class="card-body p-4 p-md-5">
+                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3">
+                        <div>
+                            <h5 class="fw-bold mb-1">Wymienione części</h5>
+                            <p class="text-muted small mb-0">To pole jest opcjonalne. Możesz dodać dowolną liczbę pozycji.</p>
+                        </div>
+                        <button type="button" class="btn btn-outline-primary rounded-pill px-3" id="addPartRowBtn">
+                            <i class="bi bi-plus-lg me-1"></i> Dodaj część
+                        </button>
+                    </div>
+
+                    {{ parts_formset.management_form }}
+                    {% if parts_formset.non_form_errors %}
+                        <div class="alert alert-danger">{{ parts_formset.non_form_errors }}</div>
+                    {% endif %}
+
+                    <div id="partsFormRows" class="d-flex flex-column gap-3">
+                        {% for part_form in parts_formset %}
+                            <div class="border rounded-4 p-3 form-surface part-row" data-existing="{% if part_form.instance.pk %}true{% else %}false{% endif %}">
+                                {% for hidden_field in part_form.hidden_fields %}
+                                    {{ hidden_field }}
+                                {% endfor %}
+                                {{ part_form.DELETE.as_hidden }}
+
+                                <div class="row g-3 align-items-end">
+                                    <div class="col-md-7">
+                                        <div class="form-floating">
+                                            {{ part_form.name }}
+                                            <label for="{{ part_form.name.id_for_label }}">{{ part_form.name.label }}</label>
+                                        </div>
+                                        {% if part_form.name.errors %}
+                                            <div class="text-danger small mt-1">{{ part_form.name.errors }}</div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-floating">
+                                            {{ part_form.price }}
+                                            <label for="{{ part_form.price.id_for_label }}">{{ part_form.price.label }}</label>
+                                        </div>
+                                        {% if part_form.price.errors %}
+                                            <div class="text-danger small mt-1">{{ part_form.price.errors }}</div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="col-md-1 d-grid">
+                                        <button type="button" class="btn btn-outline-danger remove-part-btn" title="Usuń pozycję">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+
+                    <template id="emptyPartFormTemplate">
+                        <div class="border rounded-4 p-3 form-surface part-row" data-existing="false">
+                            {% for hidden_field in parts_formset.empty_form.hidden_fields %}
+                                {{ hidden_field }}
+                            {% endfor %}
+                            {{ parts_formset.empty_form.DELETE.as_hidden }}
+
+                            <div class="row g-3 align-items-end">
+                                <div class="col-md-7">
+                                    <div class="form-floating">
+                                        {{ parts_formset.empty_form.name }}
+                                        <label for="{{ parts_formset.empty_form.name.id_for_label }}">{{ parts_formset.empty_form.name.label }}</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-floating">
+                                        {{ parts_formset.empty_form.price }}
+                                        <label for="{{ parts_formset.empty_form.price.id_for_label }}">{{ parts_formset.empty_form.price.label }}</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-1 d-grid">
+                                    <button type="button" class="btn btn-outline-danger remove-part-btn" title="Usuń pozycję">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-end gap-2 flex-wrap mt-4">
+                <a href="{% url 'cars:dashboard' car.id %}" class="btn btn-soft-neutral rounded-pill px-4">Anuluj</a>
+                <button type="submit" class="btn btn-primary rounded-pill fw-bold px-4 shadow-sm">
+                    <i class="bi bi-save me-2"></i>Zapisz serwis
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const addPartRowBtn = document.getElementById("addPartRowBtn");
+    const partsRows = document.getElementById("partsFormRows");
+    const totalFormsInput = document.getElementById("id_parts-TOTAL_FORMS");
+    const template = document.getElementById("emptyPartFormTemplate");
+
+    function attachRemoveHandler(button) {
+        button.addEventListener("click", function () {
+            const row = button.closest(".part-row");
+            const deleteInput = row.querySelector('input[name$="-DELETE"]');
+            const isExisting = row.dataset.existing === "true";
+
+            if (isExisting && deleteInput) {
+                deleteInput.checked = true;
+                row.classList.add("d-none");
+            } else {
+                row.remove();
+            }
+        });
+    }
+
+    document.querySelectorAll(".remove-part-btn").forEach(attachRemoveHandler);
+
+    addPartRowBtn.addEventListener("click", function () {
+        const formIndex = Number(totalFormsInput.value);
+        const newRowHtml = template.innerHTML.replaceAll("__prefix__", formIndex);
+        partsRows.insertAdjacentHTML("beforeend", newRowHtml);
+        totalFormsInput.value = formIndex + 1;
+
+        const addedRow = partsRows.lastElementChild;
+        const removeButton = addedRow.querySelector(".remove-part-btn");
+        if (removeButton) {
+            attachRemoveHandler(removeButton);
+        }
+    });
+});
+</script>
+{% endblock %}

@@ -15,6 +15,17 @@
     /* Cooking App Colors */
     --bg-recipe-card: #fdfbf7; /* Kremowy papier */
     --recipe-accent: #d35400;  /* Pomarańczowy akcent */
+
+    /* Shared surfaces */
+    --surface-card: rgba(255, 255, 255, 0.72);
+    --surface-subtle: rgba(248, 249, 250, 0.92);
+    --surface-border: rgba(0, 0, 0, 0.08);
+    --input-bg: #f8f9fa;
+    --input-bg-focus: #ffffff;
+    --input-border: rgba(0, 0, 0, 0.08);
+    --input-placeholder: rgba(108, 117, 125, 0.9);
+    --button-neutral-bg: rgba(255, 255, 255, 0.75);
+    --button-neutral-hover: rgba(255, 255, 255, 0.95);
 }
 
 [data-theme="dark"] {
@@ -31,6 +42,16 @@
     /* Cooking App Dark Colors */
     --bg-recipe-card: #cf864a59; /* Ciemnoszary papier */
     --recipe-accent: #e67e22;  /* Jaśniejszy pomarańcz */
+
+    --surface-card: rgba(24, 28, 34, 0.82);
+    --surface-subtle: rgba(31, 36, 43, 0.92);
+    --surface-border: rgba(255, 255, 255, 0.08);
+    --input-bg: rgba(20, 24, 30, 0.96);
+    --input-bg-focus: rgba(25, 30, 37, 0.98);
+    --input-border: rgba(255, 255, 255, 0.12);
+    --input-placeholder: rgba(173, 181, 189, 0.85);
+    --button-neutral-bg: rgba(33, 37, 41, 0.88);
+    --button-neutral-hover: rgba(52, 58, 64, 0.96);
 
     /* Bootstrap Overwrite Variables */
     --bs-body-bg: #0079ff1a;
@@ -152,7 +173,7 @@ a { text-decoration: none; }
    ========================================= */
 /* Karty Akcji */
 .action-card {
-    background-color: #ffffff5e; 
+    background-color: var(--surface-card);
     transition: transform 0.3s ease, box-shadow 0.3s ease, background-color 0.3s;
     border-radius: 16px; 
     animation: fadeIn 0.5s ease-out both;
@@ -251,24 +272,38 @@ a { text-decoration: none; }
    6. FORMS & INPUTS
    ========================================= */
 .form-control, .form-select {
-    background-color: #f8f9fa;
-    border: 1px solid rgba(0,0,0,0.05);
+    background-color: var(--input-bg);
+    border: 1px solid var(--input-border);
     border-radius: 10px;
     padding: 1rem 0.75rem;
     transition: all 0.2s ease-in-out;
+    color: var(--text-main);
 }
 
 .form-control:focus, .form-select:focus {
-    background-color: #fff;
+    background-color: var(--input-bg-focus);
     box-shadow: 0 4px 15px rgba(0,0,0,0.05);
     border-color: #198754; /* Domyślny zielony (przychody/ogólne) */
+    color: var(--text-main);
+}
+
+.form-control::placeholder,
+.form-select::placeholder {
+    color: var(--input-placeholder);
+    opacity: 1;
+}
+
+.form-control:disabled,
+.form-select:disabled {
+    background-color: var(--surface-subtle);
+    color: var(--text-muted);
 }
 
 /* Specjalny styl dla pola kwoty wydatku */
 .expense-input:focus {
     border-color: #dc3545 !important;
     box-shadow: 0 4px 15px rgba(220, 53, 69, 0.1) !important;
-    background-color: #fff;
+    background-color: var(--input-bg-focus);
     ::placeholder { color: rgba(255, 255, 255, 0.4) !important; opacity: 1; };
 }
 
@@ -278,11 +313,81 @@ a { text-decoration: none; }
 
 .form-floating > label {
     padding-left: 0.75rem;
-    color: #6c757d;
+    color: var(--text-muted);
+    opacity: 1;
 }
 
 .form-floating > label > i {
     opacity: 0.6;
+}
+
+.form-floating > .form-control:focus ~ label,
+.form-floating > .form-control:not(:placeholder-shown) ~ label,
+.form-floating > .form-select ~ label {
+    color: var(--text-main);
+    opacity: 1;
+}
+
+.form-check-label,
+.form-label,
+.form-text {
+    color: var(--text-main);
+}
+
+.form-text {
+    color: var(--text-muted) !important;
+}
+
+.form-floating > .form-control:-webkit-autofill,
+.form-floating > .form-control:-webkit-autofill:hover,
+.form-floating > .form-control:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--text-main);
+    -webkit-box-shadow: 0 0 0 1000px var(--input-bg-focus) inset;
+}
+
+.btn-soft-neutral {
+    background-color: var(--button-neutral-bg);
+    color: var(--text-main);
+    border: 1px solid var(--surface-border);
+}
+
+.btn-soft-neutral:hover,
+.btn-soft-neutral:focus {
+    background-color: var(--button-neutral-hover);
+    color: var(--text-main);
+    border-color: var(--surface-border);
+}
+
+.form-surface {
+    background-color: var(--surface-subtle);
+    border-color: var(--surface-border) !important;
+}
+
+.flatpickr-calendar {
+    border: 1px solid var(--surface-border);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.16);
+    border-radius: 18px;
+    overflow: hidden;
+}
+
+.flatpickr-day.selected,
+.flatpickr-day.startRange,
+.flatpickr-day.endRange,
+.flatpickr-day.selected.inRange,
+.flatpickr-day.startRange.inRange,
+.flatpickr-day.endRange.inRange,
+.flatpickr-day.selected:focus,
+.flatpickr-day.startRange:focus,
+.flatpickr-day.endRange:focus,
+.flatpickr-day.selected:hover,
+.flatpickr-day.startRange:hover,
+.flatpickr-day.endRange:hover {
+    background: var(--bs-primary);
+    border-color: var(--bs-primary);
+}
+
+.flatpickr-input[readonly] {
+    cursor: pointer;
 }
 
 /* =========================================
@@ -452,22 +557,75 @@ a { text-decoration: none; }
 
     /* --- Forms --- */
     .form-control, .form-select, .input-group-text {
-        background-color: #2b3035 !important;
-        border-color: rgba(255,255,255,0.1);
-        color: #fff !important;
+        background-color: var(--input-bg) !important;
+        border-color: var(--input-border);
+        color: var(--text-main) !important;
     }
     .form-control:focus, .form-select:focus {
-        background-color: #32383e;
+        background-color: var(--input-bg-focus);
         border-color: #75b798;
     }
     
     /* Fix dla Floating Labels */
-    .form-floating > label { color: rgba(255, 255, 255, 0.6) !important; }
+    .form-floating > label {
+        color: rgba(255, 255, 255, 0.78) !important;
+        opacity: 1 !important;
+    }
     .form-floating > .form-control:focus ~ label,
     .form-floating > .form-control:not(:placeholder-shown) ~ label,
     .form-floating > .form-select ~ label {
-        color: rgba(255, 255, 255, 0.9) !important;
-        background-color: transparent !important;
+        color: #ffffff !important;
+        background: transparent !important;
+        /* padding-inline: 0 !important; */
+        margin-left: 0;
+        border-radius: 0;
+        text-shadow:
+            0 0 2px var(--input-bg-focus),
+            0 0 8px var(--input-bg-focus),
+            0 0 14px var(--input-bg-focus);
+    }
+
+    .flatpickr-calendar {
+        background: #1c2128;
+        border-color: rgba(255, 255, 255, 0.08);
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+    }
+
+    .flatpickr-months,
+    .flatpickr-weekdays,
+    span.flatpickr-weekday {
+        background: #1c2128;
+        color: #f8f9fa;
+    }
+
+    .flatpickr-current-month input.cur-year,
+    .flatpickr-current-month .flatpickr-monthDropdown-months,
+    .flatpickr-monthDropdown-month,
+    .numInputWrapper span.arrowUp:after,
+    .numInputWrapper span.arrowDown:after,
+    .flatpickr-prev-month,
+    .flatpickr-next-month {
+        color: #f8f9fa;
+        fill: #f8f9fa;
+    }
+
+    .flatpickr-day,
+    .flatpickr-time input,
+    .flatpickr-time .flatpickr-am-pm {
+        color: #e9ecef;
+    }
+
+    .flatpickr-day.flatpickr-disabled,
+    .flatpickr-day.flatpickr-disabled:hover,
+    .flatpickr-day.prevMonthDay,
+    .flatpickr-day.nextMonthDay {
+        color: rgba(255, 255, 255, 0.24);
+    }
+
+    .flatpickr-day:hover,
+    .flatpickr-day:focus {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.08);
     }
 
     /* Fix dla Autofill */

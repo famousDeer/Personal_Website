@@ -93,8 +93,8 @@ class TravelDestinationsTests(TestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Warszawa')
-        self.assertContains(response, '2025-01-01')
-        self.assertContains(response, '2025-01-10')
+        self.assertContains(response, '01.01.2025')
+        self.assertContains(response, '10.01.2025')
         # Post update
         data = {
             'country': 'PL',
@@ -143,5 +143,4 @@ class TravelDestinationsTests(TestCase):
         response = self.client.get(url)
         self.assertContains(response, '10')  # travel1: 10 days
         self.assertContains(response, '5')   # travel2: 5 days
-
 

@@ -16,6 +16,7 @@ urlpatterns = [
     path('dashboard/<int:car_id>/add-service/', views.AddServiceView.as_view(), name='add_service'),
     path('dashboard/<int:car_id>/edit-service/<int:service_id>/', views.EditServiceView.as_view(), name='edit_service'),
     path('dashboard/<int:car_id>/delete-service/<int:service_id>/', views.DeleteServiceView.as_view(), name='delete_service'),
+    path('dashboard/<int:car_id>/service-history-pdf/', views.ServiceHistoryPdfView.as_view(), name='service_history_pdf'),
     path('dashboard/<int:car_id>/add-tyres/', views.AddTyresView.as_view(), name='add_tyres'),
     path('dashboard/<int:car_id>/edit-tyres/<int:tyre_id>/', views.EditTyresView.as_view(), name='edit_tyres'),
     path('dashboard/<int:car_id>/delete-tyres/<int:tyre_id>/', views.DeleteTyresView.as_view(), name='delete_tyres'),

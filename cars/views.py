@@ -2,9 +2,29 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.views import View
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Sum, Avg
+from django.http import HttpResponse
+from django.utils import timezone
+from django.utils.text import slugify
 from decimal import Decimal
-from .models import Cars
-from .forms import CarForm, FuelForm, ServiceForm, TyreForm
+from .models import Cars, CarService
+from .forms import CarForm, FuelForm, ServiceForm, ServicePartFormSet, TyreForm
+from .pdf_utils import build_service_history_pdf
+
+
+SERVICE_FORM_TEMPLATE = 'cars/service_form.html'
+
+
+def render_service_form(request, car, form, parts_formset, title):
+    return render(
+        request,
+        SERVICE_FORM_TEMPLATE,
+        {
+            'car': car,
+            'form': form,
+            'parts_formset': parts_formset,
+            'title': title,
+        },
+    )
 
 # 1. GARAŻ (Lista aut)
 class GarageView(LoginRequiredMixin, View):
@@ -34,7 +54,7 @@ class CarDashboardView(LoginRequiredMixin, View):
         
         # Pobieranie danych
         fuel_logs = car.fuel_consumptions.all().order_by('-date')
-        services = car.services.all().order_by('-date')
+        services = car.services.prefetch_related('parts').all().order_by('-date')
         tyres = car.tyres.all().order_by('-purchase_date')
 
         # Statystyki
@@ -105,35 +125,44 @@ class EditCarView(LoginRequiredMixin, View):
 class AddServiceView(LoginRequiredMixin, View):
     def get(self, request, car_id):
         car = get_object_or_404(Cars, id=car_id, user=request.user)
-        form = ServiceForm()
-        return render(request, 'cars/form_generic.html', {'form': form, 'title': f'Dodaj Serwis: {car.brand}'})
+        service = CarService(car=car)
+        form = ServiceForm(initial={'date': timezone.localdate()}, instance=service)
+        parts_formset = ServicePartFormSet(instance=service, prefix='parts')
+        return render_service_form(request, car, form, parts_formset, f'Dodaj Serwis: {car.brand}')
 
     def post(self, request, car_id):
         car = get_object_or_404(Cars, id=car_id, user=request.user)
-        form = ServiceForm(request.POST)
-        if form.is_valid():
+        service = CarService(car=car)
+        form = ServiceForm(request.POST, instance=service)
+        parts_formset = ServicePartFormSet(request.POST, instance=service, prefix='parts')
+        if form.is_valid() and parts_formset.is_valid():
             service = form.save(commit=False)
             service.car = car
             service.save()
+            parts_formset.instance = service
+            parts_formset.save()
             return redirect('cars:dashboard', car_id=car.id)
-        return render(request, 'cars/form_generic.html', {'form': form, 'title': 'Dodaj Serwis'})
+        return render_service_form(request, car, form, parts_formset, f'Dodaj Serwis: {car.brand}')
     
 # 8. EDYTOWANIE SERWISU
 class EditServiceView(LoginRequiredMixin, View):
     def get(self, request, car_id, service_id):
         car = get_object_or_404(Cars, id=car_id, user=request.user)
-        service = get_object_or_404(car.services, id=service_id)
+        service = get_object_or_404(car.services.prefetch_related('parts'), id=service_id)
         form = ServiceForm(instance=service)
-        return render(request, 'cars/form_generic.html', {'form': form, 'title': f'Edytuj Serwis: {car.brand}'})
+        parts_formset = ServicePartFormSet(instance=service, prefix='parts')
+        return render_service_form(request, car, form, parts_formset, f'Edytuj Serwis: {car.brand}')
 
     def post(self, request, car_id, service_id):
         car = get_object_or_404(Cars, id=car_id, user=request.user)
-        service = get_object_or_404(car.services, id=service_id)
+        service = get_object_or_404(car.services.prefetch_related('parts'), id=service_id)
         form = ServiceForm(request.POST, instance=service)
-        if form.is_valid():
+        parts_formset = ServicePartFormSet(request.POST, instance=service, prefix='parts')
+        if form.is_valid() and parts_formset.is_valid():
             form.save()
+            parts_formset.save()
             return redirect('cars:dashboard', car_id=car.id)
-        return render(request, 'cars/form_generic.html', {'form': form, 'title': 'Edytuj Serwis'})
+        return render_service_form(request, car, form, parts_formset, f'Edytuj Serwis: {car.brand}')
 
 # 9. USUWANIE SERWISU
 class DeleteServiceView(LoginRequiredMixin, View):
@@ -217,3 +246,15 @@ class DeleteFuelView(LoginRequiredMixin, View):
         fuel_log = get_object_or_404(car.fuel_consumptions, id=fuel_id)
         fuel_log.delete()
         return redirect('cars:dashboard', car_id=car.id)
+
+
+class ServiceHistoryPdfView(LoginRequiredMixin, View):
+    def get(self, request, car_id):
+        car = get_object_or_404(Cars, id=car_id, user=request.user)
+        services = car.services.prefetch_related('parts').all().order_by('-date')
+        pdf_bytes = build_service_history_pdf(car, services)
+        filename = f"ksiazka-serwisowa-{slugify(car.brand)}-{slugify(car.model)}.pdf"
+
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response

@@ -15,8 +15,8 @@
                     <input type="hidden" name="querystring" value="{{ querystring }}">
                     <div class="mb-3">
                         <label for="date" class="form-label">Data</label>
-                        <input type="date" class="form-control" id="date" name="date" 
-                               value="{{ expense.date|date:'Y-m-d' }}" required>
+                        <input type="text" class="form-control" id="date" name="date" 
+                               value="{{ expense.date|date:'d.m.Y' }}" required autocomplete="off" data-flatpickr="date">
                     </div>
                     <div class="mb-3">
                         <label for="title" class="form-label">Tytuł</label>

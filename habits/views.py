@@ -8,6 +8,7 @@ from django.views import View
 from django.utils.decorators import method_decorator
 from datetime import datetime
 from .models import Habit, HabitRecord
+from utils.tools import parse_date_input
 
 HABITS_CATEGORY = [
     'Zdrowie',
@@ -32,8 +33,8 @@ def add_habit(request):
         category = request.POST.get('category')
 
         try:
-            start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
-            end_date = end_date if end_date else None
+            start_date = parse_date_input(start_date)
+            end_date = parse_date_input(end_date) if end_date else None
         except ValueError:
             messages.error(request, 'Nieprawidłowy format. Uzyj YYYY-MM-DD.')
             return redirect('habits:add')
@@ -59,7 +60,7 @@ def add_habit(request):
     ]
 
     context = {
-        'default_date': timezone.now().date().strftime('%Y-%m-%d'),
+        'default_date': timezone.now().date(),
         'habits_category' : HABITS_CATEGORY,
         'type_choice': type_choice
         }
@@ -108,11 +109,11 @@ class UpdateHabitView(View):
         habit.category = request.POST.get('category')
         habit.is_active = request.POST.get('is_active')
         try:
-            habit.start_date = datetime.strptime(habit.start_date, '%Y-%m-%d').date()
+            habit.start_date = parse_date_input(habit.start_date)
             if habit.end_date:
-                habit.end_date = datetime.strptime(habit.end_date, '%Y-%m-%d').date()
+                habit.end_date = parse_date_input(habit.end_date)
         except ValueError:
-            messages.error(request, 'Nieprawidłowy format daty. Użyj YYYY-MM-DD.')
+            messages.error(request, 'Nieprawidłowy format. Uzyj YYYY-MM-DD.')
         habit.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         habit.save()
         messages.success(request, f'Pomyślnie zapisano zmiany!')

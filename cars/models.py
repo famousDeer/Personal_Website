@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from django.core.validators import MinValueValidator
 from decimal import Decimal
+from django.db.models import Sum
 
 User = get_user_model()
 
@@ -57,7 +58,8 @@ class CarService(models.Model):
     car = models.ForeignKey(Cars, on_delete=models.CASCADE, related_name='services')
     date = models.DateField()
     service_type = models.CharField(max_length=100)
-    description = models.TextField(blank=True)
+    workshop_name = models.CharField(max_length=150, blank=True)
+    description = models.TextField()
     cost = models.DecimalField(max_digits=10, decimal_places=2)
 
     class Meta:
@@ -68,6 +70,32 @@ class CarService(models.Model):
 
     def __str__(self):
         return f"{self.car.brand} {self.car.model} - {self.service_type} on {self.date}"
+
+    @property
+    def parts_total(self):
+        prefetched_parts = getattr(self, '_prefetched_objects_cache', {}).get('parts')
+        if prefetched_parts is not None:
+            return sum((part.price for part in prefetched_parts), Decimal('0.00'))
+        return self.parts.aggregate(total=Sum('price'))['total'] or Decimal('0.00')
+
+
+class CarServicePart(models.Model):
+    service = models.ForeignKey(CarService, on_delete=models.CASCADE, related_name='parts')
+    name = models.CharField(max_length=150)
+    price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.00'))],
+    )
+
+    class Meta:
+        db_table = 'car_service_parts'
+        ordering = ['id']
+        verbose_name = "Car Service Part"
+        verbose_name_plural = "Car Service Parts"
+
+    def __str__(self):
+        return f"{self.name} ({self.price} zł)"
     
 class CarFuelConsumption(models.Model):
     car = models.ForeignKey(Cars, on_delete=models.CASCADE, related_name='fuel_consumptions')

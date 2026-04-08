@@ -18,7 +18,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import serializers
-from utils.tools import month_start, parse_decimal
+from utils.tools import month_start, parse_date_input, parse_decimal
 from django.urls import reverse
 import json
 
@@ -231,8 +231,11 @@ class ExpenseListView(View):
                 expenses = expenses.filter(category=category_filter)
         
         if date_filter:
-            specific_date = datetime.strptime(date_filter, '%Y-%m-%d').date()
-            expenses = expenses.filter(date=specific_date)
+            try:
+                specific_date = parse_date_input(date_filter)
+                expenses = expenses.filter(date=specific_date)
+            except ValueError:
+                pass
 
         
         expenses = expenses.order_by('-date', 'title')
@@ -274,7 +277,7 @@ class AddExpenseView(View):
     @transaction.atomic
     def post(self, request):
         try:
-            date = datetime.strptime(request.POST.get('date'), '%Y-%m-%d').date()
+            date = parse_date_input(request.POST.get('date'))
             title = request.POST.get('title')
             category = request.POST.get('category')
             store = request.POST.get('store', '')
@@ -326,7 +329,7 @@ class EditExpenseView(View):
     def post(self, request, expense_id):
         expense = get_object_or_404(Daily, id=expense_id, user=request.user)
         old_monthly = expense.month
-        expense.date = datetime.strptime(request.POST.get('date'), '%Y-%m-%d').date()
+        expense.date = parse_date_input(request.POST.get('date'))
         expense.title = request.POST.get('title')
         expense.category = request.POST.get('category')
         expense.store = request.POST.get('store', '')
@@ -453,7 +456,7 @@ class IncomeListView(View):
 class AddIncomeView(View):
     def get(self, request):
         context = {
-            'default_date': timezone.now().date().strftime('%Y-%m-%d'),
+            'default_date': timezone.now().date(),
             'income_sources': INCOME_SOURCES
         }
         return render(request, 'finance/add_income.html', context)
@@ -466,7 +469,7 @@ class AddIncomeView(View):
         source = request.POST.get('source')
         
         try:
-            income_date = datetime.strptime(date, '%Y-%m-%d').date()
+            income_date = parse_date_input(date)
             month_date = month_start(income_date)
             
             monthly_record, created = Monthly.objects.select_for_update().get_or_create(
@@ -511,7 +514,7 @@ class EditIncomeView(View):
     def post(self, request, income_id):
         income = get_object_or_404(Income, id=income_id, user=request.user)
         old_monthly = income.month
-        income.date = datetime.strptime(request.POST.get('date'), '%Y-%m-%d').date()
+        income.date = parse_date_input(request.POST.get('date'))
         income.title = request.POST.get('title')
         income.source = request.POST.get('source')
         income.amount = parse_decimal(request.POST.get('amount'))
@@ -608,7 +611,7 @@ class TravelView(View):
         country_filter = request.GET.get('country', '')
         destinations = TravelDestinations.objects.filter(user=request.user)
         country_objs = []
-        distinct_countries = destinations.order_by('country').values_list('country', flat=True).distinct('country')
+        distinct_countries = destinations.order_by('country').values_list('country', flat=True).distinct()
         for code in distinct_countries:
             name = dict(django_countries).get(code, code)
             country_objs.append({'code': code, 'name': name})
@@ -661,8 +664,6 @@ class AddTravelView(View):
 class EditTravelView(View):
     def get(self, request, travel_id):
         travel = get_object_or_404(TravelDestinations, id=travel_id, user=request.user)
-        travel.start_date = travel.start_date.strftime('%Y-%m-%d')
-        travel.end_date = travel.end_date.strftime('%Y-%m-%d')
         form = TravelDestinationForm(instance=travel)
         return render(request, 'finance/edit_travel.html', {'form': form, 'travel': travel})
     
@@ -710,7 +711,7 @@ class DailyRecordAPI(APIView):
     def post(self, request):
         data = request.data
         try:
-            expense_date = datetime.strptime(data['date'], '%Y-%m-%d').date()
+            expense_date = parse_date_input(data['date'])
             month_date = expense_date.replace(day=1)
             
             monthly_record, created = Monthly.objects.get_or_create(

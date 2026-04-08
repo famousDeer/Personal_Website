@@ -21,8 +21,8 @@
                     {% csrf_token %}
 
                     <div class="form-floating mb-3">
-                        <input type="date" class="form-control" id="date" name="date" 
-                               value="{{ default_date|date:'Y-m-d' }}" required placeholder="Data">
+                        <input type="text" class="form-control" id="date" name="date" 
+                               value="{{ default_date|date:'d.m.Y' }}" required placeholder="Data" autocomplete="off" data-flatpickr="date">
                         <label for="date">Data otrzymania</label>
                     </div>
 

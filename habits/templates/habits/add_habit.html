@@ -14,8 +14,8 @@
                     {% csrf_token %}
                     <div class="mb-3">
                         <label for="start_date" class="form-label">Data rozpoczęcia</label>
-                        <input type="date" class="form-control" id="start_date" name="start_date" 
-                               value="{{ default_date }}" required>
+                        <input type="text" class="form-control" id="start_date" name="start_date" 
+                               value="{{ default_date|date:'d.m.Y' }}" required autocomplete="off" data-flatpickr="date">
                     </div>
                     <div class="form-check form-switch mb-3">
                         <input class="form-check-input" type="checkbox" role="switch" id="no_end_date" checked>
@@ -23,7 +23,7 @@
                     </div>
                     <div class="mb-3" id="end_date_group" style="display:none;">
                         <label for="end_date" class="form-label">Data zakończenia</label>
-                        <input type="date" class="form-control" id="end_date" name="end_date">
+                        <input type="text" class="form-control" id="end_date" name="end_date" autocomplete="off" data-flatpickr="date">
                     </div>
                     <div class="mb-3">
                         <label for="habit_name" class="form-label">Nazwa nawyku</label>

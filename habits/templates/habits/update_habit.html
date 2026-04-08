@@ -29,8 +29,8 @@
                     </div>
                     <div class="mb-3">
                         <label for="start_date" class="form-label">Data rozpoczęcia</label>
-                        <input type="date" class="form-control" id="start_date" name="start_date" 
-                                value="{{ habit.start_date|date:'Y-m-d' }}" required>
+                        <input type="text" class="form-control" id="start_date" name="start_date" 
+                                value="{{ habit.start_date|date:'d.m.Y' }}" required autocomplete="off" data-flatpickr="date">
                     </div>
                     <div class="form-check form-switch mb-3">
                         <input class="form-check-input" type="checkbox" role="switch" id="no_end_date" checked>
@@ -38,8 +38,8 @@
                     </div>
                     <div class="mb-3" id="end_date_group" style="display:none;">
                         <label for="end_date" class="form-label">Data zakończenia</label>
-                        <input type="date" class="form-control" id="end_date" name="end_date"
-                               value="{{ habit.end_date|date:'Y-m-d' }}">
+                        <input type="text" class="form-control" id="end_date" name="end_date"
+                               value="{{ habit.end_date|date:'d.m.Y' }}" autocomplete="off" data-flatpickr="date">
                     </div>
                     <div class="mb-3">
                         <label for="category" class="form-label">Rodzaj nawyku</label>
