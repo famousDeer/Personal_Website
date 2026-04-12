@@ -42,6 +42,11 @@ COST_OF_LIVING_CATEGORIES = [
     'Zakupy spozywcze', 'Paliwo', 'Rachunki', 'Zdrowie'
     ]
 
+
+def get_available_expense_categories(user):
+    dynamic_categories = Daily.objects.filter(user=user).values_list('category', flat=True).distinct()
+    return sorted(set(CATEGORIES_EXPENSES).union(dynamic_categories))
+
 @login_required
 def index(request):
     return render(request, 'finance/index.html')
@@ -124,6 +129,19 @@ class DashboardView(View):
         expenses_by_category = Daily.objects.filter(user=request.user, month=monthly_record).values('category').annotate(total=Sum('cost')).order_by('-total')
         categories = [item['category'] for item in expenses_by_category]
         amounts = [float(item['total']) for item in expenses_by_category]
+        available_expense_categories = get_available_expense_categories(request.user)
+
+        requested_cost_categories = request.GET.getlist('cost_category')
+        if requested_cost_categories:
+            selected_cost_categories = [
+                category for category in requested_cost_categories
+                if category in available_expense_categories
+            ]
+        else:
+            selected_cost_categories = [
+                category for category in COST_OF_LIVING_CATEGORIES
+                if category in available_expense_categories
+            ]
         
         income_by_source = Income.objects.filter(user=request.user, month=monthly_record).values('source').annotate(total=Sum('amount')).order_by('-total')
         income_sources = [item['source'] for item in income_by_source]
@@ -162,11 +180,14 @@ class DashboardView(View):
         daily_average = adjusted_daily_avg
 
         # Koszty zycia (Cost of Living) - suma wybranych kategorii
-        cost_of_living = Daily.objects.filter(
-            user=request.user,
-            month=monthly_record,
-            category__in=COST_OF_LIVING_CATEGORIES
-        ).aggregate(Sum('cost'))['cost__sum'] or 0
+        if selected_cost_categories:
+            selected_category_total = Daily.objects.filter(
+                user=request.user,
+                month=monthly_record,
+                category__in=selected_cost_categories
+            ).aggregate(Sum('cost'))['cost__sum'] or 0
+        else:
+            selected_category_total = 0
 
         # 3. Projekcja
         # Jeśli miesiąc jest przeszły -> Projekcja to po prostu całkowity koszt (bo days_remaining = 0)
@@ -196,7 +217,9 @@ class DashboardView(View):
             'savings_rate': savings_rate,
             'daily_average': daily_average,
             'projected_expense': projected_expense,
-            'cost_of_living': cost_of_living,
+            'selected_category_total': selected_category_total,
+            'available_expense_categories': available_expense_categories,
+            'selected_cost_categories': selected_cost_categories,
         }
         
         return render(request, 'finance/dashboard.html', context)

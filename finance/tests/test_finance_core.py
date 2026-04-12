@@ -115,3 +115,16 @@ class FinanceCoreTests(TestCase):
         self.assertIn("total_income", resp.context)
         self.assertIn("total_expense", resp.context)
         self.assertIn("balance", resp.context)
+
+    def test_dashboard_uses_selected_cost_categories(self):
+        today = timezone.now().date()
+        month = Monthly.objects.create(user=self.user, date=today.replace(day=1), total_income=0, total_expense=0)
+        Daily.objects.create(user=self.user, date=today, title="Paliwo", category="Paliwo", store="", cost=100, month=month)
+        Daily.objects.create(user=self.user, date=today, title="Sport", category="Sport", store="", cost=50, month=month)
+        Daily.objects.create(user=self.user, date=today, title="Rachunki", category="Rachunki", store="", cost=200, month=month)
+
+        resp = self.client.get(reverse("finance:dashboard"), {"cost_category": ["Sport", "Paliwo"]})
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context["selected_cost_categories"], ["Sport", "Paliwo"])
+        self.assertEqual(float(resp.context["selected_category_total"]), 150.0)
