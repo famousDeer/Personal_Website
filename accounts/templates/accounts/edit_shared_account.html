@@ -1,0 +1,86 @@
+{% extends 'base.html' %}
+
+{% block title %}Edytuj konto wspólne{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm action-card">
+            <div class="card-body p-4 p-lg-5">
+                <div class="d-flex align-items-center gap-3 mb-4">
+                    <div class="icon-box bg-success-subtle text-success">
+                        <i class="bi bi-pencil-square fs-3"></i>
+                    </div>
+                    <div>
+                        <h2 class="fw-bold mb-0">Edytuj konto wspólne</h2>
+                        <p class="text-muted mb-0">Zmień nazwę konta i sprawdź, kto ma do niego dostęp.</p>
+                    </div>
+                </div>
+
+                <form method="post" class="d-flex flex-column gap-3">
+                    {% csrf_token %}
+                    <div>
+                        <label for="{{ form.name.id_for_label }}" class="form-label">Nazwa konta wspólnego</label>
+                        {{ form.name }}
+                        {% if form.name.errors %}
+                            <div class="text-danger small mt-1">{{ form.name.errors|join:', ' }}</div>
+                        {% endif %}
+                    </div>
+
+                    {% if form.partner_username %}
+                        <div>
+                            <label for="{{ form.partner_username.id_for_label }}" class="form-label">Drugi użytkownik</label>
+                            {{ form.partner_username }}
+                            {% if form.partner_username.errors %}
+                                <div class="text-danger small mt-1">{{ form.partner_username.errors|join:', ' }}</div>
+                            {% endif %}
+                            <div class="form-text">Zmiana tej wartości zastąpi obecnego drugiego uczestnika konta.</div>
+                        </div>
+                    {% endif %}
+
+                    <div class="rounded-4 border p-3">
+                        <div class="small text-uppercase fw-bold text-muted mb-2">Uczestnicy</div>
+                        <div class="d-flex flex-wrap gap-2">
+                            {% for member in shared_account.members.all %}
+                                <span class="badge rounded-pill bg-primary-subtle text-primary px-3 py-2">{{ member.username }}</span>
+                            {% endfor %}
+                        </div>
+                        <div class="small text-muted mt-3">
+                            Twórca:
+                            {% if shared_account.owner %}
+                                {{ shared_account.owner.username }}
+                            {% else %}
+                                nie ustawiono
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-success rounded-pill px-4">
+                            Zapisz zmiany
+                        </button>
+                        <a href="{% url 'profile' %}" class="btn btn-soft-neutral rounded-pill px-4">
+                            Wróć
+                        </a>
+                    </div>
+                </form>
+
+                <div class="border-top mt-4 pt-4">
+                    <div class="small text-uppercase fw-bold text-danger mb-2">Strefa niebezpieczna</div>
+                    {% if can_manage_membership %}
+                        <p class="text-muted mb-3">Usunięcie konta wspólnego skasuje też jego historię finansową.</p>
+                        <form method="post" action="{% url 'delete_shared_account' shared_account.id %}" onsubmit="return confirm('Czy na pewno chcesz usunąć to konto wspólne?');">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-outline-danger rounded-pill px-4">
+                                Usuń konto wspólne
+                            </button>
+                        </form>
+                    {% else %}
+                        <p class="text-muted mb-0">Tylko twórca tego konta może zmienić drugiego uczestnika lub usunąć konto.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

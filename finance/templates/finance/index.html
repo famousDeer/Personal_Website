@@ -7,7 +7,34 @@
 {% endblock %}
 
 {% block content %}
-  {% block content_finance %}
+<div class="card border-0 shadow-sm action-card mb-4 animate-fade-in">
+    <div class="card-body d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3">
+        <div>
+            <div class="small text-uppercase fw-bold text-muted mb-1">Aktywne konto</div>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <h5 class="fw-bold mb-0">{{ active_finance_account.display_name }}</h5>
+                <span class="badge rounded-pill {% if active_finance_account.account_type == 'shared' %}bg-primary-subtle text-primary{% else %}bg-success-subtle text-success{% endif %}">
+                    {% if active_finance_account.account_type == 'shared' %}Wspólne{% else %}Osobiste{% endif %}
+                </span>
+            </div>
+        </div>
+
+        <form method="post" action="{% url 'finance:switch_account' %}" class="d-flex flex-column flex-sm-row gap-2 align-items-sm-center">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <select class="form-select" name="account_id" onchange="this.form.submit()">
+                {% for account in finance_accounts %}
+                    <option value="{{ account.id }}" {% if active_finance_account.id == account.id %}selected{% endif %}>
+                        {{ account.display_name }} {% if account.account_type == 'shared' %}(wspólne){% endif %}
+                    </option>
+                {% endfor %}
+            </select>
+            <a href="{% url 'profile' %}" class="btn btn-soft-neutral rounded-pill px-3">Zarządzaj kontami</a>
+        </form>
+    </div>
+</div>
+
+{% block content_finance %}
 <div class="row g-4">
     
     <div class="col-md-6 col-lg-3">
@@ -79,5 +106,5 @@
       </a>
     </div>
 </div>
-  {% endblock %}
+{% endblock %}
 {% endblock %}

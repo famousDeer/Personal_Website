@@ -104,6 +104,12 @@
                                         <span>{{ expense.store|default:"-" }}</span>
                                     </div>
                                 {% endif %}
+                                {% if expense.category == transfer_category and expense.transfer_target_account %}
+                                    <div class="small text-primary mt-1">
+                                        <i class="bi bi-arrow-left-right me-1"></i>
+                                        Zasilenie: {{ expense.transfer_target_account.display_name }}
+                                    </div>
+                                {% endif %}
                             </div>
                         </td>
 
@@ -162,6 +168,12 @@
                                     <span>{{ expense.store|default:"-" }}</span>
                                 {% endif %}
                             </div>
+                            {% if expense.category == transfer_category and expense.transfer_target_account %}
+                                <div class="small text-primary mt-1">
+                                    <i class="bi bi-arrow-left-right me-1"></i>
+                                    Zasilenie: {{ expense.transfer_target_account.display_name }}
+                                </div>
+                            {% endif %}
                             <span class="badge bg-primary-subtle text-primary rounded-pill fw-normal">
                                 {{ expense.category }}
                             </span>

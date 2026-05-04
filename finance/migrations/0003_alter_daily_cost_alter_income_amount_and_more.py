@@ -48,25 +48,4 @@ class Migration(migrations.Migration):
                 max_digits=15,
             ),
         ),
-
-        migrations.SeparateDatabaseAndState(
-            database_operations=[],
-            state_operations=[
-                migrations.AddIndex(
-                    model_name='monthly',
-                    index=models.Index(
-                        fields=['user', 'date'],
-                        name='monthly_rec_user_id_89bb82_idx',
-                    ),
-                ),
-                migrations.AddConstraint(
-                    model_name='monthly',
-                    constraint=models.UniqueConstraint(
-                        fields=('user', 'date'),
-                        name='unique_user_month',
-                    ),
-                ),
-            ],
-        ),
-
     ]

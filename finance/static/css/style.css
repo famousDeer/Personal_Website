@@ -168,6 +168,17 @@ a { text-decoration: none; }
     border-color: #dc3545;
 }
 
+.btn-account-pill {
+    border: 1px solid var(--surface-border);
+    border-radius: 20px;
+    padding: 5px 15px;
+    background: var(--button-neutral-bg);
+}
+
+.btn-account-pill:hover {
+    background: var(--button-neutral-hover);
+}
+
 /* =========================================
    4. CARDS & DASHBOARD
    ========================================= */

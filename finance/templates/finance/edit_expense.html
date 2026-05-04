@@ -5,26 +5,28 @@
 {% block content_finance %}
 <div class="row justify-content-center">
     <div class="col-md-6">
-        <div class="card">
-            <div class="card-header bg-warning text-white">
+        <div class="card border-0 shadow-lg action-card animate-fade-in-up">
+            <div class="card-header bg-warning text-white border-0">
                 <h4 class="mb-0"><i class="bi bi-pencil-square"></i> Edytuj Wydatek</h4>
             </div>
-            <div class="card-body">
+            <div class="card-body p-4">
                 <form method="post">
                     {% csrf_token %}
                     <input type="hidden" name="querystring" value="{{ querystring }}">
-                    <div class="mb-3">
-                        <label for="date" class="form-label">Data</label>
+
+                    <div class="form-floating mb-3">
                         <input type="text" class="form-control" id="date" name="date" 
-                               value="{{ expense.date|date:'d.m.Y' }}" required autocomplete="off" data-flatpickr="date">
+                               value="{{ expense.date|date:'d.m.Y' }}" required autocomplete="off" data-flatpickr="date" placeholder="Data">
+                        <label for="date">Data</label>
                     </div>
-                    <div class="mb-3">
-                        <label for="title" class="form-label">Tytuł</label>
+
+                    <div class="form-floating mb-3">
                         <input type="text" class="form-control" id="title" name="title" 
-                               value="{{ expense.title }}" required>
+                               value="{{ expense.title }}" required placeholder="Tytuł">
+                        <label for="title">Tytuł</label>
                     </div>
-                    <div class="mb-3">
-                        <label for="category" class="form-label">Kategoria</label>
+
+                    <div class="form-floating mb-3">
                         <select class="form-select" id="category" name="category" required>
                             <option value="">Wybierz kategorię</option>
                             {% for cat in categories %}
@@ -33,21 +35,39 @@
                                 </option>
                             {% endfor %}
                         </select>
+                        <label for="category">Kategoria</label>
                     </div>
-                    <div class="mb-3">
-                        <label for="store" class="form-label">Sklep</label>
+
+                    {% if show_shared_transfer_option %}
+                        <div class="form-floating mb-3 {% if expense.category != transfer_category %}d-none{% endif %}" id="transfer-target-wrapper">
+                            <select class="form-select" id="transfer_target_account" name="transfer_target_account">
+                                <option value="" selected disabled>Wybierz konto wspólne...</option>
+                                {% for account in shared_target_accounts %}
+                                    <option value="{{ account.id }}" {% if expense.transfer_target_account_id == account.id %}selected{% endif %}>
+                                        {{ account.display_name }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                            <label for="transfer_target_account">Zasil konto wspólne</label>
+                        </div>
+                    {% endif %}
+
+                    <div class="form-floating mb-3">
                         <input type="text" class="form-control" id="store" name="store" 
-                               value="{{ expense.store }}">
+                               value="{{ expense.store }}" placeholder="Sklep">
+                        <label for="store">Sklep</label>
                     </div>
+
                     <div class="mb-3">
-                        <label for="cost" class="form-label">Kwota (zł)</label>
-                        <input type="text" step="0.01" class="form-control" id="cost" 
+                        <label for="cost" class="form-label small text-uppercase fw-bold text-muted ms-1">Kwota (zł)</label>
+                        <input type="text" step="0.01" class="form-control" id="cost"
                                name="cost" value="{{ expense.cost }}" required min="0.01">
                     </div>
-                    <button type="submit" class="btn btn-warning">
+
+                    <button type="submit" class="btn btn-warning rounded-pill px-4">
                         <i class="bi bi-save"></i> Zaktualizuj
                     </button>
-                    <a href="{% url 'finance:expense_list' %}{% if querystring %}?{{ querystring }}{% endif %}" class="btn btn-secondary">
+                    <a href="{% url 'finance:expense_list' %}{% if querystring %}?{{ querystring }}{% endif %}" class="btn btn-soft-neutral rounded-pill px-4">
                         <i class="bi bi-x-circle"></i> Anuluj
                     </a>
                 </form>
@@ -55,4 +75,31 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const categoryField = document.getElementById('category');
+        const transferWrapper = document.getElementById('transfer-target-wrapper');
+        const transferSelect = document.getElementById('transfer_target_account');
+        const transferCategory = "{{ transfer_category|escapejs }}";
+
+        if (!categoryField || !transferWrapper || !transferSelect) {
+            return;
+        }
+
+        function syncTransferField() {
+            const showTransfer = categoryField.value === transferCategory;
+            transferWrapper.classList.toggle('d-none', !showTransfer);
+            transferSelect.required = showTransfer;
+            if (!showTransfer) {
+                transferSelect.value = '';
+            }
+        }
+
+        categoryField.addEventListener('change', syncTransferField);
+        syncTransferField();
+    });
+</script>
 {% endblock %}

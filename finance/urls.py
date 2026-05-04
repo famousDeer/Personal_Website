@@ -6,6 +6,7 @@ app_name = 'finance'
 
 urlpatterns = [
     path('', views.index, name='index'),
+    path('switch-account/', views.switch_account, name='switch_account'),
     path('dashboard/', views.DashboardView.as_view(), name='dashboard'),
 
     # Expensews

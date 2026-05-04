@@ -93,7 +93,7 @@
                             <div class="d-flex flex-column">
                                 <span class="fw-medium">{{ income.title }}</span>
                                 <div class="mt-1">
-                                    <span class="badge bg-success-subtle text-success rounded-pill fw-normal border border-success-subtle">
+                                    <span class="badge {% if income.source == transfer_income_source %}bg-primary-subtle text-primary border border-primary-subtle{% else %}bg-success-subtle text-success border border-success-subtle{% endif %} rounded-pill fw-normal">
                                         {{ income.source }}
                                     </span>
                                 </div>
@@ -105,20 +105,24 @@
                         </td>
 
                         <td class="pe-4 text-end" style="width: 120px;">
-                            <div class="btn-group">
-                                <a href="{% url 'finance:edit_income' income.id %}?{{ request.GET.urlencode }}" 
-                                   class="btn btn-light btn-sm text-primary rounded-circle" 
-                                   data-bs-toggle="tooltip" title="Edytuj">
-                                    <i class="bi bi-pencil-fill"></i>
-                                </a>
-                                <button type="button" 
-                                        class="btn btn-light btn-sm text-danger rounded-circle ms-1" 
-                                        title="Usuń" 
-                                        data-bs-toggle="modal" 
-                                        data-bs-target="#deleteIncomeModal-{{ income.id }}">
-                                    <i class="bi bi-trash-fill"></i>
-                                </button>
-                            </div>
+                            {% if income.linked_expense_id %}
+                                <span class="small text-muted">Powiązane z przelewem</span>
+                            {% else %}
+                                <div class="btn-group">
+                                    <a href="{% url 'finance:edit_income' income.id %}?{{ request.GET.urlencode }}" 
+                                       class="btn btn-light btn-sm text-primary rounded-circle" 
+                                       data-bs-toggle="tooltip" title="Edytuj">
+                                        <i class="bi bi-pencil-fill"></i>
+                                    </a>
+                                    <button type="button" 
+                                            class="btn btn-light btn-sm text-danger rounded-circle ms-1" 
+                                            title="Usuń" 
+                                            data-bs-toggle="modal" 
+                                            data-bs-target="#deleteIncomeModal-{{ income.id }}">
+                                        <i class="bi bi-trash-fill"></i>
+                                    </button>
+                                </div>
+                            {% endif %}
                         </td>
                     </tr>
                     {% empty %}
@@ -146,7 +150,7 @@
                         <div>
                             <span class="fw-bold fs-5">{{ income.title }}</span>
                             <div class="d-flex align-items-center gap-2 mt-1 small text-muted">
-                                <span class="badge bg-primary-subtle text-primary rounded-pill fw-normal">
+                                <span class="badge {% if income.source == transfer_income_source %}bg-primary-subtle text-primary{% else %}bg-primary-subtle text-primary{% endif %} rounded-pill fw-normal">
                                     {{ income.source }}
                                 </span>
                             </div>
@@ -156,25 +160,29 @@
                         </span>
                     </div>
 
-                    <div class="d-flex justify-content-between align-items-end pt-2 border-top border-light-subtle">
-                        <div class="small text-muted">
-                            <i class="bi bi-calendar-check me-1"></i>
-                            {{ income.date|date:"d.m.Y" }}
+                        <div class="d-flex justify-content-between align-items-end pt-2 border-top border-light-subtle">
+                            <div class="small text-muted">
+                                <i class="bi bi-calendar-check me-1"></i>
+                                {{ income.date|date:"d.m.Y" }}
+                            </div>
+                            {% if income.linked_expense_id %}
+                                <span class="small text-muted">Powiązane z przelewem</span>
+                            {% else %}
+                                <div class="btn-group btn-group-sm">
+                                    <a href="{% url 'finance:edit_income' income.id %}?{{ request.GET.urlencode }}" 
+                                       class="btn btn-outline-primary rounded-start-pill" title="Edytuj">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <button type="button" 
+                                            class="btn btn-outline-danger rounded-end-pill" 
+                                            title="Usuń"
+                                            data-bs-toggle="modal" 
+                                            data-bs-target="#deleteIncomeModal-{{ income.id }}">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            {% endif %}
                         </div>
-                        <div class="btn-group btn-group-sm">
-                            <a href="{% url 'finance:edit_income' income.id %}?{{ request.GET.urlencode }}" 
-                               class="btn btn-outline-primary rounded-start-pill" title="Edytuj">
-                                <i class="bi bi-pencil"></i>
-                            </a>
-                            <button type="button" 
-                                    class="btn btn-outline-danger rounded-end-pill" 
-                                    title="Usuń"
-                                    data-bs-toggle="modal" 
-                                    data-bs-target="#deleteIncomeModal-{{ income.id }}">
-                                <i class="bi bi-trash"></i>
-                            </button>
-                        </div>
-                    </div>
                 </div>
             </div>
             {% empty %}

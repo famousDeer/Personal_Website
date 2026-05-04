@@ -89,6 +89,9 @@
             <ul class="navbar-nav">
                 {% if user.is_authenticated %}
                     <li class="nav-item d-flex align-items-center gap-2"> 
+                        <a href="{% url 'profile' %}" class="nav-link btn-account-pill">
+                            <i class="bi bi-person-circle me-1"></i> {{ user.username }}
+                        </a>
                         
                         <form method="post" action="{% url 'logout' %}" class="d-inline">
                             {% csrf_token %}

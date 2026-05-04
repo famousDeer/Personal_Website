@@ -22,13 +22,13 @@
 
                     <div class="form-floating mb-3">
                         <input type="text" class="form-control" id="date" name="date" 
-                               value="{{ today|date:'d.m.Y' }}" required placeholder="Data" autocomplete="off" data-flatpickr="date">
+                               value="{% if form_values.date %}{{ form_values.date }}{% else %}{{ today|date:'d.m.Y' }}{% endif %}" required placeholder="Data" autocomplete="off" data-flatpickr="date">
                         <label for="date">Data zakupu</label>
                     </div>
 
                     <div class="form-floating mb-3">
                         <input type="text" class="form-control" id="title" name="title" 
-                               placeholder="np. Zakupy" required>
+                               placeholder="np. Zakupy" required value="{{ form_values.title|default:'' }}">
                         <label for="title">Tytuł wydatku</label>
                     </div>
 
@@ -36,15 +36,29 @@
                         <select class="form-select" id="category" name="category" required>
                             <option value="" selected disabled>Wybierz kategorię...</option>
                             {% for cat in categories %}
-                                <option value="{{ cat }}">{{ cat }}</option>
+                                <option value="{{ cat }}" {% if form_values.category == cat %}selected{% endif %}>{{ cat }}</option>
                             {% endfor %}
                         </select>
                         <label for="category">Kategoria</label>
                     </div>
 
+                    {% if show_shared_transfer_option %}
+                        <div class="form-floating mb-3 {% if form_values.category != transfer_category %}d-none{% endif %}" id="transfer-target-wrapper">
+                            <select class="form-select" id="transfer_target_account" name="transfer_target_account">
+                                <option value="" selected disabled>Wybierz konto wspólne...</option>
+                                {% for account in shared_target_accounts %}
+                                    <option value="{{ account.id }}" {% if form_values.transfer_target_account == account.id|stringformat:'s' %}selected{% endif %}>
+                                        {{ account.display_name }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                            <label for="transfer_target_account">Zasil konto wspólne</label>
+                        </div>
+                    {% endif %}
+
                     <div class="form-floating mb-3">
                         <input type="text" class="form-control" id="store" name="store" 
-                               placeholder="np. Biedronka">
+                               placeholder="np. Biedronka" value="{{ form_values.store|default:'' }}">
                         <label for="store">Sklep (opcjonalnie)</label>
                     </div>
 
@@ -52,7 +66,7 @@
                         <label for="cost" class="form-label small text-uppercase fw-bold text-muted ms-1">Kwota</label>
                         <div class="input-group input-group-lg">
                             <input  type="number" step="0.01" class="form-control fw-bold text-danger expense-input placeholder-visible" 
-                                   id="cost" name="cost" placeholder="0.00" required min="0.01">
+                                   id="cost" name="cost" placeholder="0.00" required min="0.01" value="{{ form_values.cost|default:'' }}">
                             <span class="input-group-text bg-light text-muted fw-bold">PLN</span>
                         </div>
                     </div>
@@ -72,4 +86,31 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const categoryField = document.getElementById('category');
+        const transferWrapper = document.getElementById('transfer-target-wrapper');
+        const transferSelect = document.getElementById('transfer_target_account');
+        const transferCategory = "{{ transfer_category|escapejs }}";
+
+        if (!categoryField || !transferWrapper || !transferSelect) {
+            return;
+        }
+
+        function syncTransferField() {
+            const showTransfer = categoryField.value === transferCategory;
+            transferWrapper.classList.toggle('d-none', !showTransfer);
+            transferSelect.required = showTransfer;
+            if (!showTransfer) {
+                transferSelect.value = '';
+            }
+        }
+
+        categoryField.addEventListener('change', syncTransferField);
+        syncTransferField();
+    });
+</script>
 {% endblock %}

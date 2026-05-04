@@ -1,0 +1,117 @@
+{% extends 'base.html' %}
+
+{% block title %}Moje konto{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm action-card h-100">
+            <div class="card-body p-4 p-lg-5">
+                <div class="d-flex align-items-center gap-3 mb-4">
+                    <div class="icon-box bg-primary-subtle text-primary">
+                        <i class="bi bi-person-circle fs-3"></i>
+                    </div>
+                    <div>
+                        <h2 class="fw-bold mb-0">Moje konto</h2>
+                        <p class="text-muted mb-0">Edytuj nazwę użytkownika i adres e-mail.</p>
+                    </div>
+                </div>
+
+                <form method="post" class="d-flex flex-column gap-3">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="profile">
+                    <div>
+                        <label for="{{ profile_form.username.id_for_label }}" class="form-label">Nazwa użytkownika</label>
+                        {{ profile_form.username }}
+                        {% if profile_form.username.errors %}
+                            <div class="text-danger small mt-1">{{ profile_form.username.errors|join:', ' }}</div>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <label for="{{ profile_form.email.id_for_label }}" class="form-label">Adres e-mail</label>
+                        {{ profile_form.email }}
+                        {% if profile_form.email.errors %}
+                            <div class="text-danger small mt-1">{{ profile_form.email.errors|join:', ' }}</div>
+                        {% endif %}
+                    </div>
+                    <button type="submit" class="btn btn-primary rounded-pill px-4 align-self-start">
+                        Zapisz zmiany
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm action-card">
+            <div class="card-body p-4 p-lg-5">
+                <div class="d-flex align-items-center gap-3 mb-4">
+                    <div class="icon-box bg-success-subtle text-success">
+                        <i class="bi bi-people-fill fs-3"></i>
+                    </div>
+                    <div>
+                        <h2 class="fw-bold mb-0">Konto wspólne</h2>
+                        <p class="text-muted mb-0">Połącz dwa konta użytkowników w jeden wspólny budżet.</p>
+                    </div>
+                </div>
+
+                <form method="post" class="d-flex flex-column gap-3 mb-4">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="shared_account">
+                    <div>
+                        <label for="{{ shared_account_form.name.id_for_label }}" class="form-label">Nazwa konta</label>
+                        {{ shared_account_form.name }}
+                        {% if shared_account_form.name.errors %}
+                            <div class="text-danger small mt-1">{{ shared_account_form.name.errors|join:', ' }}</div>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <label for="{{ shared_account_form.partner_username.id_for_label }}" class="form-label">Drugi użytkownik</label>
+                        {{ shared_account_form.partner_username }}
+                        {% if shared_account_form.partner_username.errors %}
+                            <div class="text-danger small mt-1">{{ shared_account_form.partner_username.errors|join:', ' }}</div>
+                        {% endif %}
+                    </div>
+                    <button type="submit" class="btn btn-success rounded-pill px-4 align-self-start">
+                        Utwórz konto wspólne
+                    </button>
+                </form>
+
+                <div>
+                    <h5 class="fw-bold mb-3">Twoje konta wspólne</h5>
+                    <div class="d-flex flex-column gap-3">
+                        {% for account in shared_accounts %}
+                            <div class="rounded-4 border p-3">
+                                <div class="d-flex justify-content-between align-items-start gap-3">
+                                    <div>
+                                        <div class="fw-bold">{{ account.name }}</div>
+                                        <div class="small text-muted">
+                                            Uczestnicy:
+                                            {% for member in account.members.all %}
+                                                {{ member.username }}{% if not forloop.last %}, {% endif %}
+                                            {% endfor %}
+                                        </div>
+                                        <div class="small text-muted mt-1">
+                                            Twórca:
+                                            {% if account.owner %}
+                                                {{ account.owner.username }}
+                                            {% else %}
+                                                nie ustawiono
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    <a href="{% url 'edit_shared_account' account.id %}" class="btn btn-soft-neutral btn-sm rounded-pill px-3">
+                                        Edytuj
+                                    </a>
+                                </div>
+                            </div>
+                        {% empty %}
+                            <div class="text-muted small">Nie masz jeszcze żadnego konta wspólnego.</div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
