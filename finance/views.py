@@ -51,6 +51,7 @@ INCOME_SOURCES = sorted([
 COST_OF_LIVING_CATEGORIES = [
     'Zakupy spozywcze', 'Paliwo', 'Rachunki', 'Zdrowie'
 ]
+INVESTMENT_CATEGORY = 'Inwestycje'
 
 
 def get_available_expense_categories(account):
@@ -59,6 +60,14 @@ def get_available_expense_categories(account):
     if account.account_type != FinanceAccount.PERSONAL:
         categories.discard(TRANSFER_TO_SHARED_CATEGORY)
     return sorted(categories.union(dynamic_categories))
+
+
+def get_investment_queryset(queryset):
+    return queryset.filter(category=INVESTMENT_CATEGORY)
+
+
+def get_non_investment_queryset(queryset):
+    return queryset.exclude(category=INVESTMENT_CATEGORY)
 
 
 def get_selected_transfer_target(request, active_account, category):
@@ -139,11 +148,20 @@ class DashboardView(View):
 
         days_in_month = list(range(1, days_in_month_count + 1))
         daily_expenses_data = [0.0] * days_in_month_count
+        daily_investments_data = [0.0] * days_in_month_count
         daily_incomes_data = [0.0] * days_in_month_count
 
-        daily_cost = (
+        regular_daily_cost = (
             Daily.objects
             .filter(account=active_account, month=monthly_record)
+            .exclude(category=INVESTMENT_CATEGORY)
+            .values('date')
+            .annotate(cost=Sum('cost'))
+            .order_by('-date')
+        )
+        investment_daily_cost = (
+            Daily.objects
+            .filter(account=active_account, month=monthly_record, category=INVESTMENT_CATEGORY)
             .values('date')
             .annotate(cost=Sum('cost'))
             .order_by('-date')
@@ -156,13 +174,22 @@ class DashboardView(View):
             .order_by('-date')
         )
 
-        for record in daily_cost:
+        for record in regular_daily_cost:
             daily_expenses_data[record['date'].day - 1] = float(record['cost'] or 0.0)
+        for record in investment_daily_cost:
+            daily_investments_data[record['date'].day - 1] = float(record['cost'] or 0.0)
         for record in daily_incomes:
             daily_incomes_data[record['date'].day - 1] = float(record['income'] or 0.0)
 
+        investment_total = (
+            Daily.objects.filter(account=active_account, month=monthly_record, category=INVESTMENT_CATEGORY)
+            .aggregate(Sum('cost'))['cost__sum'] or 0
+        )
+        spending_total = monthly_record.total_expense - investment_total
+
         expenses_by_category = (
             Daily.objects.filter(account=active_account, month=monthly_record)
+            .exclude(category=INVESTMENT_CATEGORY)
             .values('category')
             .annotate(total=Sum('cost'))
             .order_by('-total')
@@ -191,6 +218,15 @@ class DashboardView(View):
         income_amounts = [float(item['total']) for item in income_by_source]
         balance = monthly_record.total_income - monthly_record.total_expense
         recent_incomes = Income.objects.filter(account=active_account, month=monthly_record).order_by('-date')[:5]
+        recent_expenses = Daily.objects.filter(
+            account=active_account,
+            month=monthly_record,
+        ).exclude(category=INVESTMENT_CATEGORY).order_by('-date')[:5]
+        recent_investments = Daily.objects.filter(
+            account=active_account,
+            month=monthly_record,
+            category=INVESTMENT_CATEGORY,
+        ).order_by('-date')[:5]
 
         savings_rate = 0
         if monthly_record.total_income > 0:
@@ -216,7 +252,7 @@ class DashboardView(View):
         else:
             selected_category_total = 0
 
-        projected_expense = float(monthly_record.total_expense) + (adjusted_daily_avg * (days_in_month_count - days_passed))
+        projected_expense = float(spending_total) + (adjusted_daily_avg * (days_in_month_count - days_passed))
 
         context = {
             'current_month': monthly_record.date,
@@ -224,15 +260,19 @@ class DashboardView(View):
             'months': available_months,
             'total_income': monthly_record.total_income,
             'total_expense': monthly_record.total_expense,
+            'spending_total': spending_total,
+            'investment_total': investment_total,
             'balance': balance,
             'categories': json.dumps(categories) if categories else json.dumps([]),
             'amounts': json.dumps(amounts) if amounts else json.dumps([]),
             'income_sources': json.dumps(income_sources) if income_sources else json.dumps([]),
             'income_amounts': json.dumps(income_amounts) if income_amounts else json.dumps([]),
-            'recent_expenses': Daily.objects.filter(account=active_account, month=monthly_record).order_by('-date')[:5],
+            'recent_expenses': recent_expenses,
+            'recent_investments': recent_investments,
             'recent_incomes': recent_incomes,
             'days_in_month': json.dumps(days_in_month),
             'daily_expenses_data': json.dumps(daily_expenses_data),
+            'daily_investments_data': json.dumps(daily_investments_data),
             'daily_incomes_data': json.dumps(daily_incomes_data),
             'savings_rate': savings_rate,
             'daily_average': adjusted_daily_avg,
@@ -254,7 +294,7 @@ class ExpenseListView(View):
         date_filter = request.GET.get('date', '')
         specific_date = None
 
-        expenses = Daily.objects.filter(account=active_account).select_related('month', 'transfer_target_account')
+        records = Daily.objects.filter(account=active_account).select_related('month', 'transfer_target_account')
 
         if month_filter:
             try:
@@ -265,25 +305,34 @@ class ExpenseListView(View):
                     date__month=month_date.month,
                 ).first()
                 if month_obj:
-                    expenses = expenses.filter(month=month_obj)
+                    records = records.filter(month=month_obj)
             except ValueError:
                 pass
-
-        if category_filter:
-            if category_filter == 'Koszty zycia':
-                expenses = expenses.filter(category__in=COST_OF_LIVING_CATEGORIES)
-            else:
-                expenses = expenses.filter(category=category_filter)
 
         if date_filter:
             try:
                 specific_date = parse_date_input(date_filter)
-                expenses = expenses.filter(date=specific_date)
+                records = records.filter(date=specific_date)
             except ValueError:
                 pass
 
-        expenses = expenses.order_by('-date', 'title')
-        total_filtered = expenses.aggregate(Sum('cost'))['cost__sum'] or 0
+        if category_filter == 'Koszty zycia':
+            regular_expenses = records.filter(category__in=COST_OF_LIVING_CATEGORIES).exclude(category=INVESTMENT_CATEGORY)
+            investments = records.none()
+        elif category_filter == INVESTMENT_CATEGORY:
+            regular_expenses = records.none()
+            investments = get_investment_queryset(records)
+        elif category_filter:
+            regular_expenses = records.filter(category=category_filter).exclude(category=INVESTMENT_CATEGORY)
+            investments = records.none()
+        else:
+            regular_expenses = get_non_investment_queryset(records)
+            investments = get_investment_queryset(records)
+
+        regular_expenses = regular_expenses.order_by('-date', 'title')
+        investments = investments.order_by('-date', 'title')
+        total_filtered = regular_expenses.aggregate(Sum('cost'))['cost__sum'] or 0
+        investment_total_filtered = investments.aggregate(Sum('cost'))['cost__sum'] or 0
         categories = list(
             Daily.objects.filter(account=active_account).order_by('category').values_list('category', flat=True).distinct()
         )
@@ -291,22 +340,25 @@ class ExpenseListView(View):
             categories.append('Koszty zycia')
         months = Monthly.objects.filter(account=active_account).order_by('-date')
 
-        expenses_page = Paginator(expenses, per_page_view).get_page(request.GET.get('page'))
+        expenses_page = Paginator(regular_expenses, per_page_view).get_page(request.GET.get('page'))
         qs = request.GET.copy()
         qs.pop('page', None)
         querystring = qs.urlencode()
 
         context = {
             'expenses': expenses_page,
+            'investments': investments,
             'categories': categories,
             'months': months,
             'current_month_filter': month_filter,
             'current_category_filter': category_filter,
             'current_date_filter': specific_date if date_filter else '',
             'total_filtered': total_filtered,
+            'investment_total_filtered': investment_total_filtered,
             'today': timezone.now().date(),
             'querystring': querystring,
             'transfer_category': TRANSFER_TO_SHARED_CATEGORY,
+            'investment_category': INVESTMENT_CATEGORY,
         }
         return render(request, 'finance/expense_list.html', context)
 
@@ -623,19 +675,32 @@ class ReportsView(View):
         months_labels = []
         income_data = []
         expense_data = []
+        investment_data = []
         monthly_balance = []
 
         for record in reversed(monthly_records):
+            record.investment_total = (
+                Daily.objects.filter(account=active_account, month=record, category=INVESTMENT_CATEGORY)
+                .aggregate(Sum('cost'))['cost__sum'] or 0
+            )
+            record.spending_total = record.total_expense - record.investment_total
             months_labels.append(record.date.strftime('%B %Y'))
             income_data.append(float(record.total_income))
-            expense_data.append(float(record.total_expense))
+            expense_data.append(float(record.spending_total))
+            investment_data.append(float(record.investment_total))
             monthly_balance.append(float(record.total_income - record.total_expense))
             record.monthly_balance = record.total_income - record.total_expense
 
         total_income_all = Monthly.objects.filter(account=active_account).aggregate(Sum('total_income'))['total_income__sum'] or 0
         total_expense_all = Monthly.objects.filter(account=active_account).aggregate(Sum('total_expense'))['total_expense__sum'] or 0
+        total_investment_all = (
+            Daily.objects.filter(account=active_account, category=INVESTMENT_CATEGORY)
+            .aggregate(Sum('cost'))['cost__sum'] or 0
+        )
+        total_spending_all = total_expense_all - total_investment_all
         top_categories = (
             Daily.objects.filter(account=active_account)
+            .exclude(category=INVESTMENT_CATEGORY)
             .values('category')
             .annotate(total=Sum('cost'))
             .order_by('-total')[:5]
@@ -647,7 +712,10 @@ class ReportsView(View):
             'monthly_balance': json.dumps(monthly_balance),
             'income_data': json.dumps(income_data),
             'expense_data': json.dumps(expense_data),
+            'investment_data': json.dumps(investment_data),
             'total_income_all': total_income_all,
+            'total_spending_all': total_spending_all,
+            'total_investment_all': total_investment_all,
             'total_expense_all': total_expense_all,
             'balance_all': total_income_all - total_expense_all,
             'top_categories': top_categories,

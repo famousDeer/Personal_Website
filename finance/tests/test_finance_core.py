@@ -134,6 +134,44 @@ class FinanceCoreTests(TestCase):
         self.assertEqual(resp.context["selected_cost_categories"], ["Sport", "Paliwo"])
         self.assertEqual(float(resp.context["selected_category_total"]), 150.0)
 
+    def test_dashboard_separates_investments_from_expenses(self):
+        today = timezone.now().date()
+        month = Monthly.objects.create(user=self.user, account=self.personal_account, date=today.replace(day=1), total_income=0, total_expense=300)
+        Daily.objects.create(user=self.user, account=self.personal_account, date=today, title="ETF", category="Inwestycje", store="", cost=120, month=month)
+        Daily.objects.create(user=self.user, account=self.personal_account, date=today, title="Zakupy", category="Zakupy spozywcze", store="", cost=180, month=month)
+
+        resp = self.client.get(reverse("finance:dashboard"))
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(float(resp.context["investment_total"]), 120.0)
+        self.assertEqual(float(resp.context["spending_total"]), 180.0)
+        self.assertEqual(resp.context["recent_expenses"][0].category, "Zakupy spozywcze")
+        self.assertEqual(resp.context["recent_investments"][0].category, "Inwestycje")
+
+    def test_reports_keep_investments_in_balance_but_show_separately(self):
+        month = Monthly.objects.create(user=self.user, account=self.personal_account, date=date(2025, 6, 1), total_income=1000, total_expense=400)
+        Daily.objects.create(user=self.user, account=self.personal_account, date=date(2025, 6, 10), title="ETF", category="Inwestycje", store="", cost=150, month=month)
+        Daily.objects.create(user=self.user, account=self.personal_account, date=date(2025, 6, 11), title="Rachunek", category="Rachunki", store="", cost=250, month=month)
+
+        resp = self.client.get(reverse("finance:reports"))
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(float(resp.context["total_investment_all"]), 150.0)
+        self.assertEqual(float(resp.context["total_spending_all"]), 250.0)
+        self.assertEqual(float(resp.context["balance_all"]), 600.0)
+
+    def test_expense_list_shows_investments_separately(self):
+        month = Monthly.objects.create(user=self.user, account=self.personal_account, date=date(2025, 6, 1), total_income=0, total_expense=200)
+        Daily.objects.create(user=self.user, account=self.personal_account, date=date(2025, 6, 10), title="ETF", category="Inwestycje", store="", cost=150, month=month)
+        Daily.objects.create(user=self.user, account=self.personal_account, date=date(2025, 6, 11), title="Obiad", category="Jedzenie na miescie", store="", cost=50, month=month)
+
+        resp = self.client.get(reverse("finance:expense_list"))
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(float(resp.context["total_filtered"]), 50.0)
+        self.assertEqual(float(resp.context["investment_total_filtered"]), 150.0)
+        self.assertEqual(list(resp.context["investments"].values_list("category", flat=True)), ["Inwestycje"])
+
     def test_transfer_to_shared_account_creates_linked_income(self):
         partner = User.objects.create_user(username="u2", password="pass123")
         shared_account = partner.finance_accounts.filter(account_type='shared').first()

@@ -12,7 +12,7 @@
 
 <!-- Summary expenses, incomes and balance -->
 <div class="row g-3 mb-4">
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card border-success">
             <div class="card-body">
                 <h5 class="card-title text-success">
@@ -22,17 +22,28 @@
             </div>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card border-danger">
             <div class="card-body">
                 <h5 class="card-title text-danger">
                    <i class="bi bi-arrow-down-circle"></i> Całkowite wydatki
                 </h5>
-                <h2 class="text-danger">{{ total_expense_all|floatformat:2 }} zł</h2>
+                <h2 class="text-danger">{{ total_spending_all|floatformat:2 }} zł</h2>
+                <small class="text-muted">Bez kategorii inwestycje</small>
             </div>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
+        <div class="card border-info">
+            <div class="card-body">
+                <h5 class="card-title text-info">
+                    <i class="bi bi-piggy-bank"></i> Całkowite inwestycje
+                </h5>
+                <h2 class="text-info">{{ total_investment_all|floatformat:2 }} zł</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
         <div class="card border-primary">
             <div class="card-body">
                 <h5 class="card-title text-primary">
@@ -41,6 +52,7 @@
                 <h2 class="{% if balance_all >= 0 %}text-success{% else %}text-danger{% endif %}">
                     {{ balance_all|floatformat:2 }} zł
                 </h2>
+                <small class="text-muted">Bilans uwzględnia także inwestycje</small>
             </div>
         </div>
     </div>
@@ -50,7 +62,7 @@
 <div class="row mb-4">
     <div class="col-md-12">
         <div class="card shadow-sm border-0"> <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
-                <h5 class="mb-0 text-primary fw-bold">Przychody vs Wydatki (6 m-cy)</h5>
+                <h5 class="mb-0 text-primary fw-bold">Przychody vs Wydatki i Inwestycje (6 m-cy)</h5>
                 <button class="btn btn-sm btn-outline-secondary rounded-circle" onclick="toggleChartFullscreen()" title="Powiększ wykres">
                     <i class="bi bi-arrows-fullscreen" id="fullscreenIcon"></i>
                 </button>
@@ -110,6 +122,7 @@
                             <th>Miesiąc</th>
                             <th class="text-end">Przychody</th>
                             <th class="text-end">Wydatki</th>
+                            <th class="text-end">Inwestycje</th>
                             <th class="text-end">Bilans</th>
                         </tr>
                     </thead>
@@ -118,7 +131,8 @@
                         <tr>
                             <td>{{ record.date|date:"F Y" }}</td>
                             <td class="text-end text-success">{{ record.total_income|floatformat:2 }} zł</td>
-                            <td class="text-end text-danger">{{ record.total_expense|floatformat:2 }} zł</td>
+                            <td class="text-end text-danger">{{ record.spending_total|floatformat:2 }} zł</td>
+                            <td class="text-end text-info">{{ record.investment_total|floatformat:2 }} zł</td>
                             <td class="text-end {% if record.total_income >= record.total_expense %}text-success{% else %}text-danger{% endif %}">
                                 {{ record.monthly_balance|floatformat:2 }} zł
                             </td>
@@ -166,11 +180,13 @@
     // --- TWOJA KONFIGURACJA WYKRESU ---
     const income = {{ income_data|safe }};
     const expense = {{ expense_data|safe }};
+    const investments = {{ investment_data|safe }};
     // Zabezpieczenie przed pustymi danymi przy Math.max
     const safeIncome = income.length ? income : [0];
     const safeExpense = expense.length ? expense : [0];
+    const safeInvestments = investments.length ? investments : [0];
     
-    const rawMax = Math.max(...safeIncome, ...safeExpense);
+    const rawMax = Math.max(...safeIncome, ...safeExpense, ...safeInvestments);
     // Jeśli max to 0, ustawmy domyślnie np. 2000 żeby wykres nie był płaski
     const maxValue = rawMax > 0 ? Math.ceil(rawMax / 2000) * 2000 : 2000;
 
@@ -191,6 +207,13 @@
                 data: expense,
                 borderColor: 'rgb(255, 99, 132)',
                 backgroundColor: 'rgba(255, 99, 132, 0.7)',
+                tension: 0.1,
+                borderRadius: 5,
+            }, {
+                label: 'Inwestycje',
+                data: investments,
+                borderColor: 'rgb(13, 202, 240)',
+                backgroundColor: 'rgba(13, 202, 240, 0.7)',
                 tension: 0.1,
                 borderRadius: 5,
             }]
