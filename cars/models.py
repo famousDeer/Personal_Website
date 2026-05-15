@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from decimal import Decimal
 from django.db.models import Sum
@@ -42,17 +43,103 @@ class CarTyres(models.Model):
     purchase_date = models.DateField()
     quantity = models.PositiveIntegerField(default=1,validators=[MinValueValidator(1)])
     price = models.DecimalField(max_digits=10, decimal_places=2)
-    odometer = models.PositiveIntegerField()
+    odometer = models.PositiveIntegerField(blank=True, null=True)
     is_winter = models.BooleanField(default=False)
 
     class Meta:
         db_table = 'car_tyres'
-        ordering = ['-odometer']
+        ordering = ['-purchase_date', '-id']
         verbose_name = "Car Tyre"
         verbose_name_plural = "Car Tyres"
 
     def __str__(self):
         return f"{self.brand} {self.width}/{self.aspect_ratio}/{self.diameter} for {self.car.brand} {self.car.model}"
+
+    @property
+    def is_mounted(self):
+        return self.active_usage is not None
+
+    @property
+    def active_usage(self):
+        prefetched_periods = getattr(self, '_prefetched_objects_cache', {}).get('usage_periods')
+        if prefetched_periods is not None:
+            return next((usage for usage in prefetched_periods if usage.is_open), None)
+        return self.usage_periods.filter(removed_date__isnull=True, removed_odometer__isnull=True).first()
+
+    @property
+    def total_driven_distance(self):
+        total = 0
+        has_distance = False
+        prefetched_periods = getattr(self, '_prefetched_objects_cache', {}).get('usage_periods')
+        usage_periods = prefetched_periods if prefetched_periods is not None else self.usage_periods.all()
+
+        for usage in usage_periods:
+            distance = usage.driven_distance
+            if distance is not None:
+                total += distance
+                has_distance = True
+
+        return total if has_distance else None
+
+
+class CarTyreUsage(models.Model):
+    tyre = models.ForeignKey(CarTyres, on_delete=models.CASCADE, related_name='usage_periods')
+    mounted_date = models.DateField()
+    mounted_odometer = models.PositiveIntegerField()
+    removed_date = models.DateField(blank=True, null=True)
+    removed_odometer = models.PositiveIntegerField(blank=True, null=True)
+
+    class Meta:
+        db_table = 'car_tyre_usage'
+        ordering = ['-mounted_date', '-mounted_odometer']
+        verbose_name = "Car Tyre Usage"
+        verbose_name_plural = "Car Tyre Usages"
+
+    def __str__(self):
+        return f"{self.tyre.brand} mounted on {self.mounted_date}"
+
+    @property
+    def is_open(self):
+        return self.removed_date is None and self.removed_odometer is None
+
+    @property
+    def driven_distance(self):
+        end_odometer = self.removed_odometer
+        if end_odometer is None and self.tyre_id and getattr(self, 'tyre', None):
+            end_odometer = self.tyre.car.odometer
+
+        if end_odometer is None:
+            return None
+
+        return max(end_odometer - self.mounted_odometer, 0)
+
+    def clean(self):
+        errors = {}
+
+        if self.removed_date and self.mounted_date and self.removed_date < self.mounted_date:
+            errors['removed_date'] = 'Data zdjęcia nie może być wcześniejsza niż data założenia.'
+
+        if (
+            self.removed_odometer is not None
+            and self.mounted_odometer is not None
+            and self.removed_odometer < self.mounted_odometer
+        ):
+            errors['removed_odometer'] = 'Przebieg przy zdjęciu nie może być mniejszy niż przy założeniu.'
+
+        if (self.removed_date is None) != (self.removed_odometer is None):
+            message = 'Podaj jednocześnie datę i przebieg zdjęcia opon albo zostaw oba pola puste.'
+            errors['removed_date'] = message
+            errors['removed_odometer'] = message
+
+        if self.is_open and self.tyre_id:
+            open_usage = self.tyre.usage_periods.filter(removed_date__isnull=True, removed_odometer__isnull=True)
+            if self.pk:
+                open_usage = open_usage.exclude(pk=self.pk)
+            if open_usage.exists():
+                errors['removed_date'] = 'Ten zestaw ma już otwarty okres użycia. Najpierw uzupełnij zdjęcie poprzedniego wpisu.'
+
+        if errors:
+            raise ValidationError(errors)
 
 class CarService(models.Model):
     car = models.ForeignKey(Cars, on_delete=models.CASCADE, related_name='services')

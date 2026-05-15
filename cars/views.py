@@ -7,11 +7,54 @@ from django.utils import timezone
 from django.utils.text import slugify
 from decimal import Decimal
 from .models import Cars, CarService
-from .forms import CarForm, FuelForm, ServiceForm, ServicePartFormSet, TyreForm
+from .forms import CarForm, FuelForm, ServiceForm, ServicePartFormSet, TyreForm, TyreUsageForm
 from .pdf_utils import build_service_history_pdf
 
 
 SERVICE_FORM_TEMPLATE = 'cars/service_form.html'
+
+
+def recalculate_fuel_consumptions(car):
+    fuel_logs = list(car.fuel_consumptions.all().order_by('odometer', 'date', 'id'))
+    previous_log = None
+
+    for log in fuel_logs:
+        update_fields = []
+        new_price_per_liter = None
+        new_consumption = None
+
+        if log.liters and log.liters > 0:
+            new_price_per_liter = (log.price / log.liters).quantize(Decimal('0.01'))
+
+        if previous_log and log.odometer > previous_log.odometer:
+            distance = Decimal(log.odometer - previous_log.odometer)
+            new_consumption = (log.liters * Decimal(100) / distance).quantize(Decimal('0.01'))
+
+        if log.price_per_liter != new_price_per_liter:
+            log.price_per_liter = new_price_per_liter
+            update_fields.append('price_per_liter')
+
+        if log.consumption != new_consumption:
+            log.consumption = new_consumption
+            update_fields.append('consumption')
+
+        if update_fields:
+            log.save(update_fields=update_fields)
+
+        previous_log = log
+
+
+def annotate_fuel_distances(fuel_logs):
+    ordered_logs = sorted(fuel_logs, key=lambda log: (log.odometer, log.date, log.id))
+    previous_log = None
+
+    for log in ordered_logs:
+        log.distance_since_last_refuel = None
+        if previous_log and log.odometer > previous_log.odometer:
+            log.distance_since_last_refuel = log.odometer - previous_log.odometer
+        previous_log = log
+
+    return fuel_logs
 
 
 def render_service_form(request, car, form, parts_formset, title):
@@ -25,6 +68,17 @@ def render_service_form(request, car, form, parts_formset, title):
             'title': title,
         },
     )
+
+
+def update_car_odometer_from_tyre_usage(car, usage):
+    odometers = [usage.mounted_odometer]
+    if usage.removed_odometer:
+        odometers.append(usage.removed_odometer)
+
+    max_usage_odometer = max(odometers)
+    if max_usage_odometer > car.odometer:
+        car.odometer = max_usage_odometer
+        car.save(update_fields=['odometer'])
 
 # 1. GARAŻ (Lista aut)
 class GarageView(LoginRequiredMixin, View):
@@ -53,17 +107,21 @@ class CarDashboardView(LoginRequiredMixin, View):
         car = get_object_or_404(Cars, id=car_id, user=request.user)
         
         # Pobieranie danych
-        fuel_logs = car.fuel_consumptions.all().order_by('-date')
+        fuel_logs_queryset = car.fuel_consumptions.all().order_by('-date')
+        fuel_logs = list(fuel_logs_queryset)
+        annotate_fuel_distances(fuel_logs)
         services = car.services.prefetch_related('parts').all().order_by('-date')
-        tyres = car.tyres.all().order_by('-purchase_date')
+        tyres = car.tyres.prefetch_related('usage_periods').all().order_by('-purchase_date', '-id')
 
         # Statystyki
-        total_fuel = fuel_logs.aggregate(Sum('price'))['price__sum'] or 0
+        total_fuel = fuel_logs_queryset.aggregate(Sum('price'))['price__sum'] or 0
         total_service = services.aggregate(Sum('cost'))['cost__sum'] or 0
         total_tyres = tyres.aggregate(Sum('price'))['price__sum'] or 0
         total_cost = total_fuel + total_service + total_tyres + car.price
-        
-        avg_consumption = fuel_logs.aggregate(Avg('consumption'))['consumption__avg'] or 0
+        cost_per_km = (total_cost / Decimal(car.odometer)).quantize(Decimal('0.01')) if car.odometer else 0
+        avg_consumption = fuel_logs_queryset.aggregate(Avg('consumption'))['consumption__avg'] or 0
+        last_fuel = fuel_logs[0] if fuel_logs else None
+        last_service = services.first()
 
         context = {
             'car': car,
@@ -71,7 +129,16 @@ class CarDashboardView(LoginRequiredMixin, View):
             'services': services,
             'tyres': tyres,
             'total_cost': total_cost,
+            'total_fuel': total_fuel,
+            'total_service': total_service,
+            'total_tyres': total_tyres,
+            'cost_per_km': cost_per_km,
             'avg_consumption': avg_consumption,
+            'last_fuel': last_fuel,
+            'last_service': last_service,
+            'fuel_count': len(fuel_logs),
+            'service_count': services.count(),
+            'tyre_count': tyres.count(),
         }
         return render(request, 'cars/dashboard.html', context)
 
@@ -87,8 +154,6 @@ class AddFuelView(LoginRequiredMixin, View):
         car = get_object_or_404(Cars, id=car_id, user=request.user)
         form = FuelForm(request.POST)
         if form.is_valid():
-            dist = form.cleaned_data['odometer'] - car.odometer
-            form.instance.consumption = (form.cleaned_data['liters'] * Decimal(100) / Decimal(dist)) if dist > 0 else 0
             log = form.save(commit=False)
             log.car = car
             # Opcjonalnie: Aktualizuj przebieg auta przy tankowaniu
@@ -96,6 +161,7 @@ class AddFuelView(LoginRequiredMixin, View):
                 car.odometer = log.odometer
                 car.save()
             log.save()
+            recalculate_fuel_consumptions(car)
             return redirect('cars:dashboard', car_id=car.id)
         return render(request, 'cars/form_generic.html', {'form': form, 'title': 'Dodaj Tankowanie'})
 
@@ -214,6 +280,63 @@ class DeleteTyresView(LoginRequiredMixin, View):
         tyre.delete()
         return redirect('cars:dashboard', car_id=car.id)
 
+
+class AddTyreUsageView(LoginRequiredMixin, View):
+    def get(self, request, car_id, tyre_id):
+        car = get_object_or_404(Cars, id=car_id, user=request.user)
+        tyre = get_object_or_404(car.tyres, id=tyre_id)
+        form = TyreUsageForm(tyre=tyre)
+        return render(
+            request,
+            'cars/form_generic.html',
+            {'form': form, 'title': f'Dodaj sezon opon: {tyre.brand}'},
+        )
+
+    def post(self, request, car_id, tyre_id):
+        car = get_object_or_404(Cars, id=car_id, user=request.user)
+        tyre = get_object_or_404(car.tyres, id=tyre_id)
+        form = TyreUsageForm(request.POST, tyre=tyre)
+        if form.is_valid():
+            usage = form.save(commit=False)
+            usage.tyre = tyre
+            usage.save()
+            update_car_odometer_from_tyre_usage(car, usage)
+            return redirect('cars:dashboard', car_id=car.id)
+        return render(request, 'cars/form_generic.html', {'form': form, 'title': f'Dodaj sezon opon: {tyre.brand}'})
+
+
+class EditTyreUsageView(LoginRequiredMixin, View):
+    def get(self, request, car_id, tyre_id, usage_id):
+        car = get_object_or_404(Cars, id=car_id, user=request.user)
+        tyre = get_object_or_404(car.tyres, id=tyre_id)
+        usage = get_object_or_404(tyre.usage_periods, id=usage_id)
+        form = TyreUsageForm(instance=usage)
+        return render(
+            request,
+            'cars/form_generic.html',
+            {'form': form, 'title': f'Edytuj sezon opon: {tyre.brand}'},
+        )
+
+    def post(self, request, car_id, tyre_id, usage_id):
+        car = get_object_or_404(Cars, id=car_id, user=request.user)
+        tyre = get_object_or_404(car.tyres, id=tyre_id)
+        usage = get_object_or_404(tyre.usage_periods, id=usage_id)
+        form = TyreUsageForm(request.POST, instance=usage)
+        if form.is_valid():
+            usage = form.save()
+            update_car_odometer_from_tyre_usage(car, usage)
+            return redirect('cars:dashboard', car_id=car.id)
+        return render(request, 'cars/form_generic.html', {'form': form, 'title': f'Edytuj sezon opon: {tyre.brand}'})
+
+
+class DeleteTyreUsageView(LoginRequiredMixin, View):
+    def post(self, request, car_id, tyre_id, usage_id):
+        car = get_object_or_404(Cars, id=car_id, user=request.user)
+        tyre = get_object_or_404(car.tyres, id=tyre_id)
+        usage = get_object_or_404(tyre.usage_periods, id=usage_id)
+        usage.delete()
+        return redirect('cars:dashboard', car_id=car.id)
+
 # 13. EDYTOWANIE WPISU O PALIWIE
 class EditFuelView(LoginRequiredMixin, View):
     def get(self, request, car_id, fuel_id):
@@ -227,8 +350,6 @@ class EditFuelView(LoginRequiredMixin, View):
         fuel_log = get_object_or_404(car.fuel_consumptions, id=fuel_id)
         form = FuelForm(request.POST, instance=fuel_log)
         if form.is_valid():
-            dist = form.cleaned_data['odometer'] - car.odometer
-            form.instance.consumption = (form.cleaned_data['liters'] * Decimal(100) / Decimal(dist)) if dist > 0 else 0
             log = form.save(commit=False)
             log.car = car
             # Opcjonalnie: Aktualizuj przebieg auta przy edycji tankowania
@@ -236,6 +357,7 @@ class EditFuelView(LoginRequiredMixin, View):
                 car.odometer = log.odometer
                 car.save()
             log.save()
+            recalculate_fuel_consumptions(car)
             return redirect('cars:dashboard', car_id=car.id)
         return render(request, 'cars/form_generic.html', {'form': form, 'title': 'Edytuj Tankowanie'})
 
@@ -245,6 +367,7 @@ class DeleteFuelView(LoginRequiredMixin, View):
         car = get_object_or_404(Cars, id=car_id, user=request.user)
         fuel_log = get_object_or_404(car.fuel_consumptions, id=fuel_id)
         fuel_log.delete()
+        recalculate_fuel_consumptions(car)
         return redirect('cars:dashboard', car_id=car.id)
 
 

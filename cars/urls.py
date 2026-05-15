@@ -20,4 +20,7 @@ urlpatterns = [
     path('dashboard/<int:car_id>/add-tyres/', views.AddTyresView.as_view(), name='add_tyres'),
     path('dashboard/<int:car_id>/edit-tyres/<int:tyre_id>/', views.EditTyresView.as_view(), name='edit_tyres'),
     path('dashboard/<int:car_id>/delete-tyres/<int:tyre_id>/', views.DeleteTyresView.as_view(), name='delete_tyres'),
+    path('dashboard/<int:car_id>/tyres/<int:tyre_id>/add-usage/', views.AddTyreUsageView.as_view(), name='add_tyre_usage'),
+    path('dashboard/<int:car_id>/tyres/<int:tyre_id>/edit-usage/<int:usage_id>/', views.EditTyreUsageView.as_view(), name='edit_tyre_usage'),
+    path('dashboard/<int:car_id>/tyres/<int:tyre_id>/delete-usage/<int:usage_id>/', views.DeleteTyreUsageView.as_view(), name='delete_tyre_usage'),
 ]

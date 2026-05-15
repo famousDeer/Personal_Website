@@ -32,16 +32,16 @@
 
 {% load humanize %}
 <div class="row g-3 mb-4 animate-fade-in-up">
-    <div class="col-6 col-md-3">
-        <div class="card border-0 shadow-sm h-100">
+    <div class="col-6 col-lg-3">
+        <div class="card border-0 shadow-sm action-card h-100">
             <div class="card-body p-3">
                 <small class="text-muted text-uppercase fw-bold" style="font-size: 0.65rem;">Przebieg</small>
-                <h5 class="fw-bold mb-0 mt-1">{{ car.odometer}} km</h5>
+                <h5 class="fw-bold mb-0 mt-1">{{ car.odometer|intcomma }} km</h5>
             </div>
         </div>
     </div>
-    <div class="col-6 col-md-3">
-        <div class="card border-0 shadow-sm h-100">
+    <div class="col-6 col-lg-3">
+        <div class="card border-0 shadow-sm action-card h-100">
             <div class="card-body p-3">
                 <small class="text-muted text-uppercase fw-bold" style="font-size: 0.65rem;">Śr. Spalanie</small>
                 <h5 class="fw-bold mb-0 mt-1 {% if avg_consumption > 10 %}text-warning{% else %}text-success{% endif %}">
@@ -50,8 +50,16 @@
             </div>
         </div>
     </div>
-    <div class="col-12 col-md-6">
-        <div class="card border-0 shadow-sm h-100">
+    <div class="col-6 col-lg-3">
+        <div class="card border-0 shadow-sm action-card h-100">
+            <div class="card-body p-3">
+                <small class="text-muted text-uppercase fw-bold" style="font-size: 0.65rem;">Koszt / km</small>
+                <h5 class="fw-bold mb-0 mt-1 text-primary">{{ cost_per_km|floatformat:2 }} zł</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card border-0 shadow-sm action-card h-100">
             <div class="card-body p-3 d-flex align-items-center justify-content-between">
                 <div>
                     <small class="text-uppercase fw-bold" style="font-size: 0.65rem;">Łączne Koszty</small>
@@ -59,6 +67,70 @@
                 </div>
                 <div class="icon-box text-primary rounded-circle shadow-sm" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
                     <i class="bi bi-wallet2"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4 animate-fade-in-up">
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm action-card h-100">
+            <div class="card-body p-3">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3">
+                    <div>
+                        <h5 class="fw-bold mb-1">Koszty pojazdu</h5>
+                        <p class="text-muted small mb-0">Zakup, paliwo, serwis i opony w jednym podsumowaniu.</p>
+                    </div>
+                    <a href="{% url 'cars:service_history_pdf' car.id %}" class="btn btn-sm btn-outline-secondary rounded-pill">
+                        <i class="bi bi-filetype-pdf me-1"></i> Historia PDF
+                    </a>
+                </div>
+                <div class="row g-2">
+                    <div class="col-6 col-md-3">
+                        <div class="rounded-3 border p-3 h-100">
+                            <div class="small text-muted text-uppercase fw-bold">Zakup</div>
+                            <div class="fw-bold">{{ car.price|floatformat:2|intcomma }} zł</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="rounded-3 border p-3 h-100">
+                            <div class="small text-muted text-uppercase fw-bold">Paliwo</div>
+                            <div class="fw-bold text-danger">{{ total_fuel|floatformat:2|intcomma }} zł</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="rounded-3 border p-3 h-100">
+                            <div class="small text-muted text-uppercase fw-bold">Serwis</div>
+                            <div class="fw-bold text-warning">{{ total_service|floatformat:2|intcomma }} zł</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="rounded-3 border p-3 h-100">
+                            <div class="small text-muted text-uppercase fw-bold">Opony</div>
+                            <div class="fw-bold text-info">{{ total_tyres|floatformat:2|intcomma }} zł</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm action-card h-100">
+            <div class="card-body p-3">
+                <h5 class="fw-bold mb-3">Szybkie akcje</h5>
+                <div class="d-grid gap-2">
+                    <a href="{% url 'cars:add_fuel' car.id %}" class="btn btn-primary rounded-pill"><i class="bi bi-fuel-pump me-1"></i> Dodaj tankowanie</a>
+                    <a href="{% url 'cars:add_service' car.id %}" class="btn btn-outline-primary rounded-pill"><i class="bi bi-wrench-adjustable me-1"></i> Dodaj serwis</a>
+                    <a href="{% url 'cars:add_tyres' car.id %}" class="btn btn-soft-neutral rounded-pill"><i class="bi bi-disc me-1"></i> Dodaj opony</a>
+                </div>
+                <div class="small text-muted mt-3">
+                    Ostatni serwis:
+                    <span class="fw-semibold">{% if last_service %}{{ last_service.date|date:"d.m.Y" }}{% else %}brak wpisu{% endif %}</span>
+                </div>
+                <div class="small text-muted">
+                    Ostatnie tankowanie:
+                    <span class="fw-semibold">{% if last_fuel %}{{ last_fuel.date|date:"d.m.Y" }}{% else %}brak wpisu{% endif %}</span>
                 </div>
             </div>
         </div>
@@ -101,6 +173,7 @@
                                 <th class="ps-4 text-muted small">Data</th>
                                 <th class="text-muted small">Stacja / Przebieg</th>
                                 <th class="text-end text-muted small">Ilość</th>
+                                <th class="text-end text-muted small">Cena/L</th>
                                 <th class="text-end text-muted small">Koszt</th>
                                 <th class="text-end text-muted small pe-4" style="width: 50px;"></th>
                             </tr>
@@ -112,7 +185,12 @@
                                 <td>
                                     <div class="d-flex flex-column">
                                         <span class="fw-medium">{{ log.fuel_station }}</span>
-                                        <small class="text-muted" style="font-size: 0.75rem;">{{ log.odometer }} km</small>
+                                        <small class="text-muted" style="font-size: 0.75rem;">
+                                            {{ log.odometer|intcomma }} km
+                                            {% if log.distance_since_last_refuel %}
+                                                • +{{ log.distance_since_last_refuel|intcomma }} km od ostatniego
+                                            {% endif %}
+                                        </small>
                                     </div>
                                 </td>
                                 <td class="text-end">
@@ -121,6 +199,7 @@
                                     <span class="d-block text-muted small" style="font-size: 0.7rem;">{{ log.consumption }} l/100</span>
                                     {% endif %}
                                 </td>
+                                <td class="text-end text-muted">{{ log.price_per_liter|floatformat:2 }} zł</td>
                                 <td class="text-end fw-bold text-danger">-{{ log.price|floatformat:2 }} zł</td>
                                 <td class="text-end pe-4">
                                     <button
@@ -134,7 +213,7 @@
                                 </td>
                             </tr>
                             {% empty %}
-                            <tr><td colspan="5" class="text-center py-4 text-muted">Brak wpisów tankowania.</td></tr>
+                            <tr><td colspan="6" class="text-center py-4 text-muted">Brak wpisów tankowania.</td></tr>
                             {% endfor %}
                         </tbody>
                     </table>
@@ -154,8 +233,14 @@
                                 </div>
                                 <div class="small text-muted">
                                     <i class="bi bi-speedometer2 me-1"></i>
-                                    {{ log.odometer }} km
+                                    {{ log.odometer|intcomma }} km
                                 </div>
+                                {% if log.distance_since_last_refuel %}
+                                <div class="small text-muted">
+                                    <i class="bi bi-signpost-split me-1"></i>
+                                    +{{ log.distance_since_last_refuel|intcomma }} km od ostatniego tankowania
+                                </div>
+                                {% endif %}
                             </div>
 
                             <span class="fw-bold fs-4 text-danger">
@@ -304,23 +389,83 @@
                                     </span>
                                 {% endif %}
                                 <span class="fw-bold">{{ tyre.brand }}</span>
+                                {% if tyre.is_mounted %}
+                                    <span class="badge rounded-pill bg-success-subtle text-success">Na aucie</span>
+                                {% endif %}
                             </div>
 
                             <div class="small text-muted">
                                 {{ tyre.width }}/{{ tyre.aspect_ratio }}/{{ tyre.diameter }}
+                                • {{ tyre.quantity }} szt.
                             </div>
 
-                            <div class="small text-muted">
-                                <i class="bi bi-calendar me-1"></i>
-                                {{ tyre.purchase_date|date:"d.m.Y" }}
-                                • {{ tyre.odometer }} km
+                            <div class="d-flex justify-content-between align-items-center mt-3 rounded-3 bg-light px-3 py-2">
+                                <span class="small text-muted">Łączny przebieg zestawu</span>
+                                <span class="fw-bold text-primary">
+                                    {% if tyre.total_driven_distance is not None %}
+                                        {{ tyre.total_driven_distance|intcomma }} km
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </span>
+                            </div>
+
+                            <div class="mt-3">
+                                <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+                                    <span class="small fw-bold text-muted text-uppercase">Historia sezonów</span>
+                                    <a href="{% url 'cars:add_tyre_usage' car.id tyre.id %}" class="btn btn-sm btn-outline-primary rounded-pill px-2 py-0">
+                                        <i class="bi bi-plus-lg"></i>
+                                    </a>
+                                </div>
+
+                                <div class="d-grid gap-2">
+                                    {% for usage in tyre.usage_periods.all %}
+                                    <div class="rounded-3 border px-3 py-2">
+                                        <div class="d-flex justify-content-between align-items-start gap-3">
+                                            <div class="small">
+                                                <div class="fw-semibold">
+                                                    {{ usage.mounted_date|date:"d.m.Y" }}
+                                                    <span class="text-muted">• {{ usage.mounted_odometer|intcomma }} km</span>
+                                                </div>
+                                                <div class="text-muted">
+                                                    {% if usage.removed_date %}
+                                                        Zdjęte: {{ usage.removed_date|date:"d.m.Y" }} • {{ usage.removed_odometer|intcomma }} km
+                                                    {% else %}
+                                                        <span class="badge rounded-pill bg-success-subtle text-success">Aktualnie założone</span>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <span class="small fw-bold text-primary text-nowrap">
+                                                    {% if usage.driven_distance is not None %}
+                                                        {{ usage.driven_distance|intcomma }} km
+                                                    {% else %}
+                                                        -
+                                                    {% endif %}
+                                                </span>
+                                                <button
+                                                    class="btn btn-light btn-sm rounded-circle shadow-sm table-dropdown-btn"
+                                                    data-edit-url="{% url 'cars:edit_tyre_usage' car.id tyre.id usage.id %}"
+                                                    data-delete-url="{% url 'cars:delete_tyre_usage' car.id tyre.id usage.id %}">
+                                                    <i class="bi bi-three-dots-vertical"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% empty %}
+                                        <div class="small text-muted rounded-3 border px-3 py-2">
+                                            Brak wpisów założenia. Dodaj pierwszy sezon, gdy opony trafią na auto.
+                                        </div>
+                                    {% endfor %}
+                                </div>
                             </div>
                         </div>
 
                         <div class="d-flex justify-content-between align-items-center pt-3 border-top border-light-subtle">
-                            <span class="fw-bold text-danger fs-5">
-                                -{{ tyre.price|floatformat:2 }} zł
-                            </span>
+                            <div>
+                                <div class="fw-bold text-danger fs-5">-{{ tyre.price|floatformat:2|intcomma }} zł</div>
+                                <div class="small text-muted">Zakup: {{ tyre.purchase_date|date:"d.m.Y" }}</div>
+                            </div>
 
                             <button
                                 class="btn btn-light btn-sm rounded-circle shadow-sm table-dropdown-btn"
@@ -399,14 +544,19 @@
 <style>
     /* Dark mode fix dla Tabs Container */
     [data-theme="dark"] #carTabs {
-        background-color: #212529 !important;
-        border-color: rgba(255,255,255,0.1) !important;
+        background-color: var(--surface-subtle) !important;
+        border-color: var(--surface-border) !important;
     }
     .nav-pills .nav-link { color: var(--text-muted); transition: all 0.2s; }
     .nav-pills .nav-link.active {
         background-color: var(--bs-primary);
         color: white !important;
         box-shadow: 0 4px 10px rgba(13, 110, 253, 0.3);
+    }
+    [data-theme="dark"] .nav-pills .nav-link.active {
+        background-color: var(--tone-primary-bg) !important;
+        color: #dbeafe !important;
+        box-shadow: none !important;
     }
     
     /* Styl dla globalnego dropdowna - ważne żeby był na wierzchu */

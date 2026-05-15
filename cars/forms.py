@@ -1,7 +1,7 @@
 from django import forms
 from django.forms import inlineformset_factory
 from django.utils import timezone
-from .models import Cars, CarTyres, CarService, CarFuelConsumption, CarServicePart
+from .models import Cars, CarTyres, CarService, CarFuelConsumption, CarServicePart, CarTyreUsage
 
 # Klasa bazowa dla stylizacji Bootstrapa
 class BootstrapFormMixin:
@@ -52,13 +52,12 @@ class FuelForm(BootstrapFormMixin, forms.ModelForm):
 
     class Meta:
         model = CarFuelConsumption
-        fields = ['date', 'fuel_station', 'liters', 'price', 'odometer', 'price_per_liter']
+        fields = ['date', 'fuel_station', 'liters', 'price', 'odometer']
         labels = {'date': 'Data',
                   'fuel_station': 'Stacja paliw', 
                   'odometer': 'Przebieg przy tankowaniu',
                   'liters': 'Zatankowane litry',
-                  'price': 'Cena całkowita (PLN)',
-                  'price_per_liter': 'Cena za litr (PLN)'}
+                  'price': 'Cena całkowita (PLN)'}
         widgets = {}
 
 class ServiceForm(BootstrapFormMixin, forms.ModelForm):
@@ -154,13 +153,70 @@ class TyreForm(BootstrapFormMixin, forms.ModelForm):
 
     class Meta:
         model = CarTyres
-        fields = ['brand', 'width', 'aspect_ratio', 'diameter', 'purchase_date', 'price', 'odometer', 'is_winter']
+        fields = [
+            'brand',
+            'width',
+            'aspect_ratio',
+            'diameter',
+            'quantity',
+            'purchase_date',
+            'price',
+            'is_winter',
+        ]
         labels = {'brand': 'Marka opon',
                   'width': 'Szerokość (mm)',
                   'aspect_ratio': 'Profil (%)',
                   'diameter': 'Średnica (cale)',
+                  'quantity': 'Liczba opon',
                   'purchase_date': 'Data zakupu',
                   'price': 'Cena całkowita (PLN)',
-                  'odometer': 'Przebieg przy montażu (km)',
                   'is_winter': 'Opony zimowe'}
+        widgets = {}
+
+
+class TyreUsageForm(BootstrapFormMixin, forms.ModelForm):
+    mounted_date = forms.DateField(
+        label='Data założenia',
+        input_formats=['%Y-%m-%d', '%d.%m.%Y'],
+        widget=forms.DateInput(
+            format='%d.%m.%Y',
+            attrs={
+                'type': 'text',
+                'autocomplete': 'off',
+                'data-flatpickr': 'date',
+            },
+        ),
+    )
+    removed_date = forms.DateField(
+        label='Data zdjęcia',
+        required=False,
+        input_formats=['%Y-%m-%d', '%d.%m.%Y'],
+        widget=forms.DateInput(
+            format='%d.%m.%Y',
+            attrs={
+                'type': 'text',
+                'autocomplete': 'off',
+                'data-flatpickr': 'date',
+            },
+        ),
+    )
+
+    def __init__(self, *args, **kwargs):
+        tyre = kwargs.pop('tyre', None)
+        super().__init__(*args, **kwargs)
+        if tyre is not None:
+            self.instance.tyre = tyre
+        if not self.is_bound and not self.initial.get('mounted_date') and not getattr(self.instance, 'mounted_date', None):
+            self.initial['mounted_date'] = timezone.localdate()
+
+    class Meta:
+        model = CarTyreUsage
+        fields = [
+            'mounted_date',
+            'mounted_odometer',
+            'removed_date',
+            'removed_odometer',
+        ]
+        labels = {'mounted_odometer': 'Przebieg przy założeniu (km)',
+                  'removed_odometer': 'Przebieg przy zdjęciu (km)'}
         widgets = {}

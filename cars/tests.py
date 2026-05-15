@@ -4,7 +4,9 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
-from cars.models import Cars, CarService, CarServicePart
+from cars.forms import FuelForm, TyreForm
+from cars.models import Cars, CarFuelConsumption, CarService, CarServicePart, CarTyres, CarTyreUsage
+from cars.views import annotate_fuel_distances
 
 
 User = get_user_model()
@@ -101,13 +103,17 @@ class CarServiceViewsTests(TestCase):
         service = CarService.objects.create(
             car=self.car,
             date=date(2026, 2, 10),
-            service_type="Hamulce",
-            workshop_name="Moto Klinika",
-            description="Wymiana tarcz i klockow hamulcowych.",
+            service_type="Hamulce i zawieszenie",
+            workshop_name="Moto Klinika Łódź",
+            description="Wymiana tarcz, klocków, łożysk oraz płynu hamulcowego.",
             cost="960.00",
         )
-        CarServicePart.objects.create(service=service, name="Tarcze", price="500.00")
-        CarServicePart.objects.create(service=service, name="Klocki", price="180.00")
+        CarServicePart.objects.create(
+            service=service,
+            name="Śruby mocujące wahacza przedniego z osłoną przeciwpyłową",
+            price="500.00",
+        )
+        CarServicePart.objects.create(service=service, name="Płyn hamulcowy", price="180.00")
 
         response = self.client.get(reverse("cars:service_history_pdf", args=[self.car.id]))
 
@@ -115,3 +121,159 @@ class CarServiceViewsTests(TestCase):
         self.assertEqual(response["Content-Type"], "application/pdf")
         self.assertIn("attachment;", response["Content-Disposition"])
         self.assertTrue(response.content.startswith(b"%PDF"))
+        self.assertNotIn(b"/Subtype /Image", response.content)
+        self.assertIn(b"/ToUnicode", response.content)
+
+    def test_fuel_consumption_is_calculated_from_previous_refuel(self):
+        first_response = self.client.post(
+            reverse("cars:add_fuel", args=[self.car.id]),
+            {
+                "date": "2026-04-01",
+                "fuel_station": "Orlen",
+                "liters": "35",
+                "price": "245",
+                "odometer": "85000",
+            },
+            follow=True,
+        )
+        second_response = self.client.post(
+            reverse("cars:add_fuel", args=[self.car.id]),
+            {
+                "date": "2026-04-10",
+                "fuel_station": "BP",
+                "liters": "40",
+                "price": "280",
+                "odometer": "85500",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 200)
+
+        first_log = CarFuelConsumption.objects.get(car=self.car, fuel_station="Orlen")
+        second_log = CarFuelConsumption.objects.get(car=self.car, fuel_station="BP")
+
+        self.assertIsNone(first_log.consumption)
+        self.assertEqual(float(second_log.consumption), 8.0)
+        self.assertEqual(float(second_log.price_per_liter), 7.0)
+
+    def test_fuel_form_does_not_expose_price_per_liter(self):
+        self.assertNotIn("price_per_liter", FuelForm().fields)
+
+    def test_fuel_logs_are_annotated_with_distance_since_last_refuel(self):
+        first_log = CarFuelConsumption.objects.create(
+            car=self.car,
+            date=date(2026, 4, 1),
+            fuel_station="Orlen",
+            liters="35",
+            price="245",
+            odometer=85000,
+        )
+        second_log = CarFuelConsumption.objects.create(
+            car=self.car,
+            date=date(2026, 4, 10),
+            fuel_station="BP",
+            liters="40",
+            price="280",
+            odometer=85500,
+        )
+
+        logs = annotate_fuel_distances([second_log, first_log])
+
+        self.assertIsNone(first_log.distance_since_last_refuel)
+        self.assertEqual(second_log.distance_since_last_refuel, 500)
+        self.assertEqual(logs, [second_log, first_log])
+
+    def test_add_tyres_only_registers_purchased_set(self):
+        response = self.client.post(
+            reverse("cars:add_tyres", args=[self.car.id]),
+            {
+                "brand": "Michelin",
+                "width": "205",
+                "aspect_ratio": "55",
+                "diameter": "16",
+                "quantity": "4",
+                "purchase_date": "2026-03-01",
+                "price": "1600.00",
+                "is_winter": "",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        tyre = CarTyres.objects.get(car=self.car, brand="Michelin")
+        self.assertEqual(tyre.purchase_date, date(2026, 3, 1))
+        self.assertIsNone(tyre.odometer)
+        self.assertEqual(tyre.usage_periods.count(), 0)
+        self.assertFalse(tyre.is_mounted)
+        self.assertIsNone(tyre.total_driven_distance)
+
+    def test_tyre_form_does_not_expose_purchase_odometer(self):
+        self.assertNotIn("odometer", TyreForm().fields)
+
+    def test_tyre_usage_tracks_mount_removal_and_distance(self):
+        tyre = CarTyres.objects.create(
+            car=self.car,
+            brand="Michelin",
+            width=205,
+            aspect_ratio=55,
+            diameter=16,
+            quantity=4,
+            purchase_date=date(2026, 3, 1),
+            price="1600.00",
+            odometer=84500,
+            is_winter=False,
+        )
+
+        response = self.client.post(
+            reverse("cars:add_tyre_usage", args=[self.car.id, tyre.id]),
+            {
+                "mounted_date": "2026-03-15",
+                "mounted_odometer": "85000",
+                "removed_date": "2026-10-20",
+                "removed_odometer": "96500",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        usage = CarTyreUsage.objects.get(tyre=tyre)
+        tyre.refresh_from_db()
+        self.assertEqual(usage.mounted_date, date(2026, 3, 15))
+        self.assertEqual(usage.mounted_odometer, 85000)
+        self.assertEqual(usage.removed_date, date(2026, 10, 20))
+        self.assertEqual(usage.removed_odometer, 96500)
+        self.assertEqual(usage.driven_distance, 11500)
+        self.assertEqual(tyre.total_driven_distance, 11500)
+        self.assertFalse(tyre.is_mounted)
+
+    def test_tyres_removal_odometer_must_not_be_lower_than_mount_odometer(self):
+        tyre = CarTyres.objects.create(
+            car=self.car,
+            brand="Continental",
+            width=205,
+            aspect_ratio=55,
+            diameter=16,
+            quantity=4,
+            purchase_date=date(2026, 3, 1),
+            price="1500.00",
+            odometer=84500,
+            is_winter=False,
+        )
+
+        response = self.client.post(
+            reverse("cars:add_tyre_usage", args=[self.car.id, tyre.id]),
+            {
+                "mounted_date": "2026-03-15",
+                "mounted_odometer": "85000",
+                "removed_date": "2026-10-20",
+                "removed_odometer": "84000",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Przebieg przy zdjęciu nie może być mniejszy")
+        self.assertFalse(CarTyreUsage.objects.filter(tyre=tyre).exists())
