@@ -1,4 +1,5 @@
 asgiref==3.9.1
+chardet==5.2.0
 Django==5.2.4
 djangorestframework==3.16.0
 django-countries==7.6.1
@@ -13,6 +14,7 @@ PyJWT==2.10.1
 python-dateutil==2.9.0.post0
 python-dotenv==1.1.1
 pytz==2025.2
+reportlab==4.2.5
 six==1.17.0
 sqlparse==0.5.3
 typing_extensions==4.15.0

@@ -10,12 +10,19 @@ def month_start(date):
 def parse_decimal(value: str) -> Decimal:
     """Parses a string to a Decimal
     and handles invalid inputs."""
-    normalized = value.replace(',', '.')
+    if value is None:
+        raise ValueError("Missing decimal value")
+
+    normalized = str(value).strip().replace(',', '.').replace(' ', '').replace('\xa0', '')
+    is_negative = normalized.startswith('-')
     cleaned = re.sub(r'[^0-9.]', '', normalized)
     if cleaned.count('.') > 1:
         dot_idx = cleaned.find('.')
         cleaned = cleaned[:dot_idx + 1] + cleaned[dot_idx + 1:].replace('.', '')
-    clear_value = cleaned
+    if not cleaned:
+        raise ValueError(f"Invalid decimal values: {value}")
+
+    clear_value = f"-{cleaned}" if is_negative else cleaned
     try:
         return Decimal(clear_value)
     except (ValueError, InvalidOperation):
