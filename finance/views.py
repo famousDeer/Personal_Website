@@ -1,5 +1,4 @@
 import calendar
-import json
 from datetime import date, datetime
 
 from django.contrib import messages
@@ -29,8 +28,26 @@ from .account_utils import (
     set_active_finance_account,
     sync_shared_account_transfer,
 )
-from .forms import TravelDestinationForm
-from .models import Daily, FinanceAccount, Income, Monthly, TravelDestinations
+from .brokerage import build_portfolio_summary
+from .forms import (
+    BrokerageAccountForm,
+    BrokerageDividendForm,
+    BrokerageInstrumentForm,
+    BrokerageTransactionForm,
+    TravelDestinationForm,
+)
+from .market_data import MarketDataError, refresh_market_data_for_user
+from .models import (
+    BrokerageAccount,
+    BrokerageDividend,
+    BrokerageInstrument,
+    BrokerageTransaction,
+    Daily,
+    FinanceAccount,
+    Income,
+    Monthly,
+    TravelDestinations,
+)
 
 CATEGORIES_EXPENSES = sorted([
     'Zakupy spozywcze', 'Jedzenie na miescie', 'Transport miejski',
@@ -113,6 +130,291 @@ def switch_account(request):
 
     next_url = request.POST.get('next') or reverse('finance:index')
     return redirect(next_url)
+
+
+@method_decorator(login_required, name='dispatch')
+class BrokeragePortfolioView(View):
+    def get(self, request):
+        summary = build_portfolio_summary(request.user)
+        summary.update({
+            'brokerage_accounts': BrokerageAccount.objects.filter(user=request.user),
+            'brokerage_instruments': BrokerageInstrument.objects.filter(user=request.user).order_by('name', 'ticker'),
+            'brokerage_transactions': (
+                BrokerageTransaction.objects
+                .filter(account__user=request.user)
+                .select_related('account', 'instrument')
+                .order_by('-trade_date', '-id')[:25]
+            ),
+            'brokerage_dividends': (
+                BrokerageDividend.objects
+                .filter(account__user=request.user)
+                .select_related('account', 'instrument')
+                .order_by('-payment_date', 'instrument__ticker')[:25]
+            ),
+        })
+        return render(request, 'finance/brokerage.html', summary)
+
+
+@method_decorator(login_required, name='dispatch')
+class RefreshBrokerageMarketDataView(View):
+    def post(self, request):
+        try:
+            result = refresh_market_data_for_user(request.user)
+        except MarketDataError as exc:
+            messages.warning(request, f'Nie udało się odświeżyć danych rynkowych: {exc}')
+        else:
+            failed_count = len(result.get('failed_quotes', []))
+            if failed_count:
+                messages.warning(
+                    request,
+                    f"Nie odświeżono {failed_count} instrumentów: {'; '.join(result['failed_quotes'][:3])}",
+                )
+            failed_dividends_count = len(result.get('failed_dividends', []))
+            if failed_dividends_count:
+                messages.warning(
+                    request,
+                    f"Nie odświeżono dywidend dla {failed_dividends_count} instrumentów: {'; '.join(result['failed_dividends'][:3])}",
+                )
+            messages.success(
+                request,
+                f"Odświeżono ceny: {result['updated_quotes']}, "
+                f"scalone instrumenty: {result.get('merged_instruments', 0)}, "
+                f"nowe dywidendy: {result['updated_dividends']} ({result['source']}).",
+            )
+        return redirect('finance:brokerage')
+
+
+@method_decorator(login_required, name='dispatch')
+class AddBrokerageAccountView(View):
+    def get(self, request):
+        return render(request, 'finance/brokerage_form.html', {
+            'form': BrokerageAccountForm(),
+            'title': 'Dodaj konto maklerskie',
+        })
+
+    def post(self, request):
+        form = BrokerageAccountForm(request.POST)
+        if form.is_valid():
+            account = form.save(commit=False)
+            account.user = request.user
+            account.save()
+            messages.success(request, 'Konto maklerskie zostało dodane.')
+            return redirect('finance:brokerage')
+        return render(request, 'finance/brokerage_form.html', {'form': form, 'title': 'Dodaj konto maklerskie'})
+
+
+@method_decorator(login_required, name='dispatch')
+class EditBrokerageAccountView(View):
+    def get(self, request, account_id):
+        account = get_object_or_404(BrokerageAccount, id=account_id, user=request.user)
+        return render(request, 'finance/brokerage_form.html', {
+            'form': BrokerageAccountForm(instance=account),
+            'title': 'Edytuj konto maklerskie',
+        })
+
+    def post(self, request, account_id):
+        account = get_object_or_404(BrokerageAccount, id=account_id, user=request.user)
+        form = BrokerageAccountForm(request.POST, instance=account)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Konto maklerskie zostało zaktualizowane.')
+            return redirect('finance:brokerage')
+        return render(request, 'finance/brokerage_form.html', {'form': form, 'title': 'Edytuj konto maklerskie'})
+
+
+@method_decorator(login_required, name='dispatch')
+class DeleteBrokerageAccountView(View):
+    def post(self, request, account_id):
+        account = get_object_or_404(BrokerageAccount, id=account_id, user=request.user)
+        account_name = account.name
+        account.delete()
+        messages.success(request, f'Konto maklerskie "{account_name}" zostało usunięte.')
+        return redirect('finance:brokerage')
+
+
+@method_decorator(login_required, name='dispatch')
+class AddBrokerageInstrumentView(View):
+    def get(self, request):
+        return render(request, 'finance/brokerage_form.html', {
+            'form': BrokerageInstrumentForm(),
+            'title': 'Dodaj instrument',
+        })
+
+    def post(self, request):
+        form = BrokerageInstrumentForm(request.POST)
+        if form.is_valid():
+            instrument = form.save(commit=False)
+            instrument.user = request.user
+            if instrument.last_price is not None:
+                instrument.last_price_at = timezone.now()
+                instrument.market_data_source = 'Ręcznie'
+            instrument.save()
+            messages.success(request, 'Instrument został dodany.')
+            return redirect('finance:brokerage')
+        return render(request, 'finance/brokerage_form.html', {'form': form, 'title': 'Dodaj instrument'})
+
+
+@method_decorator(login_required, name='dispatch')
+class EditBrokerageInstrumentView(View):
+    def get(self, request, instrument_id):
+        instrument = get_object_or_404(BrokerageInstrument, id=instrument_id, user=request.user)
+        return render(request, 'finance/brokerage_form.html', {
+            'form': BrokerageInstrumentForm(instance=instrument),
+            'title': 'Edytuj instrument',
+        })
+
+    def post(self, request, instrument_id):
+        instrument = get_object_or_404(BrokerageInstrument, id=instrument_id, user=request.user)
+        form = BrokerageInstrumentForm(request.POST, instance=instrument)
+        if form.is_valid():
+            instrument = form.save(commit=False)
+            if instrument.last_price is not None and not instrument.last_price_at:
+                instrument.last_price_at = timezone.now()
+                instrument.market_data_source = instrument.market_data_source or 'Ręcznie'
+            instrument.save()
+            messages.success(request, 'Instrument został zaktualizowany.')
+            return redirect('finance:brokerage')
+        return render(request, 'finance/brokerage_form.html', {'form': form, 'title': 'Edytuj instrument'})
+
+
+@method_decorator(login_required, name='dispatch')
+class DeleteBrokerageInstrumentView(View):
+    def post(self, request, instrument_id):
+        instrument = get_object_or_404(BrokerageInstrument, id=instrument_id, user=request.user)
+        instrument_name = instrument.name
+        instrument.delete()
+        messages.success(request, f'Instrument "{instrument_name}" został usunięty.')
+        return redirect('finance:brokerage')
+
+
+@method_decorator(login_required, name='dispatch')
+class AddBrokerageTransactionView(View):
+    def get(self, request):
+        return render(request, 'finance/brokerage_form.html', {
+            'form': BrokerageTransactionForm(user=request.user),
+            'title': 'Dodaj transakcję',
+        })
+
+    def post(self, request):
+        form = BrokerageTransactionForm(request.POST, user=request.user)
+        if form.is_valid():
+            if form.market_price_fetched is not None and not form.cleaned_data.get('market_price_confirmed'):
+                initial = {
+                    'account': form.cleaned_data['account'].id,
+                    'transaction_type': form.cleaned_data['transaction_type'],
+                    'instrument_name': form.cleaned_data['instrument_name'],
+                    'isin': form.cleaned_data['isin'],
+                    'asset_type': form.cleaned_data['asset_type'],
+                    'currency': form.cleaned_data['currency'],
+                    'trade_date': form.cleaned_data['trade_date'],
+                    'trade_time': form.cleaned_data['trade_time'],
+                    'quantity': form.cleaned_data['quantity'],
+                    'price': form.cleaned_data['price'],
+                    'fees': form.cleaned_data['fees'],
+                    'notes': form.cleaned_data.get('notes', ''),
+                    'market_price_confirmed': True,
+                    'market_price_value': form.market_price_fetched,
+                    'market_price_source_value': form.market_price_source,
+                    'market_symbol_value': form.resolved_symbol,
+                }
+                messages.info(
+                    request,
+                    f"Pobrano cenę {form.market_price_fetched} z {form.market_price_source}. "
+                    "Sprawdź ją z ceną z brokera i zapisz albo wpisz własną cenę.",
+                )
+                return render(request, 'finance/brokerage_form.html', {
+                    'form': BrokerageTransactionForm(user=request.user, initial=initial),
+                    'title': 'Dodaj transakcję',
+                })
+            form.save()
+            messages.success(request, 'Transakcja została dodana.')
+            return redirect('finance:brokerage')
+        return render(request, 'finance/brokerage_form.html', {'form': form, 'title': 'Dodaj transakcję'})
+
+
+@method_decorator(login_required, name='dispatch')
+class EditBrokerageTransactionView(View):
+    def get(self, request, transaction_id):
+        transaction_obj = get_object_or_404(
+            BrokerageTransaction.objects.select_related('account', 'instrument'),
+            id=transaction_id,
+            account__user=request.user,
+        )
+        return render(request, 'finance/brokerage_form.html', {
+            'form': BrokerageTransactionForm(user=request.user, instance=transaction_obj),
+            'title': 'Edytuj transakcję',
+        })
+
+    def post(self, request, transaction_id):
+        transaction_obj = get_object_or_404(
+            BrokerageTransaction.objects.select_related('account', 'instrument'),
+            id=transaction_id,
+            account__user=request.user,
+        )
+        form = BrokerageTransactionForm(request.POST, user=request.user, instance=transaction_obj)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Transakcja została zaktualizowana.')
+            return redirect('finance:brokerage')
+        return render(request, 'finance/brokerage_form.html', {'form': form, 'title': 'Edytuj transakcję'})
+
+
+@method_decorator(login_required, name='dispatch')
+class DeleteBrokerageTransactionView(View):
+    def post(self, request, transaction_id):
+        transaction_obj = get_object_or_404(
+            BrokerageTransaction.objects.select_related('account', 'instrument'),
+            id=transaction_id,
+            account__user=request.user,
+        )
+        transaction_obj.delete()
+        messages.success(request, 'Transakcja została usunięta.')
+        return redirect('finance:brokerage')
+
+
+@method_decorator(login_required, name='dispatch')
+class AddBrokerageDividendView(View):
+    def get(self, request):
+        return render(request, 'finance/brokerage_form.html', {
+            'form': BrokerageDividendForm(user=request.user),
+            'title': 'Dodaj dywidendę',
+        })
+
+    def post(self, request):
+        form = BrokerageDividendForm(request.POST, user=request.user)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Dywidenda została dodana.')
+            return redirect('finance:brokerage')
+        return render(request, 'finance/brokerage_form.html', {'form': form, 'title': 'Dodaj dywidendę'})
+
+
+@method_decorator(login_required, name='dispatch')
+class EditBrokerageDividendView(View):
+    def get(self, request, dividend_id):
+        dividend = get_object_or_404(BrokerageDividend, id=dividend_id, account__user=request.user)
+        return render(request, 'finance/brokerage_form.html', {
+            'form': BrokerageDividendForm(user=request.user, instance=dividend),
+            'title': 'Edytuj dywidendę',
+        })
+
+    def post(self, request, dividend_id):
+        dividend = get_object_or_404(BrokerageDividend, id=dividend_id, account__user=request.user)
+        form = BrokerageDividendForm(request.POST, user=request.user, instance=dividend)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Dywidenda została zaktualizowana.')
+            return redirect('finance:brokerage')
+        return render(request, 'finance/brokerage_form.html', {'form': form, 'title': 'Edytuj dywidendę'})
+
+
+@method_decorator(login_required, name='dispatch')
+class DeleteBrokerageDividendView(View):
+    def post(self, request, dividend_id):
+        dividend = get_object_or_404(BrokerageDividend, id=dividend_id, account__user=request.user)
+        dividend.delete()
+        messages.success(request, 'Dywidenda została usunięta.')
+        return redirect('finance:brokerage')
 
 
 @method_decorator(login_required, name='dispatch')
@@ -263,17 +565,17 @@ class DashboardView(View):
             'spending_total': spending_total,
             'investment_total': investment_total,
             'balance': balance,
-            'categories': json.dumps(categories) if categories else json.dumps([]),
-            'amounts': json.dumps(amounts) if amounts else json.dumps([]),
-            'income_sources': json.dumps(income_sources) if income_sources else json.dumps([]),
-            'income_amounts': json.dumps(income_amounts) if income_amounts else json.dumps([]),
+            'categories': categories,
+            'amounts': amounts,
+            'income_sources': income_sources,
+            'income_amounts': income_amounts,
             'recent_expenses': recent_expenses,
             'recent_investments': recent_investments,
             'recent_incomes': recent_incomes,
-            'days_in_month': json.dumps(days_in_month),
-            'daily_expenses_data': json.dumps(daily_expenses_data),
-            'daily_investments_data': json.dumps(daily_investments_data),
-            'daily_incomes_data': json.dumps(daily_incomes_data),
+            'days_in_month': days_in_month,
+            'daily_expenses_data': daily_expenses_data,
+            'daily_investments_data': daily_investments_data,
+            'daily_incomes_data': daily_incomes_data,
             'savings_rate': savings_rate,
             'daily_average': adjusted_daily_avg,
             'projected_expense': projected_expense,
@@ -446,6 +748,9 @@ class EditExpenseView(View):
             expense.cost = parse_decimal(request.POST.get('cost'))
             expense.transfer_target_account = get_selected_transfer_target(request, active_account, expense.category)
 
+            if expense.cost <= 0:
+                raise ValueError("Kwota musi być większa od 0")
+
             new_month_date = month_start(expense.date)
             if old_monthly.date != new_month_date:
                 new_monthly, _ = get_or_create_monthly_record(
@@ -560,12 +865,14 @@ class AddIncomeView(View):
     @transaction.atomic
     def post(self, request):
         active_account = get_active_finance_account(request)
-        date_value = request.POST.get('date')
-        title = request.POST.get('title')
-        amount = parse_decimal(request.POST.get('amount'))
-        source = request.POST.get('source')
-
         try:
+            date_value = request.POST.get('date')
+            title = request.POST.get('title')
+            amount = parse_decimal(request.POST.get('amount'))
+            source = request.POST.get('source')
+            if amount <= 0:
+                raise ValueError('Kwota musi być większa od 0')
+
             income_date = parse_date_input(date_value)
             monthly_record, _ = get_or_create_monthly_record(
                 user=request.user,
@@ -592,6 +899,7 @@ class AddIncomeView(View):
             context = {
                 'default_date': timezone.now().date(),
                 'income_sources': INCOME_SOURCES,
+                'form_values': request.POST,
             }
             return render(request, 'finance/add_income.html', context)
 
@@ -619,13 +927,15 @@ class EditIncomeView(View):
             messages.warning(request, 'Ten przychód jest zasileniem konta wspólnego. Edytuj wydatek źródłowy.')
             return redirect('finance:income_list')
 
-        old_monthly = income.month
-        income.date = parse_date_input(request.POST.get('date'))
-        income.title = request.POST.get('title')
-        income.source = request.POST.get('source')
-        income.amount = parse_decimal(request.POST.get('amount'))
-
         try:
+            old_monthly = income.month
+            income.date = parse_date_input(request.POST.get('date'))
+            income.title = request.POST.get('title')
+            income.source = request.POST.get('source')
+            income.amount = parse_decimal(request.POST.get('amount'))
+            if income.amount <= 0:
+                raise ValueError('Kwota musi być większa od 0')
+
             new_month_date = month_start(income.date)
             if old_monthly.date != new_month_date:
                 new_monthly, _ = get_or_create_monthly_record(
@@ -708,11 +1018,11 @@ class ReportsView(View):
 
         context = {
             'monthly_records': monthly_records,
-            'months_labels': json.dumps(months_labels),
-            'monthly_balance': json.dumps(monthly_balance),
-            'income_data': json.dumps(income_data),
-            'expense_data': json.dumps(expense_data),
-            'investment_data': json.dumps(investment_data),
+            'months_labels': months_labels,
+            'monthly_balance': monthly_balance,
+            'income_data': income_data,
+            'expense_data': expense_data,
+            'investment_data': investment_data,
             'total_income_all': total_income_all,
             'total_spending_all': total_spending_all,
             'total_investment_all': total_investment_all,
@@ -839,6 +1149,9 @@ class DailyRecordAPI(APIView):
                 ).first()
                 if transfer_target_account is None:
                     raise ValueError('Wybrano przelew na konto wspólne bez poprawnego konta docelowego.')
+            cost = parse_decimal(data['cost'])
+            if cost <= 0:
+                raise ValueError('Kwota musi być większa od 0')
 
             monthly_record, _ = get_or_create_monthly_record(
                 user=request.user,
@@ -853,7 +1166,7 @@ class DailyRecordAPI(APIView):
                 title=data['title'],
                 category=category,
                 store=data.get('store', ''),
-                cost=parse_decimal(data['cost']),
+                cost=cost,
                 month=monthly_record,
                 transfer_target_account=transfer_target_account,
             )

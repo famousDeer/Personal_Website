@@ -1,4 +1,6 @@
 from django import template
+from django.templatetags.static import static
+from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 
 register = template.Library()
@@ -45,7 +47,11 @@ def get_shop_icon(shop_name):
     for key, filename in logos.items():
         if key in name:
             # Zwracamy obrazek SVG. Klasa 'shop-logo' do stylizacji w CSS.
-            return mark_safe(f'<img src="/static/img/logos/{filename}" class="shop-logo" alt="{shop_name}">')
+            return format_html(
+                '<img src="{}" class="shop-logo" alt="{}">',
+                static(f'img/logos/{filename}'),
+                shop_name,
+            )
 
     # 2. MAPA IKON (Fallback do Bootstrap Icons)
     # Jeśli nie mamy loga, dobieramy ikonę po słowach kluczowych

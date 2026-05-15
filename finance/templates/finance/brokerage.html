@@ -1,0 +1,355 @@
+{% extends 'finance/index.html' %}
+{% load humanize %}
+
+{% block title %}Konta maklerskie{% endblock %}
+
+{% block content_finance %}
+<div class="d-flex flex-column flex-xl-row justify-content-between gap-3 align-items-xl-center mb-4">
+    <div>
+        <div class="small text-uppercase fw-bold text-muted mb-1">Portfel inwestycyjny</div>
+        <h2 class="fw-bold mb-1">Konta maklerskie</h2>
+        <p class="text-muted mb-0">XTB, mBank, IKE, pozycje, dywidendy i szacowany podatek Belki.</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+        <form method="post" action="{% url 'finance:brokerage_refresh' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-primary rounded-pill fw-bold">
+                <i class="bi bi-arrow-repeat me-1"></i> Odśwież rynek
+            </button>
+        </form>
+        <a href="{% url 'finance:add_brokerage_account' %}" class="btn btn-soft-neutral rounded-pill fw-bold">
+            <i class="bi bi-bank me-1"></i> Konto
+        </a>
+        <a href="{% url 'finance:add_brokerage_instrument' %}" class="btn btn-soft-neutral rounded-pill fw-bold">
+            <i class="bi bi-plus-square me-1"></i> Instrument
+        </a>
+        <a href="{% url 'finance:add_brokerage_transaction' %}" class="btn btn-primary rounded-pill fw-bold text-white">
+            <i class="bi bi-arrow-left-right me-1"></i> Transakcja
+        </a>
+        <a href="{% url 'finance:add_brokerage_dividend' %}" class="btn btn-success rounded-pill fw-bold text-white">
+            <i class="bi bi-cash-coin me-1"></i> Dywidenda
+        </a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-6 col-xl-3">
+        <div class="card action-card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="small text-muted fw-bold text-uppercase">Wartość rynkowa</div>
+                {% for item in currency_totals %}
+                    <div class="fs-5 fw-bold text-nowrap">{{ item.value|floatformat:2|intcomma }} {{ item.currency }}</div>
+                {% empty %}
+                    <div class="fs-5 fw-bold text-muted">Brak wyceny</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="card action-card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="small text-muted fw-bold text-uppercase">Koszt nabycia</div>
+                {% for item in currency_totals %}
+                    <div class="fs-5 fw-bold text-nowrap">{{ item.cost|floatformat:2|intcomma }} {{ item.currency }}</div>
+                {% empty %}
+                    <div class="fs-5 fw-bold text-muted">Brak pozycji</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="card action-card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="small text-muted fw-bold text-uppercase">Niezrealizowany wynik</div>
+                {% for item in currency_totals %}
+                    <div class="fs-5 fw-bold text-nowrap {% if item.unrealized >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        {{ item.unrealized|floatformat:2|intcomma }} {{ item.currency }}
+                    </div>
+                {% empty %}
+                    <div class="fs-5 fw-bold text-muted">Brak wyniku</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="card action-card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="small text-muted fw-bold text-uppercase">Podatek / dywidendy</div>
+                {% for item in currency_totals %}
+                    <div class="fw-bold text-danger text-nowrap">{{ item.estimated_sell_tax|floatformat:2|intcomma }} {{ item.currency }} podatku</div>
+                    <div class="small text-muted text-nowrap">{{ item.planned_dividend_net|floatformat:2|intcomma }} {{ item.currency }} netto w planie</div>
+                {% empty %}
+                    <div class="fw-bold text-muted">Brak danych</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-xl-4">
+        <div class="card action-card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="fw-bold mb-3">Konta</h5>
+                {% if account_totals %}
+                    <div class="vstack gap-3">
+                        {% for item in account_totals %}
+                            <div class="d-flex justify-content-between gap-3 border-bottom pb-3">
+                                <div>
+                                    <div class="fw-bold">{{ item.account.name }}</div>
+                                    <div class="small text-muted">
+                                        {{ item.account.get_broker_display }} · {{ item.account.currency }} · {{ item.account.get_account_type_display }}
+                                    </div>
+                                    <div class="d-flex gap-2 mt-2">
+                                        <a href="{% url 'finance:edit_brokerage_account' item.account.id %}" class="btn btn-sm btn-outline-primary rounded-pill px-2 py-0">
+                                            Edytuj
+                                        </a>
+                                        <form method="post" action="{% url 'finance:delete_brokerage_account' item.account.id %}" onsubmit="return confirm('Usunąć konto maklerskie wraz z jego transakcjami i dywidendami?');">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill px-2 py-0">Usuń</button>
+                                        </form>
+                                    </div>
+                                </div>
+                                <div class="text-end">
+                                    {% for total in item.currencies %}
+                                        <div class="fw-bold text-nowrap">{{ total.value|floatformat:2|intcomma }} {{ total.currency }}</div>
+                                        <div class="small text-nowrap {% if total.unrealized >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                            {{ total.unrealized|floatformat:2|intcomma }} {{ total.currency }}
+                                        </div>
+                                    {% empty %}
+                                        <div class="fw-bold text-muted">0,00 {{ item.account.currency }}</div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-muted">Brak kont maklerskich. Dodaj XTB PLN/EUR/USD/IKE i mBank jako osobne konta.</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-8">
+        <div class="card action-card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="fw-bold mb-3">Pozycje</h5>
+                <div class="table-responsive">
+                    <table class="table align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Instrument</th>
+                                <th>Konto</th>
+                                <th class="text-end">Ilość</th>
+                                <th class="text-end">Cena</th>
+                                <th class="text-end">Wartość</th>
+                                <th class="text-end">Wynik</th>
+                                <th class="text-end">Akcje</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for position in positions %}
+                                <tr>
+                                    <td>
+                                        <div class="fw-bold">{{ position.instrument.ticker }}</div>
+                                        <div class="small text-muted">{{ position.instrument.name }}</div>
+                                    </td>
+                                    <td class="small">{{ position.account.name }}</td>
+                                    <td class="text-end">{{ position.quantity|floatformat:4|intcomma }}</td>
+                                    <td class="text-end">
+                                        {% if position.instrument.last_price %}
+                                            {{ position.instrument.last_price|floatformat:4|intcomma }} {{ position.instrument.currency }}
+                                        {% else %}
+                                            <span class="text-muted">brak ceny</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">
+                                        {% if position.current_value %}
+                                            {{ position.current_value|floatformat:2|intcomma }} {{ position.currency }}
+                                        {% else %}
+                                            <span class="text-muted">brak wyceny</span>
+                                        {% endif %}
+                                    </td>
+                                    {% if position.unrealized != None %}
+                                        <td class="text-end {% if position.unrealized >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                            {{ position.unrealized|floatformat:2|intcomma }} {{ position.currency }}
+                                        </td>
+                                    {% else %}
+                                        <td class="text-end">
+                                            <span class="text-muted">-</span>
+                                        </td>
+                                    {% endif %}
+                                    <td class="text-end">
+                                        <a href="{% url 'finance:edit_brokerage_instrument' position.instrument.id %}" class="btn btn-sm btn-outline-primary rounded-pill px-2 py-0">
+                                            Edytuj
+                                        </a>
+                                    </td>
+                                </tr>
+                            {% empty %}
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted py-4">Brak otwartych pozycji.</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="small text-muted mt-3">
+                    Wartości pozostają w walutach instrumentów i nie są automatycznie przeliczane na PLN.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-xl-5">
+        <div class="card action-card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="fw-bold mb-3">Instrumenty</h5>
+                <div class="vstack gap-3">
+                    {% for instrument in brokerage_instruments %}
+                        <div class="d-flex justify-content-between gap-3 border-bottom pb-3">
+                            <div>
+                                <div class="fw-bold">{{ instrument.name }}</div>
+                                <div class="small text-muted">
+                                    {{ instrument.ticker }} · {{ instrument.isin|default:"brak ISIN" }} · {{ instrument.currency }}
+                                </div>
+                                {% if instrument.price_symbol %}
+                                    <div class="small text-muted">Symbol ceny: {{ instrument.price_symbol }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="d-flex align-items-start gap-2">
+                                <a href="{% url 'finance:edit_brokerage_instrument' instrument.id %}" class="btn btn-sm btn-outline-primary rounded-pill">
+                                    Edytuj
+                                </a>
+                                <form method="post" action="{% url 'finance:delete_brokerage_instrument' instrument.id %}" onsubmit="return confirm('Usunąć instrument wraz z jego transakcjami i dywidendami?');">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill">Usuń</button>
+                                </form>
+                            </div>
+                        </div>
+                    {% empty %}
+                        <div class="text-muted">Brak instrumentów.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-7">
+        <div class="card action-card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="fw-bold mb-3">Ostatnie transakcje</h5>
+                <div class="table-responsive">
+                    <table class="table align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Instrument</th>
+                                <th>Typ</th>
+                                <th class="text-end">Ilość</th>
+                                <th class="text-end">Cena</th>
+                                <th class="text-end">Akcje</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for transaction in brokerage_transactions %}
+                                <tr>
+                                    <td>
+                                        {{ transaction.trade_date|date:"d.m.Y" }}
+                                        {% if transaction.trade_time %}
+                                            <div class="small text-muted">{{ transaction.trade_time|time:"H:i" }}</div>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="fw-bold">{{ transaction.instrument.ticker }}</div>
+                                        <div class="small text-muted">{{ transaction.account.name }}</div>
+                                    </td>
+                                    <td>{{ transaction.get_transaction_type_display }}</td>
+                                    <td class="text-end">{{ transaction.quantity|floatformat:4|intcomma }}</td>
+                                    <td class="text-end">{{ transaction.price|floatformat:4|intcomma }} {{ transaction.instrument.currency }}</td>
+                                    <td class="text-end">
+                                        <div class="d-inline-flex gap-2">
+                                            <a href="{% url 'finance:edit_brokerage_transaction' transaction.id %}" class="btn btn-sm btn-outline-primary rounded-pill">
+                                                Edytuj
+                                            </a>
+                                            <form method="post" action="{% url 'finance:delete_brokerage_transaction' transaction.id %}" onsubmit="return confirm('Usunąć transakcję?');">
+                                                {% csrf_token %}
+                                                <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill">Usuń</button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% empty %}
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted py-4">Brak transakcji.</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card action-card border-0 shadow-sm">
+    <div class="card-body">
+        <h5 class="fw-bold mb-3">Planowane dywidendy</h5>
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Instrument</th>
+                        <th>Konto</th>
+                        <th>Wypłata</th>
+                        <th class="text-end">Ilość</th>
+                        <th class="text-end">Brutto</th>
+                        <th class="text-end">Podatek</th>
+                        <th class="text-end">Netto</th>
+                        <th class="text-end">Akcje</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in upcoming_dividends %}
+                        <tr>
+                            <td>
+                                <div class="fw-bold">{{ item.dividend.instrument.ticker }}</div>
+                                {% if item.dividend.ex_dividend_date %}
+                                    <div class="small text-muted">Odcięcie: {{ item.dividend.ex_dividend_date|date:"d.m.Y" }}</div>
+                                {% endif %}
+                            </td>
+                            <td class="small">{{ item.dividend.account.name }}</td>
+                            <td>{{ item.dividend.payment_date|date:"d.m.Y" }}</td>
+                            <td class="text-end">{{ item.quantity|floatformat:4|intcomma }}</td>
+                            <td class="text-end">{{ item.gross_total|floatformat:2|intcomma }} {{ item.dividend.currency }}</td>
+                            <td class="text-end text-danger">{{ item.tax_amount|floatformat:2|intcomma }} {{ item.dividend.currency }}</td>
+                            <td class="text-end fw-bold">
+                                {{ item.net_total|floatformat:2|intcomma }} {{ item.dividend.currency }}
+                            </td>
+                            <td class="text-end">
+                                <div class="d-inline-flex gap-2">
+                                    <a href="{% url 'finance:edit_brokerage_dividend' item.dividend.id %}" class="btn btn-sm btn-outline-primary rounded-pill">
+                                        Edytuj
+                                    </a>
+                                    <form method="post" action="{% url 'finance:delete_brokerage_dividend' item.dividend.id %}" onsubmit="return confirm('Usunąć dywidendę?');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill">Usuń</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="8" class="text-center text-muted py-4">Brak zaplanowanych dywidend.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="small text-muted mt-3">
+            Dla kont IKE podatek w podsumowaniu jest liczony jako 0%. Dla zwykłych kont domyślnie stosowane jest 19%.
+        </div>
+    </div>
+</div>
+{% endblock %}

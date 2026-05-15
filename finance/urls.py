@@ -24,6 +24,22 @@ urlpatterns = [
     # Reports
     path('reports/', views.ReportsView.as_view(), name='reports'),
 
+    # Brokerage portfolio
+    path('brokerage/', views.BrokeragePortfolioView.as_view(), name='brokerage'),
+    path('brokerage/refresh/', views.RefreshBrokerageMarketDataView.as_view(), name='brokerage_refresh'),
+    path('brokerage/accounts/add/', views.AddBrokerageAccountView.as_view(), name='add_brokerage_account'),
+    path('brokerage/accounts/<int:account_id>/edit/', views.EditBrokerageAccountView.as_view(), name='edit_brokerage_account'),
+    path('brokerage/accounts/<int:account_id>/delete/', views.DeleteBrokerageAccountView.as_view(), name='delete_brokerage_account'),
+    path('brokerage/instruments/add/', views.AddBrokerageInstrumentView.as_view(), name='add_brokerage_instrument'),
+    path('brokerage/instruments/<int:instrument_id>/edit/', views.EditBrokerageInstrumentView.as_view(), name='edit_brokerage_instrument'),
+    path('brokerage/instruments/<int:instrument_id>/delete/', views.DeleteBrokerageInstrumentView.as_view(), name='delete_brokerage_instrument'),
+    path('brokerage/transactions/add/', views.AddBrokerageTransactionView.as_view(), name='add_brokerage_transaction'),
+    path('brokerage/transactions/<int:transaction_id>/edit/', views.EditBrokerageTransactionView.as_view(), name='edit_brokerage_transaction'),
+    path('brokerage/transactions/<int:transaction_id>/delete/', views.DeleteBrokerageTransactionView.as_view(), name='delete_brokerage_transaction'),
+    path('brokerage/dividends/add/', views.AddBrokerageDividendView.as_view(), name='add_brokerage_dividend'),
+    path('brokerage/dividends/<int:dividend_id>/edit/', views.EditBrokerageDividendView.as_view(), name='edit_brokerage_dividend'),
+    path('brokerage/dividends/<int:dividend_id>/delete/', views.DeleteBrokerageDividendView.as_view(), name='delete_brokerage_dividend'),
+
     # Travels
     path('travel/', views.TravelView.as_view(), name='travels'),
     path('travel/add/', views.AddTravelView.as_view(), name='add_travel'),

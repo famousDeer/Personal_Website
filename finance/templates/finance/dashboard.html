@@ -4,18 +4,34 @@
 
 {% block content_finance %}
 
-<div class="d-flex justify-content-between align-items-center mb-4 animate-fade-in">
-    <div>
-        <h2 class="fw-bold mb-0 text-primary">Panel finansowy</h2>
-        <p class="text-muted mb-0">Podsumowanie: 
-            <form method="get" action="." class="d-inline-block">
-                {% for category in selected_cost_categories %}
-                    <input type="hidden" name="cost_category" value="{{ category }}">
-                {% endfor %}
-                <select class="form-select form-select-sm border-0 shadow-sm" name="month" onchange="this.form.submit()">
+<div class="card border-0 shadow-sm action-card mb-4 animate-fade-in">
+    <div class="card-body p-4">
+        <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+            <div>
+                <div class="small text-uppercase fw-bold text-muted mb-1">Panel finansowy</div>
+                <h2 class="fw-bold mb-1 text-primary">{{ active_finance_account.display_name }}</h2>
+                <div class="text-muted small">Bilans wybranego miesiąca:
+                    <span class="fw-bold {% if balance >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        {{ balance|floatformat:2 }} zł
+                    </span>
+                </div>
+            </div>
+            <div class="d-flex gap-2 flex-wrap justify-content-end">
+                <a href="{% url 'finance:add_expense' %}" class="btn btn-danger rounded-pill px-3"><i class="bi bi-dash-circle me-1"></i> Wydatek</a>
+                <a href="{% url 'finance:add_income' %}" class="btn btn-success rounded-pill px-3"><i class="bi bi-plus-circle me-1"></i> Przychód</a>
+                <a href="{% url 'finance:reports' %}" class="btn btn-soft-neutral rounded-pill px-3"><i class="bi bi-graph-up me-1"></i> Raporty</a>
+            </div>
+        </div>
+        <form method="get" action="." class="row g-2 align-items-end mt-3">
+            {% for category in selected_cost_categories %}
+                <input type="hidden" name="cost_category" value="{{ category }}">
+            {% endfor %}
+            <div class="col-md-4 col-lg-3">
+                <label class="form-label small text-uppercase fw-bold text-muted">Miesiąc</label>
+                <select class="form-select form-select-sm" name="month" onchange="this.form.submit()">
                     {% now "Y-m" as current_ym %}
                     <option value="{{ current_ym }}" {% if not current_month_filter or current_month_filter == current_ym %}selected{% endif %}>
-                        Bieżący (Now)
+                        Bieżący
                     </option>
                     {% for month in months %}
                         <option value="{{ month.date|date:'Y-m' }}" {% if current_month_filter == month.date|date:'Y-m' %}selected{% endif %}>
@@ -23,8 +39,8 @@
                         </option>
                     {% endfor %}
                 </select>
-            </form>
-        </p>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -391,6 +407,14 @@
         </div>
     </div>
 </div>
+{{ categories|json_script:"expense-labels-data" }}
+{{ amounts|json_script:"expense-amounts-data" }}
+{{ income_sources|json_script:"income-labels-data" }}
+{{ income_amounts|json_script:"income-amounts-data" }}
+{{ days_in_month|json_script:"days-in-month-data" }}
+{{ daily_incomes_data|json_script:"daily-incomes-data" }}
+{{ daily_expenses_data|json_script:"daily-expenses-data" }}
+{{ daily_investments_data|json_script:"daily-investments-data" }}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
     // --- KONFIGURACJA CHART.JS ---
@@ -404,14 +428,23 @@
     Chart.defaults.borderColor = gridColor;
     Chart.defaults.font.family = "'Segoe UI', 'Roboto', 'sans-serif'";
 
+    const expenseLabels = JSON.parse(document.getElementById('expense-labels-data').textContent);
+    const expenseAmounts = JSON.parse(document.getElementById('expense-amounts-data').textContent);
+    const incomeLabels = JSON.parse(document.getElementById('income-labels-data').textContent);
+    const incomeAmounts = JSON.parse(document.getElementById('income-amounts-data').textContent);
+    const daysInMonth = JSON.parse(document.getElementById('days-in-month-data').textContent);
+    const dailyIncomes = JSON.parse(document.getElementById('daily-incomes-data').textContent);
+    const dailyExpenses = JSON.parse(document.getElementById('daily-expenses-data').textContent);
+    const dailyInvestments = JSON.parse(document.getElementById('daily-investments-data').textContent);
+
     // --- 1. WYKRES KOŁOWY WYDATKÓW (Pie + Bez Legendy) ---
     const expenseCtx = document.getElementById('expenseChart').getContext('2d');
     new Chart(expenseCtx, {
         type: 'pie', // Zostajemy przy klasycznym kole
         data: {
-            labels: {{ categories|safe }},
+            labels: expenseLabels,
             datasets: [{
-                data: {{ amounts|safe }},
+                data: expenseAmounts,
                 backgroundColor: [
                     '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
                     '#FF9F40', '#C9CBCF', '#E5E7EB', '#FBBF24', '#10B981'
@@ -442,9 +475,9 @@
     new Chart(incomeCtx, {
         type: 'pie',
         data: {
-            labels: {{ income_sources|safe }},
+            labels: incomeLabels,
             datasets: [{
-                data: {{ income_amounts|safe }},
+                data: incomeAmounts,
                 backgroundColor: ['#28a745', '#17a2b8', '#6c757d', '#ffc107', '#dc3545'],
                 borderWidth: 2,
                 borderColor: isDark ? '#212529' : '#fff'
@@ -472,24 +505,24 @@
     new Chart(mainCtx, {
         type: 'bar', // Powrót do słupków
         data: {
-            labels: {{ days_in_month|safe }},
+            labels: daysInMonth,
             datasets: [{
                 label: 'Przychody',
-                data: {{ daily_incomes_data|safe }},
+                data: dailyIncomes,
                 backgroundColor: 'rgba(75, 192, 192, 0.7)',
                 borderColor: 'rgba(75, 192, 192, 1)',
                 borderWidth: 1,
                 borderRadius: 4, // Zaokrąglenie góry słupka
             }, {
                 label: 'Wydatki',
-                data: {{ daily_expenses_data|safe }},
+                data: dailyExpenses,
                 backgroundColor: 'rgba(255, 99, 132, 0.7)',
                 borderColor: 'rgba(255, 99, 132, 1)',
                 borderWidth: 1,
                 borderRadius: 4,
             }, {
                 label: 'Inwestycje',
-                data: {{ daily_investments_data|safe }},
+                data: dailyInvestments,
                 backgroundColor: 'rgba(13, 202, 240, 0.7)',
                 borderColor: 'rgba(13, 202, 240, 1)',
                 borderWidth: 1,
