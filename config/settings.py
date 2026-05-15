@@ -144,9 +144,10 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 STATIC_URL = 'static/'
-STATICFILES_DIRS = [BASE_DIR / 'finance/static', BASE_DIR / 'cooking/static_cooking', BASE_DIR / 'cars/static_cars']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 WHITENOISE_MAX_AGE = 60 * 60 * 24 * 7
+ALPHA_VANTAGE_API_KEY = os.environ.get('ALPHA_VANTAGE_API_KEY', '')
+OPENFIGI_API_KEY = os.environ.get('OPENFIGI_API_KEY', '')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
