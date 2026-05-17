@@ -19,6 +19,17 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
+def env_list(name, default=''):
+    return [item.strip() for item in os.environ.get(name, default).split(',') if item.strip()]
+
+
+def env_bool(name, default=False):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value in ['1', 'True', 'true', 'yes', 'on']
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
@@ -28,7 +39,25 @@ SECRET_KEY = os.environ.get('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', False) in ['True', 'true']
 
-ALLOWED_HOSTS = [h for h in os.environ.get('ALLOWED_HOSTS', '*').split(',') if h]
+ALLOWED_HOSTS = env_list('ALLOWED_HOSTS', '*')
+
+CSRF_TRUSTED_ORIGINS = env_list('CSRF_TRUSTED_ORIGINS')
+if not CSRF_TRUSTED_ORIGINS:
+    csrf_ports = env_list('CSRF_TRUSTED_PORTS', '8000')
+    for host in ALLOWED_HOSTS:
+        if host == '*':
+            continue
+        hosts = [host]
+        if ':' not in host:
+            hosts.extend(f'{host}:{port}' for port in csrf_ports)
+        for trusted_host in hosts:
+            CSRF_TRUSTED_ORIGINS.extend([f'http://{trusted_host}', f'https://{trusted_host}'])
+
+CSRF_COOKIE_SAMESITE = os.environ.get('CSRF_COOKIE_SAMESITE', 'Lax')
+SESSION_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'Lax')
+CSRF_COOKIE_SECURE = env_bool('CSRF_COOKIE_SECURE', False)
+SESSION_COOKIE_SECURE = env_bool('SESSION_COOKIE_SECURE', False)
+CSRF_FAILURE_VIEW = 'config.views.csrf_failure'
 
 
 # Application definition
@@ -148,6 +177,7 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 WHITENOISE_MAX_AGE = 60 * 60 * 24 * 7
 ALPHA_VANTAGE_API_KEY = os.environ.get('ALPHA_VANTAGE_API_KEY', '')
 OPENFIGI_API_KEY = os.environ.get('OPENFIGI_API_KEY', '')
+STOOQ_API_KEY = os.environ.get('STOOQ_API_KEY', '')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

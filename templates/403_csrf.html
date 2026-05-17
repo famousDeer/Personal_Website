@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+
+{% block title %}Sesja wygasła{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-7 col-xl-6">
+        <div class="card action-card border-0 shadow-sm">
+            <div class="card-body p-4 p-lg-5">
+                <div class="small text-uppercase fw-bold text-muted mb-2">Weryfikacja formularza</div>
+                <h1 class="h3 fw-bold mb-3">Sesja formularza wygasła</h1>
+                <p class="text-muted mb-4">
+                    Strona była otwarta zbyt długo, została odświeżona z pamięci przeglądarki albo adres strony różni się od tego,
+                    dla którego przeglądarka zapisała ciasteczko zabezpieczające.
+                </p>
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="{{ request.get_full_path }}" class="btn btn-primary rounded-pill text-white fw-bold">
+                        Odśwież stronę
+                    </a>
+                    <a href="{% url 'index' %}" class="btn btn-soft-neutral rounded-pill fw-bold">
+                        Wróć do panelu
+                    </a>
+                </div>
+                {% if reason %}
+                    <div class="small text-muted mt-4">Szczegóły techniczne: {{ reason }}</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

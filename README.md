@@ -28,7 +28,8 @@ Prerequisites:
 ```dotenv
 SECRET_KEY=change-me
 DEBUG=1
-ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
+ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,192.168.1.115,raspberrypi.local
+CSRF_TRUSTED_ORIGINS=http://localhost:8000,http://127.0.0.1:8000,http://192.168.1.115:8000,http://raspberrypi.local:8000
 
 # Database connection used by Django (settings.py should read these)
 DB_NAME=finance_db
@@ -36,6 +37,11 @@ DB_USER=finance
 DB_PASSWORD=1234
 DB_HOST=db
 DB_PORT=5432
+
+# Brokerage market data
+ALPHA_VANTAGE_API_KEY=
+OPENFIGI_API_KEY=
+STOOQ_API_KEY=
 ```
 
 2) Start the stack:
@@ -97,9 +103,16 @@ Required at minimum:
 - SECRET_KEY: Django secret key (use a strong, unique value in production)
 - DEBUG: 1 for development, 0 for production
 - ALLOWED_HOSTS: comma-separated list (include your domain/IP in prod)
+- CSRF_TRUSTED_ORIGINS: comma-separated origins with scheme and port, e.g. `http://192.168.1.115:8000,http://raspberrypi.local:8000`
+- CSRF_TRUSTED_PORTS: optional comma-separated local ports used to auto-build CSRF origins from ALLOWED_HOSTS; default `8000`
 
 Database variables expected by settings (example):
 - DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT
+
+Brokerage market data:
+- ALPHA_VANTAGE_API_KEY: quotes and dividends for supported foreign instruments
+- OPENFIGI_API_KEY: ISIN to ticker/instrument mapping
+- STOOQ_API_KEY: historical Stooq CSV data used by brokerage price charts; get it from `https://stooq.pl/q/d/?s=kru&get_apikey`
 
 Note: Ensure your config/settings.py reads these variables to configure DATABASES.
 
@@ -107,6 +120,7 @@ Note: Ensure your config/settings.py reads these variables to configure DATABASE
 - Page not loading: run docker compose logs -f web and docker compose logs -f db
 - Static files not styled: confirm collectstatic ran and DEBUG/WhiteNoise configuration is correct
 - Cannot connect to DB: ensure DB_HOST=db and DB_PORT=5432 in .env when using Docker
+- CSRF verification failed: open the app consistently with one address, e.g. always `http://192.168.1.115:8000` or always `http://raspberrypi.local:8000`, and include that exact origin in `CSRF_TRUSTED_ORIGINS`
 
 ## Deployment notes (Raspberry Pi)
 - This project runs on ARM via Docker (Postgres 15-alpine and Python slim images support ARM)

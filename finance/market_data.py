@@ -1,6 +1,8 @@
 import csv
 import json
-from datetime import timedelta
+import re
+import unicodedata
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from io import StringIO
 from urllib.error import HTTPError, URLError
@@ -19,6 +21,8 @@ ALPHA_VANTAGE_URL = 'https://www.alphavantage.co/query'
 OPENFIGI_MAPPING_URL = 'https://api.openfigi.com/v3/mapping'
 STOOQ_QUOTE_URL = 'https://stooq.pl/q/l/'
 STOOQ_DAILY_URL = 'https://stooq.com/q/d/l/'
+STOOQ_DAILY_URLS = ('https://stooq.pl/q/d/l/', 'https://stooq.com/q/d/l/')
+NBP_TABLE_A_URL = 'https://api.nbp.pl/api/exchangerates/tables/a/?format=json'
 
 
 class MarketDataError(Exception):
@@ -29,6 +33,26 @@ def _decimal(value):
     try:
         return Decimal(str(value))
     except (InvalidOperation, TypeError):
+        return None
+
+
+def _date(value):
+    if isinstance(value, date):
+        return value
+    if value in (None, '', 'None', 'null', 'NULL', '0000-00-00'):
+        return None
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
+def _integer(value):
+    if value in (None, '', 'None', 'null', 'NULL'):
+        return None
+    try:
+        return int(Decimal(str(value)))
+    except (InvalidOperation, ValueError):
         return None
 
 
@@ -62,9 +86,19 @@ def _get_json(url):
 
 def _read_csv_url(url, timeout=12):
     try:
-        with urlopen(url, timeout=timeout) as response:
+        request = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urlopen(request, timeout=timeout) as response:
             content = response.read().decode('utf-8-sig')
-        return list(csv.DictReader(StringIO(content)))
+        if 'get_apikey' in content and 'apikey' in content.lower():
+            raise MarketDataError(
+                'Stooq wymaga klucza API dla historycznych danych CSV. '
+                'Wygeneruj klucz na stronie Stooq i ustaw STOOQ_API_KEY w pliku .env.'
+            )
+        try:
+            dialect = csv.Sniffer().sniff(content[:1024], delimiters=',;')
+        except csv.Error:
+            dialect = csv.excel
+        return list(csv.DictReader(StringIO(content), dialect=dialect))
     except HTTPError as exc:
         raise MarketDataError(f'Dostawca danych zwrócił HTTP {exc.code}: {exc.reason}') from exc
     except URLError as exc:
@@ -87,14 +121,55 @@ def _stooq_symbol(symbol, exchange='', currency=''):
     return clean_symbol.lower()
 
 
-def _stooq_symbol_candidates(symbol, exchange='', currency=''):
-    primary = _stooq_symbol(symbol, exchange, currency)
-    candidates = [primary]
-    clean_symbol = (symbol or '').strip().upper()
+def _ascii_upper(value):
+    normalized = unicodedata.normalize('NFKD', value or '')
+    return ''.join(char for char in normalized if not unicodedata.combining(char)).upper()
 
+
+def _stooq_name_candidates(name):
+    clean_name = _ascii_upper(name)
+    clean_name = re.sub(r'[^A-Z0-9]+', ' ', clean_name)
+    stop_words = {
+        'SA', 'S A', 'S', 'AKCYJNA', 'SPOLKA', 'SPOLKA AKCYJNA', 'PLC',
+        'INC', 'CORP', 'CORPORATION', 'LTD', 'LIMITED', 'NV', 'AG', 'SE',
+        'THE', 'CO', 'COMPANY', 'GROUP', 'HOLDING', 'HOLDINGS',
+    }
+    tokens = [token for token in clean_name.split() if token not in stop_words]
+    candidates = []
+    if tokens:
+        candidates.append(tokens[0])
+        joined = ''.join(tokens[:2])
+        if 2 <= len(joined) <= 16:
+            candidates.append(joined)
+    return candidates
+
+
+def _stooq_symbol_candidates(symbol, exchange='', currency='', extra_symbols=()):
+    raw_symbols = [symbol, *extra_symbols]
+    candidates = []
     if _is_warsaw_market(exchange, currency):
-        base_symbol = clean_symbol.split('.')[0]
-        for candidate in (f'{base_symbol.lower()}.pl', base_symbol.lower()):
+        expanded_symbols = []
+        for raw_symbol in raw_symbols:
+            clean_symbol = _ascii_upper(raw_symbol).strip()
+            if not clean_symbol:
+                continue
+            expanded_symbols.append(clean_symbol)
+            expanded_symbols.extend(_stooq_name_candidates(clean_symbol))
+
+        for clean_symbol in expanded_symbols:
+            base_symbol = clean_symbol.split('.')[0]
+            base_symbol = re.sub(r'[^A-Z0-9]+', '', base_symbol)
+            if not base_symbol:
+                continue
+            for candidate in (f'{base_symbol.lower()}.pl', base_symbol.lower(), f'{base_symbol.lower()}.wa'):
+                if candidate not in candidates:
+                    candidates.append(candidate)
+    else:
+        for raw_symbol in raw_symbols:
+            clean_symbol = (raw_symbol or '').strip()
+            if not clean_symbol:
+                continue
+            candidate = _stooq_symbol(clean_symbol, exchange, currency)
             if candidate not in candidates:
                 candidates.append(candidate)
 
@@ -106,6 +181,32 @@ def _stooq_lookup_url(query):
     if not clean_query:
         return 'https://stooq.pl/'
     return f'https://stooq.pl/q/?s={quote_plus(clean_query)}'
+
+
+def _stooq_history_key_url(symbol):
+    clean_symbol = (symbol or '').strip().lower()
+    if not clean_symbol:
+        clean_symbol = 'kru'
+    return f'https://stooq.pl/q/d/?s={quote_plus(clean_symbol)}&get_apikey'
+
+
+def _stooq_api_key():
+    return (getattr(settings, 'STOOQ_API_KEY', '') or '').strip()
+
+
+def _stooq_history_key_error(symbol):
+    return (
+        'Stooq wymaga klucza API dla historycznych danych CSV. '
+        f'Wejdź na {_stooq_history_key_url(symbol)}, przejdź captcha, skopiuj apikey '
+        'i ustaw STOOQ_API_KEY w pliku .env.'
+    )
+
+
+def _stooq_daily_params(params):
+    api_key = _stooq_api_key()
+    if api_key:
+        params = {**params, 'apikey': api_key}
+    return urlencode(params)
 
 
 def _row_preview(row):
@@ -138,6 +239,8 @@ class AlphaVantageClient:
             raise MarketDataError(payload['Error Message'])
         if 'Note' in payload:
             raise MarketDataError(payload['Note'])
+        if 'Information' in payload:
+            raise MarketDataError(payload['Information'])
         return payload
 
     def fetch_dividends(self, symbol):
@@ -153,6 +256,35 @@ class AlphaVantageClient:
         if price is None:
             raise MarketDataError(f'Nie udało się pobrać ceny Alpha Vantage dla symbolu {symbol}.')
         return price
+
+    def fetch_daily_history(self, symbol, outputsize='compact'):
+        payload = self._get({
+            'function': 'TIME_SERIES_DAILY',
+            'symbol': symbol,
+            'outputsize': outputsize,
+        })
+        series = payload.get('Time Series (Daily)') or {}
+        if not series:
+            raise MarketDataError(f'Nie udało się pobrać historycznych cen Alpha Vantage dla symbolu {symbol}.')
+
+        points = []
+        for day, values in series.items():
+            point_date = _date(day)
+            close = _decimal(values.get('4. close'))
+            if point_date is None or close is None:
+                continue
+            points.append({
+                'date': point_date,
+                'open': _decimal(values.get('1. open')),
+                'high': _decimal(values.get('2. high')),
+                'low': _decimal(values.get('3. low')),
+                'close': close,
+                'volume': _integer(values.get('5. volume')),
+            })
+
+        if not points:
+            raise MarketDataError(f'Alpha Vantage nie zwróciło poprawnych punktów cenowych dla symbolu {symbol}.')
+        return sorted(points, key=lambda item: item['date'])
 
 
 class StooqClient:
@@ -176,24 +308,68 @@ class StooqClient:
         raise MarketDataError(f'Nie udało się pobrać ceny Stooq. Próby: {"; ".join(errors)}.')
 
     def fetch_daily_close(self, symbol, trade_date, exchange='', currency=''):
+        if not _stooq_api_key():
+            raise MarketDataError(_stooq_history_key_error(symbol))
+
         errors = []
         for stooq_symbol in _stooq_symbol_candidates(symbol, exchange, currency):
             date_from = (trade_date - timedelta(days=7)).strftime('%Y%m%d')
             date_to = trade_date.strftime('%Y%m%d')
-            params = urlencode({'s': stooq_symbol, 'd1': date_from, 'd2': date_to, 'i': 'd'})
-            rows = _read_csv_url(f'{STOOQ_DAILY_URL}?{params}')
-            valid_rows = [row for row in rows if row.get('Date') and row.get('Date') != 'No data']
-            if not valid_rows:
-                errors.append(f'{stooq_symbol}: brak dziennych danych')
-                continue
+            params = _stooq_daily_params({'s': stooq_symbol, 'd1': date_from, 'd2': date_to, 'i': 'd'})
+            for daily_url in STOOQ_DAILY_URLS:
+                rows = _read_csv_url(f'{daily_url}?{params}')
+                valid_rows = [row for row in rows if row.get('Date') and row.get('Date') != 'No data']
+                if not valid_rows:
+                    errors.append(f'{stooq_symbol}: brak dziennych danych')
+                    continue
 
-            price = _extract_stooq_price(valid_rows[-1])
-            if price is not None:
-                return price
+                price = _extract_stooq_price(valid_rows[-1])
+                if price is not None:
+                    return price
 
-            errors.append(f'{stooq_symbol}: brak ceny zamknięcia ({_row_preview(valid_rows[-1])})')
+                errors.append(f'{stooq_symbol}: brak ceny zamknięcia ({_row_preview(valid_rows[-1])})')
 
         raise MarketDataError(f'Brak dziennych danych Stooq. Próby: {"; ".join(errors)}.')
+
+    def fetch_daily_history(self, symbol, start_date, end_date, exchange='', currency='', extra_symbols=()):
+        if not _stooq_api_key():
+            raise MarketDataError(_stooq_history_key_error(symbol))
+
+        errors = []
+        for stooq_symbol in _stooq_symbol_candidates(symbol, exchange, currency, extra_symbols=extra_symbols):
+            params = _stooq_daily_params({
+                's': stooq_symbol,
+                'd1': start_date.strftime('%Y%m%d'),
+                'd2': end_date.strftime('%Y%m%d'),
+                'i': 'd',
+            })
+            for daily_url in STOOQ_DAILY_URLS:
+                rows = _read_csv_url(f'{daily_url}?{params}')
+                valid_rows = [row for row in rows if row.get('Date') and row.get('Date') != 'No data']
+                if not valid_rows:
+                    errors.append(f'{stooq_symbol}: brak dziennych danych')
+                    continue
+
+                points = []
+                for row in valid_rows:
+                    point_date = _date(row.get('Date'))
+                    close = _extract_stooq_price(row)
+                    if point_date is None or close is None:
+                        continue
+                    points.append({
+                        'date': point_date,
+                        'open': _decimal(row.get('Open') or row.get('Otwarcie')),
+                        'high': _decimal(row.get('High') or row.get('Najwyzszy') or row.get('Najwyższy')),
+                        'low': _decimal(row.get('Low') or row.get('Najnizszy') or row.get('Najniższy')),
+                        'close': close,
+                        'volume': _integer(row.get('Volume') or row.get('Wolumen')),
+                    })
+
+                if points:
+                    return sorted(points, key=lambda item: item['date'])
+                errors.append(f'{stooq_symbol}: brak poprawnych cen ({_row_preview(valid_rows[-1])})')
+
+        raise MarketDataError(f'Brak historycznych danych Stooq. Próby: {"; ".join(errors)}.')
 
 
 class OpenFigiClient:
@@ -360,6 +536,172 @@ def fetch_latest_market_price(symbol='', exchange='', currency='', isin='', pric
         'isin': resolved.get('isin', isin) if resolved else isin,
         'exchange': resolved.get('exchange', exchange) if resolved else exchange,
         'currency': resolved.get('currency', currency) if resolved else currency,
+    }
+
+
+def _resolve_history_symbol(symbol='', exchange='', currency='', isin='', price_symbol=''):
+    resolved = None
+    resolution_error = ''
+    clean_symbol = (symbol or '').strip().upper()
+    quote_symbol = price_symbol.strip().upper() if price_symbol else clean_symbol
+
+    if isin:
+        try:
+            resolved = resolve_instrument_by_isin(isin, exchange, currency)
+        except MarketDataError as exc:
+            resolution_error = str(exc)
+        else:
+            clean_symbol = resolved['symbol']
+            exchange = resolved.get('exchange', exchange)
+            currency = resolved.get('currency', currency)
+            if not price_symbol:
+                quote_symbol = clean_symbol
+
+    if not quote_symbol:
+        quote_symbol = clean_symbol
+
+    if not quote_symbol:
+        raise MarketDataError('Brak symbolu albo ISIN do pobrania historycznych cen.')
+
+    return {
+        'symbol': clean_symbol or quote_symbol,
+        'quote_symbol': quote_symbol,
+        'exchange': exchange,
+        'currency': currency,
+        'name': resolved.get('name', '') if resolved else '',
+        'resolved': resolved,
+        'resolution_error': resolution_error,
+    }
+
+
+def fetch_historical_market_prices(
+    symbol='',
+    exchange='',
+    currency='',
+    isin='',
+    price_symbol='',
+    name='',
+    days=365,
+    limit=800,
+    start_date=None,
+    end_date=None,
+):
+    resolved = _resolve_history_symbol(symbol, exchange, currency, isin, price_symbol)
+    quote_symbol = resolved['quote_symbol']
+    exchange = resolved['exchange']
+    currency = resolved['currency']
+    end_date = end_date or timezone.localdate()
+    start_date = start_date or (end_date - timedelta(days=days))
+    days = max((end_date - start_date).days, 1)
+    errors = []
+    stooq_extra_symbols = [value for value in (symbol, name, resolved.get('symbol'), resolved.get('name')) if value and value != quote_symbol]
+
+    if _is_warsaw_market(exchange, currency):
+        try:
+            stooq_client = StooqClient()
+            points = stooq_client.fetch_daily_history(
+                quote_symbol,
+                start_date,
+                end_date,
+                exchange,
+                currency,
+                extra_symbols=stooq_extra_symbols,
+            )
+            return {
+                'points': points[-limit:],
+                'source': stooq_client.source_name,
+                'symbol': resolved['symbol'],
+                'price_symbol': quote_symbol if quote_symbol != resolved['symbol'] else '',
+                'resolution_error': resolved['resolution_error'],
+            }
+        except MarketDataError as exc:
+            errors.append(str(exc))
+
+    if not _is_warsaw_market(exchange, currency):
+        alpha_key = getattr(settings, 'ALPHA_VANTAGE_API_KEY', '')
+        if alpha_key:
+            try:
+                alpha_client = AlphaVantageClient(alpha_key)
+                outputsize = 'full' if days > 140 else 'compact'
+                points = alpha_client.fetch_daily_history(quote_symbol, outputsize=outputsize)
+                points = [point for point in points if start_date <= point['date'] <= end_date]
+                return {
+                    'points': points[-limit:],
+                    'source': alpha_client.source_name,
+                    'symbol': resolved['symbol'],
+                    'price_symbol': quote_symbol if quote_symbol != resolved['symbol'] else '',
+                    'resolution_error': resolved['resolution_error'],
+                }
+            except MarketDataError as exc:
+                errors.append(str(exc))
+
+    if price_symbol:
+        try:
+            stooq_client = StooqClient()
+            points = stooq_client.fetch_daily_history(
+                quote_symbol,
+                start_date,
+                end_date,
+                exchange,
+                currency,
+                extra_symbols=stooq_extra_symbols,
+            )
+            return {
+                'points': points[-limit:],
+                'source': stooq_client.source_name,
+                'symbol': resolved['symbol'],
+                'price_symbol': quote_symbol if quote_symbol != resolved['symbol'] else '',
+                'resolution_error': resolved['resolution_error'],
+            }
+        except MarketDataError as exc:
+            errors.append(str(exc))
+
+    details = f' Szczegóły: {"; ".join(errors)}' if errors else ''
+    if resolved['resolution_error']:
+        details = f' OpenFIGI: {resolved["resolution_error"]}.{details}'
+    raise MarketDataError(
+        f'Nie udało się pobrać historycznych cen dla symbolu {quote_symbol}. '
+        f'Spróbuj uzupełnić symbol ceny przy instrumencie albo sprawdź propozycje Stooq po nazwie: '
+        f'{_stooq_lookup_url(name or resolved.get("name") or quote_symbol)}.{details}'
+    )
+
+
+def fetch_latest_fx_rates_to_pln(currencies):
+    requested_currencies = {
+        (currency or '').strip().upper()
+        for currency in currencies
+        if (currency or '').strip()
+    }
+    rates = {'PLN': Decimal('1')}
+    needed_currencies = requested_currencies - {'PLN'}
+    if not needed_currencies:
+        return {
+            'rates': rates,
+            'source': 'PLN',
+            'table_date': timezone.localdate().isoformat(),
+        }
+
+    payload = _get_json(NBP_TABLE_A_URL)
+    if not isinstance(payload, list) or not payload:
+        raise MarketDataError('NBP zwrócił nieprawidłową tabelę kursów walut.')
+
+    table = payload[0]
+    for row in table.get('rates') or []:
+        code = (row.get('code') or '').strip().upper()
+        if code in needed_currencies:
+            rate = _decimal(row.get('mid'))
+            if rate is not None:
+                rates[code] = rate
+
+    missing = sorted(needed_currencies - set(rates))
+    if missing:
+        raise MarketDataError(f'NBP nie zwrócił kursu dla walut: {", ".join(missing)}.')
+
+    source = f"NBP tabela {table.get('no')}" if table.get('no') else 'NBP'
+    return {
+        'rates': rates,
+        'source': source,
+        'table_date': table.get('effectiveDate') or '',
     }
 
 

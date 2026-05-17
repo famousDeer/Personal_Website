@@ -4,352 +4,1237 @@
 {% block title %}Konta maklerskie{% endblock %}
 
 {% block content_finance %}
-<div class="d-flex flex-column flex-xl-row justify-content-between gap-3 align-items-xl-center mb-4">
-    <div>
-        <div class="small text-uppercase fw-bold text-muted mb-1">Portfel inwestycyjny</div>
-        <h2 class="fw-bold mb-1">Konta maklerskie</h2>
-        <p class="text-muted mb-0">XTB, mBank, IKE, pozycje, dywidendy i szacowany podatek Belki.</p>
-    </div>
-    <div class="d-flex flex-wrap gap-2">
-        <form method="post" action="{% url 'finance:brokerage_refresh' %}">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-outline-primary rounded-pill fw-bold">
-                <i class="bi bi-arrow-repeat me-1"></i> Odśwież rynek
-            </button>
-        </form>
-        <a href="{% url 'finance:add_brokerage_account' %}" class="btn btn-soft-neutral rounded-pill fw-bold">
-            <i class="bi bi-bank me-1"></i> Konto
-        </a>
-        <a href="{% url 'finance:add_brokerage_instrument' %}" class="btn btn-soft-neutral rounded-pill fw-bold">
-            <i class="bi bi-plus-square me-1"></i> Instrument
-        </a>
-        <a href="{% url 'finance:add_brokerage_transaction' %}" class="btn btn-primary rounded-pill fw-bold text-white">
-            <i class="bi bi-arrow-left-right me-1"></i> Transakcja
-        </a>
-        <a href="{% url 'finance:add_brokerage_dividend' %}" class="btn btn-success rounded-pill fw-bold text-white">
-            <i class="bi bi-cash-coin me-1"></i> Dywidenda
-        </a>
-    </div>
-</div>
-
-<div class="row g-3 mb-4">
-    <div class="col-md-6 col-xl-3">
-        <div class="card action-card border-0 shadow-sm h-100">
-            <div class="card-body">
-                <div class="small text-muted fw-bold text-uppercase">Wartość rynkowa</div>
-                {% for item in currency_totals %}
-                    <div class="fs-5 fw-bold text-nowrap">{{ item.value|floatformat:2|intcomma }} {{ item.currency }}</div>
-                {% empty %}
-                    <div class="fs-5 fw-bold text-muted">Brak wyceny</div>
-                {% endfor %}
-            </div>
-        </div>
-    </div>
-    <div class="col-md-6 col-xl-3">
-        <div class="card action-card border-0 shadow-sm h-100">
-            <div class="card-body">
-                <div class="small text-muted fw-bold text-uppercase">Koszt nabycia</div>
-                {% for item in currency_totals %}
-                    <div class="fs-5 fw-bold text-nowrap">{{ item.cost|floatformat:2|intcomma }} {{ item.currency }}</div>
-                {% empty %}
-                    <div class="fs-5 fw-bold text-muted">Brak pozycji</div>
-                {% endfor %}
-            </div>
-        </div>
-    </div>
-    <div class="col-md-6 col-xl-3">
-        <div class="card action-card border-0 shadow-sm h-100">
-            <div class="card-body">
-                <div class="small text-muted fw-bold text-uppercase">Niezrealizowany wynik</div>
-                {% for item in currency_totals %}
-                    <div class="fs-5 fw-bold text-nowrap {% if item.unrealized >= 0 %}text-success{% else %}text-danger{% endif %}">
-                        {{ item.unrealized|floatformat:2|intcomma }} {{ item.currency }}
-                    </div>
-                {% empty %}
-                    <div class="fs-5 fw-bold text-muted">Brak wyniku</div>
-                {% endfor %}
-            </div>
-        </div>
-    </div>
-    <div class="col-md-6 col-xl-3">
-        <div class="card action-card border-0 shadow-sm h-100">
-            <div class="card-body">
-                <div class="small text-muted fw-bold text-uppercase">Podatek / dywidendy</div>
-                {% for item in currency_totals %}
-                    <div class="fw-bold text-danger text-nowrap">{{ item.estimated_sell_tax|floatformat:2|intcomma }} {{ item.currency }} podatku</div>
-                    <div class="small text-muted text-nowrap">{{ item.planned_dividend_net|floatformat:2|intcomma }} {{ item.currency }} netto w planie</div>
-                {% empty %}
-                    <div class="fw-bold text-muted">Brak danych</div>
-                {% endfor %}
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row g-4 mb-4">
-    <div class="col-xl-4">
-        <div class="card action-card border-0 shadow-sm h-100">
-            <div class="card-body">
-                <h5 class="fw-bold mb-3">Konta</h5>
-                {% if account_totals %}
-                    <div class="vstack gap-3">
-                        {% for item in account_totals %}
-                            <div class="d-flex justify-content-between gap-3 border-bottom pb-3">
-                                <div>
-                                    <div class="fw-bold">{{ item.account.name }}</div>
-                                    <div class="small text-muted">
-                                        {{ item.account.get_broker_display }} · {{ item.account.currency }} · {{ item.account.get_account_type_display }}
-                                    </div>
-                                    <div class="d-flex gap-2 mt-2">
-                                        <a href="{% url 'finance:edit_brokerage_account' item.account.id %}" class="btn btn-sm btn-outline-primary rounded-pill px-2 py-0">
-                                            Edytuj
-                                        </a>
-                                        <form method="post" action="{% url 'finance:delete_brokerage_account' item.account.id %}" onsubmit="return confirm('Usunąć konto maklerskie wraz z jego transakcjami i dywidendami?');">
-                                            {% csrf_token %}
-                                            <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill px-2 py-0">Usuń</button>
-                                        </form>
-                                    </div>
-                                </div>
-                                <div class="text-end">
-                                    {% for total in item.currencies %}
-                                        <div class="fw-bold text-nowrap">{{ total.value|floatformat:2|intcomma }} {{ total.currency }}</div>
-                                        <div class="small text-nowrap {% if total.unrealized >= 0 %}text-success{% else %}text-danger{% endif %}">
-                                            {{ total.unrealized|floatformat:2|intcomma }} {{ total.currency }}
-                                        </div>
-                                    {% empty %}
-                                        <div class="fw-bold text-muted">0,00 {{ item.account.currency }}</div>
-                                    {% endfor %}
-                                </div>
-                            </div>
-                        {% endfor %}
-                    </div>
+<div class="brokerage-page">
+    <div class="brokerage-header">
+        <div>
+            <div class="small text-uppercase fw-bold text-muted mb-1">Portfel inwestycyjny</div>
+            <h2 class="fw-bold mb-1">Konta maklerskie</h2>
+            <p class="text-muted mb-0">
+                {% if selected_brokerage_account %}
+                    Podgląd konta {{ selected_brokerage_account.name }}.
                 {% else %}
-                    <div class="text-muted">Brak kont maklerskich. Dodaj XTB PLN/EUR/USD/IKE i mBank jako osobne konta.</div>
+                    Podsumowanie wszystkich kont maklerskich.
                 {% endif %}
-            </div>
+            </p>
+        </div>
+        <div class="brokerage-actions">
+            <form method="post" action="{% url 'finance:brokerage_refresh' %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-primary rounded-pill fw-bold">
+                    <i class="bi bi-arrow-repeat me-1"></i> Odśwież rynek
+                </button>
+            </form>
+            <a href="{% url 'finance:add_brokerage_account' %}" class="btn btn-soft-neutral rounded-pill fw-bold">
+                <i class="bi bi-bank me-1"></i> Konto
+            </a>
+            <a href="{% url 'finance:add_brokerage_instrument' %}" class="btn btn-soft-neutral rounded-pill fw-bold">
+                <i class="bi bi-plus-square me-1"></i> Instrument
+            </a>
+            <a href="{% url 'finance:add_brokerage_transaction' %}" class="btn btn-primary rounded-pill fw-bold text-white">
+                <i class="bi bi-arrow-left-right me-1"></i> Transakcja
+            </a>
+            <a href="{% url 'finance:add_brokerage_dividend' %}" class="btn btn-success rounded-pill fw-bold text-white">
+                <i class="bi bi-cash-coin me-1"></i> Dywidenda
+            </a>
         </div>
     </div>
 
-    <div class="col-xl-8">
-        <div class="card action-card border-0 shadow-sm h-100">
-            <div class="card-body">
-                <h5 class="fw-bold mb-3">Pozycje</h5>
-                <div class="table-responsive">
-                    <table class="table align-middle mb-0">
-                        <thead>
-                            <tr>
-                                <th>Instrument</th>
-                                <th>Konto</th>
-                                <th class="text-end">Ilość</th>
-                                <th class="text-end">Cena</th>
-                                <th class="text-end">Wartość</th>
-                                <th class="text-end">Wynik</th>
-                                <th class="text-end">Akcje</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for position in positions %}
-                                <tr>
-                                    <td>
-                                        <div class="fw-bold">{{ position.instrument.ticker }}</div>
-                                        <div class="small text-muted">{{ position.instrument.name }}</div>
-                                    </td>
-                                    <td class="small">{{ position.account.name }}</td>
-                                    <td class="text-end">{{ position.quantity|floatformat:4|intcomma }}</td>
-                                    <td class="text-end">
-                                        {% if position.instrument.last_price %}
-                                            {{ position.instrument.last_price|floatformat:4|intcomma }} {{ position.instrument.currency }}
-                                        {% else %}
-                                            <span class="text-muted">brak ceny</span>
-                                        {% endif %}
-                                    </td>
-                                    <td class="text-end">
-                                        {% if position.current_value %}
-                                            {{ position.current_value|floatformat:2|intcomma }} {{ position.currency }}
-                                        {% else %}
-                                            <span class="text-muted">brak wyceny</span>
-                                        {% endif %}
-                                    </td>
-                                    {% if position.unrealized != None %}
-                                        <td class="text-end {% if position.unrealized >= 0 %}text-success{% else %}text-danger{% endif %}">
-                                            {{ position.unrealized|floatformat:2|intcomma }} {{ position.currency }}
-                                        </td>
-                                    {% else %}
-                                        <td class="text-end">
-                                            <span class="text-muted">-</span>
-                                        </td>
-                                    {% endif %}
-                                    <td class="text-end">
-                                        <a href="{% url 'finance:edit_brokerage_instrument' position.instrument.id %}" class="btn btn-sm btn-outline-primary rounded-pill px-2 py-0">
-                                            Edytuj
-                                        </a>
-                                    </td>
-                                </tr>
-                            {% empty %}
-                                <tr>
-                                    <td colspan="7" class="text-center text-muted py-4">Brak otwartych pozycji.</td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+    <section class="brokerage-panel brokerage-scope-panel">
+        <div class="brokerage-section-heading">
+            <div>
+                <h5>Zakres podglądu</h5>
+                <p>Przełącz między całym portfelem i pojedynczym kontem.</p>
+            </div>
+            {% if selected_brokerage_account %}
+                <span class="brokerage-count-pill">{{ selected_brokerage_account.currency }}</span>
+            {% else %}
+                <span class="brokerage-count-pill">wszystko</span>
+            {% endif %}
+        </div>
+        <div class="brokerage-account-switcher">
+            <a href="{% url 'finance:brokerage' %}" class="brokerage-scope-button {% if not selected_brokerage_account %}active{% endif %}">
+                <span>Wszystkie konta</span>
+                <small>Pełne podsumowanie</small>
+            </a>
+            {% for account in brokerage_accounts %}
+                <a href="{% url 'finance:brokerage' %}?account={{ account.id }}" class="brokerage-scope-button {% if selected_brokerage_account_id == account.id %}active{% endif %}">
+                    <span>{{ account.name }}</span>
+                    <small>{{ account.get_broker_display }} · {{ account.currency }} · {{ account.get_account_type_display }}</small>
+                </a>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="brokerage-panel brokerage-summary-panel">
+        <div class="brokerage-section-heading">
+            <div>
+                <h5>Podsumowanie walut</h5>
+                <p>
+                    {% if selected_brokerage_account %}
+                        Dane tylko z wybranego konta.
+                    {% else %}
+                        Bez automatycznego przeliczania na PLN.
+                    {% endif %}
+                </p>
+            </div>
+            <span class="brokerage-count-pill">{{ currency_totals|length }} walut</span>
+        </div>
+        <div class="brokerage-currency-grid">
+            {% for item in currency_totals %}
+                <div class="brokerage-currency-card">
+                    <div class="brokerage-currency-code">{{ item.currency }}</div>
+                    <div class="brokerage-metric">
+                        <span>Wartość</span>
+                        <strong>{{ item.value|floatformat:2|intcomma }} {{ item.currency }}</strong>
+                    </div>
+                    <div class="brokerage-metric">
+                        <span>Koszt</span>
+                        <strong>{{ item.cost|floatformat:2|intcomma }} {{ item.currency }}</strong>
+                    </div>
+                    <div class="brokerage-metric">
+                        <span>Wynik</span>
+                        <strong class="{% if item.unrealized >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            {{ item.unrealized|floatformat:2|intcomma }} {{ item.currency }}
+                        </strong>
+                    </div>
+                    <div class="brokerage-metric brokerage-metric-muted">
+                        <span>Podatek / dywidendy</span>
+                        <strong>{{ item.estimated_sell_tax|floatformat:2|intcomma }} / {{ item.planned_dividend_net|floatformat:2|intcomma }} {{ item.currency }}</strong>
+                    </div>
                 </div>
-                <div class="small text-muted mt-3">
-                    Wartości pozostają w walutach instrumentów i nie są automatycznie przeliczane na PLN.
+            {% empty %}
+                <div class="brokerage-empty-state">
+                    Dodaj konto, instrument i pierwszą transakcję, żeby zbudować podsumowanie portfela.
                 </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section
+        class="brokerage-panel brokerage-portfolio-chart-section"
+        data-portfolio-history-url="{% url 'finance:brokerage_value_history_data' %}"
+        data-portfolio-account="{% if selected_brokerage_account %}{{ selected_brokerage_account.id }}{% else %}all{% endif %}"
+    >
+        <div class="brokerage-section-heading brokerage-chart-heading">
+            <div>
+                <h5>Zmiana wartości portfela</h5>
+                <p id="brokeragePortfolioValueMeta">
+                    {% if selected_brokerage_account %}
+                        {{ selected_brokerage_account.name }} · {{ selected_brokerage_account.currency }}
+                    {% else %}
+                        Wszystkie konta · PLN po aktualnym kursie
+                    {% endif %}
+                </p>
+            </div>
+            <div class="brokerage-chart-controls">
+                <div class="brokerage-range-buttons" role="group" aria-label="Zakres wykresu wartości portfela">
+                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-portfolio-history-days="30">1M</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-portfolio-history-days="90">3M</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-portfolio-history-days="180">6M</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-portfolio-history-days="365">1R</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-portfolio-history-days="1095">3L</button>
+                </div>
+                <form class="brokerage-custom-range" id="brokeragePortfolioRangeForm">
+                    <input type="date" class="form-control form-control-sm" id="brokeragePortfolioStartDate" aria-label="Data początku wykresu wartości portfela">
+                    <input type="date" class="form-control form-control-sm" id="brokeragePortfolioEndDate" aria-label="Data końca wykresu wartości portfela">
+                    <button type="submit" class="btn btn-sm btn-primary rounded-pill fw-bold">Zastosuj</button>
+                </form>
             </div>
         </div>
-    </div>
-</div>
+        <div class="brokerage-chart-summary">
+            <div class="brokerage-chart-stat">
+                <span>Ostatnia wartość</span>
+                <strong id="brokeragePortfolioLatestValue">-</strong>
+            </div>
+            <div class="brokerage-chart-stat">
+                <span>Zmiana</span>
+                <strong id="brokeragePortfolioValueChange">-</strong>
+            </div>
+            <div class="brokerage-chart-stat">
+                <span>Źródła</span>
+                <strong id="brokeragePortfolioValueSource">-</strong>
+            </div>
+        </div>
+        <div class="brokerage-chart-shell brokerage-portfolio-chart-shell">
+            <canvas id="brokeragePortfolioValueChart"></canvas>
+            <div class="brokerage-chart-empty" id="brokeragePortfolioValueChartEmpty">Ładowanie wykresu wartości portfela.</div>
+        </div>
+        <div class="brokerage-table-note d-none" id="brokeragePortfolioValueWarning"></div>
+    </section>
 
-<div class="row g-4 mb-4">
-    <div class="col-xl-5">
-        <div class="card action-card border-0 shadow-sm h-100">
-            <div class="card-body">
-                <h5 class="fw-bold mb-3">Instrumenty</h5>
-                <div class="vstack gap-3">
-                    {% for instrument in brokerage_instruments %}
-                        <div class="d-flex justify-content-between gap-3 border-bottom pb-3">
+    <div class="brokerage-layout">
+        <aside class="brokerage-sidebar">
+            <section class="brokerage-panel">
+                <div class="brokerage-section-heading">
+                    <div>
+                        <h5>Konta</h5>
+                        <p>
+                            {% if selected_brokerage_account %}
+                                Aktualnie wybrane konto.
+                            {% else %}
+                                Podział według brokera i waluty.
+                            {% endif %}
+                        </p>
+                    </div>
+                    <span class="brokerage-count-pill">{{ account_totals|length }}</span>
+                </div>
+                <div class="brokerage-account-list">
+                    {% for item in account_totals %}
+                        <article class="brokerage-account-row">
                             <div>
-                                <div class="fw-bold">{{ instrument.name }}</div>
-                                <div class="small text-muted">
-                                    {{ instrument.ticker }} · {{ instrument.isin|default:"brak ISIN" }} · {{ instrument.currency }}
+                                <div class="brokerage-row-title">{{ item.account.name }}</div>
+                                <div class="brokerage-row-meta">
+                                    {{ item.account.get_broker_display }} · {{ item.account.currency }} · {{ item.account.get_account_type_display }}
                                 </div>
-                                {% if instrument.price_symbol %}
-                                    <div class="small text-muted">Symbol ceny: {{ instrument.price_symbol }}</div>
-                                {% endif %}
+                                <div class="brokerage-inline-actions">
+                                    <a href="{% url 'finance:edit_brokerage_account' item.account.id %}" class="btn btn-sm btn-outline-primary rounded-pill" title="Edytuj konto">
+                                        <i class="bi bi-pencil"></i><span class="visually-hidden">Edytuj konto</span>
+                                    </a>
+                                    <form method="post" action="{% url 'finance:delete_brokerage_account' item.account.id %}" onsubmit="return confirm('Usunąć konto maklerskie wraz z jego transakcjami i dywidendami?');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill" title="Usuń konto">
+                                            <i class="bi bi-trash"></i><span class="visually-hidden">Usuń konto</span>
+                                        </button>
+                                    </form>
+                                </div>
                             </div>
-                            <div class="d-flex align-items-start gap-2">
-                                <a href="{% url 'finance:edit_brokerage_instrument' instrument.id %}" class="btn btn-sm btn-outline-primary rounded-pill">
-                                    Edytuj
-                                </a>
-                                <form method="post" action="{% url 'finance:delete_brokerage_instrument' instrument.id %}" onsubmit="return confirm('Usunąć instrument wraz z jego transakcjami i dywidendami?');">
-                                    {% csrf_token %}
-                                    <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill">Usuń</button>
-                                </form>
+                            <div class="brokerage-account-values">
+                                {% for total in item.currencies %}
+                                    <strong>{{ total.value|floatformat:2|intcomma }} {{ total.currency }}</strong>
+                                    <span class="{% if total.unrealized >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                        {{ total.unrealized|floatformat:2|intcomma }} {{ total.currency }}
+                                    </span>
+                                {% empty %}
+                                    <strong>0,00 {{ item.account.currency }}</strong>
+                                    <span class="text-muted">brak pozycji</span>
+                                {% endfor %}
                             </div>
-                        </div>
+                        </article>
                     {% empty %}
-                        <div class="text-muted">Brak instrumentów.</div>
+                        <div class="brokerage-empty-state">Brak kont maklerskich.</div>
                     {% endfor %}
                 </div>
-            </div>
-        </div>
-    </div>
+            </section>
 
-    <div class="col-xl-7">
-        <div class="card action-card border-0 shadow-sm h-100">
-            <div class="card-body">
-                <h5 class="fw-bold mb-3">Ostatnie transakcje</h5>
-                <div class="table-responsive">
-                    <table class="table align-middle mb-0">
-                        <thead>
-                            <tr>
-                                <th>Data</th>
-                                <th>Instrument</th>
-                                <th>Typ</th>
-                                <th class="text-end">Ilość</th>
-                                <th class="text-end">Cena</th>
-                                <th class="text-end">Akcje</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for transaction in brokerage_transactions %}
-                                <tr>
-                                    <td>
-                                        {{ transaction.trade_date|date:"d.m.Y" }}
-                                        {% if transaction.trade_time %}
-                                            <div class="small text-muted">{{ transaction.trade_time|time:"H:i" }}</div>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        <div class="fw-bold">{{ transaction.instrument.ticker }}</div>
-                                        <div class="small text-muted">{{ transaction.account.name }}</div>
-                                    </td>
-                                    <td>{{ transaction.get_transaction_type_display }}</td>
-                                    <td class="text-end">{{ transaction.quantity|floatformat:4|intcomma }}</td>
-                                    <td class="text-end">{{ transaction.price|floatformat:4|intcomma }} {{ transaction.instrument.currency }}</td>
-                                    <td class="text-end">
-                                        <div class="d-inline-flex gap-2">
-                                            <a href="{% url 'finance:edit_brokerage_transaction' transaction.id %}" class="btn btn-sm btn-outline-primary rounded-pill">
-                                                Edytuj
-                                            </a>
-                                            <form method="post" action="{% url 'finance:delete_brokerage_transaction' transaction.id %}" onsubmit="return confirm('Usunąć transakcję?');">
-                                                {% csrf_token %}
-                                                <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill">Usuń</button>
-                                            </form>
-                                        </div>
-                                    </td>
-                                </tr>
-                            {% empty %}
-                                <tr>
-                                    <td colspan="6" class="text-center text-muted py-4">Brak transakcji.</td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+            <section class="brokerage-panel">
+                <div class="brokerage-section-heading">
+                    <div>
+                        <h5>Instrumenty</h5>
+                        <p>
+                            {% if selected_brokerage_account %}
+                                Instrumenty użyte na tym koncie.
+                            {% else %}
+                                Rejestr symboli i ISIN.
+                            {% endif %}
+                        </p>
+                    </div>
+                    <span class="brokerage-count-pill">{{ brokerage_instruments|length }}</span>
                 </div>
-            </div>
-        </div>
-    </div>
-</div>
+                <div class="brokerage-search">
+                    <i class="bi bi-search"></i>
+                    <input type="search" class="form-control" placeholder="Szukaj instrumentu" data-brokerage-filter="#brokerage-instruments [data-filter-row]" data-brokerage-empty="#brokerage-instruments-empty">
+                </div>
+                <div class="brokerage-registry" id="brokerage-instruments">
+                    {% for instrument in brokerage_instruments %}
+                        <article
+                            class="brokerage-instrument-row"
+                            data-filter-row
+                            data-search="{{ instrument.name }} {{ instrument.ticker }} {{ instrument.isin }} {{ instrument.price_symbol }} {{ instrument.currency }}"
+                            data-instrument-detail-url="{% url 'finance:brokerage_instrument_detail_data' instrument.id %}"
+                            role="button"
+                            tabindex="0"
+                            title="Szczegóły instrumentu"
+                        >
+                            <div>
+                                <div class="brokerage-row-title">{{ instrument.name }}</div>
+                                <div class="brokerage-row-meta">
+                                    {{ instrument.ticker }} · {{ instrument.isin|default:"brak ISIN" }} · {{ instrument.currency }}
+                                </div>
+                                <div class="brokerage-row-tags">
+                                    <span class="badge rounded-pill bg-secondary-subtle text-secondary">{{ instrument.get_asset_type_display }}</span>
+                                    {% if instrument.price_symbol %}
+                                        <span class="badge rounded-pill bg-info-subtle text-info">Cena: {{ instrument.price_symbol }}</span>
+                                    {% endif %}
+                                    {% if instrument.last_price %}
+                                        <span class="badge rounded-pill bg-success-subtle text-success">{{ instrument.last_price|floatformat:4|intcomma }} {{ instrument.currency }}</span>
+                                    {% else %}
+                                        <span class="badge rounded-pill bg-warning-subtle text-warning">brak ceny</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="brokerage-inline-actions">
+                                <a href="{% url 'finance:edit_brokerage_instrument' instrument.id %}" class="btn btn-sm btn-outline-primary rounded-pill" title="Edytuj instrument" data-instrument-action>
+                                    <i class="bi bi-pencil"></i><span class="visually-hidden">Edytuj instrument</span>
+                                </a>
+                                <form method="post" action="{% url 'finance:delete_brokerage_instrument' instrument.id %}" onsubmit="return confirm('Usunąć instrument wraz z jego transakcjami i dywidendami?');" data-instrument-action>
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill" title="Usuń instrument">
+                                        <i class="bi bi-trash"></i><span class="visually-hidden">Usuń instrument</span>
+                                    </button>
+                                </form>
+                            </div>
+                        </article>
+                    {% empty %}
+                        <div class="brokerage-empty-state">Brak instrumentów.</div>
+                    {% endfor %}
+                    <div class="brokerage-empty-state d-none" id="brokerage-instruments-empty">Brak instrumentów pasujących do filtra.</div>
+                </div>
+            </section>
+        </aside>
 
-<div class="card action-card border-0 shadow-sm">
-    <div class="card-body">
-        <h5 class="fw-bold mb-3">Planowane dywidendy</h5>
-        <div class="table-responsive">
-            <table class="table align-middle mb-0">
-                <thead>
-                    <tr>
-                        <th>Instrument</th>
-                        <th>Konto</th>
-                        <th>Wypłata</th>
-                        <th class="text-end">Ilość</th>
-                        <th class="text-end">Brutto</th>
-                        <th class="text-end">Podatek</th>
-                        <th class="text-end">Netto</th>
-                        <th class="text-end">Akcje</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for item in upcoming_dividends %}
-                        <tr>
-                            <td>
-                                <div class="fw-bold">{{ item.dividend.instrument.ticker }}</div>
-                                {% if item.dividend.ex_dividend_date %}
-                                    <div class="small text-muted">Odcięcie: {{ item.dividend.ex_dividend_date|date:"d.m.Y" }}</div>
-                                {% endif %}
-                            </td>
-                            <td class="small">{{ item.dividend.account.name }}</td>
-                            <td>{{ item.dividend.payment_date|date:"d.m.Y" }}</td>
-                            <td class="text-end">{{ item.quantity|floatformat:4|intcomma }}</td>
-                            <td class="text-end">{{ item.gross_total|floatformat:2|intcomma }} {{ item.dividend.currency }}</td>
-                            <td class="text-end text-danger">{{ item.tax_amount|floatformat:2|intcomma }} {{ item.dividend.currency }}</td>
-                            <td class="text-end fw-bold">
-                                {{ item.net_total|floatformat:2|intcomma }} {{ item.dividend.currency }}
-                            </td>
-                            <td class="text-end">
-                                <div class="d-inline-flex gap-2">
-                                    <a href="{% url 'finance:edit_brokerage_dividend' item.dividend.id %}" class="btn btn-sm btn-outline-primary rounded-pill">
-                                        Edytuj
+        <main class="brokerage-main">
+            <section class="brokerage-panel brokerage-main-panel">
+                <div class="brokerage-table-toolbar">
+                    <div class="brokerage-section-heading mb-0">
+                        <div>
+                            <h5>Otwarte pozycje</h5>
+                            <p>{{ positions|length }} pozycji w portfelu.</p>
+                        </div>
+                    </div>
+                    <div class="brokerage-search brokerage-search-wide">
+                        <i class="bi bi-search"></i>
+                        <input type="search" class="form-control" placeholder="Filtruj po instrumencie, koncie, walucie" data-brokerage-filter="#brokerage-positions [data-filter-row]" data-brokerage-empty="#brokerage-positions-empty">
+                    </div>
+                </div>
+                <div class="brokerage-position-list" id="brokerage-positions">
+                    {% for position in positions %}
+                        <details class="brokerage-position-row" data-filter-row data-search="{{ position.instrument.ticker }} {{ position.instrument.name }} {{ position.account.name }} {{ position.currency }} {{ position.instrument.isin }} {{ position.instrument.price_symbol }}">
+                            <summary class="brokerage-position-summary">
+                                <div class="brokerage-position-main">
+                                    <div class="brokerage-symbol-line">
+                                        <div>
+                                            <div class="brokerage-symbol">{{ position.instrument.ticker }}</div>
+                                            <div class="brokerage-row-meta">{{ position.instrument.name }}</div>
+                                        </div>
+                                        <span class="brokerage-currency-code">{{ position.currency }}</span>
+                                    </div>
+                                    <div class="brokerage-row-meta">
+                                        {{ position.account.name }} · {{ position.account.get_broker_display }} · {{ position.account.get_account_type_display }}
+                                    </div>
+                                    <div class="brokerage-row-tags">
+                                        <span class="badge rounded-pill bg-secondary-subtle text-secondary">{{ position.instrument.get_asset_type_display }}</span>
+                                        {% if position.instrument.price_symbol %}
+                                            <span class="badge rounded-pill bg-info-subtle text-info">Cena: {{ position.instrument.price_symbol }}</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="brokerage-position-quick">
+                                    <div class="brokerage-metric-tile brokerage-number">
+                                        <span>Ilość</span>
+                                        <strong>{{ position.quantity|floatformat:-6|intcomma }}</strong>
+                                    </div>
+                                    <div class="brokerage-metric-tile brokerage-number">
+                                        <span>Wynik</span>
+                                        {% if position.unrealized != None %}
+                                            <strong class="{% if position.unrealized >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                                {{ position.unrealized|floatformat:2|intcomma }} {{ position.currency }}
+                                            </strong>
+                                        {% else %}
+                                            <strong class="text-muted">-</strong>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <span class="brokerage-expand-indicator">
+                                    <i class="bi bi-chevron-down"></i>
+                                </span>
+                            </summary>
+                            <div class="brokerage-position-details">
+                                <div class="brokerage-position-metrics">
+                                    <div class="brokerage-metric-tile brokerage-number">
+                                        <span>Śr. koszt</span>
+                                        <strong>{{ position.average_cost|floatformat:4|intcomma }} {{ position.currency }}</strong>
+                                    </div>
+                                    <div class="brokerage-metric-tile brokerage-number">
+                                        <span>Cena</span>
+                                        {% if position.instrument.last_price != None %}
+                                            <strong>{{ position.instrument.last_price|floatformat:4|intcomma }} {{ position.currency }}</strong>
+                                        {% else %}
+                                            <strong class="text-muted">brak ceny</strong>
+                                        {% endif %}
+                                    </div>
+                                    <div class="brokerage-metric-tile brokerage-number">
+                                        <span>Wartość</span>
+                                        {% if position.current_value != None %}
+                                            <strong>{{ position.current_value|floatformat:2|intcomma }} {{ position.currency }}</strong>
+                                        {% else %}
+                                            <strong class="text-muted">brak wyceny</strong>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="brokerage-position-footer">
+                                    <div class="brokerage-position-source">
+                                        <span>Źródło</span>
+                                        <strong>{{ position.instrument.market_data_source|default:"Ręcznie" }}</strong>
+                                        <small class="text-muted">
+                                            {% if position.instrument.last_price_at %}
+                                                {{ position.instrument.last_price_at|date:"d.m.Y H:i" }}
+                                            {% else %}
+                                                brak daty
+                                            {% endif %}
+                                        </small>
+                                    </div>
+                                    <div class="brokerage-position-actions">
+                                        <a href="{% url 'finance:edit_brokerage_instrument' position.instrument.id %}" class="btn btn-sm btn-outline-primary rounded-pill" title="Edytuj instrument">
+                                            <i class="bi bi-pencil"></i><span class="visually-hidden">Edytuj instrument</span>
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </details>
+                    {% empty %}
+                        <div class="brokerage-empty-state">Brak otwartych pozycji.</div>
+                    {% endfor %}
+                    <div class="brokerage-empty-state d-none" id="brokerage-positions-empty">Brak pozycji pasujących do filtra.</div>
+                </div>
+                <div class="brokerage-table-note">
+                    Wartości pozostają w walutach instrumentów i nie są automatycznie przeliczane na PLN.
+                </div>
+            </section>
+
+            <div class="brokerage-bottom-grid">
+                <section class="brokerage-panel">
+                    <div class="brokerage-section-heading">
+                        <div>
+                            <h5>Ostatnie transakcje</h5>
+                            <p>Bieżący miesiąc od {{ brokerage_current_month|date:"d.m.Y" }}.</p>
+                        </div>
+                        <span class="brokerage-count-pill">{{ brokerage_transactions|length }}</span>
+                    </div>
+                    <div class="brokerage-activity-list">
+                        {% for transaction in brokerage_transactions %}
+                            <article class="brokerage-activity-row">
+                                <div class="brokerage-activity-main">
+                                    <div class="brokerage-row-title">{{ transaction.instrument.ticker }}</div>
+                                    <div class="brokerage-row-meta">
+                                        {{ transaction.instrument.name }} · {{ transaction.account.name }}
+                                    </div>
+                                </div>
+                                <div class="brokerage-activity-fields">
+                                    <div class="brokerage-activity-field">
+                                        <span>Data</span>
+                                        <strong>
+                                            {{ transaction.trade_date|date:"d.m.Y" }}
+                                            {% if transaction.trade_time %} {{ transaction.trade_time|time:"H:i" }}{% endif %}
+                                        </strong>
+                                    </div>
+                                    <div class="brokerage-activity-field">
+                                        <span>Typ</span>
+                                        <strong>
+                                            <span class="badge rounded-pill {% if transaction.transaction_type == 'buy' %}bg-success-subtle text-success{% else %}bg-danger-subtle text-danger{% endif %}">
+                                                {{ transaction.get_transaction_type_display }}
+                                            </span>
+                                        </strong>
+                                    </div>
+                                    <div class="brokerage-activity-field brokerage-number">
+                                        <span>Ilość</span>
+                                        <strong>{{ transaction.quantity|floatformat:-6|intcomma }}</strong>
+                                    </div>
+                                    <div class="brokerage-activity-field brokerage-number">
+                                        <span>Cena</span>
+                                        <strong>{{ transaction.price|floatformat:4|intcomma }} {{ transaction.instrument.currency }}</strong>
+                                    </div>
+                                </div>
+                                <div class="brokerage-inline-actions justify-content-end">
+                                    <a href="{% url 'finance:edit_brokerage_transaction' transaction.id %}" class="btn btn-sm btn-outline-primary rounded-pill" title="Edytuj transakcję">
+                                        <i class="bi bi-pencil"></i><span class="visually-hidden">Edytuj transakcję</span>
+                                    </a>
+                                    <form method="post" action="{% url 'finance:delete_brokerage_transaction' transaction.id %}" onsubmit="return confirm('Usunąć transakcję?');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill" title="Usuń transakcję">
+                                            <i class="bi bi-trash"></i><span class="visually-hidden">Usuń transakcję</span>
+                                        </button>
+                                    </form>
+                                </div>
+                            </article>
+                        {% empty %}
+                            <div class="brokerage-empty-state">Brak transakcji.</div>
+                        {% endfor %}
+                    </div>
+                </section>
+
+                <section class="brokerage-panel">
+                    <div class="brokerage-section-heading">
+                        <div>
+                            <h5>Planowane dywidendy</h5>
+                            <p>Podatek IKE liczony jako 0%.</p>
+                        </div>
+                        <span class="brokerage-count-pill">{{ upcoming_dividends|length }}</span>
+                    </div>
+                    <div class="brokerage-activity-list">
+                        {% for item in upcoming_dividends %}
+                            <article class="brokerage-activity-row">
+                                <div class="brokerage-activity-main">
+                                    <div class="brokerage-row-title">{{ item.dividend.instrument.ticker }}</div>
+                                    <div class="brokerage-row-meta">{{ item.dividend.instrument.name }} · {{ item.dividend.account.name }}</div>
+                                    {% if item.dividend.ex_dividend_date %}
+                                        <div class="brokerage-row-meta">Odcięcie: {{ item.dividend.ex_dividend_date|date:"d.m.Y" }}</div>
+                                    {% endif %}
+                                </div>
+                                <div class="brokerage-activity-fields">
+                                    <div class="brokerage-activity-field">
+                                        <span>Wypłata</span>
+                                        <strong>{{ item.dividend.payment_date|date:"d.m.Y" }}</strong>
+                                    </div>
+                                    <div class="brokerage-activity-field brokerage-number">
+                                        <span>Brutto</span>
+                                        <strong>{{ item.gross_total|floatformat:2|intcomma }} {{ item.dividend.currency }}</strong>
+                                    </div>
+                                    <div class="brokerage-activity-field brokerage-number">
+                                        <span>Podatek</span>
+                                        <strong>{{ item.tax_amount|floatformat:2|intcomma }} {{ item.dividend.currency }}</strong>
+                                    </div>
+                                    <div class="brokerage-activity-field brokerage-number">
+                                        <span>Netto</span>
+                                        <strong>{{ item.net_total|floatformat:2|intcomma }} {{ item.dividend.currency }}</strong>
+                                    </div>
+                                </div>
+                                <div class="brokerage-inline-actions justify-content-end">
+                                    <a href="{% url 'finance:edit_brokerage_dividend' item.dividend.id %}" class="btn btn-sm btn-outline-primary rounded-pill" title="Edytuj dywidendę">
+                                        <i class="bi bi-pencil"></i><span class="visually-hidden">Edytuj dywidendę</span>
                                     </a>
                                     <form method="post" action="{% url 'finance:delete_brokerage_dividend' item.dividend.id %}" onsubmit="return confirm('Usunąć dywidendę?');">
                                         {% csrf_token %}
-                                        <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill">Usuń</button>
+                                        <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill" title="Usuń dywidendę">
+                                            <i class="bi bi-trash"></i><span class="visually-hidden">Usuń dywidendę</span>
+                                        </button>
                                     </form>
                                 </div>
-                            </td>
-                        </tr>
-                    {% empty %}
-                        <tr>
-                            <td colspan="8" class="text-center text-muted py-4">Brak zaplanowanych dywidend.</td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        <div class="small text-muted mt-3">
-            Dla kont IKE podatek w podsumowaniu jest liczony jako 0%. Dla zwykłych kont domyślnie stosowane jest 19%.
+                            </article>
+                        {% empty %}
+                            <div class="brokerage-empty-state">Brak zaplanowanych dywidend.</div>
+                        {% endfor %}
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+</div>
+
+<div class="modal fade brokerage-instrument-modal" id="brokerageInstrumentModal" tabindex="-1" aria-labelledby="brokerageInstrumentModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content">
+            <div class="modal-header brokerage-instrument-modal-header">
+                <div>
+                    <div class="small text-uppercase fw-bold text-muted">Instrument</div>
+                    <h2 class="modal-title" id="brokerageInstrumentModalTitle">Ładowanie</h2>
+                    <div class="brokerage-row-meta" id="brokerageInstrumentModalMeta"></div>
+                </div>
+                <div class="brokerage-modal-actions">
+                    <a href="#" class="btn btn-outline-primary rounded-pill fw-bold" id="brokerageInstrumentEditLink">
+                        <i class="bi bi-pencil me-1"></i> Edytuj
+                    </a>
+                    <button type="button" class="btn btn-danger rounded-pill fw-bold brokerage-modal-close" data-bs-dismiss="modal">
+                        <i class="bi bi-x-lg me-1"></i> Zamknij
+                    </button>
+                </div>
+            </div>
+            <div class="modal-body brokerage-instrument-modal-body">
+                <div class="brokerage-instrument-loading" id="brokerageInstrumentLoading">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Ładowanie</span>
+                    </div>
+                </div>
+
+                <div class="alert alert-warning d-none" id="brokerageInstrumentError"></div>
+
+                <div class="brokerage-instrument-detail d-none" id="brokerageInstrumentDetail">
+                    <section class="brokerage-instrument-overview">
+                        <div class="brokerage-detail-stat">
+                            <span>Ostatnia cena</span>
+                            <strong id="instrumentLastPrice">-</strong>
+                            <small id="instrumentLastPriceMeta">-</small>
+                        </div>
+                        <div class="brokerage-detail-stat">
+                            <span>Zmiana w historii</span>
+                            <strong id="instrumentHistoryChange">-</strong>
+                            <small id="instrumentHistoryRange">-</small>
+                        </div>
+                        <div class="brokerage-detail-stat">
+                            <span>Zakres cen</span>
+                            <strong id="instrumentHistoryHighLow">-</strong>
+                            <small id="instrumentHistorySource">-</small>
+                        </div>
+                    </section>
+
+                    <section class="brokerage-instrument-chart-section">
+                        <div class="brokerage-section-heading brokerage-chart-heading">
+                            <div>
+                                <h5>Historia cen</h5>
+                                <p id="instrumentHistoryCount">-</p>
+                            </div>
+                            <div class="brokerage-chart-controls">
+                                <div class="brokerage-range-buttons" role="group" aria-label="Zakres wykresu">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-history-days="30">1M</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-history-days="90">3M</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-history-days="180">6M</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-history-days="365">1R</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-history-days="1095">3L</button>
+                                </div>
+                                <form class="brokerage-custom-range" id="brokerageCustomRangeForm">
+                                    <input type="date" class="form-control form-control-sm" id="brokerageHistoryStartDate" aria-label="Data początku wykresu">
+                                    <input type="date" class="form-control form-control-sm" id="brokerageHistoryEndDate" aria-label="Data końca wykresu">
+                                    <button type="submit" class="btn btn-sm btn-primary rounded-pill fw-bold">Zastosuj</button>
+                                </form>
+                            </div>
+                        </div>
+                        <div class="brokerage-chart-shell">
+                            <canvas id="brokerageInstrumentChart"></canvas>
+                            <div class="brokerage-chart-empty d-none" id="brokerageInstrumentChartEmpty">Brak danych historycznych dla wykresu.</div>
+                        </div>
+                    </section>
+
+                    <section class="brokerage-instrument-info-grid">
+                        <div class="brokerage-info-list">
+                            <h5>Dane instrumentu</h5>
+                            <dl>
+                                <div><dt>Ticker</dt><dd id="instrumentTicker">-</dd></div>
+                                <div><dt>ISIN</dt><dd id="instrumentIsin">-</dd></div>
+                                <div><dt>Symbol ceny</dt><dd id="instrumentPriceSymbol">-</dd></div>
+                                <div><dt>Giełda</dt><dd id="instrumentExchange">-</dd></div>
+                                <div><dt>Typ</dt><dd id="instrumentAssetType">-</dd></div>
+                                <div><dt>Waluta</dt><dd id="instrumentCurrency">-</dd></div>
+                            </dl>
+                        </div>
+                        <div class="brokerage-info-list">
+                            <h5>Pozycje</h5>
+                            <div id="instrumentAccounts"></div>
+                        </div>
+                        <div class="brokerage-info-list">
+                            <h5>Ostatnia transakcja</h5>
+                            <div id="instrumentLatestTransaction"></div>
+                        </div>
+                    </section>
+                </div>
+            </div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{{ block.super }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('[data-brokerage-filter]').forEach((input) => {
+            const rowsSelector = input.dataset.brokerageFilter;
+            const emptyRow = input.dataset.brokerageEmpty ? document.querySelector(input.dataset.brokerageEmpty) : null;
+
+            const applyFilter = () => {
+                const term = input.value.trim().toLowerCase();
+                let visibleRows = 0;
+
+                document.querySelectorAll(rowsSelector).forEach((row) => {
+                    const text = (row.dataset.search || row.textContent || '').toLowerCase();
+                    const isVisible = !term || text.includes(term);
+                    row.classList.toggle('d-none', !isVisible);
+                    if (isVisible) {
+                        visibleRows += 1;
+                    }
+                });
+
+                if (emptyRow) {
+                    emptyRow.classList.toggle('d-none', visibleRows !== 0);
+                }
+            };
+
+            input.addEventListener('input', applyFilter);
+            applyFilter();
+        });
+
+        const modalElement = document.getElementById('brokerageInstrumentModal');
+        const chartCanvas = document.getElementById('brokerageInstrumentChart');
+        const portfolioChartSection = document.querySelector('[data-portfolio-history-url]');
+        const portfolioChartCanvas = document.getElementById('brokeragePortfolioValueChart');
+        let instrumentChart = null;
+        let portfolioValueChart = null;
+        let activeInstrumentUrl = '';
+
+        const numberFormatter = new Intl.NumberFormat('pl-PL', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 4,
+        });
+        const quantityFormatter = new Intl.NumberFormat('pl-PL', {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 6,
+        });
+
+        const setText = (id, value) => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.textContent = value || '-';
+            }
+        };
+
+        const formatMoney = (value, currency) => {
+            if (value === null || value === undefined || value === '') {
+                return '-';
+            }
+            return `${numberFormatter.format(Number(value))} ${currency || ''}`.trim();
+        };
+
+        const formatQuantity = (value) => {
+            if (value === null || value === undefined || value === '') {
+                return '-';
+            }
+            return quantityFormatter.format(Number(value));
+        };
+
+        const formatDate = (value) => {
+            if (!value) {
+                return '-';
+            }
+            return new Intl.DateTimeFormat('pl-PL').format(new Date(value));
+        };
+
+        const formatDateTime = (value) => {
+            if (!value) {
+                return '-';
+            }
+            return new Intl.DateTimeFormat('pl-PL', {
+                dateStyle: 'medium',
+                timeStyle: 'short',
+            }).format(new Date(value));
+        };
+
+        const setLoadingState = () => {
+            document.getElementById('brokerageInstrumentLoading').classList.remove('d-none');
+            document.getElementById('brokerageInstrumentError').classList.add('d-none');
+            document.getElementById('brokerageInstrumentDetail').classList.add('d-none');
+            document.querySelectorAll('[data-history-days], #brokerageCustomRangeForm button').forEach((control) => {
+                control.disabled = false;
+            });
+            setText('brokerageInstrumentModalTitle', 'Ładowanie');
+            setText('brokerageInstrumentModalMeta', '');
+            if (instrumentChart) {
+                instrumentChart.destroy();
+                instrumentChart = null;
+            }
+        };
+
+        const showError = (message) => {
+            document.getElementById('brokerageInstrumentLoading').classList.add('d-none');
+            const errorBox = document.getElementById('brokerageInstrumentError');
+            errorBox.textContent = message;
+            errorBox.classList.remove('d-none');
+        };
+
+        const setChartControlsBusy = (isBusy) => {
+            document.querySelectorAll('[data-history-days], #brokerageCustomRangeForm button, #brokerageHistoryStartDate, #brokerageHistoryEndDate').forEach((control) => {
+                control.disabled = isBusy;
+            });
+        };
+
+        const setPortfolioChartControlsBusy = (isBusy) => {
+            document.querySelectorAll('[data-portfolio-history-days], #brokeragePortfolioRangeForm button, #brokeragePortfolioStartDate, #brokeragePortfolioEndDate').forEach((control) => {
+                control.disabled = isBusy;
+            });
+        };
+
+        const setPortfolioWarning = (warnings) => {
+            const warningBox = document.getElementById('brokeragePortfolioValueWarning');
+            if (!warningBox) {
+                return;
+            }
+            warningBox.textContent = (warnings || []).join(' ');
+            warningBox.classList.toggle('d-none', !(warnings || []).length);
+        };
+
+        const renderPortfolioValueChart = (data) => {
+            const emptyState = document.getElementById('brokeragePortfolioValueChartEmpty');
+            const points = data.points || [];
+            const currency = data.currency || 'PLN';
+            const summary = data.summary || {};
+            const range = data.range || {};
+
+            if (portfolioValueChart) {
+                portfolioValueChart.destroy();
+                portfolioValueChart = null;
+            }
+
+            document.getElementById('brokeragePortfolioLatestValue').textContent = formatMoney(summary.latest_value, currency);
+            document.getElementById('brokeragePortfolioValueChange').textContent = summary.change !== null && summary.change !== undefined
+                ? `${formatMoney(summary.change, currency)} (${summary.change_percent || '0.00'}%)`
+                : '-';
+
+            const priceSources = data.price_sources && data.price_sources.length ? data.price_sources.join(', ') : 'brak cen';
+            const fxSource = data.fx_source ? `${data.fx_source}${data.fx_table_date ? ` · ${data.fx_table_date}` : ''}` : '';
+            document.getElementById('brokeragePortfolioValueSource').textContent = fxSource ? `${priceSources} · ${fxSource}` : priceSources;
+            document.getElementById('brokeragePortfolioStartDate').value = range.start_date || '';
+            document.getElementById('brokeragePortfolioEndDate').value = range.end_date || '';
+            document.getElementById('brokeragePortfolioValueMeta').textContent = data.scope && data.scope.is_all
+                ? 'Wszystkie konta · PLN po aktualnym kursie'
+                : `${data.scope ? data.scope.account_name : 'Konto'} · ${currency}`;
+            document.querySelectorAll('[data-portfolio-history-days]').forEach((button) => {
+                button.classList.toggle('active', range.mode === 'days' && String(range.days) === button.dataset.portfolioHistoryDays);
+            });
+            setPortfolioWarning(data.warnings || []);
+
+            if (!points.length || typeof Chart === 'undefined') {
+                emptyState.textContent = 'Brak danych do wykresu wartości portfela.';
+                emptyState.classList.remove('d-none');
+                return;
+            }
+
+            emptyState.classList.add('d-none');
+            const styles = getComputedStyle(document.documentElement);
+            const mutedColor = styles.getPropertyValue('--text-muted').trim() || '#6c757d';
+            const borderColor = styles.getPropertyValue('--surface-border').trim() || 'rgba(0,0,0,0.08)';
+
+            portfolioValueChart = new Chart(portfolioChartCanvas, {
+                type: 'line',
+                data: {
+                    labels: points.map((point) => point.date),
+                    datasets: [{
+                        label: `Wartość · ${currency}`,
+                        data: points.map((point) => Number(point.value)),
+                        borderColor: '#0d6efd',
+                        backgroundColor: 'rgba(13, 110, 253, 0.10)',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        tension: 0.22,
+                        fill: true,
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: {
+                            display: false,
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: (items) => formatDate(items[0].label),
+                                label: (item) => `Wartość: ${formatMoney(item.raw, currency)}`,
+                            },
+                        },
+                    },
+                    scales: {
+                        x: {
+                            ticks: {
+                                color: mutedColor,
+                                maxTicksLimit: 8,
+                            },
+                            grid: {
+                                color: borderColor,
+                            },
+                        },
+                        y: {
+                            ticks: {
+                                color: mutedColor,
+                                callback: (value) => formatMoney(value, currency),
+                            },
+                            grid: {
+                                color: borderColor,
+                            },
+                        },
+                    },
+                },
+            });
+        };
+
+        const loadPortfolioValueChart = async (params = null) => {
+            if (!portfolioChartSection) {
+                return;
+            }
+
+            const url = new URL(portfolioChartSection.dataset.portfolioHistoryUrl, window.location.origin);
+            const account = portfolioChartSection.dataset.portfolioAccount;
+            if (account) {
+                url.searchParams.set('account', account);
+            }
+            if (params) {
+                Object.entries(params).forEach(([key, value]) => {
+                    if (value !== null && value !== undefined && value !== '') {
+                        url.searchParams.set(key, value);
+                    }
+                });
+            }
+
+            setPortfolioChartControlsBusy(true);
+            const emptyState = document.getElementById('brokeragePortfolioValueChartEmpty');
+            emptyState.textContent = 'Ładowanie wykresu wartości portfela.';
+            emptyState.classList.remove('d-none');
+            setPortfolioWarning([]);
+            try {
+                const response = await fetch(url.toString(), {
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Nie udało się pobrać historii wartości portfela.');
+                }
+                renderPortfolioValueChart(data);
+            } catch (error) {
+                if (portfolioValueChart) {
+                    portfolioValueChart.destroy();
+                    portfolioValueChart = null;
+                }
+                emptyState.textContent = error.message || 'Nie udało się pobrać historii wartości portfela.';
+                emptyState.classList.remove('d-none');
+            } finally {
+                setPortfolioChartControlsBusy(false);
+            }
+        };
+
+        const renderAccounts = (accounts) => {
+            const container = document.getElementById('instrumentAccounts');
+            container.replaceChildren();
+            if (!accounts.length) {
+                const empty = document.createElement('div');
+                empty.className = 'brokerage-empty-inline';
+                empty.textContent = 'Brak otwartej pozycji.';
+                container.appendChild(empty);
+                return;
+            }
+
+            accounts.forEach((account) => {
+                const row = document.createElement('div');
+                const name = document.createElement('span');
+                const quantity = document.createElement('strong');
+                const meta = document.createElement('small');
+
+                row.className = 'brokerage-info-row';
+                name.textContent = account.name;
+                quantity.textContent = `${formatQuantity(account.quantity)} szt.`;
+                meta.textContent = `${account.broker} · ${account.type} · ${account.currency}`;
+
+                row.append(name, quantity, meta);
+                container.appendChild(row);
+            });
+        };
+
+        const renderLatestTransaction = (transaction, currency) => {
+            const container = document.getElementById('instrumentLatestTransaction');
+            container.replaceChildren();
+            if (!transaction) {
+                const empty = document.createElement('div');
+                empty.className = 'brokerage-empty-inline';
+                empty.textContent = 'Brak transakcji.';
+                container.appendChild(empty);
+                return;
+            }
+
+            const row = document.createElement('div');
+            const type = document.createElement('span');
+            const price = document.createElement('strong');
+            const meta = document.createElement('small');
+
+            row.className = 'brokerage-info-row';
+            type.textContent = transaction.type;
+            price.textContent = `${formatQuantity(transaction.quantity)} szt. po ${formatMoney(transaction.price, currency)}`;
+            meta.textContent = `${formatDate(transaction.date)} · ${transaction.account}`;
+
+            row.append(type, price, meta);
+            container.appendChild(row);
+        };
+
+        const renderChart = (history, instrument, transactions = []) => {
+            const emptyState = document.getElementById('brokerageInstrumentChartEmpty');
+            if (instrumentChart) {
+                instrumentChart.destroy();
+                instrumentChart = null;
+            }
+
+            if ((!history.length && !transactions.length) || typeof Chart === 'undefined') {
+                emptyState.classList.remove('d-none');
+                return;
+            }
+
+            emptyState.classList.add('d-none');
+            const styles = getComputedStyle(document.documentElement);
+            const mutedColor = styles.getPropertyValue('--text-muted').trim() || '#6c757d';
+            const borderColor = styles.getPropertyValue('--surface-border').trim() || 'rgba(0,0,0,0.08)';
+            const surfaceColor = styles.getPropertyValue('--surface-card').trim() || '#ffffff';
+            const labels = [...new Set([
+                ...history.map((point) => point.date),
+                ...transactions.map((transaction) => transaction.date),
+            ])].sort();
+            const datasets = [];
+            const buyPoints = transactions
+                .filter((transaction) => transaction.type === 'buy')
+                .map((transaction) => ({
+                    x: transaction.date,
+                    y: Number(transaction.price),
+                    transaction,
+                }));
+            const sellPoints = transactions
+                .filter((transaction) => transaction.type === 'sell')
+                .map((transaction) => ({
+                    x: transaction.date,
+                    y: Number(transaction.price),
+                    transaction,
+                }));
+
+            if (history.length) {
+                datasets.push({
+                    label: `${instrument.ticker} · zamknięcie`,
+                    data: history.map((point) => ({x: point.date, y: Number(point.close)})),
+                    borderColor: '#0d6efd',
+                    backgroundColor: 'rgba(13, 110, 253, 0.10)',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    tension: 0.22,
+                    fill: true,
+                    order: 3,
+                });
+            }
+
+            if (buyPoints.length) {
+                datasets.push({
+                    type: 'scatter',
+                    label: 'Kupno',
+                    data: buyPoints,
+                    borderColor: surfaceColor,
+                    backgroundColor: '#198754',
+                    pointStyle: 'circle',
+                    pointRadius: 8,
+                    pointHoverRadius: 8,
+                    pointBorderWidth: 2,
+                    order: 1,
+                });
+            }
+
+            if (sellPoints.length) {
+                datasets.push({
+                    type: 'scatter',
+                    label: 'Sprzedaż',
+                    data: sellPoints,
+                    borderColor: surfaceColor,
+                    backgroundColor: '#dc3545',
+                    pointStyle: 'circle',
+                    pointRadius: 8,
+                    pointHoverRadius: 8,
+                    pointBorderWidth: 2,
+                    order: 1,
+                });
+            }
+
+            instrumentChart = new Chart(chartCanvas, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets,
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'nearest',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            labels: {
+                                color: mutedColor,
+                                usePointStyle: true,
+                                boxWidth: 8,
+                            },
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: (items) => {
+                                    const raw = items[0].raw || {};
+                                    return formatDate(raw.x || items[0].label);
+                                },
+                                label: (item) => {
+                                    const transaction = item.raw && item.raw.transaction;
+                                    if (transaction) {
+                                        return `${transaction.type_display}: ${formatQuantity(transaction.quantity)} szt. po ${formatMoney(transaction.price, instrument.currency)} · ${transaction.account}`;
+                                    }
+                                    return `Zamknięcie: ${formatMoney(item.parsed.y, instrument.currency)}`;
+                                },
+                            },
+                        },
+                    },
+                    scales: {
+                        x: {
+                            ticks: {
+                                color: mutedColor,
+                                maxTicksLimit: 8,
+                            },
+                            grid: {
+                                color: borderColor,
+                            },
+                        },
+                        y: {
+                            ticks: {
+                                color: mutedColor,
+                                callback: (value) => formatMoney(value, instrument.currency),
+                            },
+                            grid: {
+                                color: borderColor,
+                            },
+                        },
+                    },
+                },
+            });
+        };
+
+        const renderInstrument = (data) => {
+            const instrument = data.instrument;
+            const summary = data.history_summary || {};
+            const historyRange = data.history_range || {};
+            document.getElementById('brokerageInstrumentLoading').classList.add('d-none');
+            document.getElementById('brokerageInstrumentDetail').classList.remove('d-none');
+
+            setText('brokerageInstrumentModalTitle', instrument.name);
+            setText('brokerageInstrumentModalMeta', `${instrument.ticker} · ${instrument.isin || 'brak ISIN'} · ${instrument.currency}`);
+            document.getElementById('brokerageInstrumentEditLink').href = instrument.edit_url;
+
+            setText('instrumentLastPrice', formatMoney(instrument.last_price, instrument.currency));
+            setText('instrumentLastPriceMeta', `${instrument.market_data_source || 'Ręcznie'} · ${formatDateTime(instrument.last_price_at)}`);
+            setText('instrumentHistoryChange', summary.change !== null && summary.change !== undefined
+                ? `${formatMoney(summary.change, instrument.currency)} (${summary.change_percent || '0.00'}%)`
+                : '-');
+            setText('instrumentHistoryRange', summary.first_close && summary.last_close
+                ? `${formatMoney(summary.first_close, instrument.currency)} → ${formatMoney(summary.last_close, instrument.currency)}`
+                : '-');
+            setText('instrumentHistoryHighLow', summary.high && summary.low
+                ? `${formatMoney(summary.low, instrument.currency)} - ${formatMoney(summary.high, instrument.currency)}`
+                : '-');
+            setText('instrumentHistorySource', data.history_source || 'brak źródła');
+            setText('instrumentHistoryCount', summary.points_count ? `${summary.points_count} punktów dziennych` : 'Brak punktów cenowych');
+            document.getElementById('brokerageHistoryStartDate').value = historyRange.start_date || '';
+            document.getElementById('brokerageHistoryEndDate').value = historyRange.end_date || '';
+            document.querySelectorAll('[data-history-days]').forEach((button) => {
+                button.classList.toggle('active', historyRange.mode === 'days' && String(historyRange.days) === button.dataset.historyDays);
+            });
+
+            setText('instrumentTicker', instrument.ticker);
+            setText('instrumentIsin', instrument.isin || 'brak ISIN');
+            setText('instrumentPriceSymbol', instrument.price_symbol || 'domyślny');
+            setText('instrumentExchange', instrument.exchange || 'brak');
+            setText('instrumentAssetType', instrument.asset_type);
+            setText('instrumentCurrency', instrument.currency);
+
+            renderAccounts(data.accounts || []);
+            renderLatestTransaction(data.latest_transaction, instrument.currency);
+            renderChart(data.history || [], instrument, data.chart_transactions || []);
+
+            if (data.history_error) {
+                const errorBox = document.getElementById('brokerageInstrumentError');
+                errorBox.textContent = data.history_error;
+                errorBox.classList.remove('d-none');
+            }
+        };
+
+        const loadInstrumentData = async (params = null) => {
+            const url = new URL(activeInstrumentUrl, window.location.origin);
+            if (params) {
+                Object.entries(params).forEach(([key, value]) => {
+                    if (value !== null && value !== undefined && value !== '') {
+                        url.searchParams.set(key, value);
+                    }
+                });
+            }
+
+            setChartControlsBusy(true);
+            document.getElementById('brokerageInstrumentError').classList.add('d-none');
+            try {
+                const response = await fetch(url.toString(), {
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Nie udało się pobrać danych instrumentu.');
+                }
+                renderInstrument(data);
+            } finally {
+                setChartControlsBusy(false);
+            }
+        };
+
+        const openInstrumentModal = async (url) => {
+            if (!modalElement) {
+                return;
+            }
+
+            const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
+            activeInstrumentUrl = url;
+            setLoadingState();
+            modal.show();
+
+            try {
+                await loadInstrumentData();
+            } catch (error) {
+                showError(error.message || 'Nie udało się pobrać danych instrumentu.');
+            }
+        };
+
+        document.querySelectorAll('[data-history-days]').forEach((button) => {
+            button.addEventListener('click', async () => {
+                if (!activeInstrumentUrl) {
+                    return;
+                }
+                try {
+                    await loadInstrumentData({days: button.dataset.historyDays});
+                } catch (error) {
+                    showError(error.message || 'Nie udało się pobrać danych instrumentu.');
+                }
+            });
+        });
+
+        document.getElementById('brokerageCustomRangeForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            if (!activeInstrumentUrl) {
+                return;
+            }
+
+            const startDate = document.getElementById('brokerageHistoryStartDate').value;
+            const endDate = document.getElementById('brokerageHistoryEndDate').value;
+            try {
+                await loadInstrumentData({start_date: startDate, end_date: endDate});
+            } catch (error) {
+                showError(error.message || 'Nie udało się pobrać danych instrumentu.');
+            }
+        });
+
+        document.querySelectorAll('[data-portfolio-history-days]').forEach((button) => {
+            button.addEventListener('click', async () => {
+                await loadPortfolioValueChart({days: button.dataset.portfolioHistoryDays});
+            });
+        });
+
+        document.getElementById('brokeragePortfolioRangeForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const startDate = document.getElementById('brokeragePortfolioStartDate').value;
+            const endDate = document.getElementById('brokeragePortfolioEndDate').value;
+            await loadPortfolioValueChart({start_date: startDate, end_date: endDate});
+        });
+
+        document.querySelectorAll('[data-instrument-detail-url]').forEach((row) => {
+            const open = () => openInstrumentModal(row.dataset.instrumentDetailUrl);
+
+            row.addEventListener('click', (event) => {
+                if (event.target.closest('[data-instrument-action], a, button, form, input')) {
+                    return;
+                }
+                open();
+            });
+
+            row.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') {
+                    return;
+                }
+                event.preventDefault();
+                open();
+            });
+        });
+
+        loadPortfolioValueChart();
+    });
+</script>
 {% endblock %}

@@ -1,11 +1,13 @@
 import calendar
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from decimal import Decimal
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Q, Sum
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -28,7 +30,7 @@ from .account_utils import (
     set_active_finance_account,
     sync_shared_account_transfer,
 )
-from .brokerage import build_portfolio_summary
+from .brokerage import build_portfolio_summary, get_quantity
 from .forms import (
     BrokerageAccountForm,
     BrokerageDividendForm,
@@ -36,7 +38,7 @@ from .forms import (
     BrokerageTransactionForm,
     TravelDestinationForm,
 )
-from .market_data import MarketDataError, refresh_market_data_for_user
+from .market_data import MarketDataError, fetch_historical_market_prices, refresh_market_data_for_user
 from .models import (
     BrokerageAccount,
     BrokerageDividend,
@@ -48,6 +50,7 @@ from .models import (
     Monthly,
     TravelDestinations,
 )
+from .portfolio_history import build_portfolio_value_history
 
 CATEGORIES_EXPENSES = sorted([
     'Zakupy spozywcze', 'Jedzenie na miescie', 'Transport miejski',
@@ -64,6 +67,99 @@ INCOME_SOURCES = sorted([
     'Pensja', 'Premia', 'Dieta', 'Inwestycje',
     'Zwrot podatku', 'Sprzedaż', 'Rodzina', 'Inne'
 ])
+
+
+def _decimal_json(value):
+    if value is None:
+        return None
+    return str(value)
+
+
+def _history_summary(points):
+    if not points:
+        return {
+            'points_count': 0,
+            'first_close': None,
+            'last_close': None,
+            'change': None,
+            'change_percent': None,
+            'high': None,
+            'low': None,
+        }
+
+    closes = [point['close'] for point in points if point.get('close') is not None]
+    highs = [point['high'] for point in points if point.get('high') is not None]
+    lows = [point['low'] for point in points if point.get('low') is not None]
+    if not closes:
+        return {
+            'points_count': len(points),
+            'first_close': None,
+            'last_close': None,
+            'change': None,
+            'change_percent': None,
+            'high': None,
+            'low': None,
+        }
+
+    first_close = closes[0]
+    last_close = closes[-1]
+    change = last_close - first_close
+    change_percent = None
+    if first_close:
+        change_percent = (change / first_close) * Decimal('100')
+
+    return {
+        'points_count': len(points),
+        'first_close': _decimal_json(first_close),
+        'last_close': _decimal_json(last_close),
+        'change': _decimal_json(change),
+        'change_percent': _decimal_json(change_percent.quantize(Decimal('0.01'))) if change_percent is not None else None,
+        'high': _decimal_json(max(highs or closes)),
+        'low': _decimal_json(min(lows or closes)),
+    }
+
+
+def _history_points_json(points):
+    return [
+        {
+            'date': point['date'].isoformat(),
+            'open': _decimal_json(point.get('open')),
+            'high': _decimal_json(point.get('high')),
+            'low': _decimal_json(point.get('low')),
+            'close': _decimal_json(point.get('close')),
+            'volume': point.get('volume'),
+        }
+        for point in points
+    ]
+
+
+def _parse_history_range(request):
+    today = timezone.localdate()
+    allowed_days = {30, 90, 180, 365, 1095}
+    start_value = request.GET.get('start_date')
+    end_value = request.GET.get('end_date')
+
+    if start_value or end_value:
+        if not start_value or not end_value:
+            raise ValueError('Podaj datę początku i końca zakresu.')
+        start_date = parse_date_input(start_value)
+        end_date = parse_date_input(end_value)
+        if end_date > today:
+            end_date = today
+        if start_date > end_date:
+            raise ValueError('Data początku zakresu nie może być późniejsza niż data końca.')
+        if (end_date - start_date).days > 3650:
+            raise ValueError('Maksymalny zakres wykresu to 10 lat.')
+        return start_date, end_date, None, 'custom'
+
+    try:
+        days = int(request.GET.get('days', '365'))
+    except (TypeError, ValueError):
+        days = 365
+    if days not in allowed_days:
+        days = 365
+
+    return today - timedelta(days=days), today, days, 'days'
 
 COST_OF_LIVING_CATEGORIES = [
     'Zakupy spozywcze', 'Paliwo', 'Rachunki', 'Zdrowie'
@@ -135,24 +231,92 @@ def switch_account(request):
 @method_decorator(login_required, name='dispatch')
 class BrokeragePortfolioView(View):
     def get(self, request):
-        summary = build_portfolio_summary(request.user)
+        current_month_start = month_start(timezone.localdate())
+        if current_month_start.month == 12:
+            next_month_start = current_month_start.replace(year=current_month_start.year + 1, month=1)
+        else:
+            next_month_start = current_month_start.replace(month=current_month_start.month + 1)
+
+        brokerage_accounts = list(BrokerageAccount.objects.filter(user=request.user))
+        selected_account = None
+        selected_account_param = request.GET.get('account', 'all')
+        if selected_account_param and selected_account_param != 'all':
+            try:
+                selected_account_id = int(selected_account_param)
+            except (TypeError, ValueError):
+                selected_account_id = None
+            if selected_account_id is not None:
+                selected_account = get_object_or_404(BrokerageAccount, id=selected_account_id, user=request.user)
+
+        brokerage_instruments = BrokerageInstrument.objects.filter(user=request.user)
+        brokerage_transactions = BrokerageTransaction.objects.filter(account__user=request.user)
+        brokerage_dividends = BrokerageDividend.objects.filter(account__user=request.user)
+        if selected_account is not None:
+            brokerage_instruments = brokerage_instruments.filter(
+                Q(transactions__account=selected_account) | Q(dividends__account=selected_account)
+            ).distinct()
+            brokerage_transactions = brokerage_transactions.filter(account=selected_account)
+            brokerage_dividends = brokerage_dividends.filter(account=selected_account)
+
+        summary = build_portfolio_summary(request.user, selected_account=selected_account)
         summary.update({
-            'brokerage_accounts': BrokerageAccount.objects.filter(user=request.user),
-            'brokerage_instruments': BrokerageInstrument.objects.filter(user=request.user).order_by('name', 'ticker'),
+            'brokerage_accounts': brokerage_accounts,
+            'selected_brokerage_account': selected_account,
+            'selected_brokerage_account_id': selected_account.id if selected_account else None,
+            'brokerage_current_month': current_month_start,
+            'brokerage_instruments': brokerage_instruments.order_by('name', 'ticker'),
             'brokerage_transactions': (
-                BrokerageTransaction.objects
-                .filter(account__user=request.user)
+                brokerage_transactions
+                .filter(trade_date__gte=current_month_start, trade_date__lt=next_month_start)
                 .select_related('account', 'instrument')
                 .order_by('-trade_date', '-id')[:25]
             ),
             'brokerage_dividends': (
-                BrokerageDividend.objects
-                .filter(account__user=request.user)
+                brokerage_dividends
                 .select_related('account', 'instrument')
                 .order_by('-payment_date', 'instrument__ticker')[:25]
             ),
         })
         return render(request, 'finance/brokerage.html', summary)
+
+
+@method_decorator(login_required, name='dispatch')
+class BrokeragePortfolioHistoryDataView(View):
+    def get(self, request):
+        try:
+            start_date, end_date, selected_days, range_mode = _parse_history_range(request)
+        except ValueError as exc:
+            return JsonResponse({'error': str(exc)}, status=400)
+
+        selected_account = None
+        account_param = request.GET.get('account')
+        if account_param and account_param != 'all':
+            try:
+                account_id = int(account_param)
+            except (TypeError, ValueError):
+                return JsonResponse({'error': 'Nieprawidłowe konto maklerskie.'}, status=400)
+            selected_account = get_object_or_404(BrokerageAccount, id=account_id, user=request.user)
+
+        history = build_portfolio_value_history(
+            request.user,
+            start_date=start_date,
+            end_date=end_date,
+            selected_account=selected_account,
+        )
+        history.update({
+            'range': {
+                'start_date': start_date.isoformat(),
+                'end_date': end_date.isoformat(),
+                'days': selected_days,
+                'mode': range_mode,
+            },
+            'scope': {
+                'account_id': selected_account.id if selected_account else None,
+                'account_name': selected_account.name if selected_account else 'Wszystkie konta',
+                'is_all': selected_account is None,
+            },
+        })
+        return JsonResponse(history)
 
 
 @method_decorator(login_required, name='dispatch')
@@ -285,6 +449,126 @@ class DeleteBrokerageInstrumentView(View):
         instrument.delete()
         messages.success(request, f'Instrument "{instrument_name}" został usunięty.')
         return redirect('finance:brokerage')
+
+
+@method_decorator(login_required, name='dispatch')
+class BrokerageInstrumentDetailDataView(View):
+    def get(self, request, instrument_id):
+        instrument = get_object_or_404(BrokerageInstrument, id=instrument_id, user=request.user)
+        try:
+            start_date, end_date, selected_days, range_mode = _parse_history_range(request)
+        except ValueError as exc:
+            return JsonResponse({'error': str(exc)}, status=400)
+
+        history_error = ''
+        history_source = ''
+        history_points = []
+        try:
+            history_data = fetch_historical_market_prices(
+                symbol=instrument.ticker,
+                exchange=instrument.exchange,
+                currency=instrument.currency,
+                isin=instrument.isin,
+                price_symbol=instrument.price_symbol,
+                name=instrument.name,
+                start_date=start_date,
+                end_date=end_date,
+            )
+        except MarketDataError as exc:
+            history_error = str(exc)
+        else:
+            history_points = history_data['points']
+            history_source = history_data['source']
+            if history_data.get('resolution_error'):
+                history_error = f"OpenFIGI: {history_data['resolution_error']}"
+
+        accounts = []
+        account_queryset = (
+            BrokerageAccount.objects
+            .filter(user=request.user, transactions__instrument=instrument)
+            .distinct()
+            .order_by('name')
+        )
+        for account in account_queryset:
+            quantity = get_quantity(account, instrument)
+            if quantity <= 0:
+                continue
+            accounts.append({
+                'name': account.name,
+                'broker': account.get_broker_display(),
+                'type': account.get_account_type_display(),
+                'currency': account.currency,
+                'quantity': _decimal_json(quantity),
+            })
+
+        latest_transaction = (
+            BrokerageTransaction.objects
+            .filter(account__user=request.user, instrument=instrument)
+            .select_related('account')
+            .order_by('-trade_date', '-id')
+            .first()
+        )
+        latest_transaction_payload = None
+        if latest_transaction is not None:
+            latest_transaction_payload = {
+                'date': latest_transaction.trade_date.isoformat(),
+                'type': latest_transaction.get_transaction_type_display(),
+                'quantity': _decimal_json(latest_transaction.quantity),
+                'price': _decimal_json(latest_transaction.price),
+                'account': latest_transaction.account.name,
+            }
+
+        chart_transactions = []
+        transaction_queryset = (
+            BrokerageTransaction.objects
+            .filter(
+                account__user=request.user,
+                instrument=instrument,
+                trade_date__gte=start_date,
+                trade_date__lte=end_date,
+            )
+            .select_related('account')
+            .order_by('trade_date', 'id')
+        )
+        for transaction in transaction_queryset:
+            chart_transactions.append({
+                'date': transaction.trade_date.isoformat(),
+                'type': transaction.transaction_type,
+                'type_display': transaction.get_transaction_type_display(),
+                'quantity': _decimal_json(transaction.quantity),
+                'price': _decimal_json(transaction.price),
+                'account': transaction.account.name,
+            })
+
+        return JsonResponse({
+            'instrument': {
+                'id': instrument.id,
+                'name': instrument.name,
+                'ticker': instrument.ticker,
+                'isin': instrument.isin,
+                'exchange': instrument.exchange,
+                'asset_type': instrument.get_asset_type_display(),
+                'currency': instrument.currency,
+                'price_symbol': instrument.price_symbol,
+                'last_price': _decimal_json(instrument.last_price),
+                'last_price_at': instrument.last_price_at.isoformat() if instrument.last_price_at else None,
+                'market_data_source': instrument.market_data_source or 'Ręcznie',
+                'edit_url': reverse('finance:edit_brokerage_instrument', args=[instrument.id]),
+            },
+            'accounts': accounts,
+            'latest_transaction': latest_transaction_payload,
+            'chart_transactions': chart_transactions,
+            'history': _history_points_json(history_points),
+            'history_summary': _history_summary(history_points),
+            'history_source': history_source,
+            'history_error': history_error,
+            'history_range': {
+                'start_date': start_date.isoformat(),
+                'end_date': end_date.isoformat(),
+                'days': selected_days,
+                'mode': range_mode,
+            },
+        })
 
 
 @method_decorator(login_required, name='dispatch')

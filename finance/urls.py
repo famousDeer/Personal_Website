@@ -26,11 +26,13 @@ urlpatterns = [
 
     # Brokerage portfolio
     path('brokerage/', views.BrokeragePortfolioView.as_view(), name='brokerage'),
+    path('brokerage/value-history/', views.BrokeragePortfolioHistoryDataView.as_view(), name='brokerage_value_history_data'),
     path('brokerage/refresh/', views.RefreshBrokerageMarketDataView.as_view(), name='brokerage_refresh'),
     path('brokerage/accounts/add/', views.AddBrokerageAccountView.as_view(), name='add_brokerage_account'),
     path('brokerage/accounts/<int:account_id>/edit/', views.EditBrokerageAccountView.as_view(), name='edit_brokerage_account'),
     path('brokerage/accounts/<int:account_id>/delete/', views.DeleteBrokerageAccountView.as_view(), name='delete_brokerage_account'),
     path('brokerage/instruments/add/', views.AddBrokerageInstrumentView.as_view(), name='add_brokerage_instrument'),
+    path('brokerage/instruments/<int:instrument_id>/detail-data/', views.BrokerageInstrumentDetailDataView.as_view(), name='brokerage_instrument_detail_data'),
     path('brokerage/instruments/<int:instrument_id>/edit/', views.EditBrokerageInstrumentView.as_view(), name='edit_brokerage_instrument'),
     path('brokerage/instruments/<int:instrument_id>/delete/', views.DeleteBrokerageInstrumentView.as_view(), name='delete_brokerage_instrument'),
     path('brokerage/transactions/add/', views.AddBrokerageTransactionView.as_view(), name='add_brokerage_transaction'),

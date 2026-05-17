@@ -28,14 +28,20 @@ def get_quantity(account, instrument, as_of=None):
     return max(quantity, Decimal('0'))
 
 
-def build_portfolio_summary(user):
-    accounts = list(BrokerageAccount.objects.filter(user=user))
+def build_portfolio_summary(user, selected_account=None):
+    accounts_queryset = BrokerageAccount.objects.filter(user=user)
+    if selected_account is not None:
+        accounts_queryset = accounts_queryset.filter(id=selected_account.id)
+    accounts = list(accounts_queryset)
+
     transactions = (
         BrokerageTransaction.objects
         .filter(account__user=user)
         .select_related('account', 'instrument')
         .order_by('trade_date', 'id')
     )
+    if selected_account is not None:
+        transactions = transactions.filter(account=selected_account)
 
     lots = defaultdict(list)
     realized_tax_by_currency = defaultdict(lambda: ZERO)
@@ -87,14 +93,14 @@ def build_portfolio_summary(user):
             continue
 
         first_transaction = open_lots[0]['transaction']
-        account = first_transaction.account
+        position_account = first_transaction.account
         instrument = first_transaction.instrument
         currency = instrument.currency
         cost = sum((lot['quantity'] * lot['unit_cost'] for lot in open_lots), ZERO)
         current_value = quantity * instrument.last_price if instrument.last_price is not None else None
         unrealized = current_value - cost if current_value is not None else None
 
-        account_currency_totals = account_totals[account.id]['currencies'][currency]
+        account_currency_totals = account_totals[position_account.id]['currencies'][currency]
         account_currency_totals['currency'] = currency
         account_currency_totals['cost'] += cost
         currency_totals[currency]['currency'] = currency
@@ -107,7 +113,7 @@ def build_portfolio_summary(user):
             currency_totals[currency]['value'] += current_value
 
         positions.append({
-            'account': account,
+            'account': position_account,
             'instrument': instrument,
             'quantity': quantity,
             'average_cost': cost / quantity,
@@ -125,6 +131,8 @@ def build_portfolio_summary(user):
         .select_related('account', 'instrument')
         .order_by('payment_date', 'instrument__ticker')
     )
+    if selected_account is not None:
+        dividend_queryset = dividend_queryset.filter(account=selected_account)
 
     for dividend in dividend_queryset:
         quantity_date = dividend.ex_dividend_date or today

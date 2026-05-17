@@ -17,18 +17,20 @@ from finance.models import (
 )
 from finance.market_data import (
     MarketDataError,
+    fetch_latest_fx_rates_to_pln,
+    fetch_historical_market_prices,
     fetch_latest_market_price,
     fetch_transaction_market_price,
     refresh_market_data_for_user,
 )
 from finance.serializers import MonthlySerializer
-from datetime import date, time
+from datetime import date, time, timedelta
 
 User = get_user_model()
 
 
 class BrokerageMarketDataTests(TestCase):
-    @override_settings(OPENFIGI_API_KEY="openfigi-key", ALPHA_VANTAGE_API_KEY="alpha-key")
+    @override_settings(OPENFIGI_API_KEY="openfigi-key", ALPHA_VANTAGE_API_KEY="alpha-key", STOOQ_API_KEY="stooq-key")
     @patch("finance.market_data._request_json")
     def test_latest_price_resolves_isin_with_openfigi_and_fetches_quote_from_alpha_vantage(self, mock_request_json):
         mock_request_json.side_effect = [
@@ -52,7 +54,7 @@ class BrokerageMarketDataTests(TestCase):
         self.assertEqual(result["source"], "Alpha Vantage")
         self.assertEqual(result["exchange"], "XNAS")
 
-    @override_settings(OPENFIGI_API_KEY="openfigi-key", ALPHA_VANTAGE_API_KEY="alpha-key")
+    @override_settings(OPENFIGI_API_KEY="openfigi-key", ALPHA_VANTAGE_API_KEY="alpha-key", STOOQ_API_KEY="stooq-key")
     @patch("finance.market_data._read_csv_url")
     @patch("finance.market_data._request_json")
     def test_gpw_transaction_price_uses_stooq_instead_of_alpha_vantage(self, mock_request_json, mock_read_csv):
@@ -75,7 +77,7 @@ class BrokerageMarketDataTests(TestCase):
         self.assertEqual(result["source"], "Stooq dzienne zamknięcie")
         self.assertIn("kru.pl", mock_read_csv.call_args[0][0])
 
-    @override_settings(OPENFIGI_API_KEY="openfigi-key", ALPHA_VANTAGE_API_KEY="alpha-key")
+    @override_settings(OPENFIGI_API_KEY="openfigi-key", ALPHA_VANTAGE_API_KEY="alpha-key", STOOQ_API_KEY="stooq-key")
     @patch("finance.market_data._read_csv_url")
     @patch("finance.market_data._request_json")
     def test_gpw_transaction_price_falls_back_to_latest_stooq_quote(self, mock_request_json, mock_read_csv):
@@ -92,6 +94,10 @@ class BrokerageMarketDataTests(TestCase):
         mock_read_csv.side_effect = [
             [],
             [],
+            [],
+            [],
+            [],
+            [],
             [{"Symbol": "KRU.PL", "Close": "484.20"}],
         ]
 
@@ -99,7 +105,7 @@ class BrokerageMarketDataTests(TestCase):
 
         self.assertEqual(result["price"], Decimal("484.20"))
         self.assertEqual(result["source"], "Stooq najnowsza cena")
-        self.assertIn("kru.pl", mock_read_csv.call_args_list[2][0][0])
+        self.assertIn("kru.pl", mock_read_csv.call_args_list[-1][0][0])
 
     @override_settings(OPENFIGI_API_KEY="openfigi-key", ALPHA_VANTAGE_API_KEY="alpha-key")
     @patch("finance.market_data._read_csv_url")
@@ -367,6 +373,77 @@ class BrokerageMarketDataTests(TestCase):
 
         with self.assertRaisesRegex(MarketDataError, "Payment Required"):
             fetch_latest_market_price(isin="PLKRK0000010")
+
+    @override_settings(OPENFIGI_API_KEY="", ALPHA_VANTAGE_API_KEY="alpha-key")
+    @patch("finance.market_data._request_json")
+    def test_fetch_historical_prices_uses_alpha_vantage_daily_series(self, mock_request_json):
+        mock_request_json.return_value = {
+            "Time Series (Daily)": {
+                "2026-05-15": {
+                    "1. open": "190.00",
+                    "2. high": "195.00",
+                    "3. low": "188.00",
+                    "4. close": "194.50",
+                    "5. volume": "12345",
+                },
+                "2026-05-14": {
+                    "1. open": "185.00",
+                    "2. high": "191.00",
+                    "3. low": "184.00",
+                    "4. close": "189.25",
+                    "5. volume": "10000",
+                },
+            }
+        }
+
+        result = fetch_historical_market_prices(symbol="AAPL", exchange="XNAS", currency="USD")
+
+        self.assertEqual(result["source"], "Alpha Vantage")
+        self.assertEqual([point["date"] for point in result["points"]], [date(2026, 5, 14), date(2026, 5, 15)])
+        self.assertEqual(result["points"][-1]["close"], Decimal("194.50"))
+
+    @override_settings(STOOQ_API_KEY="stooq-key")
+    @patch("finance.market_data._read_csv_url")
+    def test_gpw_historical_prices_try_instrument_name_candidates(self, mock_read_csv):
+        def response_for_url(url, **kwargs):
+            if "s=kruk.pl" in url:
+                return [
+                    {"Date": "2026-05-14", "Open": "480.00", "High": "486.00", "Low": "478.00", "Close": "484.00", "Volume": "1000"},
+                    {"Date": "2026-05-15", "Open": "484.00", "High": "490.00", "Low": "482.00", "Close": "488.00", "Volume": "1200"},
+                ]
+            return []
+
+        mock_read_csv.side_effect = response_for_url
+
+        result = fetch_historical_market_prices(symbol="KRU", exchange="XWAR", currency="PLN", name="Kruk S.A.")
+
+        requested_urls = [call_args[0][0] for call_args in mock_read_csv.call_args_list]
+        self.assertEqual(result["source"], "Stooq")
+        self.assertEqual(result["points"][-1]["close"], Decimal("488.00"))
+        self.assertTrue(any("s=kru.pl" in url for url in requested_urls))
+        self.assertTrue(any("s=kruk.pl" in url for url in requested_urls))
+
+    @override_settings(STOOQ_API_KEY="")
+    def test_gpw_historical_prices_explain_missing_stooq_api_key(self):
+        with self.assertRaisesRegex(MarketDataError, "STOOQ_API_KEY"):
+            fetch_historical_market_prices(symbol="KRU", exchange="XWAR", currency="PLN", name="Kruk S.A.")
+
+    @patch("finance.market_data._request_json")
+    def test_latest_fx_rates_to_pln_uses_nbp_table_a(self, mock_request_json):
+        mock_request_json.return_value = [{
+            "no": "100/A/NBP/2026",
+            "effectiveDate": "2026-05-15",
+            "rates": [
+                {"code": "EUR", "mid": "4.2500"},
+                {"code": "USD", "mid": "3.9000"},
+            ],
+        }]
+
+        result = fetch_latest_fx_rates_to_pln({"PLN", "EUR"})
+
+        self.assertEqual(result["rates"]["PLN"], Decimal("1"))
+        self.assertEqual(result["rates"]["EUR"], Decimal("4.2500"))
+        self.assertEqual(result["source"], "NBP tabela 100/A/NBP/2026")
 
 
 class FinanceCoreTests(TestCase):
@@ -672,6 +749,18 @@ class FinanceCoreTests(TestCase):
         self.assertEqual(currency_totals["PLN"]["planned_dividend_net"], Decimal("10.00"))
         self.assertEqual(len(response.context["positions"]), 2)
 
+        response = self.client.get(reverse("finance:brokerage"), {"account": account.id})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["selected_brokerage_account"], account)
+        currency_totals = {item["currency"]: item for item in response.context["currency_totals"]}
+        self.assertEqual(set(currency_totals), {"USD"})
+        self.assertEqual(currency_totals["USD"]["value"], Decimal("96.00"))
+        self.assertEqual(currency_totals["USD"]["planned_dividend_net"], Decimal("6.48"))
+        self.assertEqual(len(response.context["positions"]), 1)
+        self.assertEqual(len(response.context["upcoming_dividends"]), 1)
+        self.assertEqual(len(response.context["brokerage_instruments"]), 1)
+
     def test_brokerage_transaction_form_filters_accounts_by_user(self):
         other_user = User.objects.create_user(username="u2", password="pass123")
         other_account = BrokerageAccount.objects.create(
@@ -696,6 +785,360 @@ class FinanceCoreTests(TestCase):
         self.assertContains(response, "ISIN")
         self.assertNotContains(response, "Giełda")
         self.assertNotContains(response, other_account.name)
+
+    def test_brokerage_recent_transactions_show_current_month_only(self):
+        account = BrokerageAccount.objects.create(
+            user=self.user,
+            name="XTB PLN",
+            broker=BrokerageAccount.BROKER_XTB,
+            account_type=BrokerageAccount.STANDARD,
+            currency="PLN",
+        )
+        instrument = BrokerageInstrument.objects.create(
+            user=self.user,
+            ticker="KRU",
+            name="Kruk",
+            isin="PLKRK0000010",
+            asset_type=BrokerageInstrument.STOCK,
+            currency="PLN",
+        )
+        current_month_date = timezone.localdate().replace(day=1)
+        previous_month_date = (current_month_date - timedelta(days=1)).replace(day=1)
+        current_transaction = BrokerageTransaction.objects.create(
+            account=account,
+            instrument=instrument,
+            transaction_type=BrokerageTransaction.BUY,
+            trade_date=current_month_date,
+            quantity="1",
+            price="400.00",
+        )
+        BrokerageTransaction.objects.create(
+            account=account,
+            instrument=instrument,
+            transaction_type=BrokerageTransaction.BUY,
+            trade_date=previous_month_date,
+            quantity="1",
+            price="390.00",
+        )
+
+        response = self.client.get(reverse("finance:brokerage"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(list(response.context["brokerage_transactions"]), [current_transaction])
+
+    @override_settings(STOOQ_API_KEY="stooq-key")
+    @patch("finance.views.timezone.localdate")
+    @patch("finance.market_data._read_csv_url")
+    def test_brokerage_instrument_detail_data_returns_history_for_chart(self, mock_read_csv, mock_localdate):
+        mock_localdate.return_value = date(2026, 5, 17)
+        account = BrokerageAccount.objects.create(
+            user=self.user,
+            name="XTB PLN",
+            broker=BrokerageAccount.BROKER_XTB,
+            account_type=BrokerageAccount.STANDARD,
+            currency="PLN",
+        )
+        instrument = BrokerageInstrument.objects.create(
+            user=self.user,
+            ticker="KRU",
+            name="Kruk",
+            asset_type=BrokerageInstrument.STOCK,
+            currency="PLN",
+            exchange="XWAR",
+            last_price="110.00",
+            market_data_source="Stooq",
+        )
+        BrokerageTransaction.objects.create(
+            account=account,
+            instrument=instrument,
+            transaction_type=BrokerageTransaction.BUY,
+            trade_date=date(2026, 5, 1),
+            quantity="3",
+            price="100.00",
+        )
+        BrokerageTransaction.objects.create(
+            account=account,
+            instrument=instrument,
+            transaction_type=BrokerageTransaction.SELL,
+            trade_date=date(2026, 5, 2),
+            quantity="1",
+            price="108.00",
+        )
+        mock_read_csv.return_value = [
+            {"Date": "2026-05-01", "Open": "100.00", "High": "105.00", "Low": "99.00", "Close": "104.00", "Volume": "1000"},
+            {"Date": "2026-05-02", "Open": "104.00", "High": "112.00", "Low": "103.00", "Close": "110.00", "Volume": "1200"},
+        ]
+
+        response = self.client.get(reverse("finance:brokerage_instrument_detail_data", args=[instrument.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["instrument"]["ticker"], "KRU")
+        self.assertEqual(payload["history_source"], "Stooq")
+        self.assertEqual(len(payload["history"]), 2)
+        self.assertEqual(payload["history"][-1]["close"], "110.00")
+        self.assertEqual(payload["history_summary"]["change"], "6.00")
+        self.assertEqual(payload["accounts"][0]["quantity"], "2.000000")
+        self.assertEqual(len(payload["chart_transactions"]), 2)
+        self.assertEqual(payload["chart_transactions"][0]["type"], "buy")
+        self.assertEqual(payload["chart_transactions"][0]["price"], "100.0000")
+        self.assertEqual(payload["chart_transactions"][1]["type"], "sell")
+        self.assertEqual(payload["chart_transactions"][1]["price"], "108.0000")
+        self.assertIn("kru.pl", mock_read_csv.call_args[0][0])
+
+    def test_brokerage_instrument_detail_data_is_limited_to_owner(self):
+        other_user = User.objects.create_user(username="u2", password="pass123")
+        instrument = BrokerageInstrument.objects.create(
+            user=other_user,
+            ticker="AAPL",
+            name="Apple",
+            asset_type=BrokerageInstrument.STOCK,
+            currency="USD",
+        )
+
+        response = self.client.get(reverse("finance:brokerage_instrument_detail_data", args=[instrument.id]))
+
+        self.assertEqual(response.status_code, 404)
+
+    @patch("finance.views.fetch_historical_market_prices")
+    def test_brokerage_instrument_detail_data_accepts_custom_history_range(self, mock_fetch_history):
+        account = BrokerageAccount.objects.create(
+            user=self.user,
+            name="XTB USD",
+            broker=BrokerageAccount.BROKER_XTB,
+            account_type=BrokerageAccount.STANDARD,
+            currency="USD",
+        )
+        instrument = BrokerageInstrument.objects.create(
+            user=self.user,
+            ticker="AAPL",
+            name="Apple",
+            asset_type=BrokerageInstrument.STOCK,
+            currency="USD",
+            exchange="XNAS",
+        )
+        BrokerageTransaction.objects.create(
+            account=account,
+            instrument=instrument,
+            transaction_type=BrokerageTransaction.BUY,
+            trade_date=date(2026, 1, 15),
+            quantity="5",
+            price="190.00",
+        )
+        BrokerageTransaction.objects.create(
+            account=account,
+            instrument=instrument,
+            transaction_type=BrokerageTransaction.SELL,
+            trade_date=date(2026, 2, 2),
+            quantity="1",
+            price="200.00",
+        )
+        mock_fetch_history.return_value = {
+            "points": [{
+                "date": date(2026, 1, 15),
+                "open": Decimal("190.00"),
+                "high": Decimal("195.00"),
+                "low": Decimal("188.00"),
+                "close": Decimal("194.50"),
+                "volume": 12345,
+            }],
+            "source": "Test",
+            "resolution_error": "",
+        }
+
+        response = self.client.get(
+            reverse("finance:brokerage_instrument_detail_data", args=[instrument.id]),
+            {"start_date": "2026-01-01", "end_date": "2026-01-31"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["history_range"]["mode"], "custom")
+        self.assertEqual(payload["history_range"]["start_date"], "2026-01-01")
+        self.assertEqual(payload["history_range"]["end_date"], "2026-01-31")
+        self.assertEqual(len(payload["chart_transactions"]), 1)
+        self.assertEqual(payload["chart_transactions"][0]["date"], "2026-01-15")
+        self.assertEqual(payload["chart_transactions"][0]["type"], "buy")
+        mock_fetch_history.assert_called_once()
+        self.assertEqual(mock_fetch_history.call_args.kwargs["start_date"], date(2026, 1, 1))
+        self.assertEqual(mock_fetch_history.call_args.kwargs["end_date"], date(2026, 1, 31))
+
+    def test_brokerage_instrument_detail_data_rejects_invalid_history_range(self):
+        instrument = BrokerageInstrument.objects.create(
+            user=self.user,
+            ticker="AAPL",
+            name="Apple",
+            asset_type=BrokerageInstrument.STOCK,
+            currency="USD",
+            exchange="XNAS",
+        )
+
+        response = self.client.get(
+            reverse("finance:brokerage_instrument_detail_data", args=[instrument.id]),
+            {"start_date": "2026-02-01", "end_date": "2026-01-01"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Data początku", response.json()["error"])
+
+    @patch("finance.portfolio_history.fetch_latest_fx_rates_to_pln")
+    @patch("finance.portfolio_history.fetch_historical_market_prices")
+    def test_brokerage_portfolio_history_all_accounts_converts_to_pln(self, mock_fetch_history, mock_fetch_fx):
+        pln_account = BrokerageAccount.objects.create(
+            user=self.user,
+            name="XTB PLN",
+            broker=BrokerageAccount.BROKER_XTB,
+            account_type=BrokerageAccount.STANDARD,
+            currency="PLN",
+        )
+        eur_account = BrokerageAccount.objects.create(
+            user=self.user,
+            name="XTB EUR",
+            broker=BrokerageAccount.BROKER_XTB,
+            account_type=BrokerageAccount.STANDARD,
+            currency="EUR",
+        )
+        pln_instrument = BrokerageInstrument.objects.create(
+            user=self.user,
+            ticker="KRU",
+            name="Kruk",
+            asset_type=BrokerageInstrument.STOCK,
+            currency="PLN",
+            exchange="XWAR",
+        )
+        eur_instrument = BrokerageInstrument.objects.create(
+            user=self.user,
+            ticker="SAP",
+            name="SAP",
+            asset_type=BrokerageInstrument.STOCK,
+            currency="EUR",
+            exchange="XETR",
+        )
+        BrokerageTransaction.objects.create(
+            account=pln_account,
+            instrument=pln_instrument,
+            transaction_type=BrokerageTransaction.BUY,
+            trade_date=date(2026, 1, 1),
+            quantity="1",
+            price="100.00",
+        )
+        BrokerageTransaction.objects.create(
+            account=eur_account,
+            instrument=eur_instrument,
+            transaction_type=BrokerageTransaction.BUY,
+            trade_date=date(2026, 1, 1),
+            quantity="2",
+            price="10.00",
+        )
+
+        def history_for_symbol(**kwargs):
+            if kwargs["symbol"] == "KRU":
+                return {
+                    "points": [
+                        {"date": date(2026, 1, 1), "close": Decimal("100.00")},
+                        {"date": date(2026, 1, 2), "close": Decimal("110.00")},
+                    ],
+                    "source": "Stooq",
+                }
+            return {
+                "points": [
+                    {"date": date(2026, 1, 1), "close": Decimal("10.00")},
+                    {"date": date(2026, 1, 2), "close": Decimal("12.00")},
+                ],
+                "source": "Alpha Vantage",
+            }
+
+        mock_fetch_history.side_effect = history_for_symbol
+        mock_fetch_fx.return_value = {
+            "rates": {"PLN": Decimal("1"), "EUR": Decimal("4.50")},
+            "source": "NBP tabela A",
+            "table_date": "2026-01-02",
+        }
+
+        response = self.client.get(
+            reverse("finance:brokerage_value_history_data"),
+            {"start_date": "2026-01-01", "end_date": "2026-01-02"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["currency"], "PLN")
+        self.assertEqual(payload["points"][0]["value"], "190.00")
+        self.assertEqual(payload["points"][1]["value"], "218.00")
+        self.assertEqual(payload["summary"]["latest_value"], "218.00")
+        self.assertEqual(payload["fx_source"], "NBP tabela A")
+
+    @patch("finance.portfolio_history.fetch_latest_fx_rates_to_pln")
+    @patch("finance.portfolio_history.fetch_historical_market_prices")
+    def test_brokerage_portfolio_history_selected_account_keeps_account_currency(self, mock_fetch_history, mock_fetch_fx):
+        pln_account = BrokerageAccount.objects.create(
+            user=self.user,
+            name="XTB PLN",
+            broker=BrokerageAccount.BROKER_XTB,
+            account_type=BrokerageAccount.STANDARD,
+            currency="PLN",
+        )
+        eur_account = BrokerageAccount.objects.create(
+            user=self.user,
+            name="XTB EUR",
+            broker=BrokerageAccount.BROKER_XTB,
+            account_type=BrokerageAccount.STANDARD,
+            currency="EUR",
+        )
+        pln_instrument = BrokerageInstrument.objects.create(
+            user=self.user,
+            ticker="KRU",
+            name="Kruk",
+            asset_type=BrokerageInstrument.STOCK,
+            currency="PLN",
+            exchange="XWAR",
+        )
+        eur_instrument = BrokerageInstrument.objects.create(
+            user=self.user,
+            ticker="SAP",
+            name="SAP",
+            asset_type=BrokerageInstrument.STOCK,
+            currency="EUR",
+            exchange="XETR",
+        )
+        BrokerageTransaction.objects.create(
+            account=pln_account,
+            instrument=pln_instrument,
+            transaction_type=BrokerageTransaction.BUY,
+            trade_date=date(2026, 1, 1),
+            quantity="1",
+            price="100.00",
+        )
+        BrokerageTransaction.objects.create(
+            account=eur_account,
+            instrument=eur_instrument,
+            transaction_type=BrokerageTransaction.BUY,
+            trade_date=date(2026, 1, 1),
+            quantity="2",
+            price="10.00",
+        )
+        mock_fetch_history.return_value = {
+            "points": [
+                {"date": date(2026, 1, 1), "close": Decimal("10.00")},
+                {"date": date(2026, 1, 2), "close": Decimal("12.00")},
+            ],
+            "source": "Alpha Vantage",
+        }
+
+        response = self.client.get(
+            reverse("finance:brokerage_value_history_data"),
+            {"account": eur_account.id, "start_date": "2026-01-01", "end_date": "2026-01-02"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["currency"], "EUR")
+        self.assertEqual(payload["points"][0]["value"], "20.00")
+        self.assertEqual(payload["points"][1]["value"], "24.00")
+        self.assertEqual(payload["scope"]["account_name"], "XTB EUR")
+        mock_fetch_fx.assert_not_called()
+        mock_fetch_history.assert_called_once()
+        self.assertEqual(mock_fetch_history.call_args.kwargs["symbol"], "SAP")
 
     def test_brokerage_transaction_creates_instrument_from_typed_data_and_manual_price(self):
         account = BrokerageAccount.objects.create(
