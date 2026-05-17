@@ -20,6 +20,13 @@
                         {% endif %}
                     </div>
                     <div class="mb-3">
+                        <label for="{{ form.travel_type.id_for_label }}" class="form-label">{{ form.travel_type.label }}</label>
+                        {{ form.travel_type }}
+                        {% if form.travel_type.errors %}
+                            <div class="text-danger">{{ form.travel_type.errors }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="mb-3">
                         <label for="{{ form.start_date.id_for_label }}" class="form-label">{{ form.start_date.label }}</label>
                         {{ form.start_date }}
                         {% if form.start_date.errors %}

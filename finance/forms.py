@@ -288,9 +288,10 @@ class TravelDestinationForm(forms.ModelForm):
 
     class Meta:
         model = TravelDestinations
-        fields = ['country', 'start_date', 'end_date', 'city', 'budget']
+        fields = ['country', 'travel_type', 'start_date', 'end_date', 'city', 'budget']
         labels = {
             'country': 'Kraj podrózy',
+            'travel_type': 'Typ podróży',
             'start_date': 'Data rozpoczęcia',
             'end_date': 'Data zakończenia',
             'city': 'Miasto',
@@ -298,9 +299,13 @@ class TravelDestinationForm(forms.ModelForm):
         }
         widgets = {
             'country': forms.Select(attrs={'class': 'form-select'}),
+            'travel_type': forms.Select(attrs={'class': 'form-select'}),
             'city': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'np. Warszawa'}),
             'budget': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'np. 2000.00'}),
         }
+
+    def clean_city(self):
+        return (self.cleaned_data.get('city') or '').strip()
 
     def clean(self):
         cleaned_data = super().clean()

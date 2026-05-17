@@ -1,273 +1,359 @@
 {% extends 'finance/index.html' %}
 
-{% block title %}Wydatki na podróże{% endblock %}
+{% block title %}Podróże{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+{% endblock %}
 
 {% block content_finance %}
-{% load date_extras humanize %}
+{% load humanize %}
 
-<div class="row align-items-center mb-4 animate-fade-in">
-    <div class="col-md-6">
-        <h2 class="fw-bold mb-0"><i class="bi bi-suitcase-fill text-primary me-2"></i>Moje Podróże</h2>
-        <p class="text-muted small mb-0">Zarządzaj wydatkami i celami podróży</p>
-    </div>
-    
-    <div class="col-md-6 d-flex justify-content-md-end align-items-center mt-3 mt-md-0">
+<div class="travel-page">
+    <div class="travel-header animate-fade-in">
+        <div>
+            <div class="small text-uppercase fw-bold text-muted mb-1">Podróże</div>
+            <h2 class="fw-bold mb-1"><i class="bi bi-suitcase-fill text-primary me-2"></i>Moje miejsca i terminy</h2>
+            <p class="text-muted mb-0">Jedna pinezka dla miasta, wiele przedziałów dat pod tą samą lokalizacją.</p>
+        </div>
         <a href="{% url 'finance:add_travel' %}" class="btn btn-primary rounded-pill shadow-sm px-4 fw-bold">
-            <i class="bi bi-plus-lg me-1"></i> Dodaj Podróż
+            <i class="bi bi-plus-lg me-1"></i> Dodaj termin
         </a>
     </div>
-</div>
 
-<div class="card border-0 shadow-sm action-card overflow-hidden animate-fade-in-up mb-4">
-    <div class="card-body p-4">
+    <div class="travel-stat-grid animate-fade-in-up">
+        <div class="travel-stat-card">
+            <span class="travel-stat-icon bg-primary-subtle text-primary"><i class="bi bi-pin-map-fill"></i></span>
+            <div>
+                <div class="travel-stat-value">{{ travel_stats.locations_count }}</div>
+                <div class="travel-stat-label">lokalizacje</div>
+            </div>
+        </div>
+        <div class="travel-stat-card">
+            <span class="travel-stat-icon bg-success-subtle text-success"><i class="bi bi-calendar2-range"></i></span>
+            <div>
+                <div class="travel-stat-value">{{ travel_stats.total_count }}</div>
+                <div class="travel-stat-label">przedziały dat</div>
+            </div>
+        </div>
+        <div class="travel-stat-card">
+            <span class="travel-stat-icon bg-warning-subtle text-warning"><i class="bi bi-briefcase-fill"></i></span>
+            <div>
+                <div class="travel-stat-value">{{ travel_stats.business_days }}</div>
+                <div class="travel-stat-label">dni delegacji</div>
+            </div>
+        </div>
+        <div class="travel-stat-card">
+            <span class="travel-stat-icon bg-info-subtle text-info"><i class="bi bi-wallet2"></i></span>
+            <div>
+                <div class="travel-stat-value">{{ travel_stats.total_budget|floatformat:0|intcomma }} zł</div>
+                <div class="travel-stat-label">{{ travel_stats.average_budget_per_day|floatformat:0|intcomma }} zł / dzień</div>
+            </div>
+        </div>
+    </div>
+
+    <section class="travel-panel travel-map-panel animate-fade-in-up">
+        <div class="travel-panel-header">
+            <div>
+                <h3 class="h5 fw-bold mb-1">Mapa podróży</h3>
+                <p class="text-muted small mb-0">
+                    Pinezka jest przypisana do pary miasto + kraj, a popup pokazuje wszystkie zapisane terminy.
+                </p>
+            </div>
+            <span class="badge bg-primary-subtle text-primary rounded-pill">
+                {{ travel_map_points|length }} pinezek
+            </span>
+        </div>
+        <div id="travelMap" class="travel-map"></div>
+        {% if missing_coordinates_count %}
+            <div class="travel-map-note">
+                <i class="bi bi-info-circle me-1"></i>
+                {{ missing_coordinates_count }} lokalizacje nie mają jeszcze współrzędnych. Widok uzupełnia jedną brakującą pinezkę przy odświeżeniu strony albo po ponownym zapisaniu terminu.
+            </div>
+        {% endif %}
+    </section>
+
+    <section class="travel-panel animate-fade-in-up">
         <form method="get" class="row g-3 align-items-end">
-            <div class="col-md-5 col-lg-4">
-                <label for="country" class="form-label small text-uppercase fw-bold text-muted">Kraj Docelowy</label>
-                <select class="form-select form-select-sm border-0 shadow-sm bg-body-tertiary" id="country" name="country">
-                    <option value="">Wszystkie Kraje</option>
+            <div class="col-md-4">
+                <label for="country" class="form-label small text-uppercase fw-bold text-muted">Kraj</label>
+                <select class="form-select border-0 shadow-sm bg-body-tertiary" id="country" name="country">
+                    <option value="">Wszystkie kraje</option>
                     {% for country in countries %}
-                        <option value="{{ country.code }}"
-                            {% if current_country_filter == country.code %}selected{% endif %}>
+                        <option value="{{ country.code }}" {% if current_country_filter == country.code %}selected{% endif %}>
                             {{ country.name }}
                         </option>
                     {% endfor %}
                 </select>
             </div>
-            
-            <div class="col-md-7 col-lg-8 d-flex gap-2">
-                <button type="submit" class="btn btn-sm btn-primary rounded-3 shadow-sm px-3">
+            <div class="col-md-4">
+                <label for="travel_type" class="form-label small text-uppercase fw-bold text-muted">Typ</label>
+                <select class="form-select border-0 shadow-sm bg-body-tertiary" id="travel_type" name="travel_type">
+                    <option value="">Wszystkie typy</option>
+                    {% for option in travel_type_options %}
+                        <option value="{{ option.value }}" {% if current_travel_type_filter == option.value %}selected{% endif %}>
+                            {{ option.label }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4 d-flex flex-wrap gap-2">
+                <button type="submit" class="btn btn-primary rounded-pill px-4">
                     <i class="bi bi-funnel-fill me-1"></i> Filtruj
                 </button>
-                <a href="{% url 'finance:travels' %}" class="btn btn-sm btn-outline-secondary rounded-3 px-3">
+                <a href="{% url 'finance:travels' %}" class="btn btn-soft-neutral rounded-pill px-4">
                     <i class="bi bi-x-circle me-1"></i> Wyczyść
                 </a>
             </div>
         </form>
-    </div>
-</div>
+    </section>
 
-<div class="card border-0 shadow-sm action-card animate-fade-in-up d-none d-md-block"> 
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0 custom-table">
-                <thead class="bg-light">
-                    <tr>
-                        <th class="ps-4 py-3 text-muted text-uppercase small fw-bold" style="width: 35%;">Kraj & Miasto</th>
-                        <th class="py-3 text-muted text-uppercase small fw-bold text-center" style="width: 25%;">Data</th>
-                        <th class="py-3 text-muted text-uppercase small fw-bold text-end" style="width: 10%;">Dni</th>
-                        <th class="pe-4 py-3 text-muted text-uppercase small fw-bold text-end" style="width: 30%;">Budżet & Akcje</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for destination in destinations.object_list %}
-                    <tr>
-                        <td class="ps-4">
-                            <div class="d-flex align-items-center">
-                                <img src="{{ destination.country.flag }}" alt="Flaga {{ destination.country.name }}" class="me-2 rounded-1" style="height: 20px; width: 30px; object-fit: cover; border: 1px solid #eee;">
-                                <div class="d-flex flex-column">
-                                    <span class="fw-medium">{{ destination.city }}</span>
-                                    <span class="text-muted small">{{ destination.country.name }}</span>
-                                </div>
-                            </div>
-                        </td>
-                        
-                        <td class="text-center">
-                            <span class="badge bg-primary-subtle text-primary rounded-pill fw-medium">
-                                {{ destination.start_date|date:"d.m" }} - {{ destination.end_date|date:"d.m" }}
-                            </span>
-                            <span class="d-block small text-muted mt-1">{{ destination.start_date|date:"Y" }}</span>
-                        </td>
-                        
-                        <td class="text-end fw-medium" style="font-variant-numeric: tabular-nums;">
-                            {{ destination.start_date|days_between:destination.end_date }}
-                        </td>
-                        
-                        <td class="pe-4 text-end">
-                            <div class="d-flex justify-content-end align-items-center">
-                                <span class="fw-bold fs-6 me-3 text-dark" style="font-variant-numeric: tabular-nums;">
-                                    {{ destination.budget|floatformat:0|intcomma }} zł
+    <section class="travel-panel animate-fade-in-up">
+        <div class="travel-panel-header">
+            <div>
+                <h3 class="h5 fw-bold mb-1">Delegacje rocznie</h3>
+                <p class="text-muted small mb-0">Procent = unikalne dni w delegacji / liczba dni w roku.</p>
+            </div>
+        </div>
+        {% if delegation_year_stats %}
+            <div class="travel-delegation-grid">
+                {% for stat in delegation_year_stats %}
+                    <div class="travel-year-card">
+                        <div class="travel-year-topline">
+                            <strong>{{ stat.year }}</strong>
+                            <span>{{ stat.percent }}%</span>
+                        </div>
+                        <div class="travel-year-bar">
+                            <span style="width: {{ stat.percent_css }}%;"></span>
+                        </div>
+                        <div class="text-muted small">{{ stat.days }} z {{ stat.year_days }} dni</div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="travel-empty travel-empty-compact">
+                <i class="bi bi-briefcase"></i>
+                <p class="text-muted mb-0">Brak zapisanych delegacji.</p>
+            </div>
+        {% endif %}
+    </section>
+
+    <section class="travel-list animate-fade-in-up">
+        {% for group in location_groups.object_list %}
+            <article class="travel-location-item">
+                <div class="travel-location-summary">
+                    <div class="travel-destination">
+                        <img src="{{ group.flag }}" alt="Flaga {{ group.country }}" class="travel-flag">
+                        <div class="min-w-0">
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <h3 class="travel-title mb-0">{{ group.label }}</h3>
+                                <span class="badge rounded-pill bg-primary-subtle text-primary">
+                                    {{ group.trip_count }} termin{% if group.trip_count != 1 %}y{% endif %}
                                 </span>
-                                
-                                <a href="{% url 'finance:edit_travel' destination.id %}" 
-                                   class="btn btn-light btn-sm text-primary rounded-circle" 
-                                   data-bs-toggle="tooltip" title="Edytuj">
+                                {% if group.business_count %}
+                                    <span class="badge rounded-pill bg-warning-subtle text-warning">
+                                        <i class="bi bi-briefcase-fill me-1"></i>{{ group.business_count }} deleg.
+                                    </span>
+                                {% endif %}
+                            </div>
+                            <div class="text-muted small">{{ group.country }}</div>
+                            <div class="travel-meta">
+                                <span><i class="bi bi-clock me-1"></i>{{ group.total_days }} dni łącznie</span>
+                                {% if group.has_coordinates %}
+                                    <span><i class="bi bi-geo-alt me-1"></i>na mapie</span>
+                                {% else %}
+                                    <span><i class="bi bi-geo-alt me-1"></i>oczekuje na pinezkę</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="travel-budget">
+                        <div class="travel-budget-main">{{ group.total_budget|floatformat:0|intcomma }} zł</div>
+                        <div class="text-muted small">suma budżetów</div>
+                    </div>
+                </div>
+
+                <div class="travel-ranges">
+                    {% for destination in group.destinations %}
+                        <div class="travel-range-row">
+                            <div class="travel-range-main">
+                                <span class="badge rounded-pill {{ destination.travel_type_meta.badge_class }}">
+                                    <i class="bi {{ destination.travel_type_meta.icon }} me-1"></i>{{ destination.travel_type_meta.label }}
+                                </span>
+                                <span class="travel-range-date">{{ destination.start_date|date:"d.m.Y" }} - {{ destination.end_date|date:"d.m.Y" }}</span>
+                                <span class="text-muted small">{{ destination.duration_days }} dni</span>
+                                <span class="text-muted small">{{ destination.budget|floatformat:0|intcomma }} zł</span>
+                            </div>
+                            <div class="travel-actions">
+                                <a href="{% url 'finance:edit_travel' destination.id %}" class="btn btn-light btn-sm rounded-circle" data-bs-toggle="tooltip" title="Edytuj">
                                     <i class="bi bi-pencil-fill"></i>
                                 </a>
-                                <button type="button" 
-                                        class="btn btn-light btn-sm text-danger rounded-circle ms-1" 
+                                <button type="button"
+                                        class="btn btn-light btn-sm rounded-circle text-danger"
                                         title="Usuń"
-                                        data-bs-toggle="modal" 
+                                        data-bs-toggle="modal"
                                         data-bs-target="#deleteTravelModal-{{ destination.id }}">
                                     <i class="bi bi-trash-fill"></i>
                                 </button>
                             </div>
-                        </td>
-                    </tr>
-                    
-                    {% empty %}
-                    <tr>
-                        <td colspan="4" class="text-center py-5">
-                            <div class="text-muted opacity-50">
-                                <i class="bi bi-airplane-engines" style="font-size: 3rem;"></i>
-                                <p class="mt-3 fw-medium">Brak podróży do wyświetlenia.</p>
-                                <a href="{% url 'finance:add_travel' %}" class="btn btn-sm btn-outline-primary mt-2 rounded-pill">
-                                    <i class="bi bi-plus-circle"></i> Dodaj pierwszą podróż
-                                </a>
-                            </div>
-                        </td>
-                    </tr>
+                        </div>
                     {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
-<div class="d-block d-md-none animate-fade-in-up">
-    {% for destination in destinations.object_list %}
-    <div class="card border-0 shadow-sm mb-3">
-        <div class="card-body p-3">
-            <div class="d-flex justify-content-between align-items-start">
-                
-                <div>
-                    <div class="d-flex align-items-center mb-1">
-                        <img src="{{ destination.country.flag }}" alt="Flaga {{ destination.country.name }}" class="me-2 rounded-1" style="height: 24px; width: 36px; object-fit: cover; border: 1px solid #eee;">
-                        <span class="fw-bold fs-5">{{ destination.city }}</span>
-                    </div>
-                    <span class="text-muted small d-block mb-2">{{ destination.country.name }}</span>
-                    
-                    <div class="d-flex gap-2 small">
-                        <span class="badge text-dark fw-medium">
-                            <i class="bi bi-calendar-range me-1"></i> 
-                            {{ destination.start_date|date:"d.m" }} - {{ destination.end_date|date:"d.m.Y" }}
-                        </span>
-                        <span class="badge text-dark fw-medium">
-                            <i class="bi bi-clock me-1"></i> 
-                            {{ destination.start_date|days_between:destination.end_date }}
-                        </span>
-                    </div>
                 </div>
+            </article>
+        {% empty %}
+            <div class="travel-empty">
+                <i class="bi bi-airplane-engines"></i>
+                <h3 class="h5 fw-bold mt-3">Brak podróży do wyświetlenia</h3>
+                <p class="text-muted mb-3">Dodaj pierwszy termin, a mapa sama utworzy pinezkę z miasta i kraju.</p>
+                <a href="{% url 'finance:add_travel' %}" class="btn btn-primary rounded-pill px-4">
+                    <i class="bi bi-plus-circle me-1"></i> Dodaj termin
+                </a>
+            </div>
+        {% endfor %}
+    </section>
 
-                <div class="text-end">
-                    <span class="fw-bold fs-4 text-dark d-block mb-2" style="font-variant-numeric: tabular-nums;">
-                        {{ destination.budget|floatformat:0|intcomma }} zł
-                    </span>
-                    <div class="btn-group btn-group-sm">
-                        <a href="{% url 'finance:edit_travel' destination.id %}" 
-                           class="btn btn-outline-primary rounded-start-pill" title="Edytuj">
-                            <i class="bi bi-pencil"></i>
+    {% if location_groups.has_other_pages %}
+        <nav class="travel-pagination" aria-label="Nawigacja strony">
+            <ul class="pagination justify-content-center mb-0">
+                {% if location_groups.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link rounded-circle mx-1 border-0 shadow-sm" href="?{% if querystring %}{{ querystring }}&{% endif %}page=1">
+                            <i class="bi bi-chevron-bar-left"></i>
                         </a>
-                        <button type="button" 
-                                class="btn btn-outline-danger rounded-end-pill" 
-                                title="Usuń"
-                                data-bs-toggle="modal" 
-                                data-bs-target="#deleteTravelModal-{{ destination.id }}">
-                            <i class="bi bi-trash"></i>
-                        </button>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link rounded-circle mx-1 border-0 shadow-sm" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ location_groups.previous_page_number }}">
+                            <i class="bi bi-chevron-left"></i>
+                        </a>
+                    </li>
+                {% else %}
+                    <li class="page-item disabled"><span class="page-link rounded-circle mx-1 border-0 text-muted"><i class="bi bi-chevron-bar-left"></i></span></li>
+                    <li class="page-item disabled"><span class="page-link rounded-circle mx-1 border-0 text-muted"><i class="bi bi-chevron-left"></i></span></li>
+                {% endif %}
+
+                <li class="page-item active">
+                    <span class="page-link rounded-pill mx-1 border-0 shadow-sm bg-primary">
+                        {{ location_groups.number }} / {{ location_groups.paginator.num_pages }}
+                    </span>
+                </li>
+
+                {% if location_groups.has_next %}
+                    <li class="page-item">
+                        <a class="page-link rounded-circle mx-1 border-0 shadow-sm" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ location_groups.next_page_number }}">
+                            <i class="bi bi-chevron-right"></i>
+                        </a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link rounded-circle mx-1 border-0 shadow-sm" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ location_groups.paginator.num_pages }}">
+                            <i class="bi bi-chevron-bar-right"></i>
+                        </a>
+                    </li>
+                {% else %}
+                    <li class="page-item disabled"><span class="page-link rounded-circle mx-1 border-0 text-muted"><i class="bi bi-chevron-right"></i></span></li>
+                    <li class="page-item disabled"><span class="page-link rounded-circle mx-1 border-0 text-muted"><i class="bi bi-chevron-bar-right"></i></span></li>
+                {% endif %}
+            </ul>
+        </nav>
+    {% endif %}
+</div>
+
+{% for group in location_groups.object_list %}
+    {% for destination in group.destinations %}
+        <div class="modal fade" id="deleteTravelModal-{{ destination.id }}" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+                    <div class="modal-body p-4 text-center">
+                        <div class="icon-box bg-danger-subtle text-danger mx-auto mb-3 rounded-circle" style="width: 80px; height: 80px;">
+                            <i class="bi bi-exclamation-triangle-fill fs-1"></i>
+                        </div>
+                        <h4 class="fw-bold mb-2">Usuń termin w {{ destination.destination_name }}?</h4>
+                        <p class="text-muted mb-4">
+                            {{ destination.start_date|date:"d.m.Y" }} - {{ destination.end_date|date:"d.m.Y" }},
+                            <strong class="text-dark">{{ destination.country.name }}</strong><br>
+                            <span class="small text-danger">Wydatki powiązane z tą podróżą pozostaną.</span>
+                        </p>
+
+                        <div class="d-flex gap-2 justify-content-center">
+                            <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Anuluj</button>
+                            <form action="{% url 'finance:delete_travel' destination.id %}" method="post">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-danger rounded-pill px-4 fw-bold">Tak, usuń</button>
+                            </form>
+                        </div>
                     </div>
                 </div>
-
             </div>
         </div>
-    </div>
-    {% empty %}
-    <div class="text-center py-5">
-        <div class="text-muted opacity-50">
-            <i class="bi bi-airplane-engines" style="font-size: 3rem;"></i>
-            <p class="mt-3 fw-medium">Brak podróży do wyświetlenia.</p>
-            <a href="{% url 'finance:add_travel' %}" class="btn btn-sm btn-outline-primary mt-2 rounded-pill">
-                <i class="bi bi-plus-circle"></i> Dodaj pierwszą podróż
-            </a>
-        </div>
-    </div>
     {% endfor %}
-</div>
-
-
-{% if destinations.has_other_pages %}
-<div class="card-footer bg-transparent border-top border-light-subtle p-3 mt-3">
-    <nav aria-label="Nawigacja strony">
-        <ul class="pagination justify-content-center mb-0">
-            
-            {% if destinations.has_previous %}
-                <li class="page-item">
-                    <a class="page-link rounded-circle mx-1 border-0 shadow-sm" 
-                       href="?{% if querystring %}{{ querystring }}&{% endif %}page=1">
-                        <i class="bi bi-chevron-bar-left"></i>
-                    </a>
-                </li>
-                <li class="page-item">
-                    <a class="page-link rounded-circle mx-1 border-0 shadow-sm" 
-                       href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ destinations.previous_page_number }}">
-                        <i class="bi bi-chevron-left"></i>
-                    </a>
-                </li>
-            {% else %}
-                <li class="page-item disabled"><span class="page-link rounded-circle mx-1 border-0 text-muted"><i class="bi bi-chevron-bar-left"></i></span></li>
-                <li class="page-item disabled"><span class="page-link rounded-circle mx-1 border-0 text-muted"><i class="bi bi-chevron-left"></i></span></li>
-            {% endif %}
-
-            <li class="page-item active">
-                <span class="page-link rounded-pill mx-1 border-0 shadow-sm bg-primary">
-                    {{ destinations.number }} / {{ destinations.paginator.num_pages }}
-                </span>
-            </li>
-
-            {% if destinations.has_next %}
-                <li class="page-item">
-                    <a class="page-link rounded-circle mx-1 border-0 shadow-sm" 
-                       href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ destinations.next_page_number }}">
-                        <i class="bi bi-chevron-right"></i>
-                    </a>
-                </li>
-                <li class="page-item">
-                    <a class="page-link rounded-circle mx-1 border-0 shadow-sm" 
-                       href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ destinations.paginator.num_pages }}">
-                        <i class="bi bi-chevron-bar-right"></i>
-                    </a>
-                </li>
-            {% else %}
-                <li class="page-item disabled"><span class="page-link rounded-circle mx-1 border-0 text-muted"><i class="bi bi-chevron-right"></i></span></li>
-                <li class="page-item disabled"><span class="page-link rounded-circle mx-1 border-0 text-muted"><i class="bi bi-chevron-bar-right"></i></span></li>
-            {% endif %}
-        </ul>
-    </nav>
-</div>
-{% endif %}
-
-
-{% for destination in destinations.object_list %}
-<div class="modal fade" id="deleteTravelModal-{{ destination.id }}" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
-            <div class="modal-body p-4 text-center">
-                
-                <div class="icon-box bg-danger-subtle text-danger mx-auto mb-3 rounded-circle" style="width: 80px; height: 80px; display: flex; align-items: center; justify-content: center;">
-                    <i class="bi bi-exclamation-triangle-fill fs-1"></i>
-                </div>
-                
-                <h4 class="fw-bold mb-2">Usuń podróż do {{ destination.city }}?</h4>
-                <p class="text-muted mb-4">
-                    Czy na pewno chcesz usunąć cel podróży do 
-                    <strong class="text-dark">{{ destination.country.name }}</strong> ({{ destination.start_date|date:"Y" }})? <br>
-                    <span class="small text-danger">Wydatki powiązane z tą podróżą pozostaną.</span>
-                </p>
-
-                <div class="d-flex gap-2 justify-content-center">
-                    <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Anuluj</button>
-                    
-                    <form action="{% url 'finance:delete_travel' destination.id %}" method="post">
-                        {% csrf_token %}
-                        <button type="submit" class="btn btn-danger rounded-pill px-4 fw-bold">
-                            Tak, usuń
-                        </button>
-                    </form>
-                </div>
-
-            </div>
-        </div>
-    </div>
-</div>
 {% endfor %}
 
+{{ travel_map_points|json_script:"travel-map-points" }}
 {% endblock content_finance %}
+
+{% block extra_js %}
+{{ block.super }}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const mapElement = document.getElementById('travelMap');
+        const pointsElement = document.getElementById('travel-map-points');
+        if (!mapElement || !pointsElement || typeof L === 'undefined') {
+            return;
+        }
+
+        const points = JSON.parse(pointsElement.textContent || '[]');
+        const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;',
+        }[char]));
+        const money = new Intl.NumberFormat('pl-PL', {
+            style: 'currency',
+            currency: 'PLN',
+            maximumFractionDigits: 0,
+        });
+
+        const map = L.map(mapElement, {
+            scrollWheelZoom: false,
+        });
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; OpenStreetMap',
+        }).addTo(map);
+
+        if (!points.length) {
+            mapElement.classList.add('travel-map-empty');
+            map.setView([52.1, 19.4], 4);
+            return;
+        }
+
+        const markers = points.map((point) => {
+            const marker = L.marker([point.lat, point.lng]);
+            const intervalsHtml = point.intervals.map((interval) => `
+                <span class="travel-map-popup-row">
+                    <strong>${escapeHtml(interval.type)}</strong>
+                    ${escapeHtml(interval.startDate)} - ${escapeHtml(interval.endDate)} · ${interval.days} dni · ${money.format(interval.budget)}
+                    <a href="${escapeHtml(interval.editUrl)}">Edytuj</a>
+                </span>
+            `).join('');
+
+            marker.bindPopup(`
+                <div class="travel-map-popup">
+                    <strong>${escapeHtml(point.label)}</strong>
+                    <span>${escapeHtml(point.country)}</span>
+                    <span>${point.tripCount} terminów · ${point.totalDays} dni · ${money.format(point.totalBudget)}</span>
+                    ${intervalsHtml}
+                </div>
+            `);
+            return marker;
+        });
+
+        const group = L.featureGroup(markers).addTo(map);
+        map.fitBounds(group.getBounds().pad(0.18), {maxZoom: 10});
+        setTimeout(() => map.invalidateSize(), 150);
+    });
+</script>
+{% endblock %}

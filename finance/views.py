@@ -2,6 +2,7 @@ import calendar
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
@@ -38,6 +39,7 @@ from .forms import (
     BrokerageTransactionForm,
     TravelDestinationForm,
 )
+from .geocoding import populate_destination_coordinates
 from .market_data import MarketDataError, fetch_historical_market_prices, refresh_market_data_for_user
 from .models import (
     BrokerageAccount,
@@ -67,6 +69,229 @@ INCOME_SOURCES = sorted([
     'Pensja', 'Premia', 'Dieta', 'Inwestycje',
     'Zwrot podatku', 'Sprzedaż', 'Rodzina', 'Inne'
 ])
+
+
+def _travel_status(destination, today):
+    if destination.start_date > today:
+        return {
+            'key': 'planned',
+            'label': 'Planowana',
+            'badge_class': 'bg-primary-subtle text-primary',
+            'icon': 'bi-calendar-event',
+        }
+    if destination.end_date < today:
+        return {
+            'key': 'completed',
+            'label': 'Zakończona',
+            'badge_class': 'bg-success-subtle text-success',
+            'icon': 'bi-check2-circle',
+        }
+    return {
+        'key': 'active',
+        'label': 'W trakcie',
+        'badge_class': 'bg-warning-subtle text-warning',
+        'icon': 'bi-geo-alt-fill',
+    }
+
+
+def _attach_travel_status(destination, today):
+    destination.travel_status = _travel_status(destination, today)
+    return destination
+
+
+def _travel_type_meta(destination):
+    if destination.travel_type == TravelDestinations.BUSINESS:
+        return {
+            'key': destination.travel_type,
+            'label': destination.get_travel_type_display(),
+            'badge_class': 'bg-warning-subtle text-warning',
+            'icon': 'bi-briefcase-fill',
+        }
+    return {
+        'key': destination.travel_type,
+        'label': destination.get_travel_type_display(),
+        'badge_class': 'bg-info-subtle text-info',
+        'icon': 'bi-sun-fill',
+    }
+
+
+def _attach_travel_display_meta(destination, today):
+    _attach_travel_status(destination, today)
+    destination.travel_type_meta = _travel_type_meta(destination)
+    return destination
+
+
+def _travel_location_key(destination):
+    return (
+        str(destination.country.code),
+        (destination.city or '').strip().casefold(),
+    )
+
+
+def _travel_interval_json(destination):
+    return {
+        'id': destination.id,
+        'startDate': destination.start_date.strftime('%d.%m.%Y'),
+        'endDate': destination.end_date.strftime('%d.%m.%Y'),
+        'days': destination.duration_days,
+        'budget': float(destination.budget),
+        'type': destination.travel_type_meta['label'],
+        'typeKey': destination.travel_type_meta['key'],
+        'status': destination.travel_status['label'],
+        'editUrl': reverse('finance:edit_travel', args=[destination.id]),
+    }
+
+
+def _group_travel_locations(destinations):
+    groups = {}
+    for destination in destinations:
+        key = _travel_location_key(destination)
+        if key not in groups:
+            groups[key] = {
+                'key': f'{key[0]}-{key[1] or "country"}',
+                'label': destination.destination_name,
+                'country': destination.country.name,
+                'country_code': str(destination.country.code),
+                'flag': str(destination.country.flag),
+                'latitude': destination.latitude,
+                'longitude': destination.longitude,
+                'destinations': [],
+                'total_budget': Decimal('0.00'),
+                'total_days': 0,
+                'business_days': 0,
+                'leisure_days': 0,
+                'business_count': 0,
+                'leisure_count': 0,
+                'latest_start_date': destination.start_date,
+            }
+
+        group = groups[key]
+        group['destinations'].append(destination)
+        group['total_budget'] += destination.budget
+        group['total_days'] += destination.duration_days
+        group['latest_start_date'] = max(group['latest_start_date'], destination.start_date)
+        if destination.has_coordinates and group['latitude'] is None:
+            group['latitude'] = destination.latitude
+            group['longitude'] = destination.longitude
+
+        if destination.is_business_trip:
+            group['business_days'] += destination.duration_days
+            group['business_count'] += 1
+        else:
+            group['leisure_days'] += destination.duration_days
+            group['leisure_count'] += 1
+
+    for group in groups.values():
+        group['destinations'] = sorted(
+            group['destinations'],
+            key=lambda destination: (destination.start_date, destination.id),
+            reverse=True,
+        )
+        group['trip_count'] = len(group['destinations'])
+        group['has_coordinates'] = group['latitude'] is not None and group['longitude'] is not None
+
+    return sorted(groups.values(), key=lambda group: group['latest_start_date'], reverse=True)
+
+
+def _travel_map_point(location_group):
+    if not location_group['has_coordinates']:
+        return None
+    return {
+        'id': location_group['key'],
+        'label': location_group['label'],
+        'country': location_group['country'],
+        'countryCode': location_group['country_code'],
+        'flag': location_group['flag'],
+        'lat': float(location_group['latitude']),
+        'lng': float(location_group['longitude']),
+        'tripCount': location_group['trip_count'],
+        'totalDays': location_group['total_days'],
+        'totalBudget': float(location_group['total_budget']),
+        'businessCount': location_group['business_count'],
+        'leisureCount': location_group['leisure_count'],
+        'intervals': [
+            _travel_interval_json(destination)
+            for destination in location_group['destinations']
+        ],
+    }
+
+
+def _days_in_year(year):
+    return 366 if calendar.isleap(year) else 365
+
+
+def _delegation_year_stats(destinations):
+    days_by_year = {}
+    for destination in destinations:
+        if not destination.is_business_trip:
+            continue
+        current = destination.start_date
+        while current <= destination.end_date:
+            days_by_year.setdefault(current.year, set()).add(current)
+            current += timedelta(days=1)
+
+    stats = []
+    for year, days in days_by_year.items():
+        year_days = _days_in_year(year)
+        delegation_days = len(days)
+        stats.append({
+            'year': year,
+            'days': delegation_days,
+            'year_days': year_days,
+            'percent': (Decimal(delegation_days) / Decimal(year_days) * Decimal('100')).quantize(Decimal('0.1')),
+            'percent_css': str(
+                (Decimal(delegation_days) / Decimal(year_days) * Decimal('100')).quantize(Decimal('0.1'))
+            ),
+        })
+    return sorted(stats, key=lambda item: item['year'], reverse=True)
+
+
+def _delegation_days_count(destinations):
+    delegation_days = set()
+    for destination in destinations:
+        if not destination.is_business_trip:
+            continue
+        current = destination.start_date
+        while current <= destination.end_date:
+            delegation_days.add(current)
+            current += timedelta(days=1)
+    return len(delegation_days)
+
+
+def _copy_existing_destination_coordinates(destination, user):
+    matching_destinations = TravelDestinations.objects.filter(
+        user=user,
+        country=destination.country,
+        city__iexact=(destination.city or '').strip(),
+        latitude__isnull=False,
+        longitude__isnull=False,
+    )
+    if destination.pk:
+        matching_destinations = matching_destinations.exclude(pk=destination.pk)
+
+    existing_destination = matching_destinations.order_by('-start_date').first()
+    if existing_destination is None:
+        return False
+
+    destination.latitude = existing_destination.latitude
+    destination.longitude = existing_destination.longitude
+    return True
+
+
+def _populate_destination_coordinates_for_user(destination, user, force=False):
+    if force:
+        destination.latitude = None
+        destination.longitude = None
+    elif destination.has_coordinates:
+        return True
+
+    if _copy_existing_destination_coordinates(destination, user):
+        return True
+
+    if not getattr(settings, 'TRAVEL_GEOCODING_ENABLED', True):
+        return False
+
+    return populate_destination_coordinates(destination, force=False)
 
 
 def _decimal_json(value):
@@ -1321,20 +1546,54 @@ class ReportsView(View):
 class TravelView(View):
     def get(self, request):
         country_filter = request.GET.get('country', '')
-        destinations = TravelDestinations.objects.filter(user=request.user)
+        travel_type_filter = request.GET.get('travel_type', '')
+        valid_travel_types = {choice[0] for choice in TravelDestinations.TRAVEL_TYPE_CHOICES}
+        base_destinations = TravelDestinations.objects.filter(user=request.user)
         country_objs = []
-        distinct_countries = destinations.order_by('country').values_list('country', flat=True).distinct()
+        distinct_countries = base_destinations.order_by('country').values_list('country', flat=True).distinct()
         for code in distinct_countries:
             name = dict(django_countries).get(code, code)
             country_objs.append({'code': code, 'name': name})
+        country_objs = sorted(country_objs, key=lambda country: country['name'])
 
+        destinations = base_destinations
         if country_filter:
             destinations = destinations.filter(country=country_filter)
+        if travel_type_filter in valid_travel_types:
+            destinations = destinations.filter(travel_type=travel_type_filter)
+        else:
+            travel_type_filter = ''
 
-        destinations = destinations.order_by('-start_date')
-        paginator = Paginator(destinations, 10)
+        today = timezone.localdate()
+        destination_list = [
+            _attach_travel_display_meta(destination, today)
+            for destination in destinations.order_by('-start_date')
+        ]
+        for destination in destination_list:
+            if not destination.has_coordinates:
+                if _populate_destination_coordinates_for_user(destination, request.user):
+                    destination.save(update_fields=['latitude', 'longitude'])
+                break
+
+        location_groups = _group_travel_locations(destination_list)
+        total_budget = sum((destination.budget for destination in destination_list), Decimal('0.00'))
+        total_days = sum(destination.duration_days for destination in destination_list)
+        business_days = _delegation_days_count(destination_list)
+        leisure_days = sum(destination.duration_days for destination in destination_list if not destination.is_business_trip)
+        travel_map_points = [
+            point
+            for point in (_travel_map_point(location_group) for location_group in location_groups)
+            if point is not None
+        ]
+        missing_coordinates_count = len(location_groups) - len(travel_map_points)
+        delegation_year_stats = _delegation_year_stats([
+            _attach_travel_display_meta(destination, today)
+            for destination in base_destinations.order_by('-start_date')
+        ])
+
+        paginator = Paginator(location_groups, 10)
         page_number = request.GET.get('page')
-        destinations = paginator.get_page(page_number)
+        paged_location_groups = paginator.get_page(page_number)
 
         qs = request.GET.copy()
         qs.pop('page', None)
@@ -1342,9 +1601,27 @@ class TravelView(View):
 
         context = {
             'countries': country_objs,
-            'destinations': destinations,
+            'location_groups': paged_location_groups,
             'querystring': querystring,
             'current_country_filter': country_filter,
+            'current_travel_type_filter': travel_type_filter,
+            'travel_type_options': [
+                {'value': value, 'label': label}
+                for value, label in TravelDestinations.TRAVEL_TYPE_CHOICES
+            ],
+            'travel_map_points': travel_map_points,
+            'missing_coordinates_count': missing_coordinates_count,
+            'delegation_year_stats': delegation_year_stats,
+            'travel_stats': {
+                'total_count': len(destination_list),
+                'locations_count': len(location_groups),
+                'countries_count': len({destination.country.code for destination in destination_list}),
+                'total_days': total_days,
+                'business_days': business_days,
+                'leisure_days': leisure_days,
+                'total_budget': total_budget,
+                'average_budget_per_day': total_budget / Decimal(total_days) if total_days else Decimal('0.00'),
+            },
         }
         return render(request, 'finance/travel.html', context=context)
 
@@ -1362,13 +1639,14 @@ class AddTravelView(View):
             if form.is_valid():
                 travel_destination = form.save(commit=False)
                 travel_destination.user = request.user
+                _populate_destination_coordinates_for_user(travel_destination, request.user, force=True)
                 travel_destination.save()
 
-                messages.success(request, 'Nowa podróz została dodana pomyślnie!')
+                messages.success(request, 'Nowa podróż została dodana pomyślnie!')
                 return redirect('finance:travels')
             messages.error(request, 'Formularz zawiera błędy. Proszę poprawić i spróbować ponownie.')
         except Exception as exc:
-            messages.error(request, f'Błąd podczas dodawania wydatku podróży: {exc}')
+            messages.error(request, f'Błąd podczas dodawania podróży: {exc}')
         return render(request, 'finance/add_travel.html', {'form': form})
 
 
@@ -1385,7 +1663,15 @@ class EditTravelView(View):
         try:
             form = TravelDestinationForm(request.POST, instance=travel)
             if form.is_valid():
-                form.save()
+                travel_destination = form.save(commit=False)
+                should_refresh_coordinates = (
+                    'country' in form.changed_data
+                    or 'city' in form.changed_data
+                    or not travel_destination.has_coordinates
+                )
+                if should_refresh_coordinates:
+                    _populate_destination_coordinates_for_user(travel_destination, request.user, force=True)
+                travel_destination.save()
                 messages.success(request, 'Podróż została zaktualizowana pomyślnie!')
                 return redirect('finance:travels')
             messages.error(request, 'Formularz zawiera błędy. Proszę poprawić i spróbować ponownie.')

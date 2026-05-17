@@ -178,6 +178,12 @@ WHITENOISE_MAX_AGE = 60 * 60 * 24 * 7
 ALPHA_VANTAGE_API_KEY = os.environ.get('ALPHA_VANTAGE_API_KEY', '')
 OPENFIGI_API_KEY = os.environ.get('OPENFIGI_API_KEY', '')
 STOOQ_API_KEY = os.environ.get('STOOQ_API_KEY', '')
+TRAVEL_GEOCODING_ENABLED = env_bool('TRAVEL_GEOCODING_ENABLED', True)
+TRAVEL_GEOCODING_TIMEOUT = float(os.environ.get('TRAVEL_GEOCODING_TIMEOUT', '3'))
+TRAVEL_GEOCODING_USER_AGENT = os.environ.get(
+    'TRAVEL_GEOCODING_USER_AGENT',
+    'Website-Finance travel map geocoder',
+)
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

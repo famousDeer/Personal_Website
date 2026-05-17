@@ -6,3 +6,5 @@ DATABASES = {
         'NAME': BASE_DIR / 'test_db.sqlite3',  # noqa: F405
     }
 }
+
+TRAVEL_GEOCODING_ENABLED = False

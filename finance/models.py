@@ -279,12 +279,22 @@ class Income(models.Model):
 
 # Travel database
 class TravelDestinations(models.Model):
+    LEISURE = 'leisure'
+    BUSINESS = 'business'
+    TRAVEL_TYPE_CHOICES = [
+        (LEISURE, 'Wakacje'),
+        (BUSINESS, 'Delegacja'),
+    ]
+
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='travel_destinations')
     country = CountryField(verbose_name='Kraj')
     city = models.CharField(max_length=255, blank=True)
     start_date = models.DateField()
     end_date = models.DateField()
     budget = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal('0.00'))], default=Decimal('0.00'))
+    travel_type = models.CharField(max_length=20, choices=TRAVEL_TYPE_CHOICES, default=LEISURE)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
 
     class Meta:
         db_table = 'travel_destinations'
@@ -295,6 +305,30 @@ class TravelDestinations(models.Model):
     def __str__(self):
         destination = f"{self.city}, {self.country.name}" if self.city else self.country.name
         return f"{self.user.username} – {destination} ({self.start_date} to {self.end_date})"
+
+    @property
+    def destination_name(self):
+        return self.city or self.country.name
+
+    @property
+    def duration_days(self):
+        if not self.start_date or not self.end_date:
+            return 0
+        return max((self.end_date - self.start_date).days + 1, 0)
+
+    @property
+    def budget_per_day(self):
+        if not self.duration_days:
+            return Decimal('0.00')
+        return self.budget / Decimal(self.duration_days)
+
+    @property
+    def has_coordinates(self):
+        return self.latitude is not None and self.longitude is not None
+
+    @property
+    def is_business_trip(self):
+        return self.travel_type == self.BUSINESS
 
 class TravelExpense(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='travel_expenses')
