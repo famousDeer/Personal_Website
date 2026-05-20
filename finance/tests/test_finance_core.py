@@ -1,6 +1,9 @@
+from io import BytesIO
 from unittest.mock import patch
 from urllib.error import HTTPError
+from zipfile import ZipFile
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.contrib.auth import get_user_model
@@ -27,6 +30,69 @@ from finance.serializers import MonthlySerializer
 from datetime import date, time, timedelta
 
 User = get_user_model()
+
+
+def _xlsx_inline_string_cell(ref, value):
+    return f'<c r="{ref}" t="inlineStr"><is><t>{value}</t></is></c>'
+
+
+def _minimal_xtb_xlsx(rows):
+    buffer = BytesIO()
+    with ZipFile(buffer, 'w') as archive:
+        archive.writestr('[Content_Types].xml', (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            '</Types>'
+        ))
+        archive.writestr('_rels/.rels', (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+            '</Relationships>'
+        ))
+        archive.writestr('xl/workbook.xml', (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            '<sheets><sheet name="OPEN POSITION HISTORY" sheetId="1" r:id="rId1"/></sheets>'
+            '</workbook>'
+        ))
+        archive.writestr('xl/_rels/workbook.xml.rels', (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+            '</Relationships>'
+        ))
+        xml_rows = []
+        for row_number, row in enumerate(rows, start=1):
+            cells = ''.join(
+                _xlsx_inline_string_cell(f'{chr(65 + index)}{row_number}', value)
+                for index, value in enumerate(row)
+            )
+            xml_rows.append(f'<row r="{row_number}">{cells}</row>')
+        archive.writestr('xl/worksheets/sheet1.xml', (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            f'<sheetData>{"".join(xml_rows)}</sheetData>'
+            '</worksheet>'
+        ))
+    return buffer.getvalue()
+
+
+def _xtb_upload():
+    content = _minimal_xtb_xlsx([
+        ['Position', 'Symbol', 'Type', 'Volume', 'Open time', 'Open price', 'Market price', 'Commission'],
+        ['123456', 'KRU.PL', 'BUY', '3.0000', '2026-01-02 10:30:00', '100.00', '110.00', '5.00'],
+    ])
+    return SimpleUploadedFile(
+        'xtb.xlsx',
+        content,
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
 
 
 class BrokerageMarketDataTests(TestCase):
@@ -468,6 +534,77 @@ class FinanceCoreTests(TestCase):
         exp = Daily.objects.get(account=self.personal_account, title="Lunch")
         self.assertEqual(float(exp.cost), 12.50)
 
+    def test_add_expense_suggests_existing_stores_for_active_account(self):
+        month = Monthly.objects.create(
+            user=self.user,
+            account=self.personal_account,
+            date=date(2025, 6, 1),
+            total_income=0,
+            total_expense=0,
+        )
+        Daily.objects.create(
+            user=self.user,
+            account=self.personal_account,
+            date=date(2025, 6, 10),
+            title="Zakupy",
+            category="Zakupy spozywcze",
+            store="Biedronka",
+            cost=25,
+            month=month,
+        )
+        Daily.objects.create(
+            user=self.user,
+            account=self.personal_account,
+            date=date(2025, 6, 11),
+            title="Zakupy",
+            category="Zakupy spozywcze",
+            store="  Lidl  ",
+            cost=30,
+            month=month,
+        )
+        Daily.objects.create(
+            user=self.user,
+            account=self.personal_account,
+            date=date(2025, 6, 12),
+            title="Brak sklepu",
+            category="Inne",
+            store="",
+            cost=10,
+            month=month,
+        )
+        other_user = User.objects.create_user(username="u2", password="pass123")
+        other_account = other_user.owned_finance_accounts.get(account_type='personal')
+        other_month = Monthly.objects.create(
+            user=other_user,
+            account=other_account,
+            date=date(2025, 6, 1),
+            total_income=0,
+            total_expense=0,
+        )
+        Daily.objects.create(
+            user=other_user,
+            account=other_account,
+            date=date(2025, 6, 10),
+            title="Inne konto",
+            category="Inne",
+            store="Rossmann",
+            cost=20,
+            month=other_month,
+        )
+
+        resp = self.client.get(reverse("finance:add_expense"))
+
+        self.assertEqual(resp.context["store_suggestions"], ["Biedronka", "Lidl"])
+        self.assertContains(resp, 'data-autocomplete-source="category-suggestions-data"')
+        self.assertContains(resp, 'id="category-suggestions-menu"')
+        self.assertContains(resp, 'id="category-suggestions-data"')
+        self.assertContains(resp, 'data-autocomplete-source="store-suggestions-data"')
+        self.assertContains(resp, 'id="store-suggestions-menu"')
+        self.assertContains(resp, 'id="store-suggestions-data"')
+        self.assertContains(resp, '"Biedronka"')
+        self.assertContains(resp, '"Lidl"')
+        self.assertNotContains(resp, "Rossmann")
+
     def test_edit_expense_move_to_other_month_recalculates_both(self):
         # start in May
         may = Monthly.objects.create(user=self.user, account=self.personal_account, date=date(2025, 5, 1), total_income=0, total_expense=0)
@@ -826,6 +963,59 @@ class FinanceCoreTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(list(response.context["brokerage_transactions"]), [current_transaction])
 
+    def test_import_brokerage_transactions_from_xtb_xlsx_creates_transaction(self):
+        account = BrokerageAccount.objects.create(
+            user=self.user,
+            name="XTB PLN",
+            broker=BrokerageAccount.BROKER_XTB,
+            account_type=BrokerageAccount.STANDARD,
+            currency="PLN",
+        )
+
+        response = self.client.post(
+            reverse("finance:import_brokerage_transactions"),
+            {"account": str(account.id), "file": _xtb_upload()},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        transaction = BrokerageTransaction.objects.get()
+        instrument = BrokerageInstrument.objects.get()
+        self.assertEqual(instrument.ticker, "KRU")
+        self.assertEqual(instrument.price_symbol, "KRU.PL")
+        self.assertEqual(instrument.exchange, "XWAR")
+        self.assertEqual(transaction.account, account)
+        self.assertEqual(transaction.transaction_type, BrokerageTransaction.BUY)
+        self.assertEqual(transaction.trade_date, date(2026, 1, 2))
+        self.assertEqual(transaction.trade_time.strftime("%H:%M:%S"), "10:30:00")
+        self.assertEqual(transaction.quantity, Decimal("3.000000"))
+        self.assertEqual(transaction.price, Decimal("100.0000"))
+        self.assertEqual(transaction.fees, Decimal("5.00"))
+        self.assertEqual(transaction.import_source, "xtb")
+        self.assertEqual(transaction.external_id, f"xtb:{account.id}:position:123456:open")
+
+    def test_import_brokerage_transactions_from_xtb_xlsx_skips_duplicates(self):
+        account = BrokerageAccount.objects.create(
+            user=self.user,
+            name="XTB PLN",
+            broker=BrokerageAccount.BROKER_XTB,
+            account_type=BrokerageAccount.STANDARD,
+            currency="PLN",
+        )
+
+        self.client.post(
+            reverse("finance:import_brokerage_transactions"),
+            {"account": str(account.id), "file": _xtb_upload()},
+            follow=True,
+        )
+        self.client.post(
+            reverse("finance:import_brokerage_transactions"),
+            {"account": str(account.id), "file": _xtb_upload()},
+            follow=True,
+        )
+
+        self.assertEqual(BrokerageTransaction.objects.count(), 1)
+
     @override_settings(STOOQ_API_KEY="stooq-key")
     @patch("finance.views.timezone.localdate")
     @patch("finance.market_data._read_csv_url")
@@ -981,9 +1171,7 @@ class FinanceCoreTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("Data początku", response.json()["error"])
 
-    @patch("finance.portfolio_history.fetch_latest_fx_rates_to_pln")
-    @patch("finance.portfolio_history.fetch_historical_market_prices")
-    def test_brokerage_portfolio_history_all_accounts_converts_to_pln(self, mock_fetch_history, mock_fetch_fx):
+    def test_brokerage_portfolio_history_all_accounts_converts_to_pln(self):
         pln_account = BrokerageAccount.objects.create(
             user=self.user,
             name="XTB PLN",
@@ -1005,6 +1193,7 @@ class FinanceCoreTests(TestCase):
             asset_type=BrokerageInstrument.STOCK,
             currency="PLN",
             exchange="XWAR",
+            last_price="110.00",
         )
         eur_instrument = BrokerageInstrument.objects.create(
             user=self.user,
@@ -1013,6 +1202,7 @@ class FinanceCoreTests(TestCase):
             asset_type=BrokerageInstrument.STOCK,
             currency="EUR",
             exchange="XETR",
+            last_price="12.00",
         )
         BrokerageTransaction.objects.create(
             account=pln_account,
@@ -1029,31 +1219,8 @@ class FinanceCoreTests(TestCase):
             trade_date=date(2026, 1, 1),
             quantity="2",
             price="10.00",
+            fx_rate_to_pln="4.500000",
         )
-
-        def history_for_symbol(**kwargs):
-            if kwargs["symbol"] == "KRU":
-                return {
-                    "points": [
-                        {"date": date(2026, 1, 1), "close": Decimal("100.00")},
-                        {"date": date(2026, 1, 2), "close": Decimal("110.00")},
-                    ],
-                    "source": "Stooq",
-                }
-            return {
-                "points": [
-                    {"date": date(2026, 1, 1), "close": Decimal("10.00")},
-                    {"date": date(2026, 1, 2), "close": Decimal("12.00")},
-                ],
-                "source": "Alpha Vantage",
-            }
-
-        mock_fetch_history.side_effect = history_for_symbol
-        mock_fetch_fx.return_value = {
-            "rates": {"PLN": Decimal("1"), "EUR": Decimal("4.50")},
-            "source": "NBP tabela A",
-            "table_date": "2026-01-02",
-        }
 
         response = self.client.get(
             reverse("finance:brokerage_value_history_data"),
@@ -1066,11 +1233,11 @@ class FinanceCoreTests(TestCase):
         self.assertEqual(payload["points"][0]["value"], "190.00")
         self.assertEqual(payload["points"][1]["value"], "218.00")
         self.assertEqual(payload["summary"]["latest_value"], "218.00")
-        self.assertEqual(payload["fx_source"], "NBP tabela A")
+        self.assertEqual(payload["fx_source"], "Kursy zapisane przy transakcjach")
+        self.assertEqual(payload["price_sources"], ["Dane lokalne"])
+        self.assertEqual(payload["warnings"], [])
 
-    @patch("finance.portfolio_history.fetch_latest_fx_rates_to_pln")
-    @patch("finance.portfolio_history.fetch_historical_market_prices")
-    def test_brokerage_portfolio_history_selected_account_keeps_account_currency(self, mock_fetch_history, mock_fetch_fx):
+    def test_brokerage_portfolio_history_selected_account_keeps_account_currency(self):
         pln_account = BrokerageAccount.objects.create(
             user=self.user,
             name="XTB PLN",
@@ -1100,6 +1267,7 @@ class FinanceCoreTests(TestCase):
             asset_type=BrokerageInstrument.STOCK,
             currency="EUR",
             exchange="XETR",
+            last_price="12.00",
         )
         BrokerageTransaction.objects.create(
             account=pln_account,
@@ -1117,13 +1285,6 @@ class FinanceCoreTests(TestCase):
             quantity="2",
             price="10.00",
         )
-        mock_fetch_history.return_value = {
-            "points": [
-                {"date": date(2026, 1, 1), "close": Decimal("10.00")},
-                {"date": date(2026, 1, 2), "close": Decimal("12.00")},
-            ],
-            "source": "Alpha Vantage",
-        }
 
         response = self.client.get(
             reverse("finance:brokerage_value_history_data"),
@@ -1136,9 +1297,9 @@ class FinanceCoreTests(TestCase):
         self.assertEqual(payload["points"][0]["value"], "20.00")
         self.assertEqual(payload["points"][1]["value"], "24.00")
         self.assertEqual(payload["scope"]["account_name"], "XTB EUR")
-        mock_fetch_fx.assert_not_called()
-        mock_fetch_history.assert_called_once()
-        self.assertEqual(mock_fetch_history.call_args.kwargs["symbol"], "SAP")
+        self.assertEqual(payload["fx_source"], "")
+        self.assertEqual(payload["price_sources"], ["Dane lokalne"])
+        self.assertEqual(payload["warnings"], [])
 
     def test_brokerage_transaction_creates_instrument_from_typed_data_and_manual_price(self):
         account = BrokerageAccount.objects.create(

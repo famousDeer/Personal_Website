@@ -1,5 +1,6 @@
 # finance/models.py
 from django.db import models
+from django.db.models import Q
 from django.contrib.auth import get_user_model
 from django.core.validators import MinValueValidator
 from decimal import Decimal
@@ -142,6 +143,8 @@ class BrokerageTransaction(models.Model):
     price = models.DecimalField(max_digits=14, decimal_places=4, validators=[MinValueValidator(Decimal('0.0001'))])
     market_price = models.DecimalField(max_digits=14, decimal_places=4, blank=True, null=True)
     market_price_source = models.CharField(max_length=80, blank=True)
+    import_source = models.CharField(max_length=40, blank=True)
+    external_id = models.CharField(max_length=120, blank=True)
     fees = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), validators=[MinValueValidator(Decimal('0.00'))])
     fx_rate_to_pln = models.DecimalField(
         max_digits=12,
@@ -158,6 +161,13 @@ class BrokerageTransaction(models.Model):
         ordering = ['-trade_date', '-id']
         indexes = [
             models.Index(fields=['account', 'instrument', 'trade_date']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['account', 'external_id'],
+                condition=~Q(external_id=''),
+                name='unique_brokerage_account_external_transaction',
+            ),
         ]
 
     @property

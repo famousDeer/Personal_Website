@@ -35,6 +35,7 @@ urlpatterns = [
     path('brokerage/instruments/<int:instrument_id>/detail-data/', views.BrokerageInstrumentDetailDataView.as_view(), name='brokerage_instrument_detail_data'),
     path('brokerage/instruments/<int:instrument_id>/edit/', views.EditBrokerageInstrumentView.as_view(), name='edit_brokerage_instrument'),
     path('brokerage/instruments/<int:instrument_id>/delete/', views.DeleteBrokerageInstrumentView.as_view(), name='delete_brokerage_instrument'),
+    path('brokerage/transactions/import/', views.ImportBrokerageTransactionsView.as_view(), name='import_brokerage_transactions'),
     path('brokerage/transactions/add/', views.AddBrokerageTransactionView.as_view(), name='add_brokerage_transaction'),
     path('brokerage/transactions/<int:transaction_id>/edit/', views.EditBrokerageTransactionView.as_view(), name='edit_brokerage_transaction'),
     path('brokerage/transactions/<int:transaction_id>/delete/', views.DeleteBrokerageTransactionView.as_view(), name='delete_brokerage_transaction'),

@@ -1736,6 +1736,57 @@ a { text-decoration: none; }
     -webkit-box-shadow: 0 0 0 1000px var(--input-bg-focus) inset;
 }
 
+.finance-autocomplete {
+    position: relative;
+}
+
+.finance-autocomplete-menu {
+    position: absolute;
+    top: calc(100% + 0.35rem);
+    right: 0;
+    left: 0;
+    z-index: 1085;
+    max-height: 16rem;
+    padding: 0.35rem;
+    overflow-y: auto;
+    background: var(--input-bg-focus);
+    border: 1px solid var(--surface-border);
+    border-radius: 12px;
+    box-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
+}
+
+.finance-autocomplete-option {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.65rem 0.75rem;
+    color: var(--text-main);
+    font-weight: 600;
+    text-align: left;
+    background: transparent;
+    border: 0;
+    border-radius: 9px;
+    transition: background-color 0.16s ease, color 0.16s ease;
+}
+
+.finance-autocomplete-option .bi {
+    flex: 0 0 auto;
+    color: var(--text-muted);
+    font-size: 1rem;
+}
+
+.finance-autocomplete-option:hover,
+.finance-autocomplete-option.is-active {
+    color: #dc3545;
+    background: rgba(220, 53, 69, 0.1);
+}
+
+.finance-autocomplete-option:hover .bi,
+.finance-autocomplete-option.is-active .bi {
+    color: #dc3545;
+}
+
 .btn-soft-neutral {
     background-color: var(--button-neutral-bg);
     color: var(--text-main);

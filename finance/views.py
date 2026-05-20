@@ -5,9 +5,10 @@ from decimal import Decimal
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Q, Sum
+from django.db.models import Count, Max, Q, Sum
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -36,9 +37,11 @@ from .forms import (
     BrokerageAccountForm,
     BrokerageDividendForm,
     BrokerageInstrumentForm,
+    BrokerageTransactionImportForm,
     BrokerageTransactionForm,
     TravelDestinationForm,
 )
+from .brokerage_import import BrokerageImportError, import_xtb_transactions
 from .geocoding import populate_destination_coordinates
 from .market_data import MarketDataError, fetch_historical_market_prices, refresh_market_data_for_user
 from .models import (
@@ -386,6 +389,70 @@ def _parse_history_range(request):
 
     return today - timedelta(days=days), today, days, 'days'
 
+
+def _portfolio_history_cache_version(user, selected_account=None):
+    transaction_queryset = BrokerageTransaction.objects.filter(account__user=user)
+    instrument_queryset = BrokerageInstrument.objects.filter(user=user)
+    if selected_account is not None:
+        transaction_queryset = transaction_queryset.filter(account=selected_account)
+        instrument_queryset = instrument_queryset.filter(transactions__account=selected_account)
+
+    transaction_stats = transaction_queryset.aggregate(
+        count=Count('id'),
+        latest_id=Max('id'),
+        latest_created_at=Max('created_at'),
+    )
+    instrument_stats = instrument_queryset.aggregate(
+        count=Count('id', distinct=True),
+        latest_id=Max('id'),
+        latest_price_at=Max('last_price_at'),
+    )
+    latest_created_at = transaction_stats.get('latest_created_at')
+    latest_price_at = instrument_stats.get('latest_price_at')
+    return ':'.join([
+        str(transaction_stats.get('count') or 0),
+        str(transaction_stats.get('latest_id') or 0),
+        latest_created_at.isoformat() if latest_created_at else '0',
+        str(instrument_stats.get('count') or 0),
+        str(instrument_stats.get('latest_id') or 0),
+        latest_price_at.isoformat() if latest_price_at else '0',
+    ])
+
+
+def _portfolio_history_cache_key(user, selected_account, start_date, end_date):
+    account_key = selected_account.id if selected_account is not None else 'all'
+    version = _portfolio_history_cache_version(user, selected_account)
+    return f'brokerage-portfolio-history:{user.id}:{account_key}:{start_date.isoformat()}:{end_date.isoformat()}:{version}'
+
+
+def _portfolio_history_payload(user, selected_account, start_date, end_date, selected_days, range_mode):
+    cache_key = _portfolio_history_cache_key(user, selected_account, start_date, end_date)
+    history = cache.get(cache_key)
+    if history is None:
+        history = build_portfolio_value_history(
+            user,
+            start_date=start_date,
+            end_date=end_date,
+            selected_account=selected_account,
+        )
+        cache.set(cache_key, history, timeout=300)
+
+    history = {**history}
+    history.update({
+        'range': {
+            'start_date': start_date.isoformat(),
+            'end_date': end_date.isoformat(),
+            'days': selected_days,
+            'mode': range_mode,
+        },
+        'scope': {
+            'account_id': selected_account.id if selected_account else None,
+            'account_name': selected_account.name if selected_account else 'Wszystkie konta',
+            'is_all': selected_account is None,
+        },
+    })
+    return history
+
 COST_OF_LIVING_CATEGORIES = [
     'Zakupy spozywcze', 'Paliwo', 'Rachunki', 'Zdrowie'
 ]
@@ -398,6 +465,14 @@ def get_available_expense_categories(account):
     if account.account_type != FinanceAccount.PERSONAL:
         categories.discard(TRANSFER_TO_SHARED_CATEGORY)
     return sorted(categories.union(dynamic_categories))
+
+
+def get_store_suggestions(account):
+    stores = Daily.objects.filter(account=account).values_list('store', flat=True)
+    return sorted(
+        {store.strip() for store in stores if store and store.strip()},
+        key=str.casefold,
+    )
 
 
 def get_investment_queryset(queryset):
@@ -426,6 +501,7 @@ def get_expense_form_context(request, active_account, **extra_context):
     shared_target_accounts = list(get_available_shared_accounts(request.user))
     context = {
         'categories': get_available_expense_categories(active_account),
+        'store_suggestions': get_store_suggestions(active_account),
         'today': timezone.now().date(),
         'transfer_category': TRANSFER_TO_SHARED_CATEGORY,
         'shared_target_accounts': shared_target_accounts,
@@ -483,12 +559,24 @@ class BrokeragePortfolioView(View):
             brokerage_transactions = brokerage_transactions.filter(account=selected_account)
             brokerage_dividends = brokerage_dividends.filter(account=selected_account)
 
+        history_days = 365
+        history_end_date = timezone.localdate()
+        initial_portfolio_history = _portfolio_history_payload(
+            request.user,
+            selected_account,
+            history_end_date - timedelta(days=history_days),
+            history_end_date,
+            history_days,
+            'days',
+        )
+
         summary = build_portfolio_summary(request.user, selected_account=selected_account)
         summary.update({
             'brokerage_accounts': brokerage_accounts,
             'selected_brokerage_account': selected_account,
             'selected_brokerage_account_id': selected_account.id if selected_account else None,
             'brokerage_current_month': current_month_start,
+            'brokerage_initial_portfolio_history': initial_portfolio_history,
             'brokerage_instruments': brokerage_instruments.order_by('name', 'ticker'),
             'brokerage_transactions': (
                 brokerage_transactions
@@ -522,25 +610,14 @@ class BrokeragePortfolioHistoryDataView(View):
                 return JsonResponse({'error': 'Nieprawidłowe konto maklerskie.'}, status=400)
             selected_account = get_object_or_404(BrokerageAccount, id=account_id, user=request.user)
 
-        history = build_portfolio_value_history(
+        history = _portfolio_history_payload(
             request.user,
-            start_date=start_date,
-            end_date=end_date,
-            selected_account=selected_account,
+            selected_account,
+            start_date,
+            end_date,
+            selected_days,
+            range_mode,
         )
-        history.update({
-            'range': {
-                'start_date': start_date.isoformat(),
-                'end_date': end_date.isoformat(),
-                'days': selected_days,
-                'mode': range_mode,
-            },
-            'scope': {
-                'account_id': selected_account.id if selected_account else None,
-                'account_name': selected_account.name if selected_account else 'Wszystkie konta',
-                'is_all': selected_account is None,
-            },
-        })
         return JsonResponse(history)
 
 
@@ -879,6 +956,42 @@ class DeleteBrokerageTransactionView(View):
         transaction_obj.delete()
         messages.success(request, 'Transakcja została usunięta.')
         return redirect('finance:brokerage')
+
+
+@method_decorator(login_required, name='dispatch')
+class ImportBrokerageTransactionsView(View):
+    def get(self, request):
+        return render(request, 'finance/brokerage_form.html', {
+            'form': BrokerageTransactionImportForm(user=request.user),
+            'title': 'Import transakcji z XTB',
+        })
+
+    def post(self, request):
+        form = BrokerageTransactionImportForm(request.POST, request.FILES, user=request.user)
+        if form.is_valid():
+            try:
+                result = import_xtb_transactions(
+                    request.user,
+                    form.cleaned_data['account'],
+                    form.cleaned_data['file'],
+                )
+            except BrokerageImportError as exc:
+                form.add_error('file', str(exc))
+            else:
+                messages.success(
+                    request,
+                    f'Import XTB zakończony: dodano {result.created}, pominięto duplikatów {result.duplicates}.',
+                )
+                for warning in result.warnings[:5]:
+                    messages.warning(request, warning)
+                if len(result.warnings) > 5:
+                    messages.warning(request, f'Pozostałe ostrzeżenia: {len(result.warnings) - 5}.')
+                return redirect('finance:brokerage')
+
+        return render(request, 'finance/brokerage_form.html', {
+            'form': form,
+            'title': 'Import transakcji z XTB',
+        })
 
 
 @method_decorator(login_required, name='dispatch')

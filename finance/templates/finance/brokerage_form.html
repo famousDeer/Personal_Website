@@ -17,7 +17,7 @@
 
         <div class="card action-card border-0 shadow-sm">
             <div class="card-body p-4">
-                <form method="post">
+                <form method="post" enctype="multipart/form-data">
                     {% csrf_token %}
                     {% for field in form %}
                         {% if field.is_hidden %}

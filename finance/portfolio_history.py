@@ -3,8 +3,10 @@ from datetime import timedelta
 from decimal import Decimal
 
 from .brokerage import ZERO, money
-from .market_data import MarketDataError, fetch_historical_market_prices, fetch_latest_fx_rates_to_pln
 from .models import BrokerageAccount, BrokerageTransaction
+
+LOCAL_PRICE_SOURCE = 'Dane lokalne'
+LOCAL_FX_SOURCE = 'Kursy zapisane przy transakcjach'
 
 
 def _date_range(start_date, end_date):
@@ -30,6 +32,16 @@ def _convert_value(value, source_currency, target_currency, fx_rates):
     return value * source_rate / target_rate
 
 
+def _transaction_price(transaction):
+    return transaction.market_price if transaction.market_price is not None else transaction.price
+
+
+def _last_price_date(instrument, end_date):
+    if instrument.last_price_at:
+        return min(instrument.last_price_at.date(), end_date)
+    return end_date
+
+
 def _summary(points):
     if not points:
         return {
@@ -52,55 +64,113 @@ def _summary(points):
     }
 
 
-def _load_price_histories(instruments, start_date, end_date):
+def _load_price_histories(instruments, transactions, start_date, end_date):
     prices_by_instrument = {}
     initial_prices = {}
-    sources = set()
+    transaction_prices = defaultdict(list)
+    missing_prices = []
     warnings = []
 
-    for instrument in instruments:
-        try:
-            history = fetch_historical_market_prices(
-                symbol=instrument.ticker,
-                exchange=instrument.exchange,
-                currency=instrument.currency,
-                isin=instrument.isin,
-                price_symbol=instrument.price_symbol,
-                name=instrument.name,
-                start_date=start_date,
-                end_date=end_date,
+    for transaction in transactions:
+        price = _transaction_price(transaction)
+        if price is not None and transaction.trade_date <= end_date:
+            transaction_prices[transaction.instrument_id].append(
+                (transaction.trade_date, transaction.id, price)
             )
-        except MarketDataError as exc:
-            if instrument.last_price is not None:
-                initial_prices[instrument.id] = instrument.last_price
-                warnings.append(
-                    f'{instrument.ticker}: brak historii cen, użyto ostatniej zapisanej ceny {instrument.last_price}.'
-                )
-            else:
-                warnings.append(f'{instrument.ticker}: pominięto w wykresie, bo nie ma historii cen ani ostatniej ceny. {exc}')
+
+    for instrument in instruments:
+        known_points = list(transaction_prices.get(instrument.id, []))
+
+        if instrument.last_price is not None:
+            price_date = _last_price_date(instrument, end_date)
+            known_points.append((price_date, 10**12, instrument.last_price))
+            if price_date < end_date:
+                known_points.append((end_date, 10**12 + 1, instrument.last_price))
+
+        if not known_points:
+            missing_prices.append(instrument.ticker)
             continue
 
-        price_points = {
-            point['date']: point['close']
-            for point in history.get('points') or []
-            if point.get('date') is not None and point.get('close') is not None
+        known_points.sort(key=lambda item: (item[0], item[1]))
+        seed_price = None
+        for point_date, _order, price in reversed(known_points):
+            if point_date <= start_date:
+                seed_price = price
+                break
+        if seed_price is None:
+            seed_price = known_points[0][2]
+
+        initial_prices[instrument.id] = seed_price
+        price_points = {}
+        for point_date, _order, price in known_points:
+            if start_date <= point_date <= end_date:
+                price_points[point_date] = price
+
+        if price_points:
+            prices_by_instrument[instrument.id] = price_points
+
+    if missing_prices:
+        listed_tickers = ', '.join(sorted(missing_prices)[:6])
+        remaining = len(missing_prices) - 6
+        suffix = f' i {remaining} kolejnych' if remaining > 0 else ''
+        warnings.append(
+            f'Brak lokalnej ceny dla: {listed_tickers}{suffix}. '
+            'Uzupełnij ostatnią cenę albo dodaj transakcję z ceną, żeby instrument pojawił się na wykresie.'
+        )
+
+    sources = [LOCAL_PRICE_SOURCE] if prices_by_instrument or initial_prices else []
+    return prices_by_instrument, initial_prices, sources, warnings
+
+
+def _load_local_fx_rates(transactions, currencies, target_currency):
+    normalized_currencies = {
+        (currency or '').upper()
+        for currency in currencies
+        if currency
+    }
+    target_currency = (target_currency or '').upper()
+
+    if all(currency == target_currency for currency in normalized_currencies):
+        return {
+            'rates': {target_currency: Decimal('1'), 'PLN': Decimal('1')},
+            'source': '',
+            'table_date': '',
+            'warnings': [],
         }
-        if not price_points:
-            if instrument.last_price is not None:
-                initial_prices[instrument.id] = instrument.last_price
-                warnings.append(
-                    f'{instrument.ticker}: historia cen jest pusta, użyto ostatniej zapisanej ceny {instrument.last_price}.'
-                )
-            else:
-                warnings.append(f'{instrument.ticker}: pominięto w wykresie, bo historia cen jest pusta.')
+
+    rate_points = defaultdict(list)
+    for transaction in transactions:
+        currency = (transaction.instrument.currency or '').upper()
+        if transaction.fx_rate_to_pln:
+            rate_points[currency].append(
+                (transaction.trade_date, transaction.id, transaction.fx_rate_to_pln)
+            )
+
+    rates = {'PLN': Decimal('1')}
+    missing = []
+    for currency in normalized_currencies:
+        if currency == 'PLN':
             continue
+        points = sorted(rate_points.get(currency, []), key=lambda item: (item[0], item[1]))
+        if points:
+            rates[currency] = points[-1][2]
+        else:
+            missing.append(currency)
+            rates[currency] = Decimal('1')
 
-        prices_by_instrument[instrument.id] = price_points
-        initial_prices[instrument.id] = price_points[min(price_points)]
-        if history.get('source'):
-            sources.add(history['source'])
+    warnings = []
+    if missing:
+        warnings.append(
+            f'Brak lokalnego kursu PLN dla walut: {", ".join(sorted(missing))}. '
+            'Użyto kursu 1,00; sprawdź kursy zapisane przy transakcjach.'
+        )
 
-    return prices_by_instrument, initial_prices, sorted(sources), warnings
+    return {
+        'rates': rates,
+        'source': LOCAL_FX_SOURCE,
+        'table_date': '',
+        'warnings': warnings,
+    }
 
 
 def build_portfolio_value_history(user, start_date, end_date, selected_account=None):
@@ -143,25 +213,15 @@ def build_portfolio_value_history(user, start_date, end_date, selected_account=N
     currencies = {instrument.currency for instrument in instruments.values()}
     currencies.add(target_currency)
 
-    fx_source = ''
-    fx_table_date = ''
-    if all(currency == target_currency for currency in currencies):
-        fx_rates = {target_currency: Decimal('1'), 'PLN': Decimal('1')}
-        warnings = []
-    else:
-        try:
-            fx_data = fetch_latest_fx_rates_to_pln(currencies)
-        except MarketDataError as exc:
-            fx_rates = {'PLN': Decimal('1'), target_currency: Decimal('1')}
-            warnings = [f'Nie pobrano aktualnych kursów walut: {exc}']
-        else:
-            fx_rates = fx_data['rates']
-            fx_source = fx_data.get('source') or ''
-            fx_table_date = fx_data.get('table_date') or ''
-            warnings = []
+    fx_data = _load_local_fx_rates(transactions, currencies, target_currency)
+    fx_rates = fx_data['rates']
+    fx_source = fx_data.get('source') or ''
+    fx_table_date = fx_data.get('table_date') or ''
+    warnings = list(fx_data.get('warnings') or [])
 
     price_histories, initial_prices, price_sources, price_warnings = _load_price_histories(
         instruments.values(),
+        transactions,
         start_date,
         end_date,
     )

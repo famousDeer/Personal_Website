@@ -224,6 +224,27 @@ class BrokerageTransactionForm(BootstrapFinanceFormMixin, forms.ModelForm):
         }
 
 
+class BrokerageTransactionImportForm(BootstrapFinanceFormMixin, forms.Form):
+    account = forms.ModelChoiceField(label='Konto XTB', queryset=BrokerageAccount.objects.none())
+    file = forms.FileField(
+        label='Plik XLSX z XTB',
+        help_text='Obsługiwany jest eksport XLSX z zakładkami OPEN POSITION HISTORY i CLOSED POSITION HISTORY.',
+    )
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['account'].queryset = (
+            BrokerageAccount.objects.filter(user=user, broker=BrokerageAccount.BROKER_XTB)
+            if user else BrokerageAccount.objects.none()
+        )
+
+    def clean_file(self):
+        uploaded_file = self.cleaned_data['file']
+        if not uploaded_file.name.lower().endswith('.xlsx'):
+            raise forms.ValidationError('Wgraj plik XLSX wyeksportowany z XTB.')
+        return uploaded_file
+
+
 class BrokerageDividendForm(BootstrapFinanceFormMixin, forms.ModelForm):
     ex_dividend_date = forms.DateField(
         label='Dzień odcięcia prawa',

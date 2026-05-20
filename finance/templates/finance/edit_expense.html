@@ -1,4 +1,5 @@
 {% extends 'finance/index.html' %}
+{% load static %}
 
 {% block title %}Edytuj Wydatek{% endblock %}
 
@@ -26,16 +27,15 @@
                         <label for="title">Tytuł</label>
                     </div>
 
-                    <div class="form-floating mb-3">
-                        <select class="form-select" id="category" name="category" required>
-                            <option value="">Wybierz kategorię</option>
-                            {% for cat in categories %}
-                                <option value="{{ cat }}" {% if expense.category == cat %}selected{% endif %}>
-                                    {{ cat }}
-                                </option>
-                            {% endfor %}
-                        </select>
+                    <div class="form-floating mb-3 finance-autocomplete">
+                        <input type="text" class="form-control" id="category" name="category"
+                               data-autocomplete-input data-autocomplete-source="category-suggestions-data"
+                               data-autocomplete-icon="bi-tags" data-autocomplete-limit="0"
+                               autocomplete="off" aria-autocomplete="list"
+                               aria-expanded="false" aria-controls="category-suggestions-menu"
+                               value="{{ expense.category }}" placeholder="Kategoria" required>
                         <label for="category">Kategoria</label>
+                        <div class="finance-autocomplete-menu d-none" id="category-suggestions-menu" data-autocomplete-menu role="listbox"></div>
                     </div>
 
                     {% if show_shared_transfer_option %}
@@ -52,10 +52,14 @@
                         </div>
                     {% endif %}
 
-                    <div class="form-floating mb-3">
-                        <input type="text" class="form-control" id="store" name="store" 
+                    <div class="form-floating mb-3 finance-autocomplete">
+                        <input type="text" class="form-control" id="store" name="store"
+                               data-autocomplete-input data-autocomplete-source="store-suggestions-data"
+                               data-autocomplete-icon="bi-shop" autocomplete="off" aria-autocomplete="list"
+                               aria-expanded="false" aria-controls="store-suggestions-menu"
                                value="{{ expense.store }}" placeholder="Sklep">
                         <label for="store">Sklep</label>
+                        <div class="finance-autocomplete-menu d-none" id="store-suggestions-menu" data-autocomplete-menu role="listbox"></div>
                     </div>
 
                     <div class="mb-3">
@@ -78,6 +82,9 @@
 {% endblock %}
 
 {% block extra_js %}
+{{ categories|json_script:"category-suggestions-data" }}
+{{ store_suggestions|json_script:"store-suggestions-data" }}
+<script src="{% static 'js/form-autocomplete.js' %}"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const categoryField = document.getElementById('category');
@@ -98,6 +105,7 @@
             }
         }
 
+        categoryField.addEventListener('input', syncTransferField);
         categoryField.addEventListener('change', syncTransferField);
         syncTransferField();
     });

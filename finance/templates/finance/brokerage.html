@@ -33,6 +33,9 @@
             <a href="{% url 'finance:add_brokerage_transaction' %}" class="btn btn-primary rounded-pill fw-bold text-white">
                 <i class="bi bi-arrow-left-right me-1"></i> Transakcja
             </a>
+            <a href="{% url 'finance:import_brokerage_transactions' %}" class="btn btn-soft-neutral rounded-pill fw-bold">
+                <i class="bi bi-upload me-1"></i> Import XTB
+            </a>
             <a href="{% url 'finance:add_brokerage_dividend' %}" class="btn btn-success rounded-pill fw-bold text-white">
                 <i class="bi bi-cash-coin me-1"></i> Dywidenda
             </a>
@@ -161,6 +164,7 @@
         </div>
         <div class="brokerage-table-note d-none" id="brokeragePortfolioValueWarning"></div>
     </section>
+    {{ brokerage_initial_portfolio_history|json_script:"brokerageInitialPortfolioHistory" }}
 
     <div class="brokerage-layout">
         <aside class="brokerage-sidebar">
@@ -646,6 +650,10 @@
         const chartCanvas = document.getElementById('brokerageInstrumentChart');
         const portfolioChartSection = document.querySelector('[data-portfolio-history-url]');
         const portfolioChartCanvas = document.getElementById('brokeragePortfolioValueChart');
+        const initialPortfolioHistoryElement = document.getElementById('brokerageInitialPortfolioHistory');
+        const initialPortfolioHistory = initialPortfolioHistoryElement
+            ? JSON.parse(initialPortfolioHistoryElement.textContent)
+            : null;
         let instrumentChart = null;
         let portfolioValueChart = null;
         let activeInstrumentUrl = '';
@@ -1234,7 +1242,11 @@
             });
         });
 
-        loadPortfolioValueChart();
+        if (initialPortfolioHistory) {
+            renderPortfolioValueChart(initialPortfolioHistory);
+        } else {
+            loadPortfolioValueChart();
+        }
     });
 </script>
 {% endblock %}
