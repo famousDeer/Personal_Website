@@ -1,0 +1,185 @@
+{% extends 'cooking/index.html' %}
+{% load humanize %}
+
+{% block title %}Spiżarnia{% endblock %}
+
+{% block content_cooking %}
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-4 animate-fade-in">
+    <div>
+        <div class="small text-uppercase fw-bold text-muted mb-1">Kontrola zapasów</div>
+        <h2 class="fw-bold mb-1 recipe-title">Spiżarnia</h2>
+        <p class="text-muted mb-0">Aktualny stan produktów, tempo zużycia i terminy uzupełnień.</p>
+    </div>
+    <a href="{% url 'cooking:add-pantry-product' %}" class="btn btn-success rounded-pill px-4 fw-bold">
+        <i class="bi bi-plus-lg me-1"></i> Dodaj produkt
+    </a>
+</div>
+
+<div class="row g-3 mb-4 animate-fade-in-up">
+    <div class="col-md-3">
+        <div class="pantry-metric">
+            <div class="small text-uppercase fw-bold text-muted">Produkty</div>
+            <div class="fs-3 fw-bold">{{ product_count }}</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="pantry-metric">
+            <div class="small text-uppercase fw-bold text-muted">Do uzupełnienia</div>
+            <div class="fs-3 fw-bold text-danger">{{ low_stock_count }}</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="pantry-metric">
+            <div class="small text-uppercase fw-bold text-muted">Zużycie łącznie</div>
+            <div class="fs-3 fw-bold">{{ total_consumed|floatformat:2 }}</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="pantry-metric">
+            <div class="small text-uppercase fw-bold text-muted">Ruchy</div>
+            <div class="fs-3 fw-bold">{{ movement_count }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm action-card mb-4 animate-fade-in-up">
+    <div class="card-body p-3">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-lg-5">
+                <label class="form-label small text-uppercase fw-bold text-muted">Szukaj</label>
+                <input type="text" name="q" class="form-control form-control-sm" placeholder="Produkt lub kategoria..." value="{{ current_search }}">
+            </div>
+            <div class="col-md-4 col-lg-3">
+                <label class="form-label small text-uppercase fw-bold text-muted">Kategoria</label>
+                <select name="category" class="form-select form-select-sm">
+                    <option value="">Wszystkie</option>
+                    {% for category in categories %}
+                        <option value="{{ category }}" {% if current_category == category %}selected{% endif %}>{{ category }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small text-uppercase fw-bold text-muted">Stan</label>
+                <select name="status" class="form-select form-select-sm">
+                    <option value="">Wszystkie</option>
+                    <option value="low" {% if current_status == 'low' %}selected{% endif %}>Niski</option>
+                    <option value="empty" {% if current_status == 'empty' %}selected{% endif %}>Brak</option>
+                    <option value="ok" {% if current_status == 'ok' %}selected{% endif %}>OK</option>
+                </select>
+            </div>
+            <div class="col-md-4 col-lg-2 d-flex gap-2">
+                <button type="submit" class="btn btn-sm btn-primary w-100 rounded-3">
+                    <i class="bi bi-funnel-fill"></i> Filtruj
+                </button>
+                {% if current_search or current_category or current_status %}
+                    <a href="{% url 'cooking:pantry' %}" class="btn btn-sm btn-outline-secondary rounded-3" title="Wyczyść">
+                        <i class="bi bi-x-lg"></i>
+                    </a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if product_groups %}
+    <div class="pantry-category-list animate-fade-in-up">
+        {% for group in product_groups %}
+            <section class="pantry-category-panel">
+                <button class="pantry-category-header" type="button" data-bs-toggle="collapse" data-bs-target="#pantry-category-{{ forloop.counter }}" aria-expanded="{% if forloop.first or current_category %}true{% else %}false{% endif %}" aria-controls="pantry-category-{{ forloop.counter }}">
+                    <span class="d-flex align-items-center gap-2 min-w-0">
+                        <i class="bi bi-chevron-down pantry-category-chevron"></i>
+                        <span class="fw-bold text-truncate">{{ group.name }}</span>
+                    </span>
+                    <span class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+                        {% if group.low_count %}
+                            <span class="badge bg-danger-subtle text-danger rounded-pill">{{ group.low_count }} niski stan</span>
+                        {% endif %}
+                        <span class="badge bg-secondary-subtle text-secondary rounded-pill">{{ group.count }} prod.</span>
+                    </span>
+                </button>
+
+                <div id="pantry-category-{{ forloop.counter }}" class="collapse {% if forloop.first or current_category %}show{% endif %}">
+                    <div class="pantry-compact-list">
+                        {% for card in group.cards %}
+                            {% with product=card.product %}
+                                <article class="pantry-compact-row">
+                                    <div class="pantry-compact-main">
+                                        <div class="d-flex align-items-center gap-2 min-w-0">
+                                            {% if product.stock_status == 'empty' %}
+                                                <span class="pantry-status-dot bg-danger" title="Brak"></span>
+                                            {% elif product.stock_status == 'low' %}
+                                                <span class="pantry-status-dot bg-warning" title="Niski stan"></span>
+                                            {% else %}
+                                                <span class="pantry-status-dot bg-primary" title="OK"></span>
+                                            {% endif %}
+                                            <div class="min-w-0">
+                                                <h3 class="h6 fw-bold mb-0 text-truncate">{{ product.name }}</h3>
+                                                <div class="small text-muted">
+                                                    min.
+                                                    {% if product.unit == 'szt' %}{{ product.minimum_quantity|floatformat:0 }}{% else %}{{ product.minimum_quantity|floatformat:2 }}{% endif %}
+                                                    {{ product.display_unit }}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="pantry-compact-stock">
+                                        <span class="fw-bold">
+                                            {% if product.unit == 'szt' %}{{ product.current_quantity|floatformat:0 }}{% else %}{{ product.current_quantity|floatformat:2 }}{% endif %}
+                                        </span>
+                                        <span class="text-muted small">{{ product.display_unit }}</span>
+                                    </div>
+
+                                    <div class="pantry-compact-meta">
+                                        <span class="text-muted small">Zużycie/dzień</span>
+                                        <strong>{{ card.average_daily|floatformat:2 }} {{ product.display_unit }}</strong>
+                                    </div>
+
+                                    <div class="pantry-compact-meta">
+                                        <span class="text-muted small">Kup do</span>
+                                        <strong class="{% if card.restock_in_days != None and card.restock_in_days <= 3 %}text-danger{% endif %}">
+                                            {% if card.restock_date %}{{ card.restock_date|date:"d.m" }}{% else %}-{% endif %}
+                                        </strong>
+                                    </div>
+
+                                    <div class="pantry-compact-actions">
+                                        <form method="post" action="{% url 'cooking:pantry-movement' product.id %}" class="pantry-inline-form">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="movement_type" value="consume">
+                                            <input type="number" name="quantity" step="{% if product.unit == 'szt' %}1{% else %}0.01{% endif %}" min="{% if product.unit == 'szt' %}1{% else %}0.01{% endif %}" class="form-control form-control-sm" placeholder="Zużyj" required>
+                                            <button class="btn btn-sm btn-outline-danger" type="submit" title="Zapisz zużycie">
+                                                <i class="bi bi-dash-lg"></i>
+                                            </button>
+                                        </form>
+                                        <form method="post" action="{% url 'cooking:pantry-movement' product.id %}" class="pantry-inline-form">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="movement_type" value="purchase">
+                                            <input type="number" name="quantity" step="{% if product.unit == 'szt' %}1{% else %}0.01{% endif %}" min="{% if product.unit == 'szt' %}1{% else %}0.01{% endif %}" class="form-control form-control-sm" placeholder="Dodaj" required>
+                                            <button class="btn btn-sm btn-outline-success" type="submit" title="Zapisz uzupełnienie">
+                                                <i class="bi bi-plus-lg"></i>
+                                            </button>
+                                        </form>
+                                    </div>
+                                </article>
+                            {% endwith %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </section>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="card border-0 shadow-sm action-card animate-fade-in-up">
+        <div class="card-body text-center py-5">
+            <div class="icon-box bg-light text-muted mx-auto mb-3 rounded-circle" style="width: 90px; height: 90px;">
+                <i class="bi bi-box-seam fs-1"></i>
+            </div>
+            <h3 class="fw-bold">Spiżarnia jest pusta</h3>
+            <p class="text-muted">Dodaj pierwszy produkt albo zmień filtry.</p>
+            <a href="{% url 'cooking:add-pantry-product' %}" class="btn btn-success rounded-pill px-4 mt-2">
+                <i class="bi bi-plus-lg me-1"></i> Dodaj produkt
+            </a>
+        </div>
+    </div>
+{% endif %}
+{% endblock %}

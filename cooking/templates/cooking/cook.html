@@ -1,0 +1,397 @@
+{% extends 'cooking/index.html' %}
+{% load sanitize_extras %}
+{% load l10n %}
+
+{% block title %}Gotuj{% endblock %}
+
+{% block content_cooking %}
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-4 animate-fade-in">
+    <div>
+        <div class="small text-uppercase fw-bold text-muted mb-1">Tryb gotowania</div>
+        <h2 class="fw-bold mb-1 recipe-title">Gotuj</h2>
+        <p class="text-muted mb-0">Waż produkty krok po kroku i zdejmuj je ze stanu spiżarni.</p>
+    </div>
+    <a href="{% url 'cooking:pantry' %}" class="btn btn-soft-neutral rounded-pill px-4">
+        <i class="bi bi-box-seam me-1"></i> Spiżarnia
+    </a>
+</div>
+
+<form method="get" class="card border-0 shadow-sm action-card mb-4 animate-fade-in-up">
+    <div class="card-body p-3">
+        <div class="row g-2 align-items-end">
+            <div class="col-lg-9">
+                <label class="form-label small text-uppercase fw-bold text-muted">Przepis</label>
+                <select name="recipe" class="form-select">
+                    <option value="">Gotowanie bez przepisu</option>
+                    {% for recipe in recipes %}
+                        <option value="{{ recipe.id }}" {% if selected_recipe and selected_recipe.id == recipe.id %}selected{% endif %}>
+                            {{ recipe.title }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-lg-3">
+                <button class="btn btn-primary w-100 rounded-3" type="submit">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Otwórz
+                </button>
+            </div>
+        </div>
+    </div>
+</form>
+
+<div class="row g-4 animate-fade-in-up">
+    <div class="col-lg-5">
+        <div class="card border-0 shadow-sm action-card h-100">
+            <div class="card-body p-4">
+                {% if selected_recipe %}
+                    <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                        <div>
+                            <div class="small text-uppercase fw-bold text-muted mb-1">Gotujesz</div>
+                            <h3 class="h4 fw-bold mb-1">{{ selected_recipe.title }}</h3>
+                            <div class="text-muted small">{{ selected_recipe.portions }} porcji · {{ selected_recipe.preparation_time }} min</div>
+                        </div>
+                        <a href="{% url 'cooking:edit-recipe' selected_recipe.id %}" class="btn btn-sm btn-light rounded-circle" title="Edytuj przepis">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                    </div>
+                    <div class="cook-recipe-preview">
+                        {% for step in selected_recipe.steps.all %}
+                            <div class="mb-4">
+                                <div class="small text-uppercase fw-bold text-muted mb-1">Krok {{ forloop.counter }}</div>
+                                <h4 class="h6 fw-bold mb-2">{{ step.title|default:"Etap" }}</h4>
+                                {% if step.ingredients.all %}
+                                    <ul class="small mb-2">
+                                        {% for ingredient in step.ingredients.all %}
+                                            <li>{{ ingredient.quantity|floatformat:2 }} {{ ingredient.get_unit_display }} - {{ ingredient.name }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                {% endif %}
+                                <p class="small mb-1">{{ step.instruction }}</p>
+                                {% if step.mix_after %}
+                                    <span class="badge bg-info-subtle text-info rounded-pill">Wymieszaj po dodaniu</span>
+                                {% endif %}
+                            </div>
+                        {% empty %}
+                            <h4 class="small text-uppercase fw-bold text-muted mb-2">Składniki</h4>
+                            <div class="small mb-4">{{ selected_recipe.ingredients|safe_recipe_html }}</div>
+                            <h4 class="small text-uppercase fw-bold text-muted mb-2">Kroki</h4>
+                            <div class="small">{{ selected_recipe.instructions|safe_recipe_html }}</div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center py-5">
+                        <div class="icon-box bg-primary-subtle text-primary mx-auto mb-3 rounded-circle" style="width: 80px; height: 80px;">
+                            <i class="bi bi-play-circle fs-1"></i>
+                        </div>
+                        <h3 class="fw-bold">Gotowanie bez przepisu</h3>
+                        <p class="text-muted mb-0">Wybierz przepis u góry albo po prostu waż produkty i zapisz zużycie.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-7">
+        <div class="card border-0 shadow-lg action-card">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
+                    <div>
+                        <div class="small text-uppercase fw-bold text-muted mb-1">Ważenie</div>
+                        <h3 class="h5 fw-bold mb-0">Produkty zużyte podczas gotowania</h3>
+                    </div>
+                    <button class="btn btn-sm btn-outline-primary rounded-pill" type="button" data-add-cook-row>
+                        <i class="bi bi-plus-lg me-1"></i> Wiersz
+                    </button>
+                </div>
+
+                <form method="post" id="cook-form">
+                    {% csrf_token %}
+                    {% if selected_recipe %}
+                        <input type="hidden" name="recipe" value="{{ selected_recipe.id }}">
+                    {% endif %}
+
+                    {% if selected_recipe %}
+                        <div class="cook-step-flow" data-cook-flow>
+                            {% for step in selected_recipe.steps.all %}
+                                <section class="cook-step-panel {% if forloop.first %}is-active{% endif %}" data-cook-step-panel>
+                                    <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                                        <div>
+                                            <span class="badge rounded-pill bg-primary-subtle text-primary mb-2">Krok {{ forloop.counter }}</span>
+                                            <h4 class="h6 fw-bold mb-1">{{ step.title|default:"Etap" }}</h4>
+                                            <p class="text-muted small mb-0">{{ step.instruction }}</p>
+                                            {% if step.mix_after %}
+                                                <span class="badge bg-info-subtle text-info rounded-pill mt-2">Po dodaniu wymieszaj</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    <div class="cook-row-list" data-cook-rows>
+                                        {% for ingredient in step.ingredients.all %}
+                                            <div class="cook-row">
+                                                <div>
+                                                    <label class="form-label small text-uppercase fw-bold text-muted">Produkt</label>
+                                                    <input type="text" name="product_name" class="form-control" list="pantry-product-suggestions" value="{{ ingredient.name }}" required>
+                                                </div>
+                                                <div>
+                                                    <label class="form-label small text-uppercase fw-bold text-muted">Ilość z wagi</label>
+                                                    <input type="number" name="quantity" class="form-control" step="{% if ingredient.unit == 'szt' %}1{% else %}0.01{% endif %}" min="{% if ingredient.unit == 'szt' %}1{% else %}0.01{% endif %}" value="{{ ingredient.quantity|unlocalize }}" required>
+                                                </div>
+                                                <div>
+                                                    <label class="form-label small text-uppercase fw-bold text-muted">Jednostka</label>
+                                                    <select name="unit" class="form-select" required>
+                                                        {% for value, label in units %}
+                                                            <option value="{{ value }}" {% if ingredient.unit == value %}selected{% endif %}>{{ label }}</option>
+                                                        {% endfor %}
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label class="form-label small text-uppercase fw-bold text-muted">Kategoria</label>
+                                                    <select name="category" class="form-select">
+                                                        <option value="">Auto / Inne</option>
+                                                        {% for category in categories %}
+                                                            <option value="{{ category }}" {% if ingredient.category == category %}selected{% endif %}>{{ category }}</option>
+                                                        {% endfor %}
+                                                    </select>
+                                                </div>
+                                                <button class="btn btn-light align-self-end" type="button" data-remove-cook-row title="Usuń wiersz">
+                                                    <i class="bi bi-x-lg"></i>
+                                                </button>
+                                            </div>
+                                        {% empty %}
+                                            <div class="cook-row">
+                                                <div>
+                                                    <label class="form-label small text-uppercase fw-bold text-muted">Produkt</label>
+                                                    <input type="text" name="product_name" class="form-control" list="pantry-product-suggestions" placeholder="np. Mąka" required>
+                                                </div>
+                                                <div>
+                                                    <label class="form-label small text-uppercase fw-bold text-muted">Ilość z wagi</label>
+                                                    <input type="number" name="quantity" class="form-control" step="0.01" min="0.01" placeholder="0.00" required>
+                                                </div>
+                                                <div>
+                                                    <label class="form-label small text-uppercase fw-bold text-muted">Jednostka</label>
+                                                    <select name="unit" class="form-select" required>
+                                                        {% for value, label in units %}
+                                                            <option value="{{ value }}" {% if value == 'g' %}selected{% endif %}>{{ label }}</option>
+                                                        {% endfor %}
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label class="form-label small text-uppercase fw-bold text-muted">Kategoria</label>
+                                                    <select name="category" class="form-select">
+                                                        <option value="">Auto / Inne</option>
+                                                        {% for category in categories %}
+                                                            <option value="{{ category }}">{{ category }}</option>
+                                                        {% endfor %}
+                                                    </select>
+                                                </div>
+                                                <button class="btn btn-light align-self-end" type="button" data-remove-cook-row title="Usuń wiersz">
+                                                    <i class="bi bi-x-lg"></i>
+                                                </button>
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+                                </section>
+                            {% empty %}
+                                <div class="cook-row-list" data-cook-rows>
+                                    <div class="cook-row">
+                                        <div>
+                                            <label class="form-label small text-uppercase fw-bold text-muted">Produkt</label>
+                                            <input type="text" name="product_name" class="form-control" list="pantry-product-suggestions" placeholder="np. Mąka" required>
+                                        </div>
+                                        <div>
+                                            <label class="form-label small text-uppercase fw-bold text-muted">Ilość</label>
+                                            <input type="number" name="quantity" class="form-control" step="0.01" min="0.01" placeholder="0.00" required>
+                                        </div>
+                                        <div>
+                                            <label class="form-label small text-uppercase fw-bold text-muted">Jednostka</label>
+                                            <select name="unit" class="form-select" required>
+                                                {% for value, label in units %}
+                                                    <option value="{{ value }}" {% if value == 'g' %}selected{% endif %}>{{ label }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="form-label small text-uppercase fw-bold text-muted">Kategoria</label>
+                                            <select name="category" class="form-select">
+                                                <option value="">Auto / Inne</option>
+                                                {% for category in categories %}
+                                                    <option value="{{ category }}">{{ category }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                        <button class="btn btn-light align-self-end" type="button" data-remove-cook-row title="Usuń wiersz">
+                                            <i class="bi bi-x-lg"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                        <div class="d-flex justify-content-between gap-2 mt-3" data-cook-step-nav>
+                            <button class="btn btn-soft-neutral rounded-pill px-4" type="button" data-prev-cook-step>
+                                <i class="bi bi-arrow-left me-1"></i> Poprzedni
+                            </button>
+                            <button class="btn btn-primary rounded-pill px-4" type="button" data-next-cook-step>
+                                Następny <i class="bi bi-arrow-right ms-1"></i>
+                            </button>
+                        </div>
+                    {% else %}
+                        <div class="cook-row-list" data-cook-rows>
+                            <div class="cook-row">
+                                <div>
+                                    <label class="form-label small text-uppercase fw-bold text-muted">Produkt</label>
+                                    <input type="text" name="product_name" class="form-control" list="pantry-product-suggestions" placeholder="np. Mąka" required>
+                                </div>
+                                <div>
+                                    <label class="form-label small text-uppercase fw-bold text-muted">Ilość</label>
+                                    <input type="number" name="quantity" class="form-control" step="0.01" min="0.01" placeholder="0.00" required>
+                                </div>
+                                <div>
+                                    <label class="form-label small text-uppercase fw-bold text-muted">Jednostka</label>
+                                    <select name="unit" class="form-select" required>
+                                        {% for value, label in units %}
+                                            <option value="{{ value }}" {% if value == 'g' %}selected{% endif %}>{{ label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="form-label small text-uppercase fw-bold text-muted">Kategoria</label>
+                                    <select name="category" class="form-select">
+                                        <option value="">Auto / Inne</option>
+                                        {% for category in categories %}
+                                            <option value="{{ category }}">{{ category }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <button class="btn btn-light align-self-end" type="button" data-remove-cook-row title="Usuń wiersz">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    <datalist id="pantry-product-suggestions">
+                        {% for product in pantry_products %}
+                            <option value="{{ product.name }}"></option>
+                        {% endfor %}
+                    </datalist>
+
+                    <div class="alert alert-info border-0 small mt-3 mb-0">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Jeśli wpiszesz produkt, którego nie ma w spiżarni, zostanie dodany automatycznie ze stanem 0.
+                    </div>
+
+                    <div class="d-grid mt-4">
+                        <button class="btn btn-success btn-lg rounded-pill fw-bold" type="submit">
+                            <i class="bi bi-check2-circle me-1"></i> Zapisz gotowanie i odejmij produkty
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const addButton = document.querySelector('[data-add-cook-row]');
+        const flow = document.querySelector('[data-cook-flow]');
+        const panels = flow ? Array.from(flow.querySelectorAll('[data-cook-step-panel]')) : [];
+        let activeStep = 0;
+
+        if (!addButton) {
+            return;
+        }
+
+        function activeRows() {
+            const activePanel = panels[activeStep];
+            if (activePanel) {
+                return activePanel.querySelector('[data-cook-rows]');
+            }
+            return document.querySelector('[data-cook-rows]');
+        }
+
+        function syncRemoveButtons() {
+            document.querySelectorAll('[data-cook-rows]').forEach((rows) => {
+                rows.querySelectorAll('[data-remove-cook-row]').forEach((button) => {
+                    button.disabled = rows.querySelectorAll('.cook-row').length === 1;
+                });
+            });
+        }
+
+        function syncStepNav() {
+            panels.forEach((panel, index) => {
+                panel.classList.toggle('is-active', index === activeStep);
+            });
+            const prevButton = document.querySelector('[data-prev-cook-step]');
+            const nextButton = document.querySelector('[data-next-cook-step]');
+            if (prevButton) {
+                prevButton.disabled = activeStep === 0;
+            }
+            if (nextButton) {
+                nextButton.disabled = activeStep === panels.length - 1;
+            }
+        }
+
+        function syncQuantityStep(row) {
+            const unit = row.querySelector('select[name="unit"]');
+            const quantity = row.querySelector('input[name="quantity"]');
+            if (!unit || !quantity) {
+                return;
+            }
+            const integerOnly = unit.value === 'szt';
+            quantity.step = integerOnly ? '1' : '0.01';
+            quantity.min = integerOnly ? '1' : '0.01';
+            quantity.placeholder = integerOnly ? '0' : '0.00';
+        }
+
+        function bindRow(row) {
+            const removeButton = row.querySelector('[data-remove-cook-row]');
+            const unit = row.querySelector('select[name="unit"]');
+            if (removeButton.dataset.bound === '1') {
+                return;
+            }
+            removeButton.dataset.bound = '1';
+            removeButton.addEventListener('click', () => {
+                row.remove();
+                syncRemoveButtons();
+            });
+            unit.addEventListener('change', () => syncQuantityStep(row));
+            syncQuantityStep(row);
+        }
+
+        document.querySelectorAll('.cook-row').forEach(bindRow);
+        syncRemoveButtons();
+        syncStepNav();
+
+        const prevButton = document.querySelector('[data-prev-cook-step]');
+        const nextButton = document.querySelector('[data-next-cook-step]');
+        if (prevButton) {
+            prevButton.addEventListener('click', () => {
+                activeStep = Math.max(0, activeStep - 1);
+                syncStepNav();
+            });
+        }
+        if (nextButton) {
+            nextButton.addEventListener('click', () => {
+                activeStep = Math.min(panels.length - 1, activeStep + 1);
+                syncStepNav();
+            });
+        }
+
+        addButton.addEventListener('click', () => {
+            const rows = activeRows();
+            const clone = rows.querySelector('.cook-row').cloneNode(true);
+            clone.querySelectorAll('input').forEach((input) => {
+                input.value = '';
+            });
+            clone.querySelector('select[name="category"]').value = '';
+            clone.querySelector('select[name="unit"]').value = 'g';
+            rows.appendChild(clone);
+            bindRow(clone);
+            syncRemoveButtons();
+            clone.querySelector('input[name="product_name"]').focus();
+        });
+    });
+</script>
+{% endblock %}

@@ -2457,7 +2457,266 @@ a { text-decoration: none; }
 }
 
 /* =========================================
-   10. Chart.js CUSTOM STYLES
+   10. PANTRY
+   ========================================= */
+.pantry-metric {
+    height: 100%;
+    padding: 0.85rem 1rem;
+    background: var(--surface-card);
+    border: 1px solid var(--surface-border);
+    border-radius: 12px;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.07);
+}
+
+.min-w-0 {
+    min-width: 0;
+}
+
+.pantry-category-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.pantry-category-panel {
+    overflow: hidden;
+    background: var(--surface-card);
+    border: 1px solid var(--surface-border);
+    border-radius: 12px;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.pantry-category-header {
+    width: 100%;
+    min-height: 3rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.65rem 0.9rem;
+    color: var(--text-main);
+    background: transparent;
+    border: 0;
+    text-align: left;
+}
+
+.pantry-category-chevron {
+    flex: 0 0 auto;
+    color: var(--text-muted);
+    transition: transform 0.18s ease;
+}
+
+.pantry-category-header[aria-expanded="true"] .pantry-category-chevron {
+    transform: rotate(180deg);
+}
+
+.pantry-compact-list {
+    border-top: 1px solid var(--surface-border);
+}
+
+.pantry-compact-row {
+    display: grid;
+    grid-template-columns: minmax(10rem, 1.5fr) minmax(5rem, 0.55fr) minmax(7rem, 0.75fr) minmax(5rem, 0.55fr) minmax(16rem, 1fr);
+    gap: 0.75rem;
+    align-items: center;
+    padding: 0.7rem 0.9rem;
+    border-bottom: 1px solid var(--surface-border);
+}
+
+.pantry-compact-row:last-child {
+    border-bottom: 0;
+}
+
+.pantry-compact-main,
+.pantry-compact-stock,
+.pantry-compact-meta {
+    min-width: 0;
+}
+
+.pantry-compact-stock span,
+.pantry-compact-meta span,
+.pantry-compact-meta strong {
+    display: block;
+}
+
+.pantry-status-dot {
+    width: 0.65rem;
+    height: 0.65rem;
+    flex: 0 0 auto;
+    border-radius: 50%;
+}
+
+.pantry-compact-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+}
+
+.pantry-inline-form {
+    display: flex;
+    min-width: 0;
+}
+
+.pantry-inline-form .form-control {
+    min-width: 0;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.pantry-inline-form .btn {
+    flex: 0 0 auto;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+.pantry-action-form .input-group,
+.pantry-inline-form {
+    flex-wrap: nowrap;
+}
+
+.cook-recipe-preview {
+    max-height: 42rem;
+    overflow-y: auto;
+    padding-right: 0.25rem;
+}
+
+.cook-row-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.cook-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(5rem, 0.55fr) minmax(5.5rem, 0.65fr) minmax(0, 1fr) auto;
+    gap: 0.75rem;
+    align-items: end;
+    padding: 0.75rem;
+    background: var(--surface-subtle);
+    border: 1px solid var(--surface-border);
+    border-radius: 12px;
+}
+
+.cook-row > *,
+.recipe-ingredient-row > * {
+    min-width: 0;
+}
+
+.cook-row .form-control,
+.cook-row .form-select,
+.recipe-ingredient-row .form-control,
+.recipe-ingredient-row .form-select {
+    width: 100%;
+}
+
+.recipe-step-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.recipe-step-card {
+    padding: 1rem;
+    background: var(--surface-subtle);
+    border: 1px solid var(--surface-border);
+    border-radius: 12px;
+}
+
+.recipe-step-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.85rem;
+}
+
+.recipe-ingredient-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.recipe-ingredient-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(5rem, 0.55fr) minmax(5.5rem, 0.65fr) minmax(0, 1fr) auto;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.cook-step-flow {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.cook-step-panel {
+    display: none;
+}
+
+.cook-step-panel.is-active {
+    display: block;
+}
+
+.cook-step-ingredients {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+@media (max-width: 1199.98px) {
+    .pantry-compact-row {
+        grid-template-columns: minmax(10rem, 1.4fr) minmax(5rem, 0.5fr) minmax(6rem, 0.65fr) minmax(14rem, 1fr);
+    }
+
+    .pantry-compact-row .pantry-compact-meta:nth-of-type(4) {
+        display: none;
+    }
+}
+
+@media (max-width: 991.98px) {
+    .cook-row {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .recipe-ingredient-row {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .cook-row > button,
+    .recipe-ingredient-row > button {
+        width: 100%;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .cook-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .recipe-ingredient-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .pantry-compact-row {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.55rem;
+    }
+
+    .pantry-compact-stock,
+    .pantry-compact-meta {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 0.75rem;
+    }
+
+    .pantry-compact-actions {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+/* =========================================
+   11. Chart.js CUSTOM STYLES
    ========================================= */
 /* Styl dla trybu pełnoekranowego */
 .chart-fullscreen-mode {

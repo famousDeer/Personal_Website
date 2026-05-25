@@ -1,3 +1,51 @@
 from django.contrib import admin
 
-# Register your models here.
+from .models import PantryMovement, PantryProduct, Recipe, RecipeStep, RecipeStepIngredient
+
+
+class RecipeStepIngredientInline(admin.TabularInline):
+    model = RecipeStepIngredient
+    extra = 1
+
+
+class RecipeStepInline(admin.StackedInline):
+    model = RecipeStep
+    extra = 1
+    show_change_link = True
+
+
+@admin.register(Recipe)
+class RecipeAdmin(admin.ModelAdmin):
+    list_display = ('title', 'user', 'meal_type', 'kitchen_region', 'created_at')
+    search_fields = ('title', 'ingredients', 'instructions')
+    list_filter = ('meal_type', 'kitchen_region', 'type_of_dish')
+    inlines = [RecipeStepInline]
+
+
+@admin.register(RecipeStep)
+class RecipeStepAdmin(admin.ModelAdmin):
+    list_display = ('recipe', 'order', 'title', 'mix_after', 'duration_minutes')
+    list_filter = ('mix_after',)
+    search_fields = ('recipe__title', 'title', 'instruction')
+    inlines = [RecipeStepIngredientInline]
+
+
+@admin.register(RecipeStepIngredient)
+class RecipeStepIngredientAdmin(admin.ModelAdmin):
+    list_display = ('name', 'step', 'quantity', 'unit', 'category')
+    search_fields = ('name', 'step__recipe__title')
+    list_filter = ('unit', 'category')
+
+
+@admin.register(PantryProduct)
+class PantryProductAdmin(admin.ModelAdmin):
+    list_display = ('name', 'user', 'category', 'current_quantity', 'unit', 'minimum_quantity', 'restock_lead_days')
+    search_fields = ('name', 'category', 'user__username')
+    list_filter = ('category', 'unit')
+
+
+@admin.register(PantryMovement)
+class PantryMovementAdmin(admin.ModelAdmin):
+    list_display = ('product', 'movement_type', 'quantity', 'occurred_on', 'created_at')
+    search_fields = ('product__name', 'note')
+    list_filter = ('movement_type', 'occurred_on')

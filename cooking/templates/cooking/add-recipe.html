@@ -1,4 +1,4 @@
-{% extends 'cooking/index.html' %} {% block title %}Dodaj nowy przepis{% endblock %}
+{% extends 'cooking/index.html' %} {% load static %} {% block title %}Dodaj nowy przepis{% endblock %}
 
 {% block content_cooking %}
 
@@ -129,22 +129,73 @@
                                 </div>
                             </div>
 
-                                <div class="row g-3">
-                                    
-                                    <div class="col-12">
-                                        <label class="form-label fw-bold text-success">
-                                            <i class="bi bi-basket me-1"></i> Składniki
-                                        </label>
-                                        <textarea name="ingredients" id="summernote-ingredients">{{ recipe.ingredients }}</textarea>
+                            <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
+                                <h5 class="mb-0 fw-bold" style="color: #d35400;">Etapy gotowania</h5>
+                                <button class="btn btn-sm btn-outline-primary rounded-pill" type="button" data-add-step>
+                                    <i class="bi bi-plus-lg me-1"></i> Etap
+                                </button>
+                            </div>
+
+                            <div class="recipe-step-list" data-step-list>
+                                <section class="recipe-step-card" data-step-card>
+                                    <div class="recipe-step-header">
+                                        <span class="badge rounded-pill bg-primary-subtle text-primary" data-step-label>Krok 1</span>
+                                        <button class="btn btn-sm btn-light rounded-circle" type="button" data-remove-step title="Usuń etap">
+                                            <i class="bi bi-x-lg"></i>
+                                        </button>
                                     </div>
-                                    
-                                    <div class="col-12 mt-4">
-                                        <label class="form-label fw-bold text-primary">
-                                            <i class="bi bi-list-ol me-1"></i> Instrukcje
-                                        </label>
-                                        <textarea name="instructions" id="summernote-instructions">{{ recipe.instructions }}</textarea>
+                                    <div class="row g-3">
+                                        <div class="col-md-8">
+                                            <label class="form-label small text-uppercase fw-bold text-muted">Tytuł etapu</label>
+                                            <input type="text" name="step_title" class="form-control" placeholder="np. Przygotuj sos">
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label small text-uppercase fw-bold text-muted">Czas (min)</label>
+                                            <input type="number" name="step_duration_minutes" class="form-control" min="0" placeholder="0">
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label small text-uppercase fw-bold text-muted">Co zrobić w tym etapie</label>
+                                            <textarea name="step_instruction" class="form-control auto-expand" rows="3" placeholder="Opisz dokładnie, co zrobić po dodaniu składników." required></textarea>
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-check">
+                                                <input class="form-check-input" type="checkbox" name="step_mix_after" value="0">
+                                                <span class="form-check-label">Po dodaniu składników wymieszaj</span>
+                                            </label>
+                                        </div>
                                     </div>
-                                </div>
+
+                                    <div class="mt-3">
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <div class="small text-uppercase fw-bold text-muted">Składniki w tym etapie</div>
+                                            <button class="btn btn-sm btn-outline-success rounded-pill" type="button" data-add-ingredient>
+                                                <i class="bi bi-plus-lg me-1"></i> Składnik
+                                            </button>
+                                        </div>
+                                        <div class="recipe-ingredient-list" data-ingredient-list>
+                                            <div class="recipe-ingredient-row" data-ingredient-row>
+                                                <input type="hidden" name="ingredient_step" value="0">
+                                                <input type="text" name="ingredient_name" class="form-control" placeholder="Produkt" required>
+                                                <input type="number" name="ingredient_quantity" class="form-control" step="0.01" min="0" placeholder="Ilość" required>
+                                                <select name="ingredient_unit" class="form-select">
+                                                    {% for value, label in units %}
+                                                        <option value="{{ value }}" {% if value == 'g' %}selected{% endif %}>{{ label }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                                <select name="ingredient_category" class="form-select">
+                                                    <option value="">Kategoria</option>
+                                                    {% for category in pantry_categories %}
+                                                        <option value="{{ category }}">{{ category }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                                <button class="btn btn-light" type="button" data-remove-ingredient title="Usuń składnik">
+                                                    <i class="bi bi-x-lg"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </section>
+                            </div>
 
                         </div>
                     </div>
@@ -171,37 +222,8 @@
     </div>
 </div>
 
+<script src="{% static 'js/recipe-structure.js' %}"></script>
 <script>
-// Inicjalizacja Summernote
-    $(document).ready(function() {
-        $('#summernote-ingredients').summernote({
-            placeholder: 'Wprowadź listę składników (możesz użyć kropek)',
-            tabsize: 2,
-            height: 200, // Wysokość edytora
-            toolbar: [
-                ['style', ['bold', 'italic', 'underline', 'clear']],
-                ['font', ['strikethrough', 'superscript', 'subscript']],
-                ['fontsize', ['fontsize']],
-                ['color', ['color']],
-                ['para', ['ul', 'ol', 'paragraph']], // Lista, numeracja
-                ['height', ['height']]
-            ]
-        });
-
-        $('#summernote-instructions').summernote({
-            placeholder: 'Wprowadź instrukcje krok po kroku',
-            tabsize: 2,
-            height: 300,
-            toolbar: [
-                ['style', ['bold', 'italic', 'underline', 'clear']],
-                ['font', ['strikethrough', 'superscript', 'subscript']],
-                ['para', ['ul', 'ol', 'paragraph']], // Lista, numeracja
-                ['insert', ['link', 'hr']], // Dodaj link i linię poziomą
-                ['view', ['fullscreen', 'codeview', 'help']] // Opcje widoku
-            ]
-        });
-    });
-
     // Skrypt do podglądu zdjęcia (ten co miałeś wcześniej)
     function previewImage(input) {
         const preview = document.getElementById('imagePreview');
