@@ -2,8 +2,10 @@
 
 {% block title %}Gotowanie{% endblock %}
 
+{% block navbar_brand_url %}{% url 'cooking:index' %}{% endblock %}
+
 {% block navbar_brand %}
-<a class="navbar-brand" href="{% url 'cooking:index' %}"><i class="bi bi-egg-fried"></i> Gotowanie</a>
+<span><i class="bi bi-egg-fried"></i> Gotowanie</span>
 {% endblock %}
 
 {% block content %}

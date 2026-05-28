@@ -2,6 +2,7 @@ from decimal import Decimal
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -62,6 +63,43 @@ class RecipeViewsTests(TestCase):
         self.assertEqual(edit_response.status_code, 404)
         self.assertEqual(delete_response.status_code, 404)
         self.assertTrue(Recipe.objects.filter(id=self.owner_recipe.id).exists())
+
+    def test_non_owner_can_open_recipe_in_cook_mode(self):
+        self.client.login(username='other', password='pass12345')
+
+        response = self.client.get(reverse('cooking:cook'), {'recipe': self.owner_recipe.id})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Owner pasta')
+
+    def test_add_recipe_rejects_invalid_image_upload(self):
+        self.client.login(username='owner', password='pass12345')
+        bad_image = SimpleUploadedFile(
+            'bad.jpg',
+            b'not an image',
+            content_type='image/jpeg',
+        )
+
+        response = self.client.post(reverse('cooking:add-recipe'), {
+            'title': 'Bad image recipe',
+            'description': '',
+            'portions': '1',
+            'kcal': '0',
+            'preparation_time': '5',
+            'step_title': ['Krok'],
+            'step_duration_minutes': ['1'],
+            'step_instruction': ['Gotuj.'],
+            'ingredient_step': ['0'],
+            'ingredient_name': ['Ryż'],
+            'ingredient_quantity': ['100'],
+            'ingredient_unit': [PantryProduct.UNIT_GRAM],
+            'ingredient_category': ['Produkty suche'],
+            'image': bad_image,
+        }, follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Nie udało się odczytać zdjęcia')
+        self.assertFalse(Recipe.objects.filter(user=self.owner, title='Bad image recipe').exists())
 
 
 class RecipeStructureTests(TestCase):

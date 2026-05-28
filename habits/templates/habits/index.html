@@ -2,8 +2,10 @@
 
 {% block title %}Dashboard{% endblock %}
 
+{% block navbar_brand_url %}{% url 'habits:index' %}{% endblock %}
+
 {% block navbar_brand %}
-<a class="navbar-brand" href="{% url 'habits:index' %}"><i class="bi bi-book-half"></i> Nawyki</a>
+<span><i class="bi bi-book-half"></i> Nawyki</span>
 {% endblock %}
 
 {% block content %}

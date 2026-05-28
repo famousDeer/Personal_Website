@@ -28,15 +28,16 @@ Prerequisites:
 ```dotenv
 SECRET_KEY=change-me
 DEBUG=1
+ALLOW_PUBLIC_SIGNUP=1
 ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,192.168.1.115,raspberrypi.local
 CSRF_TRUSTED_ORIGINS=http://localhost:8000,http://127.0.0.1:8000,http://192.168.1.115:8000,http://raspberrypi.local:8000
 
 # Database connection used by Django (settings.py should read these)
-DB_NAME=finance_db
-DB_USER=finance
-DB_PASSWORD=1234
-DB_HOST=db
-DB_PORT=5432
+DATABASE_NAME=finance_db
+DATABASE_USER=finance
+DATABASE_PASSWORD=1234
+DATABASE_HOST=db
+DATABASE_PORT=5432
 
 # Brokerage market data
 ALPHA_VANTAGE_API_KEY=
@@ -102,12 +103,14 @@ Website-Finance/
 Required at minimum:
 - SECRET_KEY: Django secret key (use a strong, unique value in production)
 - DEBUG: 1 for development, 0 for production
+- ALLOW_PUBLIC_SIGNUP: 1 to allow new users to register; set 0 on a home server after creating accounts
 - ALLOWED_HOSTS: comma-separated list (include your domain/IP in prod)
 - CSRF_TRUSTED_ORIGINS: comma-separated origins with scheme and port, e.g. `http://192.168.1.115:8000,http://raspberrypi.local:8000`
 - CSRF_TRUSTED_PORTS: optional comma-separated local ports used to auto-build CSRF origins from ALLOWED_HOSTS; default `8000`
 
 Database variables expected by settings (example):
-- DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT
+- DATABASE_NAME, DATABASE_USER, DATABASE_PASSWORD, DATABASE_HOST, DATABASE_PORT
+- The legacy aliases DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT are still accepted.
 
 Brokerage market data:
 - ALPHA_VANTAGE_API_KEY: quotes and dividends for supported foreign instruments

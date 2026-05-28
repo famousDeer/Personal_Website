@@ -10,7 +10,9 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 import os
+import sys
 from pathlib import Path
+from django.core.exceptions import ImproperlyConfigured
 from django.contrib.messages import constants as messages
 from dotenv import load_dotenv
 load_dotenv()
@@ -33,13 +35,24 @@ def env_bool(name, default=False):
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
+# SECURITY WARNING: don't run with debug turned on in production!
+DEBUG = env_bool('DEBUG', False)
+RUNNING_TESTS = 'test' in sys.argv
+
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get('SECRET_KEY')
+if not SECRET_KEY:
+    if DEBUG or RUNNING_TESTS:
+        SECRET_KEY = 'django-insecure-local-development-only-change-me'
+    else:
+        raise ImproperlyConfigured('Set SECRET_KEY before running with DEBUG disabled.')
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DEBUG', False) in ['True', 'true']
-
-ALLOWED_HOSTS = env_list('ALLOWED_HOSTS', '*')
+ALLOWED_HOSTS = env_list(
+    'ALLOWED_HOSTS',
+    'localhost,127.0.0.1,[::1]' if DEBUG or RUNNING_TESTS else '',
+)
+if not DEBUG and not RUNNING_TESTS and (not ALLOWED_HOSTS or '*' in ALLOWED_HOSTS):
+    raise ImproperlyConfigured('Set explicit ALLOWED_HOSTS before running with DEBUG disabled.')
 
 CSRF_TRUSTED_ORIGINS = env_list('CSRF_TRUSTED_ORIGINS')
 if not CSRF_TRUSTED_ORIGINS:
@@ -58,6 +71,14 @@ SESSION_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'Lax')
 CSRF_COOKIE_SECURE = env_bool('CSRF_COOKIE_SECURE', False)
 SESSION_COOKIE_SECURE = env_bool('SESSION_COOKIE_SECURE', False)
 CSRF_FAILURE_VIEW = 'config.views.csrf_failure'
+SESSION_COOKIE_HTTPONLY = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = os.environ.get('SECURE_REFERRER_POLICY', 'same-origin')
+SECURE_SSL_REDIRECT = env_bool('SECURE_SSL_REDIRECT', False)
+SECURE_HSTS_SECONDS = int(os.environ.get('SECURE_HSTS_SECONDS', '0'))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool('SECURE_HSTS_INCLUDE_SUBDOMAINS', False)
+SECURE_HSTS_PRELOAD = env_bool('SECURE_HSTS_PRELOAD', False)
+ALLOW_PUBLIC_SIGNUP = env_bool('ALLOW_PUBLIC_SIGNUP', DEBUG)
 
 
 # Application definition
@@ -102,6 +123,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'accounts.context_processors.account_access',
                 'finance.context_processors.finance_accounts',
             ],
         },
@@ -117,11 +139,11 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DATABASE_NAME', 'finance_db'),
-        'USER': os.environ.get('DATABASE_USER', 'finance_user'),
-        'PASSWORD': os.environ.get('DATABASE_PASSWORD', 'finance_pass'),
-        'HOST': os.environ.get('DATABASE_HOST', 'localhost'),
-        'PORT': os.environ.get('DATABASE_PORT', '5432'),
+        'NAME': os.environ.get('DATABASE_NAME') or os.environ.get('DB_NAME', 'finance_db'),
+        'USER': os.environ.get('DATABASE_USER') or os.environ.get('DB_USER', 'finance_user'),
+        'PASSWORD': os.environ.get('DATABASE_PASSWORD') or os.environ.get('DB_PASSWORD', 'finance_pass'),
+        'HOST': os.environ.get('DATABASE_HOST') or os.environ.get('DB_HOST', 'localhost'),
+        'PORT': os.environ.get('DATABASE_PORT') or os.environ.get('DB_PORT', '5432'),
     }
 }
 

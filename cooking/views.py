@@ -5,8 +5,10 @@ from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views import View
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin # Ważne dla bezpieczeństwa klas
 from django.utils import timezone
+from PIL import Image, UnidentifiedImageError
 
 from .models import PantryMovement, PantryProduct, Recipe, RecipeStep, RecipeStepIngredient
 
@@ -23,6 +25,9 @@ PANTRY_CATEGORIES = [
     'Produkty suche', 'Nabiał', 'Warzywa i owoce', 'Mięso i ryby', 'Mrożonki',
     'Przyprawy', 'Konserwy', 'Napoje', 'Chemia domowa', 'Inne'
 ]
+ALLOWED_RECIPE_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
+ALLOWED_RECIPE_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
+MAX_RECIPE_IMAGE_SIZE = 5 * 1024 * 1024
 
 
 def parse_pantry_decimal(value, default='0'):
@@ -77,6 +82,32 @@ def get_recipe_form_context(**extra_context):
     }
     context.update(extra_context)
     return context
+
+
+def validate_recipe_image(uploaded_file):
+    if not uploaded_file:
+        return None
+
+    if uploaded_file.size > MAX_RECIPE_IMAGE_SIZE:
+        raise ValueError('Zdjęcie przepisu może mieć maksymalnie 5 MB.')
+
+    filename = uploaded_file.name.lower()
+    extension = '.' + filename.rsplit('.', 1)[-1] if '.' in filename else ''
+    content_type = getattr(uploaded_file, 'content_type', '')
+    if extension not in ALLOWED_RECIPE_IMAGE_EXTENSIONS:
+        raise ValueError('Zdjęcie musi być plikiem JPG, PNG albo WEBP.')
+    if content_type and content_type not in ALLOWED_RECIPE_IMAGE_TYPES:
+        raise ValueError('Zdjęcie ma nieobsługiwany typ MIME.')
+
+    try:
+        image = Image.open(uploaded_file)
+        image.verify()
+    except (UnidentifiedImageError, OSError) as exc:
+        raise ValueError('Nie udało się odczytać zdjęcia. Wgraj poprawny plik obrazu.') from exc
+    finally:
+        uploaded_file.seek(0)
+
+    return uploaded_file
 
 
 def build_recipe_legacy_text(recipe):
@@ -155,12 +186,12 @@ def save_recipe_structure(recipe, request):
     recipe.ingredients, recipe.instructions = build_recipe_legacy_text(recipe)
     recipe.save(update_fields=['ingredients', 'instructions', 'updated_at'])
 
+@login_required
 def index(request):
     return render(request, 'cooking/index.html')
 
 class RecipeListView(LoginRequiredMixin, View):
     def get(self, request):
-        # 1. Pobieramy wszystkie przepisy użytkownika
         recipes = Recipe.objects.all()
 
         # 2. Pobieramy parametry z URL
@@ -225,25 +256,41 @@ class AddRecipeView(LoginRequiredMixin, View):
         meal_type = request.POST.get('meal_type', '')
         type_of_dish = request.POST.get('type_of_dish', '')
         
-        # Obrazek
-        image = request.FILES.get('image')
+        try:
+            image = validate_recipe_image(request.FILES.get('image'))
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            return render(
+                request,
+                'cooking/add-recipe.html',
+                get_recipe_form_context(form_values=request.POST),
+            )
 
         # Tworzenie obiektu
-        recipe = Recipe.objects.create(
-            user=request.user,
-            title=title,
-            description=description,
-            ingredients=ingredients,
-            instructions=instructions,
-            portions=portions,
-            kcal=kcal,
-            preparation_time=preparation_time,
-            kitchen_region=kitchen_region,
-            meal_type=meal_type,
-            type_of_dish=type_of_dish,
-            image=image
-        )
-        save_recipe_structure(recipe, request)
+        try:
+            recipe = Recipe.objects.create(
+                user=request.user,
+                title=title,
+                description=description,
+                ingredients=ingredients,
+                instructions=instructions,
+                portions=portions,
+                kcal=kcal,
+                preparation_time=preparation_time,
+                kitchen_region=kitchen_region,
+                meal_type=meal_type,
+                type_of_dish=type_of_dish,
+                image=image
+            )
+            save_recipe_structure(recipe, request)
+        except Exception as exc:
+            transaction.set_rollback(True)
+            messages.error(request, f'Nie udało się dodać przepisu: {exc}')
+            return render(
+                request,
+                'cooking/add-recipe.html',
+                get_recipe_form_context(form_values=request.POST),
+            )
 
         return redirect('cooking:recipe-list')
 
@@ -272,7 +319,15 @@ class EditRecipeView(LoginRequiredMixin, View):
         recipe.type_of_dish = request.POST.get('type_of_dish')
         
         if request.FILES.get('image'):
-            recipe.image = request.FILES.get('image')
+            try:
+                recipe.image = validate_recipe_image(request.FILES.get('image'))
+            except ValueError as exc:
+                messages.error(request, str(exc))
+                return render(
+                    request,
+                    'cooking/edit-recipe.html',
+                    get_recipe_form_context(recipe=recipe),
+                )
             
         recipe.save()
         save_recipe_structure(recipe, request)

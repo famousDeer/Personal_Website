@@ -2,8 +2,10 @@
 
 {% block title %}Finanse{% endblock %}
 
+{% block navbar_brand_url %}{% url 'finance:index' %}{% endblock %}
+
 {% block navbar_brand %}
-<a class="navbar-brand" href="{% url 'finance:index' %}"><i class="bi bi-wallet2"></i> Finanse</a>
+<span><i class="bi bi-wallet2"></i> Finanse</span>
 {% endblock %}
 
 {% block content %}

@@ -21,6 +21,7 @@ HABITS_CATEGORY = [
     'Inne'
 ]
 
+@login_required
 def index(request):
     return render(request, 'habits/index.html')
 

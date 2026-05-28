@@ -225,6 +225,7 @@ class BrokerageTransactionForm(BootstrapFinanceFormMixin, forms.ModelForm):
 
 
 class BrokerageTransactionImportForm(BootstrapFinanceFormMixin, forms.Form):
+    MAX_UPLOAD_SIZE = 5 * 1024 * 1024
     account = forms.ModelChoiceField(label='Konto XTB', queryset=BrokerageAccount.objects.none())
     file = forms.FileField(
         label='Plik XLSX z XTB',
@@ -242,6 +243,8 @@ class BrokerageTransactionImportForm(BootstrapFinanceFormMixin, forms.Form):
         uploaded_file = self.cleaned_data['file']
         if not uploaded_file.name.lower().endswith('.xlsx'):
             raise forms.ValidationError('Wgraj plik XLSX wyeksportowany z XTB.')
+        if uploaded_file.size > self.MAX_UPLOAD_SIZE:
+            raise forms.ValidationError('Plik importu może mieć maksymalnie 5 MB.')
         return uploaded_file
 
 

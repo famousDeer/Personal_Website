@@ -1,5 +1,7 @@
 # accounts/views.py
+from django.conf import settings
 from django.contrib.auth import login
+from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db import transaction
@@ -10,11 +12,22 @@ from finance.models import FinanceAccount
 
 from .forms import ProfileUpdateForm, SharedAccountCreateForm, SharedAccountUpdateForm, SignUpForm
 
+User = get_user_model()
+
 
 def can_manage_shared_account_membership(shared_account, user):
     return shared_account.owner_id in (None, user.id)
 
+
+def signup_allowed():
+    return settings.ALLOW_PUBLIC_SIGNUP or not User.objects.exists()
+
+
 def signup(request):
+    if not signup_allowed():
+        messages.error(request, 'Rejestracja nowych kont jest wyłączona. Poproś domowego administratora o dostęp.')
+        return redirect('login')
+
     if request.method == "POST":
         form = SignUpForm(request.POST)
         if form.is_valid():

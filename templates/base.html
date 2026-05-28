@@ -15,7 +15,7 @@
 <nav class="navbar navbar-expand-lg fixed-top modern-navbar">
     <div class="container">
         
-        <a class="navbar-brand d-flex align-items-center gap-2" href="{% url 'index' %}">
+        <a class="navbar-brand d-flex align-items-center gap-2" href="{% block navbar_brand_url %}{% url 'index' %}{% endblock %}">
             <i class="bi bi-grid-fill text-primary"></i>
             {% if request.path == '/' %}
                 <span>Dashboard</span>
@@ -34,7 +34,7 @@
                 {% if user.is_authenticated %}
                     
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="financeDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <a class="nav-link dropdown-toggle {% if request.resolver_match.namespace == 'finance' %}active{% endif %}" href="#" id="financeDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="bi bi-cash-coin me-1"></i> Finanse
                         </a>
                         <ul class="dropdown-menu" aria-labelledby="financeDropdown">
@@ -50,7 +50,7 @@
                     </li>
 
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="habitsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <a class="nav-link dropdown-toggle {% if request.resolver_match.namespace == 'habits' %}active{% endif %}" href="#" id="habitsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="bi bi-check-circle me-1"></i> Nawyki
                         </a>
                         <ul class="dropdown-menu" aria-labelledby="habitsDropdown">
@@ -62,7 +62,7 @@
                     </li>
 
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="cookingDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <a class="nav-link dropdown-toggle {% if request.resolver_match.namespace == 'cooking' %}active{% endif %}" href="#" id="cookingDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="bi bi-egg-fried me-1"></i> Gotowanie
                         </a>
                         <ul class="dropdown-menu" aria-labelledby="cookingDropdown">
@@ -75,7 +75,7 @@
                     </li>
 
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="carsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <a class="nav-link dropdown-toggle {% if request.resolver_match.namespace == 'cars' %}active{% endif %}" href="#" id="carsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="bi bi-car-front-fill me-1"></i> Samochody
                         </a>
                         <ul class="dropdown-menu" aria-labelledby="carsDropdown">
@@ -104,7 +104,7 @@
                             </button>
                         </form>
 
-                        <button class="btn btn-link nav-link py-0 px-2" id="theme-toggle" title="Przełącz tryb">
+                        <button class="btn btn-link nav-link py-0 px-2" id="theme-toggle" type="button" title="Przełącz tryb" aria-label="Przełącz tryb kolorystyczny">
                             <i class="bi bi-moon-stars-fill" id="theme-icon"></i>
                         </button>
                     </li>
@@ -113,11 +113,13 @@
                         
                         <a class="nav-link" href="{% url 'login' %}">Zaloguj</a>
 
-                        <a class="btn btn-primary rounded-pill px-4 text-white" href="{% url 'signup' %}">
-                            Rejestracja
-                        </a>
+                        {% if public_signup_enabled %}
+                            <a class="btn btn-primary rounded-pill px-4 text-white" href="{% url 'signup' %}">
+                                Rejestracja
+                            </a>
+                        {% endif %}
 
-                        <button class="btn btn-link nav-link py-0 px-2" id="theme-toggle" title="Przełącz tryb">
+                        <button class="btn btn-link nav-link py-0 px-2" id="theme-toggle" type="button" title="Przełącz tryb" aria-label="Przełącz tryb kolorystyczny">
                             <i class="bi bi-moon-stars-fill" id="theme-icon"></i>
                         </button>
                     </li>
