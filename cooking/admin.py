@@ -1,6 +1,14 @@
 from django.contrib import admin
 
-from .models import PantryMovement, PantryProduct, Recipe, RecipeStep, RecipeStepIngredient
+from .models import (
+    PantryMovement,
+    PantryProduct,
+    Recipe,
+    RecipeStep,
+    RecipeStepIngredient,
+    ShoppingList,
+    ShoppingListItem,
+)
 
 
 class RecipeStepIngredientInline(admin.TabularInline):
@@ -49,3 +57,23 @@ class PantryMovementAdmin(admin.ModelAdmin):
     list_display = ('product', 'movement_type', 'quantity', 'occurred_on', 'created_at')
     search_fields = ('product__name', 'note')
     list_filter = ('movement_type', 'occurred_on')
+
+
+class ShoppingListItemInline(admin.TabularInline):
+    model = ShoppingListItem
+    extra = 1
+
+
+@admin.register(ShoppingList)
+class ShoppingListAdmin(admin.ModelAdmin):
+    list_display = ('title', 'user', 'source', 'status', 'created_at', 'updated_at')
+    search_fields = ('title', 'user__username', 'items__name')
+    list_filter = ('source', 'status', 'created_at')
+    inlines = [ShoppingListItemInline]
+
+
+@admin.register(ShoppingListItem)
+class ShoppingListItemAdmin(admin.ModelAdmin):
+    list_display = ('name', 'shopping_list', 'quantity', 'unit', 'category', 'is_purchased')
+    search_fields = ('name', 'shopping_list__title', 'note')
+    list_filter = ('unit', 'category', 'is_purchased')

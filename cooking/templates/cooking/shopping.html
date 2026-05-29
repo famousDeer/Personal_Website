@@ -1,0 +1,166 @@
+{% extends 'cooking/index.html' %}
+
+{% block title %}Listy zakupów{% endblock %}
+
+{% block content_cooking %}
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-4 animate-fade-in">
+    <div>
+        <div class="small text-uppercase fw-bold text-muted mb-1">Zakupy</div>
+        <h2 class="fw-bold mb-1 recipe-title">Listy zakupów</h2>
+        <p class="text-muted mb-0">Ręczne listy i automatyczne uzupełnienia ze stanu spiżarni.</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+        <form method="post" action="{% url 'cooking:generate-shopping-list' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-primary rounded-pill px-4 fw-bold" {% if not suggestions %}disabled{% endif %}>
+                <i class="bi bi-magic me-1"></i> Automatyczna lista
+            </button>
+        </form>
+        <a href="{% url 'cooking:create-shopping-list' %}" class="btn btn-success rounded-pill px-4 fw-bold">
+            <i class="bi bi-plus-lg me-1"></i> Nowa lista
+        </a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4 animate-fade-in-up">
+    <div class="col-md-3">
+        <div class="pantry-metric">
+            <div class="small text-uppercase fw-bold text-muted">Aktywne listy</div>
+            <div class="fs-3 fw-bold">{{ active_count }}</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="pantry-metric">
+            <div class="small text-uppercase fw-bold text-muted">Pozycje</div>
+            <div class="fs-3 fw-bold">{{ total_items_count }}</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="pantry-metric">
+            <div class="small text-uppercase fw-bold text-muted">Kupione</div>
+            <div class="fs-3 fw-bold text-success">{{ purchased_items_count }}</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="pantry-metric">
+            <div class="small text-uppercase fw-bold text-muted">Sugestie</div>
+            <div class="fs-3 fw-bold text-primary">{{ suggestions_count }}</div>
+        </div>
+    </div>
+</div>
+
+<section class="shopping-auto-panel mb-4 animate-fade-in-up">
+    <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+        <div>
+            <div class="small text-uppercase fw-bold text-muted mb-1">Automatycznie ze spiżarni</div>
+            <h3 class="h5 fw-bold mb-1">Produkty do uzupełnienia</h3>
+            <p class="text-muted small mb-0">Uwzględniane są braki, niskie stany i prognoza terminu zakupu.</p>
+        </div>
+        <form method="post" action="{% url 'cooking:generate-shopping-list' %}" class="align-self-lg-start">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-primary rounded-pill px-4" {% if not suggestions %}disabled{% endif %}>
+                <i class="bi bi-lightning-charge me-1"></i> Utwórz z sugestii
+            </button>
+        </form>
+    </div>
+
+    {% if suggestions %}
+        <div class="shopping-suggestion-list mt-3">
+            {% for suggestion in suggestions %}
+                {% with product=suggestion.product %}
+                    <div class="shopping-suggestion-row">
+                        <div class="min-w-0">
+                            <strong class="d-block text-truncate">{{ product.name }}</strong>
+                            <span class="small text-muted">{{ product.category|default:"Bez kategorii" }} · {{ suggestion.reason }}</span>
+                        </div>
+                        <span class="shopping-quantity-pill">
+                            {% if product.unit == 'szt' %}{{ suggestion.quantity|floatformat:0 }}{% else %}{{ suggestion.quantity|floatformat:2 }}{% endif %}
+                            {{ product.display_unit }}
+                        </span>
+                    </div>
+                {% endwith %}
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="shopping-empty-inline mt-3">
+            <i class="bi bi-check2-circle"></i>
+            <span>Brak produktów wymagających uzupełnienia.</span>
+        </div>
+    {% endif %}
+</section>
+
+{% if active_lists %}
+    <div class="shopping-list-grid animate-fade-in-up">
+        {% for shopping_list in active_lists %}
+            <article class="shopping-list-card">
+                <div class="d-flex justify-content-between align-items-start gap-3">
+                    <div class="min-w-0">
+                        <span class="badge {% if shopping_list.source == 'automatic' %}bg-primary-subtle text-primary{% else %}bg-success-subtle text-success{% endif %} rounded-pill mb-2">
+                            {{ shopping_list.get_source_display }}
+                        </span>
+                        <h3 class="h5 fw-bold mb-1 text-truncate">{{ shopping_list.title }}</h3>
+                        <div class="text-muted small">{{ shopping_list.created_at|date:"d.m.Y H:i" }}</div>
+                    </div>
+                    <span class="shopping-status-dot bg-warning" title="Aktywna"></span>
+                </div>
+                <div class="shopping-progress mt-3">
+                    <div class="shopping-progress-bar" style="width: {{ shopping_list.progress_percent }}%;"></div>
+                </div>
+                <div class="d-flex justify-content-between align-items-center gap-2 mt-3 small">
+                    <span class="text-muted">{{ shopping_list.purchased_count }} z {{ shopping_list.item_count }} kupione</span>
+                    <span class="fw-bold">{{ shopping_list.progress_percent }}%</span>
+                </div>
+                <div class="shopping-card-actions mt-3">
+                    <a href="{% url 'cooking:shopping-list-detail' shopping_list.id %}" class="btn btn-sm btn-primary">
+                        <i class="bi bi-list-check me-1"></i> Otwórz
+                    </a>
+                    <a href="{% url 'cooking:edit-shopping-list' shopping_list.id %}" class="btn btn-sm btn-soft-neutral" title="Edytuj nazwę">
+                        <i class="bi bi-pencil"></i>
+                    </a>
+                    <form method="post" action="{% url 'cooking:delete-shopping-list' shopping_list.id %}" onsubmit="return confirm('Usunąć tę listę zakupów?');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Usuń listę">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </form>
+                </div>
+            </article>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="card border-0 shadow-sm action-card animate-fade-in-up">
+        <div class="card-body text-center py-5">
+            <div class="icon-box bg-success-subtle text-success mx-auto mb-3 rounded-circle" style="width: 90px; height: 90px;">
+                <i class="bi bi-cart-check fs-1"></i>
+            </div>
+            <h3 class="fw-bold">Brak aktywnych list</h3>
+            <p class="text-muted">Utwórz pierwszą listę ręcznie albo z sugestii spiżarni.</p>
+            <a href="{% url 'cooking:create-shopping-list' %}" class="btn btn-success rounded-pill px-4 mt-2">
+                <i class="bi bi-plus-lg me-1"></i> Nowa lista
+            </a>
+        </div>
+    </div>
+{% endif %}
+
+{% if completed_lists %}
+    <section class="shopping-completed mt-4 animate-fade-in-up">
+        <h3 class="h6 fw-bold text-uppercase text-muted mb-3">Ostatnio zakończone</h3>
+        <div class="shopping-completed-list">
+            {% for shopping_list in completed_lists %}
+                <div class="shopping-completed-row">
+                    <a href="{% url 'cooking:shopping-list-detail' shopping_list.id %}" class="text-truncate fw-bold text-dark">
+                        {{ shopping_list.title }}
+                    </a>
+                    <span class="text-muted small">{{ shopping_list.updated_at|date:"d.m.Y H:i" }}</span>
+                    <form method="post" action="{% url 'cooking:delete-shopping-list' shopping_list.id %}" onsubmit="return confirm('Usunąć tę zakończoną listę?');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Usuń listę">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </form>
+                </div>
+            {% endfor %}
+        </div>
+    </section>
+{% endif %}
+{% endblock %}

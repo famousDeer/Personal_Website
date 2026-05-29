@@ -170,3 +170,63 @@ class PantryMovement(models.Model):
 
     def __str__(self):
         return f"{self.product.name}: {self.get_movement_type_display()} {self.quantity} {self.product.unit}"
+
+
+class ShoppingList(models.Model):
+    MANUAL = 'manual'
+    AUTOMATIC = 'automatic'
+    SOURCE_CHOICES = [
+        (MANUAL, 'Ręczna'),
+        (AUTOMATIC, 'Automatyczna'),
+    ]
+
+    ACTIVE = 'active'
+    COMPLETED = 'completed'
+    STATUS_CHOICES = [
+        (ACTIVE, 'Aktywna'),
+        (COMPLETED, 'Zakończona'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='shopping_lists')
+    title = models.CharField(max_length=180)
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default=MANUAL)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=ACTIVE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'shopping_lists'
+        ordering = ['-updated_at', '-created_at']
+
+    def __str__(self):
+        return self.title
+
+
+class ShoppingListItem(models.Model):
+    shopping_list = models.ForeignKey(ShoppingList, on_delete=models.CASCADE, related_name='items')
+    pantry_product = models.ForeignKey(
+        PantryProduct,
+        on_delete=models.SET_NULL,
+        related_name='shopping_items',
+        blank=True,
+        null=True,
+    )
+    name = models.CharField(max_length=160)
+    quantity = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('1.00'))
+    unit = models.CharField(max_length=10, choices=PANTRY_UNIT_CHOICES, default=UNIT_PIECE)
+    category = models.CharField(max_length=120, blank=True)
+    note = models.CharField(max_length=255, blank=True)
+    is_purchased = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'shopping_list_items'
+        ordering = ['is_purchased', 'category', 'name']
+
+    def __str__(self):
+        return f"{self.name} ({self.quantity} {self.unit})"
+
+    @property
+    def display_unit(self):
+        return dict(PANTRY_UNIT_CHOICES).get(self.unit, self.unit)

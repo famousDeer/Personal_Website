@@ -1,0 +1,42 @@
+{% extends 'cooking/index.html' %}
+
+{% block title %}Edytuj listę zakupów{% endblock %}
+
+{% block content_cooking %}
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-4 animate-fade-in">
+    <div>
+        <div class="small text-uppercase fw-bold text-muted mb-1">Edycja listy</div>
+        <h2 class="fw-bold mb-1 recipe-title">Nazwa listy</h2>
+        <p class="text-muted mb-0">Zmień nazwę widoczną na liście zakupów.</p>
+    </div>
+    <a href="{% url 'cooking:shopping-list-detail' shopping_list.id %}" class="btn btn-soft-neutral rounded-pill px-4">
+        <i class="bi bi-arrow-left me-1"></i> Wróć
+    </a>
+</div>
+
+<div class="row justify-content-center animate-fade-in-up">
+    <div class="col-lg-7 col-xl-6">
+        <div class="card border-0 shadow-lg action-card">
+            <div class="card-body p-4">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="form-floating mb-4">
+                        <input type="text" class="form-control fs-5 fw-bold" id="title" name="title"
+                               value="{{ form_values.title|default:shopping_list.title }}" placeholder="Nazwa listy" required>
+                        <label for="title">Nazwa listy</label>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-success btn-lg rounded-pill fw-bold" type="submit">
+                            <i class="bi bi-check2-circle me-1"></i> Zapisz zmiany
+                        </button>
+                        <a href="{% url 'cooking:shopping-list-detail' shopping_list.id %}" class="btn btn-light btn-lg rounded-pill text-muted">
+                            Anuluj
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -7,7 +7,15 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import PantryMovement, PantryProduct, Recipe, RecipeStep, RecipeStepIngredient
+from .models import (
+    PantryMovement,
+    PantryProduct,
+    Recipe,
+    RecipeStep,
+    RecipeStepIngredient,
+    ShoppingList,
+    ShoppingListItem,
+)
 
 
 User = get_user_model()
@@ -315,6 +323,147 @@ class PantryTests(TestCase):
             [group['name'] for group in response.context['product_groups']],
             ['Produkty suche', 'Nabiał'],
         )
+
+
+class ShoppingListTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='shopping-user', password='pass12345')
+        self.other = User.objects.create_user(username='other-shopping-user', password='pass12345')
+        self.client.login(username='shopping-user', password='pass12345')
+
+    def test_generate_shopping_list_uses_low_pantry_stock(self):
+        low_product = PantryProduct.objects.create(
+            user=self.user,
+            name='Ryż',
+            category='Produkty suche',
+            unit=PantryProduct.UNIT_KILOGRAM,
+            current_quantity=Decimal('0.20'),
+            minimum_quantity=Decimal('1.00'),
+        )
+        PantryProduct.objects.create(
+            user=self.user,
+            name='Makaron',
+            category='Produkty suche',
+            unit=PantryProduct.UNIT_PACKAGE,
+            current_quantity=Decimal('3.00'),
+            minimum_quantity=Decimal('1.00'),
+        )
+        PantryProduct.objects.create(
+            user=self.other,
+            name='Cukier',
+            unit=PantryProduct.UNIT_KILOGRAM,
+            current_quantity=Decimal('0.00'),
+            minimum_quantity=Decimal('1.00'),
+        )
+
+        response = self.client.post(reverse('cooking:generate-shopping-list'), follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        shopping_list = ShoppingList.objects.get(user=self.user)
+        self.assertEqual(shopping_list.source, ShoppingList.AUTOMATIC)
+        item = shopping_list.items.get()
+        self.assertEqual(item.pantry_product, low_product)
+        self.assertEqual(item.name, 'Ryż')
+        self.assertEqual(item.quantity, Decimal('0.80'))
+        self.assertFalse(shopping_list.items.filter(name='Makaron').exists())
+        self.assertFalse(shopping_list.items.filter(name='Cukier').exists())
+
+    def test_create_manual_shopping_list_with_multiple_items(self):
+        response = self.client.post(reverse('cooking:create-shopping-list'), {
+            'title': 'Weekend',
+            'item_name': ['Jajka', 'Mleko'],
+            'item_quantity': ['6', '1.5'],
+            'item_unit': [PantryProduct.UNIT_PIECE, PantryProduct.UNIT_LITER],
+            'item_category': ['Nabiał', 'Nabiał'],
+            'item_note': ['duże', ''],
+        }, follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        shopping_list = ShoppingList.objects.get(user=self.user, title='Weekend')
+        self.assertEqual(shopping_list.source, ShoppingList.MANUAL)
+        self.assertEqual(shopping_list.items.count(), 2)
+        self.assertEqual(shopping_list.items.get(name='Jajka').quantity, Decimal('6.00'))
+
+    def test_complete_shopping_list_adds_purchased_items_to_pantry(self):
+        product = PantryProduct.objects.create(
+            user=self.user,
+            name='Mleko',
+            category='Nabiał',
+            unit=PantryProduct.UNIT_LITER,
+            current_quantity=Decimal('1.00'),
+        )
+        shopping_list = ShoppingList.objects.create(user=self.user, title='Po pracy')
+        ShoppingListItem.objects.create(
+            shopping_list=shopping_list,
+            pantry_product=product,
+            name='Mleko',
+            quantity=Decimal('2.00'),
+            unit=PantryProduct.UNIT_LITER,
+            category='Nabiał',
+            is_purchased=True,
+        )
+        ShoppingListItem.objects.create(
+            shopping_list=shopping_list,
+            name='Chleb',
+            quantity=Decimal('1.00'),
+            unit=PantryProduct.UNIT_PIECE,
+            category='Produkty suche',
+            is_purchased=True,
+        )
+
+        response = self.client.post(reverse('cooking:complete-shopping-list', args=[shopping_list.id]), follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        product.refresh_from_db()
+        shopping_list.refresh_from_db()
+        bread = PantryProduct.objects.get(user=self.user, name='Chleb')
+        self.assertEqual(product.current_quantity, Decimal('3.00'))
+        self.assertEqual(bread.current_quantity, Decimal('1.00'))
+        self.assertEqual(shopping_list.status, ShoppingList.COMPLETED)
+        self.assertEqual(product.movements.get().movement_type, PantryMovement.PURCHASE)
+        self.assertEqual(bread.movements.get().note, 'Lista zakupów: Po pracy')
+
+    def test_edit_shopping_list_title(self):
+        shopping_list = ShoppingList.objects.create(user=self.user, title='Stara nazwa')
+
+        response = self.client.post(reverse('cooking:edit-shopping-list', args=[shopping_list.id]), {
+            'title': 'Nowa nazwa',
+        }, follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        shopping_list.refresh_from_db()
+        self.assertEqual(shopping_list.title, 'Nowa nazwa')
+        self.assertContains(response, 'Nowa nazwa')
+
+    def test_delete_shopping_list_removes_items(self):
+        shopping_list = ShoppingList.objects.create(user=self.user, title='Do usunięcia')
+        item = ShoppingListItem.objects.create(
+            shopping_list=shopping_list,
+            name='Mleko',
+            quantity=Decimal('1.00'),
+            unit=PantryProduct.UNIT_LITER,
+        )
+
+        response = self.client.post(reverse('cooking:delete-shopping-list', args=[shopping_list.id]), follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(ShoppingList.objects.filter(id=shopping_list.id).exists())
+        self.assertFalse(ShoppingListItem.objects.filter(id=item.id).exists())
+
+    def test_other_user_cannot_open_shopping_list(self):
+        shopping_list = ShoppingList.objects.create(user=self.other, title='Cudza lista')
+
+        response = self.client.get(reverse('cooking:shopping-list-detail', args=[shopping_list.id]))
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_other_user_cannot_delete_shopping_list(self):
+        shopping_list = ShoppingList.objects.create(user=self.other, title='Cudza lista')
+
+        response = self.client.post(reverse('cooking:delete-shopping-list', args=[shopping_list.id]))
+
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(ShoppingList.objects.filter(id=shopping_list.id).exists())
 
 
 class CookModeTests(TestCase):

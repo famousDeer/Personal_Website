@@ -1,0 +1,265 @@
+{% extends 'cooking/index.html' %}
+{% load l10n %}
+
+{% block title %}{{ shopping_list.title }}{% endblock %}
+
+{% block content_cooking %}
+<div class="shopping-detail-shell animate-fade-in">
+    <div class="shopping-detail-header">
+        <div class="min-w-0">
+            <div class="small text-uppercase fw-bold text-muted mb-1">Lista zakupów</div>
+            <h2 class="fw-bold mb-2 recipe-title text-truncate">{{ shopping_list.title }}</h2>
+            <div class="d-flex flex-wrap gap-2">
+                <span class="badge {% if shopping_list.source == 'automatic' %}bg-primary-subtle text-primary{% else %}bg-success-subtle text-success{% endif %} rounded-pill">
+                    {{ shopping_list.get_source_display }}
+                </span>
+                <span class="badge {% if shopping_list.status == 'completed' %}bg-secondary-subtle text-secondary{% else %}bg-warning-subtle text-warning{% endif %} rounded-pill">
+                    {{ shopping_list.get_status_display }}
+                </span>
+                <span class="badge bg-light text-muted rounded-pill">{{ shopping_list.created_at|date:"d.m.Y H:i" }}</span>
+            </div>
+        </div>
+        <div class="shopping-header-actions">
+            <a href="{% url 'cooking:shopping-list' %}" class="btn btn-soft-neutral" title="Wróć do list">
+                <i class="bi bi-arrow-left"></i>
+            </a>
+            <a href="{% url 'cooking:edit-shopping-list' shopping_list.id %}" class="btn btn-soft-neutral" title="Edytuj nazwę listy">
+                <i class="bi bi-pencil"></i>
+            </a>
+            <a href="{% url 'cooking:pantry' %}" class="btn btn-outline-success" title="Spiżarnia">
+                <i class="bi bi-box-seam"></i>
+            </a>
+            <form method="post" action="{% url 'cooking:delete-shopping-list' shopping_list.id %}" onsubmit="return confirm('Usunąć tę listę zakupów?');">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-danger" title="Usuń listę">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <section class="shopping-summary-panel animate-fade-in-up">
+        <div class="shopping-summary-main">
+            <div>
+                <span class="small text-uppercase fw-bold text-muted">Postęp</span>
+                <strong>{{ progress_percent }}%</strong>
+            </div>
+            <div>
+                <span class="small text-uppercase fw-bold text-muted">Kupione</span>
+                <strong class="text-success">{{ purchased_count }}</strong>
+            </div>
+            <div>
+                <span class="small text-uppercase fw-bold text-muted">Pozostało</span>
+                <strong class="text-primary">{{ remaining_count }}</strong>
+            </div>
+            <div>
+                <span class="small text-uppercase fw-bold text-muted">Pozycje</span>
+                <strong>{{ item_count }}</strong>
+            </div>
+        </div>
+        <div class="shopping-progress shopping-progress-lg">
+            <div class="shopping-progress-bar" style="width: {{ progress_percent }}%;"></div>
+        </div>
+    </section>
+
+    {% if shopping_list.status == 'active' %}
+        <section class="shopping-panel animate-fade-in-up">
+            <div class="shopping-section-heading">
+                <div>
+                    <div class="small text-uppercase fw-bold text-muted mb-1">Pozycje</div>
+                    <h3 class="h5 fw-bold mb-0">Checklista zakupów</h3>
+                </div>
+                <div class="shopping-section-actions">
+                    <button class="btn btn-sm btn-outline-success" type="button" data-bs-toggle="collapse" data-bs-target="#shopping-add-item" aria-expanded="{% if not items %}true{% else %}false{% endif %}">
+                        <i class="bi bi-plus-lg me-1"></i> Dodaj
+                    </button>
+                    <form method="post" action="{% url 'cooking:complete-shopping-list' shopping_list.id %}">
+                        {% csrf_token %}
+                        <button class="btn btn-sm btn-primary" type="submit" {% if purchased_count == 0 %}disabled{% endif %}>
+                            <i class="bi bi-bag-check me-1"></i> Do spiżarni
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="collapse {% if not items %}show{% endif %}" id="shopping-add-item">
+                <form method="post" action="{% url 'cooking:add-shopping-item' shopping_list.id %}" class="shopping-add-form shopping-add-form-compact">
+                    {% csrf_token %}
+                    <div>
+                        <label class="form-label small text-uppercase fw-bold text-muted">Produkt</label>
+                        <input type="text" name="name" class="form-control" list="shopping-product-suggestions" required>
+                    </div>
+                    <div>
+                        <label class="form-label small text-uppercase fw-bold text-muted">Ilość</label>
+                        <input type="number" name="quantity" class="form-control" value="1" step="1" min="1" data-shopping-quantity-input required>
+                    </div>
+                    <div>
+                        <label class="form-label small text-uppercase fw-bold text-muted">Jednostka</label>
+                        <select name="unit" class="form-select" data-shopping-unit-select required>
+                            {% for value, label in units %}
+                                <option value="{{ value }}" {% if value == 'szt' %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label small text-uppercase fw-bold text-muted">Kategoria</label>
+                        <select name="category" class="form-select">
+                            <option value="">Auto / Inne</option>
+                            {% for category in categories %}
+                                <option value="{{ category }}">{{ category }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label small text-uppercase fw-bold text-muted">Notatka</label>
+                        <input type="text" name="note" class="form-control">
+                    </div>
+                    <button class="btn btn-success align-self-end" type="submit" title="Dodaj pozycję">
+                        <i class="bi bi-plus-lg"></i>
+                    </button>
+                </form>
+            </div>
+        </section>
+    {% else %}
+        <section class="shopping-panel animate-fade-in-up">
+            <div class="shopping-section-heading mb-0">
+                <div>
+                    <div class="small text-uppercase fw-bold text-muted mb-1">Pozycje</div>
+                    <h3 class="h5 fw-bold mb-0">Zakończona checklista</h3>
+                </div>
+            </div>
+        </section>
+    {% endif %}
+
+    <datalist id="shopping-product-suggestions">
+        {% for product in pantry_products %}
+            <option value="{{ product.name }}"></option>
+        {% endfor %}
+    </datalist>
+
+    {% if items %}
+        <section class="shopping-detail-list animate-fade-in-up">
+            {% for item in items %}
+                <article class="shopping-item-card {% if item.is_purchased %}is-purchased{% endif %}">
+                    <div class="shopping-item-view">
+                        {% if shopping_list.status == 'active' %}
+                            <form method="post" action="{% url 'cooking:toggle-shopping-item' item.id %}" class="shopping-toggle-form">
+                                {% csrf_token %}
+                                <button type="submit" class="shopping-check-button {% if item.is_purchased %}is-checked{% endif %}" title="{% if item.is_purchased %}Oznacz jako niekupione{% else %}Oznacz jako kupione{% endif %}">
+                                    <i class="bi {% if item.is_purchased %}bi-check-lg{% else %}bi-circle{% endif %}"></i>
+                                </button>
+                            </form>
+                        {% else %}
+                            <div class="shopping-readonly-check {% if item.is_purchased %}is-checked{% endif %}">
+                                <i class="bi {% if item.is_purchased %}bi-check-lg{% else %}bi-circle{% endif %}"></i>
+                            </div>
+                        {% endif %}
+
+                        <div class="shopping-item-summary">
+                            <strong class="text-truncate">{{ item.name }}</strong>
+                            <span>
+                                {% if item.category %}{{ item.category }}{% else %}Bez kategorii{% endif %}
+                                {% if item.note %} · {{ item.note }}{% endif %}
+                            </span>
+                        </div>
+
+                        <span class="shopping-quantity-pill">
+                            {% if item.unit == 'szt' %}{{ item.quantity|floatformat:0 }}{% else %}{{ item.quantity|floatformat:2 }}{% endif %}
+                            {{ item.display_unit }}
+                        </span>
+
+                        {% if shopping_list.status == 'active' %}
+                            <div class="shopping-item-actions">
+                                <button class="btn btn-sm btn-soft-neutral" type="button" data-bs-toggle="collapse" data-bs-target="#shopping-edit-item-{{ item.id }}" aria-expanded="false" title="Edytuj pozycję">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <form method="post" action="{% url 'cooking:delete-shopping-item' item.id %}" class="shopping-delete-form">
+                                    {% csrf_token %}
+                                    <button class="btn btn-sm btn-outline-danger" type="submit" title="Usuń pozycję">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    {% if shopping_list.status == 'active' %}
+                        <div class="collapse shopping-edit-collapse" id="shopping-edit-item-{{ item.id }}">
+                            <form method="post" action="{% url 'cooking:update-shopping-item' item.id %}" class="shopping-item-edit">
+                                {% csrf_token %}
+                                <div>
+                                    <label class="form-label small text-uppercase fw-bold text-muted">Produkt</label>
+                                    <input type="text" name="name" class="form-control" list="shopping-product-suggestions" value="{{ item.name }}" required>
+                                </div>
+                                <div>
+                                    <label class="form-label small text-uppercase fw-bold text-muted">Ilość</label>
+                                    <input type="number" name="quantity" class="form-control" value="{{ item.quantity|unlocalize }}" step="{% if item.unit == 'szt' %}1{% else %}0.01{% endif %}" min="{% if item.unit == 'szt' %}1{% else %}0.01{% endif %}" data-shopping-quantity-input required>
+                                </div>
+                                <div>
+                                    <label class="form-label small text-uppercase fw-bold text-muted">Jednostka</label>
+                                    <select name="unit" class="form-select" data-shopping-unit-select required>
+                                        {% for value, label in units %}
+                                            <option value="{{ value }}" {% if item.unit == value %}selected{% endif %}>{{ label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="form-label small text-uppercase fw-bold text-muted">Kategoria</label>
+                                    <select name="category" class="form-select">
+                                        <option value="">Auto / Inne</option>
+                                        {% for category in categories %}
+                                            <option value="{{ category }}" {% if item.category == category %}selected{% endif %}>{{ category }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="form-label small text-uppercase fw-bold text-muted">Notatka</label>
+                                    <input type="text" name="note" class="form-control" value="{{ item.note }}">
+                                </div>
+                                <button class="btn btn-success align-self-end" type="submit" title="Zapisz pozycję">
+                                    <i class="bi bi-check2"></i>
+                                </button>
+                            </form>
+                        </div>
+                    {% endif %}
+                </article>
+            {% endfor %}
+        </section>
+    {% else %}
+        <div class="card border-0 shadow-sm action-card animate-fade-in-up">
+            <div class="card-body text-center py-5">
+                <div class="icon-box bg-light text-muted mx-auto mb-3 rounded-circle" style="width: 90px; height: 90px;">
+                    <i class="bi bi-cart fs-1"></i>
+                </div>
+                <h3 class="fw-bold">Lista jest pusta</h3>
+                <p class="text-muted">Dodaj pierwszą pozycję.</p>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        function syncQuantityStep(scope) {
+            const unitSelect = scope.querySelector('[data-shopping-unit-select]');
+            const quantityInput = scope.querySelector('[data-shopping-quantity-input]');
+            if (!unitSelect || !quantityInput) {
+                return;
+            }
+            const integerOnly = unitSelect.value === 'szt';
+            quantityInput.step = integerOnly ? '1' : '0.01';
+            quantityInput.min = integerOnly ? '1' : '0.01';
+        }
+
+        document.querySelectorAll('.shopping-add-form, .shopping-item-edit').forEach((form) => {
+            const unitSelect = form.querySelector('[data-shopping-unit-select]');
+            if (unitSelect) {
+                unitSelect.addEventListener('change', () => syncQuantityStep(form));
+            }
+            syncQuantityStep(form);
+        });
+    });
+</script>
+{% endblock %}

@@ -1,4 +1,4 @@
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_CEILING
 
 from django.contrib import messages
 from django.db import transaction
@@ -10,7 +10,15 @@ from django.contrib.auth.mixins import LoginRequiredMixin # Ważne dla bezpiecze
 from django.utils import timezone
 from PIL import Image, UnidentifiedImageError
 
-from .models import PantryMovement, PantryProduct, Recipe, RecipeStep, RecipeStepIngredient
+from .models import (
+    PantryMovement,
+    PantryProduct,
+    Recipe,
+    RecipeStep,
+    RecipeStepIngredient,
+    ShoppingList,
+    ShoppingListItem,
+)
 
 # Stałe (Warto przenieść je do osobnego pliku constants.py w przyszłości)
 KITCHEN_REGIONS = [
@@ -62,11 +70,113 @@ def convert_pantry_quantity(quantity, source_unit, target_unit):
     return (quantity * factor).quantize(Decimal('0.01'))
 
 
+def normalize_shopping_quantity(quantity, unit):
+    quantity = quantity.quantize(Decimal('0.01'))
+    if unit == PantryProduct.UNIT_PIECE:
+        quantity = quantity.to_integral_value(rounding=ROUND_CEILING)
+    return quantity
+
+
+def find_user_pantry_product(user, name):
+    return PantryProduct.objects.filter(user=user, name__iexact=name).first()
+
+
+def build_shopping_suggestions(user):
+    today = timezone.localdate()
+    suggestions = []
+
+    for product in PantryProduct.objects.filter(user=user).prefetch_related('movements'):
+        restock_date = product.suggested_restock_date()
+        restock_due = bool(restock_date and restock_date <= today)
+        needs_stock = product.stock_status in ['empty', 'low']
+        if not needs_stock and not restock_due:
+            continue
+
+        suggested_quantity = product.minimum_quantity - product.current_quantity
+        if suggested_quantity <= 0:
+            suggested_quantity = product.minimum_quantity
+        if suggested_quantity <= 0:
+            average = product.average_daily_consumption()
+            suggested_quantity = average * Decimal(max(product.restock_lead_days, 1))
+        if suggested_quantity <= 0:
+            suggested_quantity = Decimal('1.00')
+
+        reason = 'Niski stan'
+        if product.current_quantity <= 0:
+            reason = 'Brak w spiżarni'
+        elif restock_due:
+            reason = f'Kup do {restock_date.strftime("%d.%m")}'
+
+        suggestions.append({
+            'product': product,
+            'quantity': normalize_shopping_quantity(suggested_quantity, product.unit),
+            'reason': reason,
+            'restock_date': restock_date,
+        })
+
+    return suggestions
+
+
+def parse_shopping_items_from_request(request):
+    names = request.POST.getlist('item_name')
+    quantities = request.POST.getlist('item_quantity')
+    units = request.POST.getlist('item_unit')
+    categories = request.POST.getlist('item_category')
+    notes = request.POST.getlist('item_note')
+    rows = []
+    errors = []
+
+    for index, raw_name in enumerate(names):
+        name = raw_name.strip()
+        raw_quantity = quantities[index] if index < len(quantities) else ''
+        raw_category = categories[index].strip() if index < len(categories) else ''
+        note = notes[index].strip() if index < len(notes) else ''
+
+        if not name and not raw_quantity and not raw_category and not note:
+            continue
+        if not name:
+            errors.append(f'Wiersz {index + 1}: podaj nazwę produktu.')
+            continue
+
+        unit = units[index] if index < len(units) else PantryProduct.UNIT_PIECE
+        try:
+            quantity = parse_pantry_decimal(raw_quantity, default='1')
+            if quantity <= 0:
+                raise ValueError('Ilość musi być większa od zera.')
+            validate_pantry_quantity_for_unit(quantity, unit)
+        except ValueError as exc:
+            errors.append(f'{name}: {exc}')
+            continue
+
+        product = find_user_pantry_product(request.user, name)
+        category = raw_category or (product.category if product else '')
+        rows.append({
+            'name': name,
+            'quantity': quantity,
+            'unit': unit,
+            'category': category,
+            'note': note,
+            'pantry_product': product,
+        })
+
+    return rows, errors
+
+
 def get_pantry_form_context(**extra_context):
     context = {
         'categories': PANTRY_CATEGORIES,
         'units': PantryProduct.UNIT_CHOICES,
         'today': timezone.localdate(),
+    }
+    context.update(extra_context)
+    return context
+
+
+def get_shopping_form_context(request, **extra_context):
+    context = {
+        'categories': PANTRY_CATEGORIES,
+        'units': PantryProduct.UNIT_CHOICES,
+        'pantry_products': PantryProduct.objects.filter(user=request.user),
     }
     context.update(extra_context)
     return context
@@ -505,6 +615,341 @@ class PantryMovementView(LoginRequiredMixin, View):
             messages.error(request, f'Nie udało się zapisać zmiany: {exc}')
 
         return redirect('cooking:pantry')
+
+
+class ShoppingListView(LoginRequiredMixin, View):
+    def get(self, request):
+        shopping_lists = ShoppingList.objects.filter(user=request.user).annotate(
+            item_count=Count('items'),
+            purchased_count=Count('items', filter=Q(items__is_purchased=True)),
+        ).prefetch_related('items')
+        for shopping_list in shopping_lists:
+            shopping_list.progress_percent = int(
+                (shopping_list.purchased_count / shopping_list.item_count) * 100
+            ) if shopping_list.item_count else 0
+        active_lists = [shopping_list for shopping_list in shopping_lists if shopping_list.status == ShoppingList.ACTIVE]
+        completed_lists = [
+            shopping_list
+            for shopping_list in shopping_lists
+            if shopping_list.status == ShoppingList.COMPLETED
+        ][:6]
+        suggestions = build_shopping_suggestions(request.user)
+
+        context = {
+            'active_lists': active_lists,
+            'completed_lists': completed_lists,
+            'suggestions': suggestions,
+            'active_count': len(active_lists),
+            'suggestions_count': len(suggestions),
+            'total_items_count': sum(shopping_list.item_count for shopping_list in active_lists),
+            'purchased_items_count': sum(shopping_list.purchased_count for shopping_list in active_lists),
+        }
+        return render(request, 'cooking/shopping.html', context)
+
+
+class CreateShoppingListView(LoginRequiredMixin, View):
+    def get(self, request):
+        return render(request, 'cooking/shopping_form.html', get_shopping_form_context(request))
+
+    @transaction.atomic
+    def post(self, request):
+        rows, errors = parse_shopping_items_from_request(request)
+        title = request.POST.get('title', '').strip() or f'Lista zakupów {timezone.localdate():%d.%m.%Y}'
+
+        if not rows:
+            messages.error(request, 'Dodaj przynajmniej jedną pozycję do listy.')
+            for error in errors[:4]:
+                messages.error(request, error)
+            return render(
+                request,
+                'cooking/shopping_form.html',
+                get_shopping_form_context(request, form_values=request.POST, item_rows=list(zip(
+                    request.POST.getlist('item_name'),
+                    request.POST.getlist('item_quantity'),
+                    request.POST.getlist('item_unit'),
+                    request.POST.getlist('item_category'),
+                    request.POST.getlist('item_note'),
+                ))),
+            )
+
+        shopping_list = ShoppingList.objects.create(
+            user=request.user,
+            title=title,
+            source=ShoppingList.MANUAL,
+        )
+        for row in rows:
+            ShoppingListItem.objects.create(shopping_list=shopping_list, **row)
+
+        if errors:
+            messages.warning(request, f'Pominięto część pozycji: {len(errors)}.')
+            for error in errors[:4]:
+                messages.error(request, error)
+        messages.success(request, f'Utworzono listę zakupów: {shopping_list.title}.')
+        return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+
+
+class GenerateShoppingListView(LoginRequiredMixin, View):
+    @transaction.atomic
+    def post(self, request):
+        suggestions = build_shopping_suggestions(request.user)
+        if not suggestions:
+            messages.info(request, 'Nie znaleziono produktów wymagających uzupełnienia.')
+            return redirect('cooking:shopping-list')
+
+        shopping_list = ShoppingList.objects.create(
+            user=request.user,
+            title=f'Automatyczna lista {timezone.localdate():%d.%m.%Y}',
+            source=ShoppingList.AUTOMATIC,
+        )
+        for suggestion in suggestions:
+            product = suggestion['product']
+            ShoppingListItem.objects.create(
+                shopping_list=shopping_list,
+                pantry_product=product,
+                name=product.name,
+                quantity=suggestion['quantity'],
+                unit=product.unit,
+                category=product.category,
+                note=suggestion['reason'],
+            )
+
+        messages.success(request, f'Utworzono automatyczną listę z {len(suggestions)} pozycjami.')
+        return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+
+
+class ShoppingListDetailView(LoginRequiredMixin, View):
+    def get(self, request, list_id):
+        shopping_list = get_object_or_404(
+            ShoppingList.objects.prefetch_related('items__pantry_product'),
+            id=list_id,
+            user=request.user,
+        )
+        items = list(shopping_list.items.all())
+        item_count = len(items)
+        purchased_count = sum(1 for item in items if item.is_purchased)
+        progress_percent = int((purchased_count / item_count) * 100) if item_count else 0
+
+        context = get_shopping_form_context(
+            request,
+            shopping_list=shopping_list,
+            items=items,
+            item_count=item_count,
+            purchased_count=purchased_count,
+            remaining_count=item_count - purchased_count,
+            progress_percent=progress_percent,
+        )
+        return render(request, 'cooking/shopping_detail.html', context)
+
+
+class EditShoppingListView(LoginRequiredMixin, View):
+    def get(self, request, list_id):
+        shopping_list = get_object_or_404(ShoppingList, id=list_id, user=request.user)
+        return render(request, 'cooking/shopping_edit.html', {
+            'shopping_list': shopping_list,
+        })
+
+    def post(self, request, list_id):
+        shopping_list = get_object_or_404(ShoppingList, id=list_id, user=request.user)
+        title = request.POST.get('title', '').strip()
+        if not title:
+            messages.error(request, 'Nazwa listy jest wymagana.')
+            return render(request, 'cooking/shopping_edit.html', {
+                'shopping_list': shopping_list,
+                'form_values': request.POST,
+            })
+
+        shopping_list.title = title
+        shopping_list.save(update_fields=['title', 'updated_at'])
+        messages.success(request, 'Zapisano nazwę listy.')
+        return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+
+
+class DeleteShoppingListView(LoginRequiredMixin, View):
+    def post(self, request, list_id):
+        shopping_list = get_object_or_404(ShoppingList, id=list_id, user=request.user)
+        title = shopping_list.title
+        shopping_list.delete()
+        messages.success(request, f'Usunięto listę: {title}.')
+        return redirect('cooking:shopping-list')
+
+
+class AddShoppingListItemView(LoginRequiredMixin, View):
+    def post(self, request, list_id):
+        shopping_list = get_object_or_404(ShoppingList, id=list_id, user=request.user)
+        if shopping_list.status == ShoppingList.COMPLETED:
+            messages.info(request, 'Ta lista została już zakończona.')
+            return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+
+        try:
+            name = request.POST.get('name', '').strip()
+            if not name:
+                raise ValueError('Nazwa produktu jest wymagana.')
+            unit = request.POST.get('unit') or PantryProduct.UNIT_PIECE
+            quantity = parse_pantry_decimal(request.POST.get('quantity'), default='1')
+            if quantity <= 0:
+                raise ValueError('Ilość musi być większa od zera.')
+            validate_pantry_quantity_for_unit(quantity, unit)
+            product = find_user_pantry_product(request.user, name)
+            ShoppingListItem.objects.create(
+                shopping_list=shopping_list,
+                pantry_product=product,
+                name=name,
+                quantity=quantity,
+                unit=unit,
+                category=request.POST.get('category', '').strip() or (product.category if product else ''),
+                note=request.POST.get('note', '').strip(),
+            )
+            shopping_list.save(update_fields=['updated_at'])
+            messages.success(request, f'Dodano pozycję: {name}.')
+        except Exception as exc:
+            messages.error(request, f'Nie udało się dodać pozycji: {exc}')
+
+        return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+
+
+class UpdateShoppingListItemView(LoginRequiredMixin, View):
+    def post(self, request, item_id):
+        item = get_object_or_404(ShoppingListItem, id=item_id, shopping_list__user=request.user)
+        shopping_list = item.shopping_list
+        if shopping_list.status == ShoppingList.COMPLETED:
+            messages.info(request, 'Ta lista została już zakończona.')
+            return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+
+        try:
+            name = request.POST.get('name', '').strip()
+            if not name:
+                raise ValueError('Nazwa produktu jest wymagana.')
+            unit = request.POST.get('unit') or PantryProduct.UNIT_PIECE
+            quantity = parse_pantry_decimal(request.POST.get('quantity'), default='1')
+            if quantity <= 0:
+                raise ValueError('Ilość musi być większa od zera.')
+            validate_pantry_quantity_for_unit(quantity, unit)
+            product = find_user_pantry_product(request.user, name)
+
+            item.name = name
+            item.quantity = quantity
+            item.unit = unit
+            item.category = request.POST.get('category', '').strip() or (product.category if product else '')
+            item.note = request.POST.get('note', '').strip()
+            item.pantry_product = product
+            item.save(update_fields=[
+                'name',
+                'quantity',
+                'unit',
+                'category',
+                'note',
+                'pantry_product',
+                'updated_at',
+            ])
+            shopping_list.save(update_fields=['updated_at'])
+            messages.success(request, f'Zapisano pozycję: {item.name}.')
+        except Exception as exc:
+            messages.error(request, f'Nie udało się zapisać pozycji: {exc}')
+
+        return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+
+
+class ToggleShoppingListItemView(LoginRequiredMixin, View):
+    def post(self, request, item_id):
+        item = get_object_or_404(ShoppingListItem, id=item_id, shopping_list__user=request.user)
+        if item.shopping_list.status == ShoppingList.COMPLETED:
+            messages.info(request, 'Ta lista została już zakończona.')
+            return redirect('cooking:shopping-list-detail', list_id=item.shopping_list.id)
+
+        item.is_purchased = not item.is_purchased
+        item.save(update_fields=['is_purchased', 'updated_at'])
+        item.shopping_list.save(update_fields=['updated_at'])
+        return redirect('cooking:shopping-list-detail', list_id=item.shopping_list.id)
+
+
+class DeleteShoppingListItemView(LoginRequiredMixin, View):
+    def post(self, request, item_id):
+        item = get_object_or_404(ShoppingListItem, id=item_id, shopping_list__user=request.user)
+        shopping_list = item.shopping_list
+        if shopping_list.status == ShoppingList.COMPLETED:
+            messages.info(request, 'Ta lista została już zakończona.')
+            return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+
+        item_name = item.name
+        item.delete()
+        shopping_list.save(update_fields=['updated_at'])
+        messages.success(request, f'Usunięto pozycję: {item_name}.')
+        return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+
+
+class CompleteShoppingListView(LoginRequiredMixin, View):
+    @transaction.atomic
+    def post(self, request, list_id):
+        shopping_list = get_object_or_404(
+            ShoppingList.objects.prefetch_related('items__pantry_product'),
+            id=list_id,
+            user=request.user,
+        )
+        if shopping_list.status == ShoppingList.COMPLETED:
+            messages.info(request, 'Ta lista została już zakończona.')
+            return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+
+        purchased_items = [item for item in shopping_list.items.all() if item.is_purchased]
+        if not purchased_items:
+            messages.error(request, 'Zaznacz przynajmniej jedną kupioną pozycję.')
+            return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+
+        prepared_updates = []
+        errors = []
+        for item in purchased_items:
+            product = item.pantry_product
+            if product and product.user_id != request.user.id:
+                product = None
+            if product is None:
+                product = find_user_pantry_product(request.user, item.name)
+
+            try:
+                if product is None:
+                    validate_pantry_quantity_for_unit(item.quantity, item.unit)
+                    prepared_updates.append((item, None, item.quantity))
+                else:
+                    movement_quantity = convert_pantry_quantity(item.quantity, item.unit, product.unit)
+                    validate_pantry_quantity_for_unit(movement_quantity, product.unit)
+                    prepared_updates.append((item, product, movement_quantity))
+            except ValueError as exc:
+                errors.append(f'{item.name}: {exc}')
+
+        if errors:
+            for error in errors[:5]:
+                messages.error(request, error)
+            if len(errors) > 5:
+                messages.error(request, f'Pozostałe błędy: {len(errors) - 5}.')
+            return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+
+        for item, product, movement_quantity in prepared_updates:
+            if product is None:
+                product = PantryProduct.objects.create(
+                    user=request.user,
+                    name=item.name,
+                    category=item.category or 'Inne',
+                    unit=item.unit,
+                    current_quantity=Decimal('0.00'),
+                    minimum_quantity=Decimal('0.00'),
+                )
+            if item.category and not product.category:
+                product.category = item.category
+            product.current_quantity += movement_quantity
+            product.save(update_fields=['current_quantity', 'category', 'updated_at'])
+            PantryMovement.objects.create(
+                product=product,
+                movement_type=PantryMovement.PURCHASE,
+                quantity=movement_quantity,
+                occurred_on=timezone.localdate(),
+                note=f'Lista zakupów: {shopping_list.title}',
+            )
+            if item.pantry_product_id != product.id:
+                item.pantry_product = product
+                item.save(update_fields=['pantry_product', 'updated_at'])
+
+        shopping_list.status = ShoppingList.COMPLETED
+        shopping_list.save(update_fields=['status', 'updated_at'])
+        messages.success(request, f'Dodano do spiżarni {len(prepared_updates)} kupionych pozycji.')
+        return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
 
 
 class CookView(LoginRequiredMixin, View):
