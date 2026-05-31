@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 import sys
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 from django.core.exceptions import ImproperlyConfigured
 from django.contrib.messages import constants as messages
 from dotenv import load_dotenv
@@ -38,20 +39,22 @@ def env_bool(name, default=False):
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env_bool('DEBUG', False)
 RUNNING_TESTS = 'test' in sys.argv
+CI = env_bool('CI', False) or env_bool('GITHUB_ACTIONS', False)
+NON_PRODUCTION_CONTEXT = DEBUG or RUNNING_TESTS or CI
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get('SECRET_KEY')
 if not SECRET_KEY:
-    if DEBUG or RUNNING_TESTS:
+    if NON_PRODUCTION_CONTEXT:
         SECRET_KEY = 'django-insecure-local-development-only-change-me'
     else:
         raise ImproperlyConfigured('Set SECRET_KEY before running with DEBUG disabled.')
 
 ALLOWED_HOSTS = env_list(
     'ALLOWED_HOSTS',
-    'localhost,127.0.0.1,[::1]' if DEBUG or RUNNING_TESTS else '',
+    'localhost,127.0.0.1,[::1]' if NON_PRODUCTION_CONTEXT else '',
 )
-if not DEBUG and not RUNNING_TESTS and (not ALLOWED_HOSTS or '*' in ALLOWED_HOSTS):
+if not NON_PRODUCTION_CONTEXT and (not ALLOWED_HOSTS or '*' in ALLOWED_HOSTS):
     raise ImproperlyConfigured('Set explicit ALLOWED_HOSTS before running with DEBUG disabled.')
 
 CSRF_TRUSTED_ORIGINS = env_list('CSRF_TRUSTED_ORIGINS')
@@ -136,16 +139,50 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DATABASE_NAME') or os.environ.get('DB_NAME', 'finance_db'),
-        'USER': os.environ.get('DATABASE_USER') or os.environ.get('DB_USER', 'finance_user'),
-        'PASSWORD': os.environ.get('DATABASE_PASSWORD') or os.environ.get('DB_PASSWORD', 'finance_pass'),
-        'HOST': os.environ.get('DATABASE_HOST') or os.environ.get('DB_HOST', 'localhost'),
-        'PORT': os.environ.get('DATABASE_PORT') or os.environ.get('DB_PORT', '5432'),
+database_url = os.environ.get('DATABASE_URL')
+if database_url:
+    parsed_database_url = urlparse(database_url)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': parsed_database_url.path.lstrip('/'),
+            'USER': unquote(parsed_database_url.username or ''),
+            'PASSWORD': unquote(parsed_database_url.password or ''),
+            'HOST': parsed_database_url.hostname or 'localhost',
+            'PORT': str(parsed_database_url.port or ''),
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': (
+                os.environ.get('DATABASE_NAME')
+                or os.environ.get('DB_NAME')
+                or os.environ.get('POSTGRES_DB', 'finance_db')
+            ),
+            'USER': (
+                os.environ.get('DATABASE_USER')
+                or os.environ.get('DB_USER')
+                or os.environ.get('POSTGRES_USER', 'finance_user')
+            ),
+            'PASSWORD': (
+                os.environ.get('DATABASE_PASSWORD')
+                or os.environ.get('DB_PASSWORD')
+                or os.environ.get('POSTGRES_PASSWORD', 'finance_pass')
+            ),
+            'HOST': (
+                os.environ.get('DATABASE_HOST')
+                or os.environ.get('DB_HOST')
+                or os.environ.get('POSTGRES_HOST', 'localhost')
+            ),
+            'PORT': (
+                os.environ.get('DATABASE_PORT')
+                or os.environ.get('DB_PORT')
+                or os.environ.get('POSTGRES_PORT', '5432')
+            ),
+        }
+    }
 
 
 # Password validation

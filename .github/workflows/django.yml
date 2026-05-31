@@ -26,12 +26,17 @@ jobs:
           --health-retries 5
     env:
       DJANGO_SETTINGS_MODULE: config.settings   # <-- dopasuj ścieżkę
+      DATABASE_NAME: finance_test_db
+      DATABASE_USER: finance_user
+      DATABASE_PASSWORD: finance_pass
+      DATABASE_HOST: localhost
+      DATABASE_PORT: 5432
       POSTGRES_DB: finance_test_db
       POSTGRES_USER: finance_user
       POSTGRES_PASSWORD: finance_pass
-      POSTGRES_HOST: postgres
+      POSTGRES_HOST: localhost
       POSTGRES_PORT: 5432
-      DATABASE_URL: postgres://finance_user:finance_pass@postgres:5432/finance_test_db
+      DATABASE_URL: postgres://finance_user:finance_pass@localhost:5432/finance_test_db
       SECRET_KEY: ci-secret-key
       DEBUG: "False"
 
