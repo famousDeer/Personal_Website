@@ -314,3 +314,28 @@ class TravelDestinationsTests(TestCase):
         self.assertEqual(stats[2025]['year_days'], 365)
         self.assertEqual(stats[2025]['percent'], Decimal('3.3'))
         self.assertEqual(response.context['travel_stats']['business_days'], 12)
+        self.assertIn('<strong>2025</strong>', response.content.decode())
+
+    def test_delegation_year_stats_current_year_uses_days_elapsed_until_today(self):
+        self.travel1.travel_type = TravelDestinations.BUSINESS
+        self.travel1.start_date = date(2025, 1, 5)
+        self.travel1.end_date = date(2025, 1, 25)
+        self.travel1.save(update_fields=['travel_type', 'start_date', 'end_date'])
+        TravelDestinations.objects.create(
+            user=self.user,
+            country='PL',
+            city='Warszawa',
+            start_date=date(2025, 2, 1),
+            end_date=date(2025, 2, 3),
+            budget=300.00,
+            travel_type=TravelDestinations.BUSINESS,
+        )
+
+        url = reverse('finance:travels')
+        with patch('finance.views.timezone.localdate', return_value=date(2025, 1, 20)):
+            response = self.client.get(url)
+        stats = {item['year']: item for item in response.context['delegation_year_stats']}
+
+        self.assertEqual(stats[2025]['days'], 16)
+        self.assertEqual(stats[2025]['year_days'], 20)
+        self.assertEqual(stats[2025]['percent'], Decimal('80.0'))

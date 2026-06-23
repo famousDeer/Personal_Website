@@ -223,28 +223,36 @@ def _days_in_year(year):
     return 366 if calendar.isleap(year) else 365
 
 
-def _delegation_year_stats(destinations):
+def _delegation_period_days(year, today):
+    if year == today.year:
+        return (today - date(year, 1, 1)).days + 1
+    return _days_in_year(year)
+
+
+def _delegation_year_stats(destinations, today):
     days_by_year = {}
     for destination in destinations:
         if not destination.is_business_trip:
             continue
+        if destination.start_date > today:
+            continue
         current = destination.start_date
-        while current <= destination.end_date:
+        end_date = min(destination.end_date, today)
+        while current <= end_date:
             days_by_year.setdefault(current.year, set()).add(current)
             current += timedelta(days=1)
 
     stats = []
     for year, days in days_by_year.items():
-        year_days = _days_in_year(year)
+        year_days = _delegation_period_days(year, today)
         delegation_days = len(days)
+        percent = (Decimal(delegation_days) / Decimal(year_days) * Decimal('100')).quantize(Decimal('0.1'))
         stats.append({
             'year': year,
             'days': delegation_days,
             'year_days': year_days,
-            'percent': (Decimal(delegation_days) / Decimal(year_days) * Decimal('100')).quantize(Decimal('0.1')),
-            'percent_css': str(
-                (Decimal(delegation_days) / Decimal(year_days) * Decimal('100')).quantize(Decimal('0.1'))
-            ),
+            'percent': percent,
+            'percent_css': str(percent),
         })
     return sorted(stats, key=lambda item: item['year'], reverse=True)
 
@@ -1702,7 +1710,7 @@ class TravelView(View):
         delegation_year_stats = _delegation_year_stats([
             _attach_travel_display_meta(destination, today)
             for destination in base_destinations.order_by('-start_date')
-        ])
+        ], today)
 
         paginator = Paginator(location_groups, 10)
         page_number = request.GET.get('page')

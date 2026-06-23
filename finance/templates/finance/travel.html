@@ -7,7 +7,7 @@
 {% endblock %}
 
 {% block content_finance %}
-{% load humanize %}
+{% load humanize l10n %}
 
 <div class="travel-page">
     <div class="travel-header animate-fade-in">
@@ -112,7 +112,7 @@
         <div class="travel-panel-header">
             <div>
                 <h3 class="h5 fw-bold mb-1">Delegacje rocznie</h3>
-                <p class="text-muted small mb-0">Procent = unikalne dni w delegacji / liczba dni w roku.</p>
+                <p class="text-muted small mb-0">Procent = unikalne dni w delegacji / dni roku minione do dzisiaj.</p>
             </div>
         </div>
         {% if delegation_year_stats %}
@@ -120,7 +120,7 @@
                 {% for stat in delegation_year_stats %}
                     <div class="travel-year-card">
                         <div class="travel-year-topline">
-                            <strong>{{ stat.year }}</strong>
+                            <strong>{{ stat.year|unlocalize }}</strong>
                             <span>{{ stat.percent }}%</span>
                         </div>
                         <div class="travel-year-bar">
