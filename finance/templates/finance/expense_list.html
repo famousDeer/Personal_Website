@@ -4,37 +4,34 @@
 
 {% block content_finance %}
 {% load date_extras humanize %}
-<div class="row align-items-center mb-4 animate-fade-in">
+<div class="row align-items-center mb-4 animate-fade-in finance-list-header">
     <div class="col-md-6">
         <h2 class="fw-bold mb-0"><i class="bi bi-cash-stack text-danger me-2"></i>Wydatki i Inwestycje</h2>
         <p class="text-muted small mb-0">Koszty i inwestycje są pokazane osobno, ale nadal razem wpływają na stan konta.</p>
     </div>
     
-    <div class="col-md-6 d-flex justify-content-md-end align-items-center gap-3 mt-3 mt-md-0">
+    <div class="col-md-6 d-flex justify-content-md-end align-items-center gap-2 mt-3 mt-md-0 finance-list-toolbar">
         {% if expenses or investments %}
-        <div class="d-flex align-items-center px-3 py-2 rounded-pill bg-danger-subtle text-danger border border-danger-subtle">
-            <i class="bi bi-wallet2 me-2 fs-5"></i>
-            <div>
-                <small class="d-block lh-1 opacity-75" style="font-size: 0.7rem;">WYDATKI</small>
-                <span class="fw-bold fs-5" style="font-variant-numeric: tabular-nums;">
-                    {{ total_filtered|floatformat:2|intcomma }} zł
-                </span>
-            </div>
+        <div class="finance-list-total bg-danger-subtle text-danger border border-danger-subtle">
+            <i class="bi bi-wallet2" aria-hidden="true"></i>
+            <span class="finance-list-total-label">Wydatki</span>
+            <span class="finance-list-total-value">{{ total_filtered|floatformat:2|intcomma }} zł</span>
         </div>
-        <div class="d-flex align-items-center px-3 py-2 rounded-pill bg-info-subtle text-info border border-info-subtle">
-            <i class="bi bi-piggy-bank me-2 fs-5"></i>
-            <div>
-                <small class="d-block lh-1 opacity-75" style="font-size: 0.7rem;">INWESTYCJE</small>
-                <span class="fw-bold fs-5" style="font-variant-numeric: tabular-nums;">
-                    {{ investment_total_filtered|floatformat:2|intcomma }} zł
-                </span>
-            </div>
+        <div class="finance-list-total bg-info-subtle text-info border border-info-subtle">
+            <i class="bi bi-piggy-bank" aria-hidden="true"></i>
+            <span class="finance-list-total-label">Inwestycje</span>
+            <span class="finance-list-total-value">{{ investment_total_filtered|floatformat:2|intcomma }} zł</span>
         </div>
         {% endif %}
-        
-        <a href="{% url 'finance:add_expense' %}" class="btn btn-primary rounded-pill shadow-sm px-4 fw-bold">
-            <i class="bi bi-plus-lg me-1"></i> Dodaj
-        </a>
+
+        <div class="finance-list-actions">
+            <a href="{% url 'finance:add_expense' %}" class="btn btn-primary finance-list-action shadow-sm">
+                <i class="bi bi-plus-lg" aria-hidden="true"></i><span>Dodaj</span>
+            </a>
+            <a href="{% url 'finance:import_bank_transactions' %}" class="btn btn-outline-primary finance-list-action">
+                <i class="bi bi-upload" aria-hidden="true"></i><span>Import</span>
+            </a>
+        </div>
     </div>
 </div>
 

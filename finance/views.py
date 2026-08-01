@@ -33,7 +33,9 @@ from .account_utils import (
     sync_shared_account_transfer,
 )
 from .brokerage import build_portfolio_summary, get_quantity
+from .bank_import import BankImportError, import_candidates_from_post, parse_bank_csv
 from .forms import (
+    BankTransactionImportForm,
     BrokerageAccountForm,
     BrokerageDividendForm,
     BrokerageInstrumentForm,
@@ -1347,6 +1349,88 @@ class AddExpenseView(View):
                 form_values=request.POST,
             )
             return render(request, 'finance/add_expense.html', context)
+
+
+@method_decorator(login_required, name='dispatch')
+class ImportBankTransactionsView(View):
+    template_name = 'finance/import_bank_transactions.html'
+
+    def _context(self, request, active_account, **extra_context):
+        expense_categories = [
+            category
+            for category in get_available_expense_categories(active_account)
+            if category != TRANSFER_TO_SHARED_CATEGORY
+        ]
+        income_sources = sorted(
+            set(INCOME_SOURCES).union(
+                Income.objects
+                .filter(account=active_account)
+                .exclude(source='')
+                .values_list('source', flat=True)
+            )
+        )
+        preview = extra_context.get('preview')
+        if preview:
+            expense_categories = sorted(set(expense_categories).union(
+                candidate.category
+                for candidate in preview.candidates
+                if candidate.is_expense and candidate.category
+            ))
+            income_sources = sorted(set(income_sources).union(
+                candidate.source
+                for candidate in preview.candidates
+                if candidate.is_income and candidate.source
+            ))
+        context = {
+            'form': BankTransactionImportForm(),
+            'expense_categories': expense_categories,
+            'income_sources': income_sources,
+        }
+        context.update(extra_context)
+        return context
+
+    def get(self, request):
+        active_account = get_active_finance_account(request)
+        return render(request, self.template_name, self._context(request, active_account))
+
+    def post(self, request):
+        active_account = get_active_finance_account(request)
+        if request.POST.get('confirm_import') == '1':
+            try:
+                result = import_candidates_from_post(request.user, active_account, request.POST)
+            except BankImportError as exc:
+                messages.error(request, str(exc))
+                return redirect('finance:import_bank_transactions')
+
+            messages.success(
+                request,
+                f'Import zakończony: dodano {result.created_expenses} wydatków i '
+                f'{result.created_incomes} przychodów, pominięto duplikatów {result.duplicates}.',
+            )
+            for warning in result.warnings[:5]:
+                messages.warning(request, warning)
+            if len(result.warnings) > 5:
+                messages.warning(request, f'Pozostałe ostrzeżenia: {len(result.warnings) - 5}.')
+            return redirect('finance:dashboard')
+
+        form = BankTransactionImportForm(request.POST, request.FILES)
+        if form.is_valid():
+            try:
+                preview = parse_bank_csv(form.cleaned_data['file'], active_account)
+            except BankImportError as exc:
+                form.add_error('file', str(exc))
+            else:
+                for warning in preview.warnings[:5]:
+                    messages.warning(request, warning)
+                if len(preview.warnings) > 5:
+                    messages.warning(request, f'Pozostałe ostrzeżenia: {len(preview.warnings) - 5}.')
+                return render(
+                    request,
+                    self.template_name,
+                    self._context(request, active_account, preview=preview),
+                )
+
+        return render(request, self.template_name, self._context(request, active_account, form=form))
 
 
 @method_decorator(login_required, name='dispatch')

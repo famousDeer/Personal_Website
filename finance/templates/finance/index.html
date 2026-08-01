@@ -111,14 +111,19 @@
 </div>
 
 <div class="row g-4 mt-2">
-    <div class="col-md-6">
+    <div class="col-md-4">
       <a class="btn btn-danger w-100 py-3 rounded-3 shadow-sm fw-bold" href="{% url 'finance:add_expense' %}">
         <i class="bi bi-dash-circle me-2"></i> Dodaj wydatek
       </a>
     </div>
-    <div class="col-md-6">
+    <div class="col-md-4">
       <a class="btn btn-success w-100 py-3 rounded-3 shadow-sm fw-bold" href="{% url 'finance:add_income' %}">
         <i class="bi bi-plus-circle me-2"></i> Dodaj przychód
+      </a>
+    </div>
+    <div class="col-md-4">
+      <a class="btn btn-primary w-100 py-3 rounded-3 shadow-sm fw-bold" href="{% url 'finance:import_bank_transactions' %}">
+        <i class="bi bi-upload me-2"></i> Import wyciągu
       </a>
     </div>
 </div>

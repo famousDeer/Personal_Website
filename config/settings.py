@@ -83,6 +83,10 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool('SECURE_HSTS_INCLUDE_SUBDOMAINS', Fals
 SECURE_HSTS_PRELOAD = env_bool('SECURE_HSTS_PRELOAD', False)
 ALLOW_PUBLIC_SIGNUP = env_bool('ALLOW_PUBLIC_SIGNUP', DEBUG)
 
+# Podgląd importu bankowego wysyła około 10 pól na każdy wiersz transakcji.
+# Domyślny limit Django (1000) blokował import już przy około 100 pozycjach.
+DATA_UPLOAD_MAX_NUMBER_FIELDS = int(os.environ.get('DATA_UPLOAD_MAX_NUMBER_FIELDS', '20000'))
+
 
 # Application definition
 

@@ -1,0 +1,225 @@
+{% extends 'finance/index.html' %}
+{% load humanize static %}
+
+{% block title %}Import Wyciągu{% endblock %}
+
+{% block content_finance %}
+<div class="row justify-content-center">
+    <div class="col-12 col-xl-11">
+        <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3 mb-4 animate-fade-in bank-import-page-header">
+            <div class="d-flex align-items-center gap-3">
+                <div class="icon-box bg-primary-subtle text-primary">
+                    <i class="bi bi-upload fs-4"></i>
+                </div>
+                <div>
+                    <div class="small text-uppercase fw-bold text-muted">Millennium i ING CSV</div>
+                    <h2 class="fw-bold mb-0">Import wyciągu bankowego</h2>
+                </div>
+            </div>
+            {% if preview %}
+                <div class="d-flex flex-wrap gap-2 bank-import-summary" aria-label="Podsumowanie podglądu">
+                    <span class="badge rounded-pill bg-danger-subtle text-danger px-3 py-2">{{ preview.expenses_count }} wydatków</span>
+                    <span class="badge rounded-pill bg-success-subtle text-success px-3 py-2">{{ preview.incomes_count }} przychodów</span>
+                    {% if preview.duplicate_count %}
+                        <span class="badge rounded-pill bg-warning-subtle text-warning px-3 py-2">{{ preview.duplicate_count }} duplikatów</span>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="card border-0 shadow-sm action-card mb-4 animate-fade-in-up bank-import-upload-panel">
+            <div class="card-body p-4">
+                <form method="post" enctype="multipart/form-data" class="row g-3 align-items-end bank-import-upload-form">
+                    {% csrf_token %}
+                    <div class="col-lg-9 bank-import-file-field">
+                        <div class="bank-import-file-picker {% if form.file.errors %}is-invalid{% endif %}" data-bank-import-file-picker>
+                            {{ form.file }}
+                            <label for="{{ form.file.id_for_label }}" class="bank-import-file-trigger">
+                                <span class="bank-import-file-icon" aria-hidden="true"><i class="bi bi-file-earmark-spreadsheet"></i></span>
+                                <span class="bank-import-file-copy">
+                                    <strong data-bank-import-file-name>Wybierz plik CSV</strong>
+                                    <span>Millennium lub ING</span>
+                                </span>
+                                <span class="bank-import-file-action"><i class="bi bi-folder2-open" aria-hidden="true"></i><span>Wybierz</span></span>
+                            </label>
+                        </div>
+                        {% if form.file.help_text %}<div class="form-text mt-2">{{ form.file.help_text }}</div>{% endif %}
+                        {% if form.file.errors %}<div class="text-danger small mt-1">{{ form.file.errors }}</div>{% endif %}
+                    </div>
+                    <div class="col-lg-3 d-grid bank-import-upload-submit">
+                        <button type="submit" class="btn btn-primary rounded-pill fw-bold text-white px-4">
+                            <i class="bi bi-search me-1"></i> Pokaż podgląd
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        {% if preview %}
+            <form method="post" class="card border-0 shadow-sm action-card animate-fade-in-up bank-import-preview">
+                {% csrf_token %}
+                <input type="hidden" name="confirm_import" value="1">
+                <input type="hidden" name="row_count" value="{{ preview.candidates|length }}">
+
+                <div class="card-header bg-body-tertiary border-bottom border-light-subtle p-4 d-flex flex-column flex-md-row justify-content-between gap-3 bank-import-preview-header">
+                    <div>
+                        <h5 class="fw-bold mb-1">Podgląd transakcji</h5>
+                        <div class="small text-muted">Zaznaczone pozycje zostaną zapisane na aktywnym koncie.</div>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 bank-import-actions">
+                        <a href="{% url 'finance:import_bank_transactions' %}" class="btn btn-soft-neutral rounded-pill px-4">Wyczyść</a>
+                        <button type="submit" class="btn btn-primary rounded-pill fw-bold text-white px-4">
+                            <i class="bi bi-check2-circle me-1"></i> Importuj zaznaczone
+                        </button>
+                    </div>
+                </div>
+
+                <div class="table-responsive bank-import-table-scroll">
+                    <table class="table table-hover mb-0 custom-table bank-import-table">
+                        <colgroup>
+                            <col class="bank-import-select-column">
+                            <col class="bank-import-date-column">
+                            <col class="bank-import-description-column">
+                            <col class="bank-import-amount-column">
+                            <col class="bank-import-category-column">
+                            <col class="bank-import-store-column">
+                        </colgroup>
+                        <thead class="bg-light">
+                            <tr>
+                                <th class="ps-4 py-3 text-muted text-uppercase small fw-bold"></th>
+                                <th class="py-3 text-muted text-uppercase small fw-bold">Data</th>
+                                <th class="py-3 text-muted text-uppercase small fw-bold">Opis</th>
+                                <th class="py-3 text-muted text-uppercase small fw-bold">Kwota</th>
+                                <th class="py-3 text-muted text-uppercase small fw-bold">Kategoria / źródło</th>
+                                <th class="pe-4 py-3 text-muted text-uppercase small fw-bold">Sklep / kontrahent</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for candidate in preview.candidates %}
+                                <tr class="bank-import-row {% if candidate.duplicate %}is-duplicate{% elif candidate.possible_duplicate %}is-possible-duplicate{% endif %}">
+                                    <td class="ps-4 bank-import-select-cell" data-label="Uwzględnij">
+                                        <div class="bank-import-select-control">
+                                            <input id="row-{{ candidate.index }}-selected" class="form-check-input" type="checkbox" name="row_{{ candidate.index }}_selected" aria-label="Uwzględnij transakcję" {% if candidate.selected_by_default %}checked{% endif %} {% if candidate.duplicate %}disabled{% endif %}>
+                                            <label class="bank-import-select-label" for="row-{{ candidate.index }}-selected">Uwzględnij</label>
+                                        </div>
+                                        <input type="hidden" name="row_{{ candidate.index }}_kind" value="{{ candidate.kind }}">
+                                        <input type="hidden" name="row_{{ candidate.index }}_external_id" value="{{ candidate.external_id }}">
+                                    </td>
+                                    <td class="bank-import-date-cell" data-label="Data">
+                                        <input type="date" class="form-control form-control-sm" name="row_{{ candidate.index }}_date" aria-label="Data transakcji" value="{{ candidate.date_display }}" required>
+                                        <div class="small text-muted mt-1">wiersz {{ candidate.row_number }}</div>
+                                    </td>
+                                    <td class="bank-import-description-cell" data-label="Opis">
+                                        <textarea class="form-control form-control-sm fw-medium bank-import-title bank-import-auto-grow" name="row_{{ candidate.index }}_title" aria-label="Opis transakcji" rows="1" required>{{ candidate.title }}</textarea>
+                                        <details class="bank-import-source-details" name="bank-source-data">
+                                            <summary>
+                                                <span>Dane źródłowe</span>
+                                                <i class="bi bi-chevron-down" aria-hidden="true"></i>
+                                            </summary>
+                                            <dl class="bank-import-source-list">
+                                                <div>
+                                                    <dt>Typ</dt>
+                                                    <dd>{{ candidate.transaction_type|default:"-" }}</dd>
+                                                </div>
+                                                <div>
+                                                    <dt>Opis banku</dt>
+                                                    <dd>{{ candidate.raw_description|default:"-" }}</dd>
+                                                </div>
+                                                <div>
+                                                    <dt>Kontrahent</dt>
+                                                    <dd>{{ candidate.counterparty|default:"-" }}</dd>
+                                                </div>
+                                            </dl>
+                                        </details>
+                                        {% if candidate.duplicate or candidate.possible_duplicate %}
+                                            <span class="badge rounded-pill bg-warning-subtle text-warning mt-2">{{ candidate.duplicate_reason }}</span>
+                                        {% else %}
+                                            <span class="badge rounded-pill bg-primary-subtle text-primary mt-2">{{ candidate.suggestion_reason }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="bank-import-amount-cell" data-label="Kwota">
+                                        <div class="input-group input-group-sm bank-import-amount-control">
+                                            <input type="number" step="0.01" min="0.01" class="form-control fw-bold bank-import-amount-input {% if candidate.is_expense %}text-danger{% else %}text-success{% endif %}" name="row_{{ candidate.index }}_amount" aria-label="Kwota transakcji" value="{{ candidate.amount_display }}" required>
+                                            <span class="input-group-text bg-light text-muted fw-bold">PLN</span>
+                                        </div>
+                                    </td>
+                                    <td class="bank-import-category-cell" data-label="Kategoria lub źródło">
+                                        {% if candidate.is_expense %}
+                                            <div class="finance-autocomplete bank-import-autocomplete">
+                                                <input type="text" class="form-control form-control-sm" id="row-{{ candidate.index }}-category" name="row_{{ candidate.index }}_category"
+                                                       data-autocomplete-input data-autocomplete-source="bank-import-expense-categories"
+                                                       data-autocomplete-icon="bi-tags" data-autocomplete-limit="0"
+                                                       autocomplete="off" aria-autocomplete="list"
+                                                       aria-expanded="false" aria-controls="row-{{ candidate.index }}-category-suggestions"
+                                                       aria-label="Kategoria wydatku" placeholder="Kategoria" value="{{ candidate.category }}" required>
+                                                <div class="finance-autocomplete-menu d-none" id="row-{{ candidate.index }}-category-suggestions" data-autocomplete-menu role="listbox"></div>
+                                            </div>
+                                            <input type="hidden" name="row_{{ candidate.index }}_source" value="">
+                                        {% else %}
+                                            <div class="finance-autocomplete bank-import-autocomplete">
+                                                <input type="text" class="form-control form-control-sm" id="row-{{ candidate.index }}-source" name="row_{{ candidate.index }}_source"
+                                                       data-autocomplete-input data-autocomplete-source="bank-import-income-sources"
+                                                       data-autocomplete-icon="bi-wallet2" data-autocomplete-limit="0"
+                                                       autocomplete="off" aria-autocomplete="list"
+                                                       aria-expanded="false" aria-controls="row-{{ candidate.index }}-source-suggestions"
+                                                       aria-label="Źródło przychodu" placeholder="Źródło" value="{{ candidate.source }}" required>
+                                                <div class="finance-autocomplete-menu d-none" id="row-{{ candidate.index }}-source-suggestions" data-autocomplete-menu role="listbox"></div>
+                                            </div>
+                                            <input type="hidden" name="row_{{ candidate.index }}_category" value="">
+                                        {% endif %}
+                                    </td>
+                                    <td class="pe-4 bank-import-store-cell" data-label="Sklep lub kontrahent">
+                                        {% if candidate.is_expense %}
+                                            <textarea class="form-control form-control-sm bank-import-store bank-import-auto-grow" name="row_{{ candidate.index }}_store" aria-label="Sklep" rows="1">{{ candidate.store }}</textarea>
+                                        {% else %}
+                                            <textarea class="form-control form-control-sm bank-import-store bank-import-auto-grow" name="row_{{ candidate.index }}_counterparty" aria-label="Kontrahent" placeholder="Kontrahent" rows="1">{{ candidate.counterparty }}</textarea>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+            </form>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ expense_categories|json_script:"bank-import-expense-categories" }}
+{{ income_sources|json_script:"bank-import-income-sources" }}
+<script src="{% static 'js/form-autocomplete.js' %}"></script>
+<script>
+    (() => {
+        const filePicker = document.querySelector('[data-bank-import-file-picker]');
+        const fileInput = filePicker?.querySelector('.bank-import-file-input');
+        const fileName = filePicker?.querySelector('[data-bank-import-file-name]');
+
+        if (filePicker && fileInput && fileName) {
+            const updateFileName = () => {
+                const selectedFile = fileInput.files?.[0];
+                fileName.textContent = selectedFile ? selectedFile.name : 'Wybierz plik CSV';
+                filePicker.classList.toggle('has-file', Boolean(selectedFile));
+            };
+
+            fileInput.addEventListener('change', updateFileName);
+            updateFileName();
+        }
+
+        const resizeTextarea = (textarea) => {
+            textarea.style.height = 'auto';
+            textarea.style.height = `${textarea.scrollHeight}px`;
+        };
+
+        document.querySelectorAll('.bank-import-auto-grow').forEach(resizeTextarea);
+
+        document.addEventListener('input', (event) => {
+            if (event.target.matches('.bank-import-auto-grow')) {
+                resizeTextarea(event.target);
+            }
+        });
+    })();
+</script>
+{% endblock %}

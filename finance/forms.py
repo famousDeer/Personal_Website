@@ -248,6 +248,29 @@ class BrokerageTransactionImportForm(BootstrapFinanceFormMixin, forms.Form):
         return uploaded_file
 
 
+class BankTransactionImportForm(BootstrapFinanceFormMixin, forms.Form):
+    MAX_UPLOAD_SIZE = 5 * 1024 * 1024
+    file = forms.FileField(
+        label='Plik CSV z Millennium lub ING',
+        help_text='Obsługiwane są eksporty historii rachunku w formacie CSV.',
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['file'].widget.attrs.update({
+            'class': 'bank-import-file-input',
+            'accept': '.csv,text/csv',
+        })
+
+    def clean_file(self):
+        uploaded_file = self.cleaned_data['file']
+        if not uploaded_file.name.lower().endswith('.csv'):
+            raise forms.ValidationError('Wgraj plik CSV wyeksportowany z banku Millennium lub ING.')
+        if uploaded_file.size > self.MAX_UPLOAD_SIZE:
+            raise forms.ValidationError('Plik importu może mieć maksymalnie 5 MB.')
+        return uploaded_file
+
+
 class BrokerageDividendForm(BootstrapFinanceFormMixin, forms.ModelForm):
     ex_dividend_date = forms.DateField(
         label='Dzień odcięcia prawa',

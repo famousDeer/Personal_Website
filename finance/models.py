@@ -250,12 +250,21 @@ class Daily(models.Model):
         null=True,
         blank=True,
     )
+    import_source = models.CharField(max_length=40, blank=True)
+    external_id = models.CharField(max_length=120, blank=True)
 
     class Meta:
         db_table = 'daily_records'
         ordering = ['-date']
         verbose_name = "Daily Record"
         verbose_name_plural = "Daily Records"
+        constraints = [
+            models.UniqueConstraint(
+                fields=['account', 'external_id'],
+                condition=~Q(external_id=''),
+                name='unique_daily_account_external_transaction',
+            ),
+        ]
 
     def __str__(self):
         account_name = self.account.display_name if self.account else self.user.username
@@ -268,6 +277,7 @@ class Income(models.Model):
     title = models.CharField(max_length=255)
     amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))])
     source = models.CharField(max_length=100)
+    counterparty = models.CharField(max_length=255, blank=True)
     month = models.ForeignKey(Monthly, on_delete=models.CASCADE, related_name='income_entries')
     linked_expense = models.OneToOneField(
         Daily,
@@ -276,12 +286,21 @@ class Income(models.Model):
         null=True,
         blank=True,
     )
+    import_source = models.CharField(max_length=40, blank=True)
+    external_id = models.CharField(max_length=120, blank=True)
 
     class Meta:
         db_table = 'income_records'
         ordering = ['-date']
         verbose_name = "Income Record"
         verbose_name_plural = "Income Records"
+        constraints = [
+            models.UniqueConstraint(
+                fields=['account', 'external_id'],
+                condition=~Q(external_id=''),
+                name='unique_income_account_external_transaction',
+            ),
+        ]
 
     def __str__(self):
         account_name = self.account.display_name if self.account else self.user.username

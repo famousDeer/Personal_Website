@@ -473,6 +473,505 @@ a { text-decoration: none; }
 .custom-table tbody tr:nth-child(2) { animation-delay: 0.1s; }
 /* ... (opcjonalnie więcej delayów) */
 
+/* Podgląd importu bankowego musi pozostać czytelny dla długich danych z CSV. */
+.bank-import-page-header {
+    align-items: flex-start;
+}
+
+.bank-import-summary {
+    justify-content: flex-start;
+}
+
+.bank-import-summary .badge {
+    min-height: 2.25rem;
+    display: inline-flex;
+    align-items: center;
+}
+
+.bank-import-upload-panel .card-body {
+    background-color: rgba(var(--bs-primary-rgb), 0.025);
+}
+
+.bank-import-file-picker {
+    position: relative;
+}
+
+.bank-import-file-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.bank-import-file-trigger {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 3.35rem;
+    padding: 0.45rem 0.55rem;
+    border: 1px dashed var(--input-border);
+    border-radius: 8px;
+    background: var(--input-bg);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.bank-import-file-trigger:hover,
+.bank-import-file-picker:focus-within .bank-import-file-trigger {
+    border-color: rgba(var(--bs-primary-rgb), 0.65);
+    background: var(--input-bg-focus);
+    box-shadow: var(--focus-ring);
+}
+
+.bank-import-file-picker.is-invalid .bank-import-file-trigger {
+    border-color: var(--bs-danger);
+}
+
+.bank-import-file-picker.has-file .bank-import-file-trigger {
+    border-style: solid;
+    border-color: rgba(var(--bs-success-rgb), 0.55);
+}
+
+.bank-import-file-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 2.35rem;
+    width: 2.35rem;
+    height: 2.35rem;
+    border-radius: 8px;
+    background: rgba(var(--bs-primary-rgb), 0.1);
+    color: var(--bs-primary);
+    font-size: 1.15rem;
+}
+
+.bank-import-file-picker.has-file .bank-import-file-icon {
+    background: rgba(var(--bs-success-rgb), 0.12);
+    color: var(--bs-success);
+}
+
+.bank-import-file-copy {
+    display: grid;
+    min-width: 0;
+    gap: 0.1rem;
+    flex: 1 1 auto;
+}
+
+.bank-import-file-copy strong,
+.bank-import-file-copy span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bank-import-file-copy strong {
+    font-size: 0.9rem;
+}
+
+.bank-import-file-copy span {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+
+.bank-import-file-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex: 0 0 auto;
+    padding: 0.35rem 0.55rem;
+    border-radius: 6px;
+    background: rgba(var(--bs-primary-rgb), 0.1);
+    color: var(--bs-primary);
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.bank-import-table-scroll {
+    overflow-x: auto;
+}
+
+.bank-import-table {
+    width: 100%;
+    min-width: 1120px;
+    table-layout: fixed;
+}
+
+.bank-import-select-column { width: 58px; }
+.bank-import-date-column { width: 132px; }
+.bank-import-description-column { width: 28%; }
+.bank-import-amount-column { width: 190px; }
+.bank-import-category-column { width: 205px; }
+.bank-import-store-column { width: 25%; }
+
+.bank-import-table th,
+.bank-import-table td {
+    min-width: 0;
+    vertical-align: top !important;
+}
+
+.bank-import-table tbody tr.bank-import-row {
+    animation: none;
+    opacity: 1;
+    transform: none;
+}
+
+.bank-import-table tbody tr.bank-import-row:focus-within {
+    position: relative;
+    z-index: 1100;
+}
+
+.bank-import-category-cell {
+    position: relative;
+}
+
+.bank-import-row.is-duplicate > td {
+    background-color: rgba(var(--bs-warning-rgb), 0.06);
+}
+
+.bank-import-row.is-possible-duplicate > td {
+    background-color: rgba(var(--bs-warning-rgb), 0.025);
+}
+
+.bank-import-table .form-control,
+.bank-import-table .form-select,
+.bank-import-table .input-group,
+.bank-import-table .input-group-text {
+    min-width: 0;
+}
+
+.bank-import-table .bank-import-title,
+.bank-import-table .bank-import-store {
+    min-height: 2.4rem;
+    padding: 0.45rem 0.65rem;
+    font-size: 0.875rem;
+    line-height: 1.35;
+    overflow-y: hidden;
+    overflow-wrap: anywhere;
+    resize: none;
+}
+
+.bank-import-autocomplete {
+    min-width: 0;
+}
+
+.bank-import-autocomplete .finance-autocomplete-menu {
+    min-width: 100%;
+    z-index: 1090;
+}
+
+.bank-import-amount-input {
+    padding: 0.45rem 0.55rem !important;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.bank-import-select-control {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.bank-import-select-label {
+    display: none;
+    margin: 0;
+    font-weight: 600;
+}
+
+.bank-import-source-details {
+    margin-top: 0.5rem;
+}
+
+.bank-import-source-details summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    width: fit-content;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.bank-import-source-details[open] summary {
+    color: var(--bs-primary);
+}
+
+.bank-import-source-details summary .bi {
+    transition: transform 0.2s ease;
+}
+
+.bank-import-source-details[open] summary .bi {
+    transform: rotate(180deg);
+}
+
+.bank-import-source-list {
+    display: grid;
+    gap: 0.5rem;
+    margin: 0.65rem 0 0;
+}
+
+.bank-import-source-list div {
+    display: grid;
+    grid-template-columns: 8rem minmax(0, 1fr);
+    gap: 0.5rem;
+}
+
+.bank-import-source-list dt {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.bank-import-source-list dd,
+.bank-import-counterparty {
+    margin: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+
+@media (min-width: 992px) {
+    .bank-import-preview.action-card:hover {
+        transform: none;
+    }
+
+    .bank-import-table > tbody > tr > td {
+        padding-top: 0.8rem;
+        padding-bottom: 0.8rem;
+        vertical-align: top !important;
+    }
+
+    .bank-import-table .form-control,
+    .bank-import-table .form-select,
+    .bank-import-table .input-group,
+    .bank-import-table .input-group-text {
+        min-height: 2.4rem;
+    }
+
+    .bank-import-table .form-control:not(textarea),
+    .bank-import-table .form-select,
+    .bank-import-table .input-group > .form-control,
+    .bank-import-table .input-group > .input-group-text {
+        height: 2.4rem;
+    }
+
+    .bank-import-amount-control .input-group-text {
+        min-width: 3.25rem;
+        justify-content: center;
+    }
+
+    .bank-import-source-details[open] .bank-import-source-list {
+        position: fixed;
+        right: 1.5rem;
+        bottom: 1.5rem;
+        z-index: 1055;
+        width: min(30rem, calc(100vw - 3rem));
+        max-height: min(28rem, calc(100vh - 3rem));
+        overflow: auto;
+        padding: 1rem;
+        border: 1px solid var(--surface-border);
+        border-radius: 0.5rem;
+        background: var(--surface-card);
+        box-shadow: 0 1rem 2.5rem rgba(0, 0, 0, 0.16);
+    }
+}
+
+/* Zwarty pasek metryk i akcji na listach wydatków oraz przychodów. */
+.finance-list-toolbar,
+.finance-list-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.finance-list-toolbar {
+    justify-content: flex-end;
+}
+
+.finance-list-actions {
+    gap: 0.5rem;
+}
+
+.finance-list-total,
+.finance-list-action {
+    min-height: 2.4rem;
+}
+
+.finance-list-total {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.35rem 0.65rem;
+    border-radius: 0.5rem;
+    white-space: nowrap;
+}
+
+.finance-list-total-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    opacity: 0.8;
+}
+
+.finance-list-total-value {
+    font-size: 0.9rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.finance-list-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 0.5rem;
+    font-weight: 700;
+}
+
+@media (max-width: 991.98px) {
+    .bank-import-preview .card-header {
+        padding: 1rem !important;
+    }
+
+    .bank-import-table-scroll {
+        overflow: visible;
+        padding: 0.75rem;
+    }
+
+    .bank-import-table,
+    .bank-import-table tbody {
+        display: block;
+        min-width: 0;
+        width: 100%;
+    }
+
+    .bank-import-table colgroup,
+    .bank-import-table thead {
+        display: none;
+    }
+
+    .bank-import-table tbody {
+        display: grid;
+        gap: 0.75rem;
+    }
+
+    .bank-import-table tbody tr.bank-import-row {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.85rem 1rem;
+        margin: 0;
+        padding: 1rem;
+        border: 1px solid var(--surface-border);
+        border-radius: 0.5rem;
+        background: var(--surface-card);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    }
+
+    .bank-import-table tbody tr.bank-import-row > td {
+        display: block;
+        padding: 0 !important;
+        border: 0;
+        background: transparent;
+    }
+
+    .bank-import-table tbody tr.bank-import-row > td::before {
+        content: attr(data-label);
+        display: block;
+        margin-bottom: 0.35rem;
+        color: var(--text-muted);
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: uppercase;
+    }
+
+    .bank-import-table .bank-import-select-cell,
+    .bank-import-table .bank-import-description-cell,
+    .bank-import-table .bank-import-store-cell {
+        grid-column: 1 / -1;
+    }
+
+    .bank-import-table .bank-import-select-cell::before {
+        display: none;
+    }
+
+    .bank-import-select-label {
+        display: inline;
+    }
+
+    .bank-import-table .form-control,
+    .bank-import-table .form-select,
+    .bank-import-table .input-group,
+    .bank-import-table .input-group-text {
+        min-height: 2.5rem;
+    }
+
+    .bank-import-table .form-control:not(textarea),
+    .bank-import-table .form-select,
+    .bank-import-table .input-group > .form-control,
+    .bank-import-table .input-group > .input-group-text {
+        height: 2.5rem;
+    }
+
+    .bank-import-title,
+    .bank-import-store {
+        min-height: 2.5rem !important;
+    }
+
+    .bank-import-preview-header,
+    .bank-import-actions {
+        align-items: stretch;
+    }
+
+    .bank-import-actions > * {
+        flex: 1 1 auto;
+    }
+}
+
+@media (max-width: 575.98px) {
+    .bank-import-upload-panel .card-body {
+        padding: 1rem !important;
+    }
+
+    .bank-import-upload-submit .btn {
+        min-height: 2.75rem;
+    }
+
+    .bank-import-table tbody tr.bank-import-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .bank-import-table .bank-import-date-cell,
+    .bank-import-table .bank-import-amount-cell,
+    .bank-import-table .bank-import-category-cell {
+        grid-column: 1 / -1;
+    }
+
+    .bank-import-source-list div {
+        grid-template-columns: 1fr;
+        gap: 0.15rem;
+    }
+
+    .finance-list-toolbar {
+        justify-content: flex-start;
+    }
+
+    .finance-list-actions {
+        width: 100%;
+    }
+
+    .finance-list-action {
+        flex: 1 1 0;
+    }
+}
+
 /* Przyciski w tabeli */
 .custom-table .btn-light {
     background: transparent;
