@@ -853,19 +853,21 @@ class FinanceCoreTests(TestCase):
             price="100.00",
             fees="0.00",
         )
+        dividend_ex_date = timezone.localdate() + timedelta(days=30)
+        dividend_payment_date = dividend_ex_date + timedelta(days=14)
         BrokerageDividend.objects.create(
             account=account,
             instrument=instrument,
-            ex_dividend_date=date(2026, 6, 1),
-            payment_date=date(2026, 6, 15),
+            ex_dividend_date=dividend_ex_date,
+            payment_date=dividend_payment_date,
             gross_amount_per_share="1.00",
             currency="USD",
         )
         BrokerageDividend.objects.create(
             account=ike_account,
             instrument=polish_instrument,
-            ex_dividend_date=date(2026, 6, 1),
-            payment_date=date(2026, 6, 15),
+            ex_dividend_date=dividend_ex_date,
+            payment_date=dividend_payment_date,
             gross_amount_per_share="2.00",
             currency="PLN",
         )
