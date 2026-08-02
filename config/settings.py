@@ -237,9 +237,14 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_STORAGE_BACKEND = (
+    'django.contrib.staticfiles.storage.StaticFilesStorage'
+    if RUNNING_TESTS
+    else 'django.contrib.staticfiles.storage.ManifestStaticFilesStorage'
+)
 STORAGES = {
     'staticfiles': {
-        'BACKEND': 'django.contrib.staticfiles.storage.ManifestStaticFilesStorage',
+        'BACKEND': STATICFILES_STORAGE_BACKEND,
     },
 }
 WHITENOISE_MAX_AGE = 60 * 60 * 24 * 7
