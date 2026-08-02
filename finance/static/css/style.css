@@ -621,13 +621,12 @@ a { text-decoration: none; }
     transform: none;
 }
 
-.bank-import-table tbody tr.bank-import-row:focus-within {
-    position: relative;
-    z-index: 1100;
-}
-
 .bank-import-category-cell {
     position: relative;
+}
+
+.bank-import-category-cell:focus-within {
+    z-index: 1100;
 }
 
 .bank-import-row.is-duplicate > td {
