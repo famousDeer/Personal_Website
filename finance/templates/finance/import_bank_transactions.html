@@ -220,6 +220,67 @@
                 resizeTextarea(event.target);
             }
         });
+
+        const sourceDetails = [...document.querySelectorAll('.bank-import-source-details')];
+        const desktopSourcePanel = window.matchMedia('(min-width: 992px)');
+
+        const positionSourcePanel = (details) => {
+            details.classList.remove('opens-upward');
+            if (!details.open || !desktopSourcePanel.matches) return;
+
+            requestAnimationFrame(() => {
+                const summary = details.querySelector('summary');
+                const panel = details.querySelector('.bank-import-source-list');
+                const scrollArea = details.closest('.bank-import-table-scroll');
+                if (!summary || !panel || !scrollArea) return;
+
+                const summaryRect = summary.getBoundingClientRect();
+                const panelRect = panel.getBoundingClientRect();
+                const scrollRect = scrollArea.getBoundingClientRect();
+                const viewportPadding = 12;
+                const spaceBelow = Math.min(window.innerHeight - viewportPadding, scrollRect.bottom) - summaryRect.bottom;
+                const spaceAbove = summaryRect.top - Math.max(viewportPadding, scrollRect.top);
+
+                details.classList.toggle(
+                    'opens-upward',
+                    spaceBelow < panelRect.height + viewportPadding && spaceAbove > spaceBelow,
+                );
+            });
+        };
+
+        sourceDetails.forEach((details) => {
+            details.addEventListener('toggle', () => {
+                details.closest('.bank-import-description-cell')?.classList.toggle('is-source-open', details.open);
+                if (!details.open) {
+                    details.classList.remove('opens-upward');
+                    return;
+                }
+
+                sourceDetails.forEach((otherDetails) => {
+                    if (otherDetails !== details) otherDetails.open = false;
+                });
+                positionSourcePanel(details);
+            });
+        });
+
+        document.addEventListener('click', (event) => {
+            const openDetails = document.querySelector('.bank-import-source-details[open]');
+            if (openDetails && !openDetails.contains(event.target)) openDetails.open = false;
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+            const openDetails = document.querySelector('.bank-import-source-details[open]');
+            if (openDetails) {
+                openDetails.open = false;
+                openDetails.querySelector('summary')?.focus();
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            const openDetails = document.querySelector('.bank-import-source-details[open]');
+            if (openDetails) positionSourcePanel(openDetails);
+        });
     })();
 </script>
 {% endblock %}
