@@ -58,6 +58,19 @@
                         </div>
                     {% endif %}
 
+                    <div class="form-floating mb-3 {% if form_values.category != investment_category %}d-none{% endif %}" id="brokerage-target-wrapper">
+                        <select class="form-select" id="brokerage_account" name="brokerage_account">
+                            <option value="">Nie przypisuj jeszcze</option>
+                            {% for account in brokerage_accounts %}
+                                <option value="{{ account.id }}" {% if form_values.brokerage_account == account.id|stringformat:'s' %}selected{% endif %}>
+                                    {{ account.name }} · {{ account.currency }} · {{ account.get_account_type_display }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <label for="brokerage_account">Docelowe konto maklerskie</label>
+                        <div class="form-text">Wybór konta utworzy oczekującą wpłatę i pozwoli uzgodnić ją z importem brokera.</div>
+                    </div>
+
                     <div class="form-floating mb-3 finance-autocomplete">
                         <input type="text" class="form-control" id="store" name="store"
                                data-autocomplete-input data-autocomplete-source="store-suggestions-data"
@@ -104,17 +117,29 @@
         const transferWrapper = document.getElementById('transfer-target-wrapper');
         const transferSelect = document.getElementById('transfer_target_account');
         const transferCategory = "{{ transfer_category|escapejs }}";
+        const brokerageWrapper = document.getElementById('brokerage-target-wrapper');
+        const brokerageSelect = document.getElementById('brokerage_account');
+        const investmentCategory = "{{ investment_category|escapejs }}";
 
-        if (!categoryField || !transferWrapper || !transferSelect) {
+        if (!categoryField) {
             return;
         }
 
         function syncTransferField() {
-            const showTransfer = categoryField.value === transferCategory;
-            transferWrapper.classList.toggle('d-none', !showTransfer);
-            transferSelect.required = showTransfer;
-            if (!showTransfer) {
-                transferSelect.value = '';
+            if (transferWrapper && transferSelect) {
+                const showTransfer = categoryField.value === transferCategory;
+                transferWrapper.classList.toggle('d-none', !showTransfer);
+                transferSelect.required = showTransfer;
+                if (!showTransfer) {
+                    transferSelect.value = '';
+        }
+
+            if (brokerageWrapper && brokerageSelect) {
+                const showBrokerage = categoryField.value === investmentCategory;
+                brokerageWrapper.classList.toggle('d-none', !showBrokerage);
+                if (!showBrokerage) {
+                    brokerageSelect.value = '';
+                }
             }
         }
 

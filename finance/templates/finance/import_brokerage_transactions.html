@@ -1,0 +1,120 @@
+{% extends 'finance/index.html' %}
+{% load static %}
+
+{% block title %}Import danych XTB{% endblock %}
+
+{% block content_finance %}
+<div class="brokerage-import-page">
+    <header class="brokerage-import-hero">
+        <div>
+            <div class="brokerage-eyebrow">Centrum danych maklerskich</div>
+            <h2>Import raportów XTB</h2>
+            <p>Wczytaj jednocześnie rachunki PLN, EUR, USD i IKE. Numery kont, waluty i typ rachunku zostaną rozpoznane z raportów.</p>
+        </div>
+        <a href="{% url 'finance:brokerage' %}" class="btn btn-soft-neutral rounded-pill px-4">
+            <i class="bi bi-arrow-left me-1"></i> Wróć do portfela
+        </a>
+    </header>
+
+    <div class="brokerage-import-layout">
+        <main class="brokerage-import-card">
+            <div class="brokerage-import-card-heading">
+                <span class="brokerage-import-icon"><i class="bi bi-file-earmark-spreadsheet"></i></span>
+                <div>
+                    <h5>Wybierz eksporty</h5>
+                    <p>Obsługiwany jest aktualny układ XTB: Closed Positions, Cash Operations i Open Positions.</p>
+                </div>
+            </div>
+
+            <form method="post" enctype="multipart/form-data" data-brokerage-import-form>
+                {% csrf_token %}
+
+                <div class="brokerage-import-dropzone {% if form.file.errors %}is-invalid{% endif %}" data-brokerage-file-zone>
+                    {{ form.file }}
+                    <label for="{{ form.file.id_for_label }}">
+                        <i class="bi bi-cloud-arrow-up"></i>
+                        <strong>Przeciągnij pliki XLSX lub wybierz je z dysku</strong>
+                        <span>Do 12 plików, maksymalnie 5 MB każdy</span>
+                    </label>
+                </div>
+                {% if form.file.help_text %}<div class="form-text mt-2">{{ form.file.help_text }}</div>{% endif %}
+                {% if form.file.errors %}<div class="text-danger small mt-2">{{ form.file.errors }}</div>{% endif %}
+                <div class="brokerage-import-file-list d-none" data-brokerage-file-list></div>
+
+                <div class="brokerage-import-account-field">
+                    <label class="form-label fw-semibold" for="{{ form.account.id_for_label }}">{{ form.account.label }}</label>
+                    {{ form.account }}
+                    {% if form.account.help_text %}<div class="form-text">{{ form.account.help_text }}</div>{% endif %}
+                    {% if form.account.errors %}<div class="text-danger small mt-1">{{ form.account.errors }}</div>{% endif %}
+                </div>
+
+                <div class="brokerage-import-submit-row">
+                    <div class="brokerage-import-security-note">
+                        <i class="bi bi-shield-check"></i>
+                        <span>Ponowny import jest bezpieczny — operacje XTB są rozpoznawane po trwałych identyfikatorach.</span>
+                    </div>
+                    <button type="submit" class="btn btn-primary rounded-pill fw-bold text-white px-4">
+                        <i class="bi bi-stars me-1"></i> Importuj i uzgodnij
+                    </button>
+                </div>
+            </form>
+        </main>
+
+        <aside class="brokerage-import-guide">
+            <h5>Co zostanie zaktualizowane</h5>
+            <ol>
+                <li>
+                    <span>01</span>
+                    <div><strong>Konta i aktywność</strong><small>Wpłaty, transfery, zakupy, sprzedaże, dywidendy, podatki i odsetki.</small></div>
+                </li>
+                <li>
+                    <span>02</span>
+                    <div><strong>Ostatnia wycena</strong><small>Pozycje oraz wartości są zapisywane dokładnie na czas wygenerowania raportu.</small></div>
+                </li>
+                <li>
+                    <span>03</span>
+                    <div><strong>Wpłaty z budżetu</strong><small>Jednoznaczne wpłaty zostaną połączone z wydatkami oznaczonymi jako Inwestycje.</small></div>
+                </li>
+            </ol>
+            <div class="brokerage-import-tip">
+                <i class="bi bi-lightbulb"></i>
+                <p><strong>Wskazówka</strong> Eksportuj możliwie pełny zakres dat. Dzięki temu odtworzone saldo wolnej gotówki będzie kompletne.</p>
+            </div>
+        </aside>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ block.super }}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const input = document.getElementById('{{ form.file.id_for_label }}');
+        const zone = document.querySelector('[data-brokerage-file-zone]');
+        const list = document.querySelector('[data-brokerage-file-list]');
+        if (!input || !zone || !list) return;
+
+        const renderFiles = () => {
+            const files = [...(input.files || [])];
+            list.replaceChildren();
+            list.classList.toggle('d-none', files.length === 0);
+            zone.classList.toggle('has-files', files.length > 0);
+            files.forEach((file) => {
+                const row = document.createElement('div');
+                const name = document.createElement('strong');
+                const size = document.createElement('span');
+                row.className = 'brokerage-import-file-row';
+                name.textContent = file.name;
+                size.textContent = `${(file.size / 1024).toFixed(1)} KB`;
+                row.append(name, size);
+                list.appendChild(row);
+            });
+        };
+
+        input.addEventListener('change', renderFiles);
+        ['dragenter', 'dragover'].forEach((eventName) => zone.addEventListener(eventName, () => zone.classList.add('is-dragging')));
+        ['dragleave', 'drop'].forEach((eventName) => zone.addEventListener(eventName, () => zone.classList.remove('is-dragging')));
+        renderFiles();
+    });
+</script>
+{% endblock %}

@@ -154,6 +154,15 @@
                                                        aria-label="Kategoria wydatku" placeholder="Kategoria" value="{{ candidate.category }}" required>
                                                 <div class="finance-autocomplete-menu d-none" id="row-{{ candidate.index }}-category-suggestions" data-autocomplete-menu role="listbox"></div>
                                             </div>
+                                            <div class="mt-2 {% if candidate.category != investment_category %}d-none{% endif %}" data-bank-brokerage-target>
+                                                <select class="form-select form-select-sm" name="row_{{ candidate.index }}_brokerage_account" aria-label="Docelowe konto maklerskie">
+                                                    <option value="">Nie przypisuj konta</option>
+                                                    {% for account in brokerage_accounts %}
+                                                        <option value="{{ account.id }}">{{ account.name }} · {{ account.currency }}{% if account.account_type == 'ike' %} · IKE{% endif %}</option>
+                                                    {% endfor %}
+                                                </select>
+                                                <div class="form-text">Opcjonalnie: utwórz oczekującą wpłatę.</div>
+                                            </div>
                                             <input type="hidden" name="row_{{ candidate.index }}_source" value="">
                                         {% else %}
                                             <div class="finance-autocomplete bank-import-autocomplete">
@@ -166,6 +175,7 @@
                                                 <div class="finance-autocomplete-menu d-none" id="row-{{ candidate.index }}-source-suggestions" data-autocomplete-menu role="listbox"></div>
                                             </div>
                                             <input type="hidden" name="row_{{ candidate.index }}_category" value="">
+                                            <input type="hidden" name="row_{{ candidate.index }}_brokerage_account" value="">
                                         {% endif %}
                                     </td>
                                     <td class="pe-4 bank-import-store-cell" data-label="Sklep lub kontrahent">
@@ -218,6 +228,14 @@
         document.addEventListener('input', (event) => {
             if (event.target.matches('.bank-import-auto-grow')) {
                 resizeTextarea(event.target);
+            }
+            if (event.target.name?.endsWith('_category')) {
+                const row = event.target.closest('.bank-import-row');
+                const target = row?.querySelector('[data-bank-brokerage-target]');
+                const select = target?.querySelector('select');
+                const isInvestment = event.target.value === "{{ investment_category|escapejs }}";
+                target?.classList.toggle('d-none', !isInvestment);
+                if (!isInvestment && select) select.value = '';
             }
         });
 

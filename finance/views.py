@@ -43,17 +43,32 @@ from .forms import (
     BrokerageTransactionForm,
     TravelDestinationForm,
 )
-from .brokerage_import import BrokerageImportError, import_xtb_transactions
+from .brokerage_import import BrokerageImportError, import_xtb_files
 from .geocoding import populate_destination_coordinates
-from .market_data import MarketDataError, fetch_historical_market_prices, refresh_market_data_for_user
+from .investment_funding import sync_investment_funding
+from .investment_statistics import (
+    actual_profit_by_currency,
+    calculate_market_statistics,
+    first_purchase_for_instrument,
+)
+from .market_data import (
+    MarketDataError,
+    refresh_market_data_for_user,
+    stored_daily_price_history,
+    sync_price_history_for_user,
+)
 from .models import (
     BrokerageAccount,
+    BrokerageCashOperation,
+    BrokerageDailyPrice,
     BrokerageDividend,
     BrokerageInstrument,
+    BrokeragePositionSnapshot,
     BrokerageTransaction,
     Daily,
     FinanceAccount,
     Income,
+    InvestmentFunding,
     Monthly,
     TravelDestinations,
 )
@@ -365,9 +380,44 @@ def _history_points_json(points):
             'high': _decimal_json(point.get('high')),
             'low': _decimal_json(point.get('low')),
             'close': _decimal_json(point.get('close')),
+            'adjusted_close': _decimal_json(point.get('adjusted_close')),
             'volume': point.get('volume'),
         }
         for point in points
+    ]
+
+
+def _statistics_json(statistics_payload):
+    return {
+        key: (
+            value.isoformat()
+            if isinstance(value, (date, datetime))
+            else _decimal_json(value)
+            if isinstance(value, Decimal)
+            else value
+        )
+        for key, value in statistics_payload.items()
+    }
+
+
+def _actual_profit_json(profit_buckets):
+    decimal_fields = {
+        'current_value',
+        'purchase_outflows',
+        'sale_inflows',
+        'trade_profit',
+        'net_income',
+        'total_profit',
+        'cost_basis',
+        'unrealized_profit',
+        'return_percent',
+    }
+    return [
+        {
+            key: _decimal_json(value) if key in decimal_fields else value
+            for key, value in bucket.items()
+        }
+        for bucket in profit_buckets
     ]
 
 
@@ -403,9 +453,16 @@ def _parse_history_range(request):
 def _portfolio_history_cache_version(user, selected_account=None):
     transaction_queryset = BrokerageTransaction.objects.filter(account__user=user)
     instrument_queryset = BrokerageInstrument.objects.filter(user=user)
+    cash_queryset = BrokerageCashOperation.objects.filter(account__user=user)
+    snapshot_queryset = BrokeragePositionSnapshot.objects.filter(account__user=user)
     if selected_account is not None:
         transaction_queryset = transaction_queryset.filter(account=selected_account)
-        instrument_queryset = instrument_queryset.filter(transactions__account=selected_account)
+        cash_queryset = cash_queryset.filter(account=selected_account)
+        snapshot_queryset = snapshot_queryset.filter(account=selected_account)
+        instrument_queryset = instrument_queryset.filter(
+            Q(transactions__account=selected_account)
+            | Q(position_snapshots__account=selected_account)
+        ).distinct()
 
     transaction_stats = transaction_queryset.aggregate(
         count=Count('id'),
@@ -417,6 +474,31 @@ def _portfolio_history_cache_version(user, selected_account=None):
         latest_id=Max('id'),
         latest_price_at=Max('last_price_at'),
     )
+    cash_stats = cash_queryset.aggregate(
+        count=Count('id'),
+        latest_id=Max('id'),
+        latest_created_at=Max('created_at'),
+        latest_occurred_at=Max('occurred_at'),
+        total_amount=Sum('amount'),
+    )
+    snapshot_stats = snapshot_queryset.aggregate(
+        count=Count('id'),
+        latest_id=Max('id'),
+        latest_as_of=Max('as_of'),
+        total_quantity=Sum('quantity'),
+        total_market_value=Sum('market_value'),
+        total_current_price=Sum('current_price'),
+    )
+    daily_price_queryset = BrokerageDailyPrice.objects.filter(instrument__user=user)
+    if selected_account is not None:
+        daily_price_queryset = daily_price_queryset.filter(
+            Q(instrument__transactions__account=selected_account)
+            | Q(instrument__position_snapshots__account=selected_account)
+        ).distinct()
+    daily_price_stats = daily_price_queryset.aggregate(
+        count=Count('id', distinct=True),
+        latest_updated_at=Max('updated_at'),
+    )
     latest_created_at = transaction_stats.get('latest_created_at')
     latest_price_at = instrument_stats.get('latest_price_at')
     return ':'.join([
@@ -426,6 +508,31 @@ def _portfolio_history_cache_version(user, selected_account=None):
         str(instrument_stats.get('count') or 0),
         str(instrument_stats.get('latest_id') or 0),
         latest_price_at.isoformat() if latest_price_at else '0',
+        str(cash_stats.get('count') or 0),
+        str(cash_stats.get('latest_id') or 0),
+        (
+            cash_stats['latest_created_at'].isoformat()
+            if cash_stats.get('latest_created_at') else '0'
+        ),
+        (
+            cash_stats['latest_occurred_at'].isoformat()
+            if cash_stats.get('latest_occurred_at') else '0'
+        ),
+        str(cash_stats.get('total_amount') or 0),
+        str(snapshot_stats.get('count') or 0),
+        str(snapshot_stats.get('latest_id') or 0),
+        (
+            snapshot_stats['latest_as_of'].isoformat()
+            if snapshot_stats.get('latest_as_of') else '0'
+        ),
+        str(snapshot_stats.get('total_quantity') or 0),
+        str(snapshot_stats.get('total_market_value') or 0),
+        str(snapshot_stats.get('total_current_price') or 0),
+        str(daily_price_stats.get('count') or 0),
+        (
+            daily_price_stats['latest_updated_at'].isoformat()
+            if daily_price_stats.get('latest_updated_at') else '0'
+        ),
     ])
 
 
@@ -507,6 +614,21 @@ def get_selected_transfer_target(request, active_account, category):
     return target_account
 
 
+def get_selected_brokerage_account(request, category):
+    raw_account_id = request.POST.get('brokerage_account')
+    if category != INVESTMENT_CATEGORY:
+        if raw_account_id:
+            raise ValueError('Konto maklerskie można przypisać tylko do kategorii Inwestycje.')
+        return None
+    if not raw_account_id:
+        return None
+
+    account = BrokerageAccount.objects.filter(id=raw_account_id, user=request.user).first()
+    if account is None:
+        raise ValueError('Wybrane konto maklerskie nie jest dostępne dla tego użytkownika.')
+    return account
+
+
 def get_expense_form_context(request, active_account, **extra_context):
     shared_target_accounts = list(get_available_shared_accounts(request.user))
     context = {
@@ -516,6 +638,8 @@ def get_expense_form_context(request, active_account, **extra_context):
         'transfer_category': TRANSFER_TO_SHARED_CATEGORY,
         'shared_target_accounts': shared_target_accounts,
         'show_shared_transfer_option': active_account.account_type == FinanceAccount.PERSONAL and bool(shared_target_accounts),
+        'brokerage_accounts': BrokerageAccount.objects.filter(user=request.user),
+        'investment_category': INVESTMENT_CATEGORY,
     }
     context.update(extra_context)
     return context
@@ -562,12 +686,19 @@ class BrokeragePortfolioView(View):
         brokerage_instruments = BrokerageInstrument.objects.filter(user=request.user)
         brokerage_transactions = BrokerageTransaction.objects.filter(account__user=request.user)
         brokerage_dividends = BrokerageDividend.objects.filter(account__user=request.user)
+        brokerage_cash_operations = BrokerageCashOperation.objects.filter(account__user=request.user)
+        investment_fundings = InvestmentFunding.objects.filter(account__user=request.user)
         if selected_account is not None:
             brokerage_instruments = brokerage_instruments.filter(
-                Q(transactions__account=selected_account) | Q(dividends__account=selected_account)
+                Q(transactions__account=selected_account)
+                | Q(dividends__account=selected_account)
+                | Q(cash_operations__account=selected_account)
+                | Q(position_snapshots__account=selected_account)
             ).distinct()
             brokerage_transactions = brokerage_transactions.filter(account=selected_account)
             brokerage_dividends = brokerage_dividends.filter(account=selected_account)
+            brokerage_cash_operations = brokerage_cash_operations.filter(account=selected_account)
+            investment_fundings = investment_fundings.filter(account=selected_account)
 
         history_days = 365
         history_end_date = timezone.localdate()
@@ -598,6 +729,22 @@ class BrokeragePortfolioView(View):
                 brokerage_dividends
                 .select_related('account', 'instrument')
                 .order_by('-payment_date', 'instrument__ticker')[:25]
+            ),
+            'brokerage_cash_operations': (
+                brokerage_cash_operations
+                .select_related('account', 'instrument')
+                .order_by('-occurred_at', '-id')[:40]
+            ),
+            'investment_fundings': (
+                investment_fundings
+                .select_related('account', 'expense', 'cash_operation')
+                .order_by('-occurred_on', '-id')[:20]
+            ),
+            'unassigned_investments': (
+                Daily.objects
+                .filter(user=request.user, category=INVESTMENT_CATEGORY, brokerage_account__isnull=True)
+                .select_related('account')
+                .order_by('-date', '-id')[:12]
             ),
         })
         return render(request, 'finance/brokerage.html', summary)
@@ -643,19 +790,59 @@ class RefreshBrokerageMarketDataView(View):
             if failed_count:
                 messages.warning(
                     request,
-                    f"Nie odświeżono {failed_count} instrumentów: {'; '.join(result['failed_quotes'][:3])}",
+                    f"Nie odświeżono {failed_count} otwartych instrumentów: "
+                    f"{'; '.join(result['failed_quotes'][:3])}",
                 )
             failed_dividends_count = len(result.get('failed_dividends', []))
-            if failed_dividends_count:
+            if result.get('dividends_checked') and failed_dividends_count:
                 messages.warning(
                     request,
                     f"Nie odświeżono dywidend dla {failed_dividends_count} instrumentów: {'; '.join(result['failed_dividends'][:3])}",
                 )
+            inactive_skipped = result.get('inactive_skipped', 0)
+            skipped_message = (
+                f", pominięto nieaktywne: {inactive_skipped}"
+                if inactive_skipped else ''
+            )
             messages.success(
                 request,
-                f"Odświeżono ceny: {result['updated_quotes']}, "
-                f"scalone instrumenty: {result.get('merged_instruments', 0)}, "
-                f"nowe dywidendy: {result['updated_dividends']} ({result['source']}).",
+                f"Odświeżono ceny otwartych instrumentów: {result['updated_quotes']}"
+                f"{skipped_message} ({result['source']}).",
+            )
+        return redirect('finance:brokerage')
+
+
+@method_decorator(login_required, name='dispatch')
+class SyncBrokeragePriceHistoryView(View):
+    def post(self, request):
+        result = sync_price_history_for_user(request.user)
+        synced = result['instruments_synced']
+        created = result['points_created']
+        updated = result['points_updated']
+        already_current = result['already_current']
+
+        if synced:
+            messages.success(
+                request,
+                f'Uzupełniono historię dla {synced} instrumentów '
+                f'(nowe sesje: {created}, zaktualizowane: {updated}).',
+            )
+        elif already_current and not result['failed']:
+            messages.info(
+                request,
+                'Historia cen jest już kompletna. Nie pobierano jej ponownie.',
+            )
+        elif not result['failed']:
+            messages.info(
+                request,
+                'Brak transakcji zakupu, dla których można uzupełnić historię cen.',
+            )
+
+        if result['failed']:
+            messages.warning(
+                request,
+                f"Nie uzupełniono historii dla {len(result['failed'])} instrumentów: "
+                f"{'; '.join(result['failed'][:3])}",
             )
         return redirect('finance:brokerage')
 
@@ -767,32 +954,68 @@ class DeleteBrokerageInstrumentView(View):
 class BrokerageInstrumentDetailDataView(View):
     def get(self, request, instrument_id):
         instrument = get_object_or_404(BrokerageInstrument, id=instrument_id, user=request.user)
-        try:
-            start_date, end_date, selected_days, range_mode = _parse_history_range(request)
-        except ValueError as exc:
-            return JsonResponse({'error': str(exc)}, status=400)
-
-        history_error = ''
-        history_source = ''
-        history_points = []
-        try:
-            history_data = fetch_historical_market_prices(
-                symbol=instrument.ticker,
-                exchange=instrument.exchange,
-                currency=instrument.currency,
-                isin=instrument.isin,
-                price_symbol=instrument.price_symbol,
-                name=instrument.name,
-                start_date=start_date,
-                end_date=end_date,
-            )
-        except MarketDataError as exc:
-            history_error = str(exc)
+        first_purchase = first_purchase_for_instrument(request.user, instrument)
+        today = timezone.localdate()
+        explicit_range = any(
+            request.GET.get(parameter)
+            for parameter in ('days', 'start_date', 'end_date')
+        )
+        since_purchase_requested = request.GET.get('since_purchase') in {'1', 'true'}
+        if first_purchase is not None and (since_purchase_requested or not explicit_range):
+            start_date = first_purchase.trade_date
+            end_date = today
+            selected_days = None
+            range_mode = 'since_purchase'
         else:
-            history_points = history_data['points']
-            history_source = history_data['source']
-            if history_data.get('resolution_error'):
-                history_error = f"OpenFIGI: {history_data['resolution_error']}"
+            try:
+                start_date, end_date, selected_days, range_mode = _parse_history_range(request)
+            except ValueError as exc:
+                return JsonResponse({'error': str(exc)}, status=400)
+
+        sync_result = sync_price_history_for_user(
+            request.user,
+            instrument_ids=[instrument.id],
+        )
+        instrument.refresh_from_db()
+
+        history_points = stored_daily_price_history(
+            instrument,
+            start_date,
+            end_date,
+        )
+        history_sources = list(
+            instrument.daily_prices
+            .filter(trading_date__gte=start_date, trading_date__lte=end_date)
+            .exclude(source='')
+            .order_by()
+            .values_list('source', flat=True)
+            .distinct()
+        )
+        history_source = (
+            f"{', '.join(history_sources)} · zapis lokalny"
+            if history_sources else 'Zapis lokalny'
+        )
+        history_error = instrument.history_sync_error
+
+        statistics_start = first_purchase.trade_date if first_purchase is not None else start_date
+        statistics_points = stored_daily_price_history(
+            instrument,
+            statistics_start,
+            today,
+            final_only=True,
+        )
+        market_statistics = calculate_market_statistics(
+            statistics_points,
+            first_purchase_price=first_purchase.price if first_purchase is not None else None,
+            first_purchase_date=first_purchase.trade_date if first_purchase is not None else None,
+            current_price=instrument.last_price,
+        )
+        portfolio_summary = build_portfolio_summary(request.user)
+        actual_profit = actual_profit_by_currency(
+            request.user,
+            instrument,
+            portfolio_summary,
+        )
 
         accounts = []
         account_queryset = (
@@ -828,6 +1051,15 @@ class BrokerageInstrumentDetailDataView(View):
                 'quantity': _decimal_json(latest_transaction.quantity),
                 'price': _decimal_json(latest_transaction.price),
                 'account': latest_transaction.account.name,
+            }
+
+        first_purchase_payload = None
+        if first_purchase is not None:
+            first_purchase_payload = {
+                'date': first_purchase.trade_date.isoformat(),
+                'price': _decimal_json(first_purchase.price),
+                'quantity': _decimal_json(first_purchase.quantity),
+                'account': first_purchase.account.name,
             }
 
         chart_transactions = []
@@ -868,12 +1100,26 @@ class BrokerageInstrumentDetailDataView(View):
                 'edit_url': reverse('finance:edit_brokerage_instrument', args=[instrument.id]),
             },
             'accounts': accounts,
+            'first_purchase': first_purchase_payload,
             'latest_transaction': latest_transaction_payload,
             'chart_transactions': chart_transactions,
             'history': _history_points_json(history_points),
             'history_summary': _history_summary(history_points),
+            'market_statistics': _statistics_json(market_statistics),
+            'actual_profit': _actual_profit_json(actual_profit),
             'history_source': history_source,
             'history_error': history_error,
+            'history_sync': {
+                'synced_from': instrument.history_synced_from.isoformat() if instrument.history_synced_from else None,
+                'synced_through': instrument.history_synced_through.isoformat() if instrument.history_synced_through else None,
+                'synced_at': instrument.history_sync_at.isoformat() if instrument.history_sync_at else None,
+                'error': instrument.history_sync_error,
+                'local_points': instrument.daily_prices.count(),
+                'instruments_synced': sync_result['instruments_synced'],
+                'points_created': sync_result['points_created'],
+                'points_updated': sync_result['points_updated'],
+                'already_current': sync_result['already_current'],
+            },
             'history_range': {
                 'start_date': start_date.isoformat(),
                 'end_date': end_date.isoformat(),
@@ -970,37 +1216,50 @@ class DeleteBrokerageTransactionView(View):
 
 @method_decorator(login_required, name='dispatch')
 class ImportBrokerageTransactionsView(View):
+    template_name = 'finance/import_brokerage_transactions.html'
+
     def get(self, request):
-        return render(request, 'finance/brokerage_form.html', {
+        return render(request, self.template_name, {
             'form': BrokerageTransactionImportForm(user=request.user),
-            'title': 'Import transakcji z XTB',
         })
 
     def post(self, request):
         form = BrokerageTransactionImportForm(request.POST, request.FILES, user=request.user)
         if form.is_valid():
             try:
-                result = import_xtb_transactions(
+                result = import_xtb_files(
                     request.user,
-                    form.cleaned_data['account'],
                     form.cleaned_data['file'],
+                    account=form.cleaned_data['account'],
                 )
             except BrokerageImportError as exc:
                 form.add_error('file', str(exc))
             else:
+                account_names = ', '.join(account.name for account in result.accounts)
                 messages.success(
                     request,
-                    f'Import XTB zakończony: dodano {result.created}, pominięto duplikatów {result.duplicates}.',
+                    f'Import XTB zakończony dla {result.files_processed} plików'
+                    f'{f" ({account_names})" if account_names else ""}: '
+                    f'{result.cash_operations_created} nowych operacji, '
+                    f'{result.created} nowych transakcji i '
+                    f'{result.position_snapshots_created} nowych wycen pozycji.',
                 )
-                for warning in result.warnings[:5]:
+                duplicate_count = result.cash_operations_duplicates + result.duplicates
+                if duplicate_count:
+                    messages.info(
+                        request,
+                        f'Bezpiecznie pominięto {duplicate_count} wcześniej zaimportowanych rekordów.',
+                    )
+                if result.accounts_created:
+                    messages.info(request, f'Automatycznie utworzono konta: {result.accounts_created}.')
+                for warning in result.warnings[:8]:
                     messages.warning(request, warning)
-                if len(result.warnings) > 5:
-                    messages.warning(request, f'Pozostałe ostrzeżenia: {len(result.warnings) - 5}.')
+                if len(result.warnings) > 8:
+                    messages.warning(request, f'Pozostałe ostrzeżenia: {len(result.warnings) - 8}.')
                 return redirect('finance:brokerage')
 
-        return render(request, 'finance/brokerage_form.html', {
+        return render(request, self.template_name, {
             'form': form,
-            'title': 'Import transakcji z XTB',
         })
 
 
@@ -1228,7 +1487,12 @@ class ExpenseListView(View):
         date_filter = request.GET.get('date', '')
         specific_date = None
 
-        records = Daily.objects.filter(account=active_account).select_related('month', 'transfer_target_account')
+        records = Daily.objects.filter(account=active_account).select_related(
+            'month',
+            'transfer_target_account',
+            'brokerage_account',
+            'investment_funding',
+        )
 
         if month_filter:
             try:
@@ -1313,6 +1577,7 @@ class AddExpenseView(View):
             store = request.POST.get('store', '')
             cost = parse_decimal(request.POST.get('cost'))
             transfer_target_account = get_selected_transfer_target(request, active_account, category)
+            brokerage_account = get_selected_brokerage_account(request, category)
 
             if cost <= 0:
                 raise ValueError("Kwota musi być większa od 0")
@@ -1334,10 +1599,12 @@ class AddExpenseView(View):
                 cost=cost,
                 month=monthly_record,
                 transfer_target_account=transfer_target_account,
+                brokerage_account=brokerage_account,
             )
 
             recalculate_monthly_record(monthly_record)
             sync_shared_account_transfer(expense)
+            sync_investment_funding(expense)
 
             messages.success(request, 'Wydatek został dodany pomyślnie!')
             return redirect('finance:expense_list')
@@ -1385,6 +1652,8 @@ class ImportBankTransactionsView(View):
             'form': BankTransactionImportForm(),
             'expense_categories': expense_categories,
             'income_sources': income_sources,
+            'brokerage_accounts': BrokerageAccount.objects.filter(user=request.user),
+            'investment_category': INVESTMENT_CATEGORY,
         }
         context.update(extra_context)
         return context
@@ -1461,6 +1730,7 @@ class EditExpenseView(View):
             expense.store = request.POST.get('store', '')
             expense.cost = parse_decimal(request.POST.get('cost'))
             expense.transfer_target_account = get_selected_transfer_target(request, active_account, expense.category)
+            expense.brokerage_account = get_selected_brokerage_account(request, expense.category)
 
             if expense.cost <= 0:
                 raise ValueError("Kwota musi być większa od 0")
@@ -1481,6 +1751,7 @@ class EditExpenseView(View):
                 recalculate_monthly_record(monthly)
 
             sync_shared_account_transfer(expense)
+            sync_investment_funding(expense)
 
             messages.success(request, 'Wydatek został zaktualizowany!')
             redirect_url = reverse('finance:expense_list')

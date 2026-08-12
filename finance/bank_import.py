@@ -12,7 +12,8 @@ from django.db import transaction
 from utils.tools import month_start, parse_date_input, parse_decimal
 
 from .account_utils import get_or_create_monthly_record, recalculate_monthly_record
-from .models import Daily, Income, Monthly
+from .investment_funding import INVESTMENT_CATEGORY, sync_investment_funding
+from .models import BrokerageAccount, Daily, Income, Monthly
 
 
 MILLENNIUM_SOURCE = 'millennium'
@@ -412,13 +413,18 @@ def _candidate_from_row(index, row_number, row, account, import_source=MILLENNIU
     if debit is not None:
         amount = abs(debit)
         store = _expense_store(row)
+        rule_category, rule_reason = _category_by_rules(' '.join([store, _combined_text(row)]))
         historical_match = _historical_expense_match(account, store, row) if account else None
-        if historical_match:
+        if rule_category == INVESTMENT_CATEGORY:
+            category = rule_category
+            title = _expense_title(category, store, row)
+            reason = rule_reason
+        elif historical_match:
             category = historical_match['category']
             title = historical_match['title'] or _expense_title(category, store, row)
             reason = f"historia: {historical_match['store']}"
         else:
-            category, reason = _category_by_rules(' '.join([store, _combined_text(row)]))
+            category, reason = rule_category, rule_reason
             title = _expense_title(category, store, row)
         return BankTransactionCandidate(
             index=index,
@@ -691,7 +697,21 @@ def import_candidates_from_post(user, account, post_data):
             if kind == EXPENSE:
                 category = _clean_text(_payload_value(post_data, index, 'category')) or 'Inne'
                 store = _clean_text(_payload_value(post_data, index, 'store'))
-                Daily.objects.create(
+                raw_brokerage_account_id = _payload_value(post_data, index, 'brokerage_account')
+                brokerage_account = None
+                if raw_brokerage_account_id:
+                    if category != INVESTMENT_CATEGORY:
+                        raise BankImportError(
+                            f'Wiersz {index + 1}: konto maklerskie można przypisać tylko do kategorii Inwestycje.'
+                        )
+                    brokerage_account = BrokerageAccount.objects.filter(
+                        id=raw_brokerage_account_id,
+                        user=user,
+                    ).first()
+                    if brokerage_account is None:
+                        raise BankImportError(f'Wiersz {index + 1}: nieprawidłowe konto maklerskie.')
+
+                expense = Daily.objects.create(
                     user=user,
                     account=account,
                     date=transaction_date,
@@ -700,9 +720,11 @@ def import_candidates_from_post(user, account, post_data):
                     category=category,
                     store=store,
                     month=monthly_record,
+                    brokerage_account=brokerage_account,
                     import_source=import_source,
                     external_id=external_id,
                 )
+                sync_investment_funding(expense)
                 result.created_expenses += 1
             elif kind == INCOME:
                 source = _clean_text(_payload_value(post_data, index, 'source')) or 'Inne'

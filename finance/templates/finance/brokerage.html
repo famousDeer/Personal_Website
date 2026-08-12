@@ -1,116 +1,242 @@
 {% extends 'finance/index.html' %}
-{% load humanize %}
+{% load humanize static %}
 
 {% block title %}Konta maklerskie{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/brokerage-dashboard.css' %}">
+{% endblock %}
+
+{% block finance_account_context %}{% endblock %}
+
 {% block content_finance %}
 <div class="brokerage-page">
-    <div class="brokerage-header">
-        <div>
-            <div class="small text-uppercase fw-bold text-muted mb-1">Portfel inwestycyjny</div>
-            <h2 class="fw-bold mb-1">Konta maklerskie</h2>
-            <p class="text-muted mb-0">
+    <header class="brokerage-header brokerage-hero brokerage-command-header">
+        <div class="brokerage-hero-copy">
+            <div class="brokerage-eyebrow"><span class="brokerage-live-dot"></span> Portfel inwestycyjny</div>
+            <h1>Centrum inwestora</h1>
+            <p>
                 {% if selected_brokerage_account %}
-                    Podgląd konta {{ selected_brokerage_account.name }}.
+                    Wynik, ekspozycja i przepływy rachunku {{ selected_brokerage_account.name }} w jednym widoku.
                 {% else %}
-                    Podsumowanie wszystkich kont maklerskich.
+                    Pełny obraz rachunków, pozycji i jakości danych bez mieszania wartości w różnych walutach.
                 {% endif %}
             </p>
+            <div class="brokerage-hero-status" aria-label="Status portfela">
+                <span><i class="bi bi-briefcase"></i> {{ portfolio_health.positions_count }} otwartych pozycji</span>
+                <span><i class="bi bi-building"></i> {{ brokerage_accounts|length }} rachunków</span>
+                <span>
+                    <i class="bi bi-clock-history"></i>
+                    {% if portfolio_health.latest_valuation_at %}
+                        Wycena {{ portfolio_health.latest_valuation_at|date:"d.m.Y H:i" }}
+                    {% else %}
+                        Brak bieżącej wyceny
+                    {% endif %}
+                </span>
+            </div>
         </div>
         <div class="brokerage-actions">
-            <form method="post" action="{% url 'finance:brokerage_refresh' %}">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-outline-primary rounded-pill fw-bold">
-                    <i class="bi bi-arrow-repeat me-1"></i> Odśwież rynek
+            <a href="{% url 'finance:import_brokerage_transactions' %}" class="btn btn-primary rounded-pill fw-bold text-white brokerage-import-cta">
+                <i class="bi bi-file-earmark-arrow-up me-1"></i> Importuj dane
+            </a>
+            <div class="dropdown">
+                <button class="btn btn-outline-primary rounded-pill fw-bold dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="bi bi-arrow-repeat me-1"></i> Synchronizuj
                 </button>
-            </form>
-            <a href="{% url 'finance:add_brokerage_account' %}" class="btn btn-soft-neutral rounded-pill fw-bold">
-                <i class="bi bi-bank me-1"></i> Konto
-            </a>
-            <a href="{% url 'finance:add_brokerage_instrument' %}" class="btn btn-soft-neutral rounded-pill fw-bold">
-                <i class="bi bi-plus-square me-1"></i> Instrument
-            </a>
-            <a href="{% url 'finance:add_brokerage_transaction' %}" class="btn btn-primary rounded-pill fw-bold text-white">
-                <i class="bi bi-arrow-left-right me-1"></i> Transakcja
-            </a>
-            <a href="{% url 'finance:import_brokerage_transactions' %}" class="btn btn-soft-neutral rounded-pill fw-bold">
-                <i class="bi bi-upload me-1"></i> Import XTB
-            </a>
-            <a href="{% url 'finance:add_brokerage_dividend' %}" class="btn btn-success rounded-pill fw-bold text-white">
-                <i class="bi bi-cash-coin me-1"></i> Dywidenda
-            </a>
-        </div>
-    </div>
-
-    <section class="brokerage-panel brokerage-scope-panel">
-        <div class="brokerage-section-heading">
-            <div>
-                <h5>Zakres podglądu</h5>
-                <p>Przełącz między całym portfelem i pojedynczym kontem.</p>
+                <ul class="dropdown-menu dropdown-menu-end shadow-sm brokerage-command-menu">
+                    <li>
+                        <form method="post" action="{% url 'finance:brokerage_refresh' %}">
+                            {% csrf_token %}
+                            <button type="submit" class="dropdown-item">
+                                <i class="bi bi-activity"></i>
+                                <span><strong>Odśwież ceny</strong><small>Pobierz najnowsze notowania</small></span>
+                            </button>
+                        </form>
+                    </li>
+                    <li>
+                        <form method="post" action="{% url 'finance:brokerage_sync_price_history' %}">
+                            {% csrf_token %}
+                            <button type="submit" class="dropdown-item">
+                                <i class="bi bi-database-up"></i>
+                                <span><strong>Uzupełnij historię</strong><small>Pobierz brakujące sesje od zakupu</small></span>
+                            </button>
+                        </form>
+                    </li>
+                </ul>
             </div>
+            <div class="dropdown">
+                <button class="btn btn-soft-neutral rounded-pill fw-bold dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Dodaj dane ręcznie">
+                    <i class="bi bi-plus-lg me-1"></i> Dodaj
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                    <li><a class="dropdown-item" href="{% url 'finance:add_brokerage_account' %}"><i class="bi bi-bank me-2"></i>Konto maklerskie</a></li>
+                    <li><a class="dropdown-item" href="{% url 'finance:add_brokerage_instrument' %}"><i class="bi bi-bar-chart me-2"></i>Instrument</a></li>
+                    <li><a class="dropdown-item" href="{% url 'finance:add_brokerage_transaction' %}"><i class="bi bi-arrow-left-right me-2"></i>Transakcję</a></li>
+                    <li><a class="dropdown-item" href="{% url 'finance:add_brokerage_dividend' %}"><i class="bi bi-cash-coin me-2"></i>Dywidendę</a></li>
+                </ul>
+            </div>
+        </div>
+    </header>
+
+    <section class="brokerage-context-bar" aria-labelledby="brokerageScopeLabel">
+        <div class="brokerage-context-select">
+            <label for="brokeragePortfolioAccountSelect" id="brokerageScopeLabel">Zakres portfela</label>
+            <div class="brokerage-context-select-control">
+                <i class="bi bi-bank"></i>
+                <select class="form-select" id="brokeragePortfolioAccountSelect" aria-label="Wybierz konto maklerskie">
+                    <option value="all" {% if not selected_brokerage_account %}selected{% endif %}>Wszystkie konta</option>
+                    {% for account in brokerage_accounts %}
+                        <option value="{{ account.id }}" {% if selected_brokerage_account_id == account.id %}selected{% endif %}>
+                            {{ account.name }} · {{ account.currency }} · {{ account.get_account_type_display }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="brokerage-context-summary">
             {% if selected_brokerage_account %}
-                <span class="brokerage-count-pill">{{ selected_brokerage_account.currency }}</span>
+                <span class="brokerage-context-icon"><i class="bi bi-wallet2"></i></span>
+                <span>
+                    <strong>{{ selected_brokerage_account.name }}</strong>
+                    <small>{{ selected_brokerage_account.get_broker_display }} · {{ selected_brokerage_account.currency }} · {{ selected_brokerage_account.get_account_type_display }}</small>
+                </span>
             {% else %}
-                <span class="brokerage-count-pill">wszystko</span>
+                <span class="brokerage-context-icon"><i class="bi bi-grid"></i></span>
+                <span>
+                    <strong>Widok skonsolidowany</strong>
+                    <small>Waluty raportowane oddzielnie i konsolidowane po najnowszym średnim kursie NBP.</small>
+                </span>
             {% endif %}
         </div>
-        <div class="brokerage-account-switcher">
-            <a href="{% url 'finance:brokerage' %}" class="brokerage-scope-button {% if not selected_brokerage_account %}active{% endif %}">
-                <span>Wszystkie konta</span>
-                <small>Pełne podsumowanie</small>
-            </a>
-            {% for account in brokerage_accounts %}
-                <a href="{% url 'finance:brokerage' %}?account={{ account.id }}" class="brokerage-scope-button {% if selected_brokerage_account_id == account.id %}active{% endif %}">
-                    <span>{{ account.name }}</span>
-                    <small>{{ account.get_broker_display }} · {{ account.currency }} · {{ account.get_account_type_display }}</small>
-                </a>
-            {% endfor %}
-        </div>
+        <a href="#brokerage-data-management" class="brokerage-context-link"><i class="bi bi-sliders"></i> Zarządzaj danymi</a>
     </section>
 
-    <section class="brokerage-panel brokerage-summary-panel">
+    <section class="brokerage-summary-panel" aria-labelledby="brokerageSummaryTitle">
         <div class="brokerage-section-heading">
             <div>
-                <h5>Podsumowanie walut</h5>
+                <span class="brokerage-section-kicker">Stan portfela</span>
+                <h2 id="brokerageSummaryTitle">Wartość i wynik</h2>
                 <p>
                     {% if selected_brokerage_account %}
-                        Dane tylko z wybranego konta.
+                        Ostatnia znana wycena rachunku w jego walucie rozliczeniowej.
                     {% else %}
-                        Bez automatycznego przeliczania na PLN.
+                        Rzetelne podsumowanie per waluta — bez nominalnego sumowania PLN, EUR i USD.
                     {% endif %}
                 </p>
             </div>
-            <span class="brokerage-count-pill">{{ currency_totals|length }} walut</span>
+            <span class="brokerage-count-pill"><i class="bi bi-layers"></i> {{ currency_totals|length }} walut</span>
         </div>
-        <div class="brokerage-currency-grid">
+        <div class="brokerage-kpi-grid">
             {% for item in currency_totals %}
-                <div class="brokerage-currency-card">
-                    <div class="brokerage-currency-code">{{ item.currency }}</div>
-                    <div class="brokerage-metric">
-                        <span>Wartość</span>
-                        <strong>{{ item.value|floatformat:2|intcomma }} {{ item.currency }}</strong>
+                <article class="brokerage-kpi-card">
+                    <div class="brokerage-kpi-head">
+                        <span class="brokerage-currency-code">{{ item.currency }}</span>
+                        <span class="brokerage-kpi-as-of">
+                            {% if item.as_of %}<i class="bi bi-clock me-1"></i>Wycena {{ item.as_of|date:"d.m.Y H:i" }}{% else %}<i class="bi bi-exclamation-circle me-1"></i>Brak wyceny{% endif %}
+                        </span>
                     </div>
-                    <div class="brokerage-metric">
-                        <span>Koszt</span>
-                        <strong>{{ item.cost|floatformat:2|intcomma }} {{ item.currency }}</strong>
+                    <div class="brokerage-kpi-primary">
+                        <span>Wartość rachunku</span>
+                        <strong>{{ item.total_value|floatformat:2|intcomma }} <small>{{ item.currency }}</small></strong>
+                        <div class="brokerage-kpi-delta {% if item.day_change > 0 %}is-positive{% elif item.day_change < 0 %}is-negative{% else %}is-neutral{% endif %}">
+                            {% if item.day_change > 0 %}<i class="bi bi-arrow-up-right"></i>{% elif item.day_change < 0 %}<i class="bi bi-arrow-down-right"></i>{% else %}<i class="bi bi-dash"></i>{% endif %}
+                            {{ item.day_change|floatformat:2|intcomma }} {{ item.currency }}
+                            {% if item.day_change_percent != None %}<span>({{ item.day_change_percent|floatformat:2 }}%)</span>{% endif %}
+                            <small>zmiana względem poprzedniej sesji objętej wyceną</small>
+                        </div>
                     </div>
-                    <div class="brokerage-metric">
-                        <span>Wynik</span>
-                        <strong class="{% if item.unrealized >= 0 %}text-success{% else %}text-danger{% endif %}">
-                            {{ item.unrealized|floatformat:2|intcomma }} {{ item.currency }}
-                        </strong>
+                    <div class="brokerage-kpi-details">
+                        <div><span>Wynik otwarty</span><strong class="{% if item.unrealized > 0 %}text-success{% elif item.unrealized < 0 %}text-danger{% endif %}">{{ item.unrealized|floatformat:2|intcomma }}{% if item.profit_percent != None %} <small>({{ item.profit_percent|floatformat:2 }}%)</small>{% endif %}</strong></div>
+                        <div><span>Koszt pozycji</span><strong>{{ item.cost|floatformat:2|intcomma }}</strong></div>
+                        <div><span>Papiery</span><strong>{{ item.securities_value|floatformat:2|intcomma }}</strong></div>
+                        <div><span>Gotówka</span><strong>{{ item.cash_balance|floatformat:2|intcomma }}</strong></div>
+                        <div><span>Wpłaty netto</span><strong>{{ item.net_contributions|floatformat:2|intcomma }}</strong></div>
+                        <div><span>Dochód netto</span><strong>{{ item.net_income|floatformat:2|intcomma }}</strong></div>
+                        <div><span>Planowane dywidendy</span><strong>{{ item.planned_dividend_net|floatformat:2|intcomma }}</strong></div>
+                        <div><span>Szac. podatek sprzedaży</span><strong>{{ item.estimated_sell_tax|floatformat:2|intcomma }}</strong></div>
                     </div>
-                    <div class="brokerage-metric brokerage-metric-muted">
-                        <span>Podatek / dywidendy</span>
-                        <strong>{{ item.estimated_sell_tax|floatformat:2|intcomma }} / {{ item.planned_dividend_net|floatformat:2|intcomma }} {{ item.currency }}</strong>
-                    </div>
-                </div>
+                </article>
             {% empty %}
-                <div class="brokerage-empty-state">
-                    Dodaj konto, instrument i pierwszą transakcję, żeby zbudować podsumowanie portfela.
+                <div class="brokerage-empty-state brokerage-empty-state-wide">
+                    <i class="bi bi-pie-chart"></i>
+                    <div><strong>Portfel czeka na pierwsze dane</strong><span>Zaimportuj raport XTB, aby automatycznie utworzyć rachunki, operacje i bieżące pozycje.</span></div>
+                    <a href="{% url 'finance:import_brokerage_transactions' %}" class="btn btn-primary rounded-pill fw-bold">Importuj XTB</a>
                 </div>
             {% endfor %}
         </div>
+        {% if currency_totals|length > 1 %}
+            <div class="brokerage-summary-note">
+                <i class="bi bi-bank"></i>
+                Kwoty źródłowe pozostają rozdzielone.
+                {% if brokerage_initial_portfolio_history.summary.latest_total_value %}
+                    Łącznie: <strong>{{ brokerage_initial_portfolio_history.summary.latest_total_value|floatformat:2|intcomma }} PLN</strong>
+                    według {{ brokerage_initial_portfolio_history.fx_source|default:"najnowszego kursu NBP" }}{% if brokerage_initial_portfolio_history.fx_table_date %} z {{ brokerage_initial_portfolio_history.fx_table_date }}{% endif %}.
+                {% else %}
+                    Suma w PLN pojawi się po pobraniu kompletu kursów walut.
+                {% endif %}
+            </div>
+        {% endif %}
+    </section>
+
+    <div class="brokerage-analytics-grid">
+    <section class="brokerage-market-panel" aria-labelledby="brokerageMarketTitle">
+        <div class="brokerage-section-heading">
+            <div>
+                <span class="brokerage-section-kicker">Ostatnia sesja</span>
+                <h2 id="brokerageMarketTitle">Wpływ rynku</h2>
+                <p>Zmiana między dwiema ostatnimi dostępnymi wycenami.</p>
+            </div>
+            <span class="brokerage-market-time">
+                <i class="bi bi-broadcast"></i>
+                {% if market_as_of %}{{ market_as_of|date:"d.m.Y H:i" }}{% else %}Brak porównania{% endif %}
+            </span>
+        </div>
+        <div class="brokerage-market-coverage">
+            <span>Pokrycie sesji</span>
+            <strong>{{ portfolio_health.daily_coverage_count }} / {{ portfolio_health.positions_count }} pozycji</strong>
+            <progress class="brokerage-coverage-track" value="{{ portfolio_health.daily_coverage_count }}" max="{{ portfolio_health.positions_count|default:1 }}">{{ portfolio_health.daily_coverage_percent|default:0|floatformat:0 }}%</progress>
+        </div>
+        <div class="brokerage-movers-grid">
+            <div class="brokerage-mover-column is-gainer">
+                <div class="brokerage-mover-column-title"><span><i class="bi bi-arrow-up-right"></i> Najmocniejsze</span><small>wpływ</small></div>
+                <div class="brokerage-mover-list">
+                    {% for mover in top_gainers|slice:":3" %}
+                        <article class="brokerage-mover-row">
+                            <div class="brokerage-mover-name">
+                                <strong>{{ mover.instrument.ticker }}</strong>
+                                <span>{{ mover.instrument.name }} · {{ mover.account.name }}</span>
+                            </div>
+                            <div class="brokerage-mover-quote">
+                                <strong>+{{ mover.change_percent|floatformat:2 }}%</strong>
+                                <span>+{{ mover.impact|floatformat:2|intcomma }} {{ mover.currency }}</span>
+                            </div>
+                        </article>
+                    {% empty %}
+                        <div class="brokerage-compact-empty">Brak wzrostów objętych porównaniem.</div>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="brokerage-mover-column is-loser">
+                <div class="brokerage-mover-column-title"><span><i class="bi bi-arrow-down-right"></i> Najsłabsze</span><small>wpływ</small></div>
+                <div class="brokerage-mover-list">
+                    {% for mover in top_losers|slice:":3" %}
+                        <article class="brokerage-mover-row">
+                            <div class="brokerage-mover-name">
+                                <strong>{{ mover.instrument.ticker }}</strong>
+                                <span>{{ mover.instrument.name }} · {{ mover.account.name }}</span>
+                            </div>
+                            <div class="brokerage-mover-quote">
+                                <strong>{{ mover.change_percent|floatformat:2 }}%</strong>
+                                <span>{{ mover.impact|floatformat:2|intcomma }} {{ mover.currency }}</span>
+                            </div>
+                        </article>
+                    {% empty %}
+                        <div class="brokerage-compact-empty">Brak spadków objętych porównaniem.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        <div class="brokerage-market-footnote"><i class="bi bi-shield-check"></i> Instrument bez dwóch różnych dni danych nie wpływa na zmianę sesyjną.</div>
     </section>
 
     <section
@@ -120,58 +246,74 @@
     >
         <div class="brokerage-section-heading brokerage-chart-heading">
             <div>
-                <h5>Zmiana wartości portfela</h5>
+                <span class="brokerage-section-kicker">Trend portfela</span>
+                <h2 id="brokeragePortfolioChartTitle">
+                    {% if selected_brokerage_account %}
+                        Wartość portfela · {{ selected_brokerage_account.name }}
+                    {% else %}
+                        Wartość portfela · wszystkie konta
+                    {% endif %}
+                </h2>
                 <p id="brokeragePortfolioValueMeta">
                     {% if selected_brokerage_account %}
-                        {{ selected_brokerage_account.name }} · {{ selected_brokerage_account.currency }}
+                        {{ selected_brokerage_account.name }} · {{ selected_brokerage_account.currency }} · papiery i saldo gotówkowe
                     {% else %}
-                        Wszystkie konta · PLN po aktualnym kursie
+                        Papiery i gotówka w PLN · najnowszy średni kurs NBP
                     {% endif %}
                 </p>
             </div>
             <div class="brokerage-chart-controls">
                 <div class="brokerage-range-buttons" role="group" aria-label="Zakres wykresu wartości portfela">
-                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-portfolio-history-days="30">1M</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-portfolio-history-days="90">3M</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-portfolio-history-days="180">6M</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-portfolio-history-days="365">1R</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-portfolio-history-days="1095">3L</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-portfolio-history-days="30" aria-pressed="false">1M</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-portfolio-history-days="90" aria-pressed="false">3M</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-portfolio-history-days="180" aria-pressed="false">6M</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-portfolio-history-days="365" aria-pressed="false">1R</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-portfolio-history-days="1095" aria-pressed="false">3L</button>
                 </div>
-                <form class="brokerage-custom-range" id="brokeragePortfolioRangeForm">
-                    <input type="date" class="form-control form-control-sm" id="brokeragePortfolioStartDate" aria-label="Data początku wykresu wartości portfela">
-                    <input type="date" class="form-control form-control-sm" id="brokeragePortfolioEndDate" aria-label="Data końca wykresu wartości portfela">
-                    <button type="submit" class="btn btn-sm btn-primary rounded-pill fw-bold">Zastosuj</button>
-                </form>
+                <details class="brokerage-date-range">
+                    <summary><i class="bi bi-calendar3"></i> Daty</summary>
+                    <form class="brokerage-custom-range" id="brokeragePortfolioRangeForm">
+                        <label for="brokeragePortfolioStartDate">Od</label>
+                        <input type="date" class="form-control form-control-sm" id="brokeragePortfolioStartDate" aria-label="Data początku wykresu wartości portfela">
+                        <label for="brokeragePortfolioEndDate">Do</label>
+                        <input type="date" class="form-control form-control-sm" id="brokeragePortfolioEndDate" aria-label="Data końca wykresu wartości portfela">
+                        <button type="submit" class="btn btn-sm btn-primary rounded-pill fw-bold">Zastosuj</button>
+                    </form>
+                </details>
             </div>
         </div>
         <div class="brokerage-chart-summary">
             <div class="brokerage-chart-stat">
-                <span>Ostatnia wartość</span>
+                <span>Ostatnia wartość portfela</span>
                 <strong id="brokeragePortfolioLatestValue">-</strong>
             </div>
             <div class="brokerage-chart-stat">
-                <span>Zmiana</span>
+                <span>Zmiana wartości portfela</span>
                 <strong id="brokeragePortfolioValueChange">-</strong>
+                <small>Uwzględnia wpłaty, wypłaty, zakupy i sprzedaże; nie jest stopą zwrotu.</small>
             </div>
             <div class="brokerage-chart-stat">
-                <span>Źródła</span>
+                <span>Źródła i pokrycie</span>
                 <strong id="brokeragePortfolioValueSource">-</strong>
+                <small id="brokeragePortfolioCoverage">-</small>
             </div>
         </div>
-        <div class="brokerage-chart-shell brokerage-portfolio-chart-shell">
-            <canvas id="brokeragePortfolioValueChart"></canvas>
-            <div class="brokerage-chart-empty" id="brokeragePortfolioValueChartEmpty">Ładowanie wykresu wartości portfela.</div>
+        <div class="brokerage-chart-shell brokerage-portfolio-chart-shell" aria-busy="false">
+            <canvas id="brokeragePortfolioValueChart" role="img" aria-labelledby="brokeragePortfolioChartTitle" aria-describedby="brokeragePortfolioValueMeta brokeragePortfolioChartA11ySummary"></canvas>
+            <div class="visually-hidden" id="brokeragePortfolioChartA11ySummary">Wykres dziennej wartości papierów, gotówki i całego portfela dla wybranego zakresu.</div>
+            <div class="brokerage-chart-empty" id="brokeragePortfolioValueChartEmpty" role="status" aria-live="polite">Ładowanie wykresu wartości portfela.</div>
         </div>
-        <div class="brokerage-table-note d-none" id="brokeragePortfolioValueWarning"></div>
+        <div class="brokerage-table-note d-none" id="brokeragePortfolioValueWarning" role="alert"></div>
     </section>
+    </div>
     {{ brokerage_initial_portfolio_history|json_script:"brokerageInitialPortfolioHistory" }}
 
     <div class="brokerage-layout">
-        <aside class="brokerage-sidebar">
+        <aside class="brokerage-sidebar" id="brokerage-data-management" aria-label="Zarządzanie danymi maklerskimi">
             <section class="brokerage-panel">
                 <div class="brokerage-section-heading">
                     <div>
-                        <h5>Konta</h5>
+                        <h2>Konta</h2>
                         <p>
                             {% if selected_brokerage_account %}
                                 Aktualnie wybrane konto.
@@ -184,12 +326,32 @@
                 </div>
                 <div class="brokerage-account-list">
                     {% for item in account_totals %}
-                        <article class="brokerage-account-row">
-                            <div>
-                                <div class="brokerage-row-title">{{ item.account.name }}</div>
-                                <div class="brokerage-row-meta">
-                                    {{ item.account.get_broker_display }} · {{ item.account.currency }} · {{ item.account.get_account_type_display }}
-                                </div>
+                        <article class="brokerage-account-card {% if selected_brokerage_account_id == item.account.id %}is-selected{% endif %}">
+                            <div class="brokerage-account-card-head">
+                                <a href="{% url 'finance:brokerage' %}?account={{ item.account.id }}" class="brokerage-account-identity"{% if selected_brokerage_account_id == item.account.id %} aria-current="page"{% endif %}>
+                                    <span class="brokerage-account-logo">{{ item.account.get_broker_display|slice:":1" }}</span>
+                                    <span>
+                                        <strong>{{ item.account.name }}</strong>
+                                        <small>{{ item.account.get_broker_display }} · {{ item.account.get_account_type_display }}</small>
+                                    </span>
+                                </a>
+                                <span class="brokerage-currency-code">{{ item.currency }}</span>
+                            </div>
+                            <div class="brokerage-account-total">
+                                <span>Łączna wartość</span>
+                                <strong>{{ item.total_value|floatformat:2|intcomma }} <small>{{ item.currency }}</small></strong>
+                            </div>
+                            <div class="brokerage-account-breakdown">
+                                <div><span>Papiery</span><strong>{{ item.securities_value|floatformat:2|intcomma }}</strong></div>
+                                <div><span>Gotówka</span><strong>{{ item.cash_balance|floatformat:2|intcomma }}</strong></div>
+                                <div><span>Wynik</span><strong class="{% if item.unrealized >= 0 %}text-success{% else %}text-danger{% endif %}">{{ item.unrealized|floatformat:2|intcomma }}</strong></div>
+                                <div><span>Wpłaty netto</span><strong>{{ item.net_contributions|floatformat:2|intcomma }}</strong></div>
+                            </div>
+                            <div class="brokerage-account-card-foot">
+                                <span>
+                                    <i class="bi bi-clock-history me-1"></i>
+                                    {% if item.account.last_import_at %}Import {{ item.account.last_import_at|date:"d.m.Y H:i" }}{% else %}Nie importowano raportu{% endif %}
+                                </span>
                                 <div class="brokerage-inline-actions">
                                     <a href="{% url 'finance:edit_brokerage_account' item.account.id %}" class="btn btn-sm btn-outline-primary rounded-pill" title="Edytuj konto">
                                         <i class="bi bi-pencil"></i><span class="visually-hidden">Edytuj konto</span>
@@ -202,20 +364,9 @@
                                     </form>
                                 </div>
                             </div>
-                            <div class="brokerage-account-values">
-                                {% for total in item.currencies %}
-                                    <strong>{{ total.value|floatformat:2|intcomma }} {{ total.currency }}</strong>
-                                    <span class="{% if total.unrealized >= 0 %}text-success{% else %}text-danger{% endif %}">
-                                        {{ total.unrealized|floatformat:2|intcomma }} {{ total.currency }}
-                                    </span>
-                                {% empty %}
-                                    <strong>0,00 {{ item.account.currency }}</strong>
-                                    <span class="text-muted">brak pozycji</span>
-                                {% endfor %}
-                            </div>
                         </article>
                     {% empty %}
-                        <div class="brokerage-empty-state">Brak kont maklerskich.</div>
+                        <div class="brokerage-empty-state">Brak kont maklerskich. Import XTB może utworzyć je automatycznie.</div>
                     {% endfor %}
                 </div>
             </section>
@@ -223,7 +374,7 @@
             <section class="brokerage-panel">
                 <div class="brokerage-section-heading">
                     <div>
-                        <h5>Instrumenty</h5>
+                        <h2>Instrumenty</h2>
                         <p>
                             {% if selected_brokerage_account %}
                                 Instrumenty użyte na tym koncie.
@@ -236,7 +387,8 @@
                 </div>
                 <div class="brokerage-search">
                     <i class="bi bi-search"></i>
-                    <input type="search" class="form-control" placeholder="Szukaj instrumentu" data-brokerage-filter="#brokerage-instruments [data-filter-row]" data-brokerage-empty="#brokerage-instruments-empty">
+                    <label class="visually-hidden" for="brokerageInstrumentSearch">Szukaj instrumentu</label>
+                    <input type="search" class="form-control" id="brokerageInstrumentSearch" aria-label="Szukaj instrumentu" placeholder="Szukaj instrumentu" data-brokerage-filter="#brokerage-instruments [data-filter-row]" data-brokerage-empty="#brokerage-instruments-empty">
                 </div>
                 <div class="brokerage-registry" id="brokerage-instruments">
                     {% for instrument in brokerage_instruments %}
@@ -245,9 +397,6 @@
                             data-filter-row
                             data-search="{{ instrument.name }} {{ instrument.ticker }} {{ instrument.isin }} {{ instrument.price_symbol }} {{ instrument.currency }}"
                             data-instrument-detail-url="{% url 'finance:brokerage_instrument_detail_data' instrument.id %}"
-                            role="button"
-                            tabindex="0"
-                            title="Szczegóły instrumentu"
                         >
                             <div>
                                 <div class="brokerage-row-title">{{ instrument.name }}</div>
@@ -260,13 +409,18 @@
                                         <span class="badge rounded-pill bg-info-subtle text-info">Cena: {{ instrument.price_symbol }}</span>
                                     {% endif %}
                                     {% if instrument.last_price %}
-                                        <span class="badge rounded-pill bg-success-subtle text-success">{{ instrument.last_price|floatformat:4|intcomma }} {{ instrument.currency }}</span>
+                                        <span class="badge rounded-pill bg-success-subtle text-success">
+                                            {{ instrument.last_price|floatformat:4|intcomma }}{% if instrument.market_data_source != 'XTB' %} {{ instrument.currency }}{% else %} · cena XTB{% endif %}
+                                        </span>
                                     {% else %}
                                         <span class="badge rounded-pill bg-warning-subtle text-warning">brak ceny</span>
                                     {% endif %}
                                 </div>
                             </div>
                             <div class="brokerage-inline-actions">
+                                <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" title="Pokaż analizę instrumentu" data-instrument-detail-trigger>
+                                    <i class="bi bi-graph-up-arrow"></i><span class="visually-hidden">Pokaż analizę {{ instrument.name }}</span>
+                                </button>
                                 <a href="{% url 'finance:edit_brokerage_instrument' instrument.id %}" class="btn btn-sm btn-outline-primary rounded-pill" title="Edytuj instrument" data-instrument-action>
                                     <i class="bi bi-pencil"></i><span class="visually-hidden">Edytuj instrument</span>
                                 </a>
@@ -281,23 +435,47 @@
                     {% empty %}
                         <div class="brokerage-empty-state">Brak instrumentów.</div>
                     {% endfor %}
-                    <div class="brokerage-empty-state d-none" id="brokerage-instruments-empty">Brak instrumentów pasujących do filtra.</div>
+                    <div class="brokerage-empty-state d-none" id="brokerage-instruments-empty" role="status" aria-live="polite">Brak instrumentów pasujących do filtra.</div>
                 </div>
             </section>
         </aside>
 
         <main class="brokerage-main">
+            {% if portfolio_health.missing_price_count or portfolio_health.history_error_count or unassigned_investments %}
+                <section class="brokerage-attention-panel" aria-labelledby="brokerageAttentionTitle">
+                    <div class="brokerage-attention-heading">
+                        <span class="brokerage-attention-icon"><i class="bi bi-exclamation-triangle"></i></span>
+                        <div>
+                            <span class="brokerage-section-kicker">Kontrola danych</span>
+                            <h2 id="brokerageAttentionTitle">Wymaga uwagi</h2>
+                        </div>
+                    </div>
+                    <div class="brokerage-attention-items">
+                        {% if portfolio_health.missing_price_count %}
+                            <a href="#brokerage-data-management"><strong>{{ portfolio_health.missing_price_count }}</strong><span>pozycji bez wyceny</span><i class="bi bi-chevron-right"></i></a>
+                        {% endif %}
+                        {% if portfolio_health.history_error_count %}
+                            <a href="#brokerage-data-management"><strong>{{ portfolio_health.history_error_count }}</strong><span>instrumentów z błędem historii</span><i class="bi bi-chevron-right"></i></a>
+                        {% endif %}
+                        {% if unassigned_investments %}
+                            <a href="#brokerage-unassigned-investments"><strong>{{ unassigned_investments|length }}</strong><span>wpłat bez przypisanego konta</span><i class="bi bi-chevron-right"></i></a>
+                        {% endif %}
+                    </div>
+                </section>
+            {% endif %}
             <section class="brokerage-panel brokerage-main-panel">
                 <div class="brokerage-table-toolbar">
                     <div class="brokerage-section-heading mb-0">
                         <div>
-                            <h5>Otwarte pozycje</h5>
-                            <p>{{ positions|length }} pozycji w portfelu.</p>
+                            <span class="brokerage-section-kicker">Ekspozycja</span>
+                            <h2>Otwarte pozycje</h2>
+                            <p>{{ positions|length }} pozycji · {{ portfolio_health.profitable_positions_count }} zyskownych · {{ portfolio_health.losing_positions_count }} stratnych.</p>
                         </div>
                     </div>
                     <div class="brokerage-search brokerage-search-wide">
                         <i class="bi bi-search"></i>
-                        <input type="search" class="form-control" placeholder="Filtruj po instrumencie, koncie, walucie" data-brokerage-filter="#brokerage-positions [data-filter-row]" data-brokerage-empty="#brokerage-positions-empty">
+                        <label class="visually-hidden" for="brokeragePositionSearch">Filtruj otwarte pozycje</label>
+                        <input type="search" class="form-control" id="brokeragePositionSearch" aria-label="Filtruj otwarte pozycje" placeholder="Instrument, konto lub waluta" data-brokerage-filter="#brokerage-positions [data-filter-row]" data-brokerage-empty="#brokerage-positions-empty">
                     </div>
                 </div>
                 <div class="brokerage-position-list" id="brokerage-positions">
@@ -322,20 +500,40 @@
                                         {% endif %}
                                     </div>
                                 </div>
-                                <div class="brokerage-position-quick">
+                                <div class="brokerage-position-quick brokerage-position-quick-pro">
                                     <div class="brokerage-metric-tile brokerage-number">
-                                        <span>Ilość</span>
-                                        <strong>{{ position.quantity|floatformat:-6|intcomma }}</strong>
+                                        <span>Wartość</span>
+                                        {% if position.current_value != None %}
+                                            <strong>{{ position.current_value|floatformat:2|intcomma }} <small>{{ position.currency }}</small></strong>
+                                        {% else %}
+                                            <strong class="text-muted">brak wyceny</strong>
+                                        {% endif %}
                                     </div>
                                     <div class="brokerage-metric-tile brokerage-number">
-                                        <span>Wynik</span>
+                                        <span>Ostatnia sesja</span>
+                                        {% if position.day_impact != None %}
+                                            <strong class="{% if position.day_impact > 0 %}text-success{% elif position.day_impact < 0 %}text-danger{% endif %}">
+                                                {% if position.day_impact > 0 %}+{% endif %}{{ position.day_impact|floatformat:2|intcomma }} <small>{{ position.currency }}</small>
+                                                {% if position.day_change_percent != None %}<small>({% if position.day_change_percent > 0 %}+{% endif %}{{ position.day_change_percent|floatformat:2 }}%)</small>{% endif %}
+                                            </strong>
+                                        {% else %}
+                                            <strong class="text-muted">brak porównania</strong>
+                                        {% endif %}
+                                    </div>
+                                    <div class="brokerage-metric-tile brokerage-number">
+                                        <span>Wynik otwarty</span>
                                         {% if position.unrealized != None %}
-                                            <strong class="{% if position.unrealized >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                            <strong class="{% if position.unrealized > 0 %}text-success{% elif position.unrealized < 0 %}text-danger{% endif %}">
                                                 {{ position.unrealized|floatformat:2|intcomma }} {{ position.currency }}
+                                                {% if position.profit_percent != None %}<small>({{ position.profit_percent|floatformat:2 }}%)</small>{% endif %}
                                             </strong>
                                         {% else %}
                                             <strong class="text-muted">-</strong>
                                         {% endif %}
+                                    </div>
+                                    <div class="brokerage-metric-tile brokerage-number">
+                                        <span>Udział w walucie</span>
+                                        <strong>{% if position.allocation_percent != None %}{{ position.allocation_percent|floatformat:2 }}%{% else %}-{% endif %}</strong>
                                     </div>
                                 </div>
                                 <span class="brokerage-expand-indicator">
@@ -350,8 +548,11 @@
                                     </div>
                                     <div class="brokerage-metric-tile brokerage-number">
                                         <span>Cena</span>
-                                        {% if position.instrument.last_price != None %}
-                                            <strong>{{ position.instrument.last_price|floatformat:4|intcomma }} {{ position.currency }}</strong>
+                                        {% if position.current_price != None %}
+                                            <strong>
+                                                {{ position.current_price|floatformat:4|intcomma }}
+                                                {% if position.source == 'XTB' %}<small>cena notowania</small>{% else %}{{ position.instrument.currency }}{% endif %}
+                                            </strong>
                                         {% else %}
                                             <strong class="text-muted">brak ceny</strong>
                                         {% endif %}
@@ -367,11 +568,11 @@
                                 </div>
                                 <div class="brokerage-position-footer">
                                     <div class="brokerage-position-source">
-                                        <span>Źródło</span>
-                                        <strong>{{ position.instrument.market_data_source|default:"Ręcznie" }}</strong>
+                                        <span>Źródło wyceny</span>
+                                        <strong>{{ position.source|default:"Ręcznie" }}</strong>
                                         <small class="text-muted">
-                                            {% if position.instrument.last_price_at %}
-                                                {{ position.instrument.last_price_at|date:"d.m.Y H:i" }}
+                                            {% if position.as_of %}
+                                                Stan na {{ position.as_of|date:"d.m.Y H:i" }}
                                             {% else %}
                                                 brak daty
                                             {% endif %}
@@ -388,18 +589,120 @@
                     {% empty %}
                         <div class="brokerage-empty-state">Brak otwartych pozycji.</div>
                     {% endfor %}
-                    <div class="brokerage-empty-state d-none" id="brokerage-positions-empty">Brak pozycji pasujących do filtra.</div>
+                    <div class="brokerage-empty-state d-none" id="brokerage-positions-empty" role="status" aria-live="polite">Brak pozycji pasujących do filtra.</div>
                 </div>
-                <div class="brokerage-table-note">
-                    Wartości pozostają w walutach instrumentów i nie są automatycznie przeliczane na PLN.
+                <div class="brokerage-position-footer-note">
+                    <span><i class="bi bi-check2-circle"></i> Wycena {{ portfolio_health.priced_positions_count }} / {{ portfolio_health.positions_count }} pozycji</span>
+                    <span><i class="bi bi-calendar-check"></i> Zmiana sesyjna {{ portfolio_health.daily_coverage_count }} / {{ portfolio_health.positions_count }}</span>
+                    <span><i class="bi bi-currency-exchange"></i> Wartości pozostają w walucie rachunku</span>
                 </div>
             </section>
+
+            <div class="brokerage-flow-grid">
+                <section class="brokerage-panel brokerage-flow-panel">
+                    <div class="brokerage-section-heading">
+                        <div>
+                            <h2>Aktywność na rachunkach</h2>
+                            <p>Operacje gotówkowe odtworzone z historii brokera.</p>
+                        </div>
+                        <span class="brokerage-count-pill">{{ brokerage_cash_operations|length }}</span>
+                    </div>
+                    <div class="brokerage-ledger-list">
+                        {% for operation in brokerage_cash_operations %}
+                            <article class="brokerage-ledger-row">
+                                <span class="brokerage-operation-icon operation-{{ operation.operation_type }}">
+                                    {% if operation.operation_type == 'deposit' %}<i class="bi bi-arrow-down-left"></i>
+                                    {% elif operation.operation_type == 'withdrawal' %}<i class="bi bi-arrow-up-right"></i>
+                                    {% elif operation.operation_type == 'buy' %}<i class="bi bi-cart-plus"></i>
+                                    {% elif operation.operation_type == 'sell' %}<i class="bi bi-cash-stack"></i>
+                                    {% elif operation.operation_type == 'dividend' %}<i class="bi bi-coin"></i>
+                                    {% elif operation.operation_type == 'internal_transfer' %}<i class="bi bi-arrow-left-right"></i>
+                                    {% else %}<i class="bi bi-receipt"></i>{% endif %}
+                                </span>
+                                <div class="brokerage-ledger-main">
+                                    <strong>{{ operation.get_operation_type_display }}{% if operation.instrument %} · {{ operation.instrument.ticker }}{% endif %}</strong>
+                                    <span>{{ operation.account.name }} · {{ operation.occurred_at|date:"d.m.Y H:i" }}</span>
+                                    {% if operation.description %}<small title="{{ operation.description }}">{{ operation.description|truncatechars:72 }}</small>{% endif %}
+                                </div>
+                                <div class="brokerage-ledger-amount {% if operation.amount > 0 %}is-positive{% elif operation.amount < 0 %}is-negative{% endif %}">
+                                    <strong>{% if operation.amount > 0 %}+{% endif %}{{ operation.amount|floatformat:2|intcomma }}</strong>
+                                    <span>{{ operation.currency }}</span>
+                                </div>
+                            </article>
+                        {% empty %}
+                            <div class="brokerage-empty-state">Brak operacji. Import raportu XTB uzupełni wpłaty, transakcje, dywidendy i podatki.</div>
+                        {% endfor %}
+                    </div>
+                </section>
+
+                <section class="brokerage-panel brokerage-flow-panel">
+                    <div class="brokerage-section-heading">
+                        <div>
+                            <h2>Uzgodnienie wpłat</h2>
+                            <p>Połączenie wydatków „Inwestycje” z wpłatami widocznymi u brokera.</p>
+                        </div>
+                        <span class="brokerage-count-pill">{{ investment_fundings|length }}</span>
+                    </div>
+                    <div class="brokerage-reconciliation-summary">
+                        <span><i class="bi bi-link-45deg"></i> Dopasowanie wymaga tego samego konta, kwoty i zbliżonej daty.</span>
+                    </div>
+                    <div class="brokerage-ledger-list">
+                        {% for funding in investment_fundings %}
+                            <article class="brokerage-funding-row">
+                                <div class="brokerage-funding-main">
+                                    <div class="brokerage-funding-title">
+                                        <strong>{{ funding.expense.title }}</strong>
+                                        <span class="brokerage-status-badge status-{{ funding.status }}">
+                                            {% if funding.status == 'matched' %}<i class="bi bi-check-circle-fill"></i>
+                                            {% elif funding.status == 'needs_review' %}<i class="bi bi-exclamation-triangle-fill"></i>
+                                            {% else %}<i class="bi bi-hourglass-split"></i>{% endif %}
+                                            {{ funding.get_status_display }}
+                                        </span>
+                                    </div>
+                                    <span>{{ funding.account.name }} · {{ funding.occurred_on|date:"d.m.Y" }}</span>
+                                    {% if funding.cash_operation %}<small>Wpłata brokera: {{ funding.cash_operation.amount|floatformat:2|intcomma }} {{ funding.cash_operation.currency }}</small>{% else %}<small>Brak jednoznacznej wpłaty w historii brokera.</small>{% endif %}
+                                </div>
+                                <div class="brokerage-funding-side">
+                                    <strong>{{ funding.source_amount|floatformat:2|intcomma }} {{ funding.source_currency }}</strong>
+                                    <a href="{% url 'finance:edit_expense' funding.expense.id %}" aria-label="Edytuj wydatek {{ funding.expense.title }}"><i class="bi bi-pencil"></i></a>
+                                </div>
+                            </article>
+                        {% empty %}
+                            <div class="brokerage-empty-state">Przypisz konto maklerskie do wydatku w kategorii „Inwestycje”, aby rozpocząć uzgadnianie.</div>
+                        {% endfor %}
+                    </div>
+                </section>
+            </div>
+
+            {% if unassigned_investments %}
+                <section class="brokerage-panel brokerage-review-panel" id="brokerage-unassigned-investments">
+                    <div class="brokerage-section-heading">
+                        <div>
+                            <h2>Wpłaty wymagające przypisania</h2>
+                            <p>Te wydatki mają kategorię „Inwestycje”, ale nie wskazują docelowego rachunku maklerskiego.</p>
+                        </div>
+                        <span class="brokerage-count-pill brokerage-count-warning">{{ unassigned_investments|length }}</span>
+                    </div>
+                    <div class="brokerage-review-list">
+                        {% for expense in unassigned_investments %}
+                            <article>
+                                <div>
+                                    <strong>{{ expense.title }}</strong>
+                                    <span>{{ expense.date|date:"d.m.Y" }} · {{ expense.account.display_name|default:"Konto finansowe" }}</span>
+                                </div>
+                                <strong>{{ expense.cost|floatformat:2|intcomma }} PLN</strong>
+                                <a href="{% url 'finance:edit_expense' expense.id %}" class="btn btn-sm btn-outline-warning rounded-pill fw-bold">Przypisz konto</a>
+                            </article>
+                        {% endfor %}
+                    </div>
+                </section>
+            {% endif %}
 
             <div class="brokerage-bottom-grid">
                 <section class="brokerage-panel">
                     <div class="brokerage-section-heading">
                         <div>
-                            <h5>Ostatnie transakcje</h5>
+                            <h2>Ostatnie transakcje</h2>
                             <p>Bieżący miesiąc od {{ brokerage_current_month|date:"d.m.Y" }}.</p>
                         </div>
                         <span class="brokerage-count-pill">{{ brokerage_transactions|length }}</span>
@@ -459,8 +762,8 @@
                 <section class="brokerage-panel">
                     <div class="brokerage-section-heading">
                         <div>
-                            <h5>Planowane dywidendy</h5>
-                            <p>Podatek IKE liczony jako 0%.</p>
+                            <h2>Planowane dywidendy</h2>
+                            <p>Terminy z ręcznych wpisów; wypłaty trafiają z raportów XTB do aktywności. Podatek IKE liczony jako 0%.</p>
                         </div>
                         <span class="brokerage-count-pill">{{ upcoming_dividends|length }}</span>
                     </div>
@@ -533,13 +836,13 @@
                 </div>
             </div>
             <div class="modal-body brokerage-instrument-modal-body">
-                <div class="brokerage-instrument-loading" id="brokerageInstrumentLoading">
+                <div class="brokerage-instrument-loading" id="brokerageInstrumentLoading" role="status" aria-live="polite">
                     <div class="spinner-border text-primary" role="status">
                         <span class="visually-hidden">Ładowanie</span>
                     </div>
                 </div>
 
-                <div class="alert alert-warning d-none" id="brokerageInstrumentError"></div>
+                <div class="alert alert-warning d-none" id="brokerageInstrumentError" role="alert"></div>
 
                 <div class="brokerage-instrument-detail d-none" id="brokerageInstrumentDetail">
                     <section class="brokerage-instrument-overview">
@@ -549,25 +852,73 @@
                             <small id="instrumentLastPriceMeta">-</small>
                         </div>
                         <div class="brokerage-detail-stat">
-                            <span>Zmiana w historii</span>
-                            <strong id="instrumentHistoryChange">-</strong>
-                            <small id="instrumentHistoryRange">-</small>
+                            <span>Faktyczny wynik</span>
+                            <strong id="instrumentActualProfit">-</strong>
+                            <small id="instrumentActualProfitMeta">-</small>
                         </div>
                         <div class="brokerage-detail-stat">
-                            <span>Zakres cen</span>
-                            <strong id="instrumentHistoryHighLow">-</strong>
-                            <small id="instrumentHistorySource">-</small>
+                            <span>Cena od pierwszego zakupu</span>
+                            <strong id="instrumentSincePurchase">-</strong>
+                            <small id="instrumentSincePurchaseMeta">-</small>
+                        </div>
+                        <div class="brokerage-detail-stat">
+                            <span>CAGR</span>
+                            <strong id="instrumentCagr">-</strong>
+                            <small id="instrumentCagrMeta">-</small>
+                        </div>
+                    </section>
+
+                    <section class="brokerage-economic-stats">
+                        <div class="brokerage-section-heading brokerage-economic-heading">
+                            <div>
+                                <h3>Statystyki rynkowe od pierwszego zakupu</h3>
+                                <p>Dzienne stopy zwrotu liczone na zapisanych cenach skorygowanych.</p>
+                            </div>
+                            <span class="brokerage-history-sync" id="instrumentHistorySync">-</span>
+                        </div>
+                        <div class="brokerage-economic-grid">
+                            <div class="brokerage-economic-stat">
+                                <span>Zmienność roczna</span>
+                                <strong id="instrumentAnnualizedVolatility">-</strong>
+                                <small>odchylenie dziennych zmian × √252</small>
+                            </div>
+                            <div class="brokerage-economic-stat">
+                                <span>Maks. obsunięcie</span>
+                                <strong id="instrumentMaximumDrawdown">-</strong>
+                                <small id="instrumentMaximumDrawdownMeta">-</small>
+                            </div>
+                            <div class="brokerage-economic-stat">
+                                <span>Najlepsza sesja</span>
+                                <strong id="instrumentBestDay">-</strong>
+                                <small id="instrumentBestDayMeta">-</small>
+                            </div>
+                            <div class="brokerage-economic-stat">
+                                <span>Najgorsza sesja</span>
+                                <strong id="instrumentWorstDay">-</strong>
+                                <small id="instrumentWorstDayMeta">-</small>
+                            </div>
+                            <div class="brokerage-economic-stat">
+                                <span>Sesje wzrostowe</span>
+                                <strong id="instrumentPositiveSessions">-</strong>
+                                <small>udział dodatnich dziennych zmian</small>
+                            </div>
+                            <div class="brokerage-economic-stat">
+                                <span>Średnia dzienna</span>
+                                <strong id="instrumentAverageDailyReturn">-</strong>
+                                <small id="instrumentSessionsCount">-</small>
+                            </div>
                         </div>
                     </section>
 
                     <section class="brokerage-instrument-chart-section">
                         <div class="brokerage-section-heading brokerage-chart-heading">
                             <div>
-                                <h5>Historia cen</h5>
+                                <h3>Historia cen</h3>
                                 <p id="instrumentHistoryCount">-</p>
                             </div>
                             <div class="brokerage-chart-controls">
                                 <div class="brokerage-range-buttons" role="group" aria-label="Zakres wykresu">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-history-since-purchase>Od zakupu</button>
                                     <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-history-days="30">1M</button>
                                     <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-history-days="90">3M</button>
                                     <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-history-days="180">6M</button>
@@ -581,15 +932,32 @@
                                 </form>
                             </div>
                         </div>
+                        <div class="brokerage-chart-summary">
+                            <div class="brokerage-chart-stat">
+                                <span>Zmiana w zakresie</span>
+                                <strong id="instrumentHistoryChange">-</strong>
+                                <small id="instrumentHistoryRange">-</small>
+                            </div>
+                            <div class="brokerage-chart-stat">
+                                <span>Zakres cen</span>
+                                <strong id="instrumentHistoryHighLow">-</strong>
+                                <small>minimum — maksimum</small>
+                            </div>
+                            <div class="brokerage-chart-stat">
+                                <span>Źródło</span>
+                                <strong id="instrumentHistorySource">-</strong>
+                                <small>dzienna historia zapisana lokalnie</small>
+                            </div>
+                        </div>
                         <div class="brokerage-chart-shell">
-                            <canvas id="brokerageInstrumentChart"></canvas>
-                            <div class="brokerage-chart-empty d-none" id="brokerageInstrumentChartEmpty">Brak danych historycznych dla wykresu.</div>
+                            <canvas id="brokerageInstrumentChart" role="img" aria-label="Historia cen wybranego instrumentu"></canvas>
+                            <div class="brokerage-chart-empty d-none" id="brokerageInstrumentChartEmpty" role="status" aria-live="polite">Brak danych historycznych dla wykresu.</div>
                         </div>
                     </section>
 
                     <section class="brokerage-instrument-info-grid">
                         <div class="brokerage-info-list">
-                            <h5>Dane instrumentu</h5>
+                            <h3>Dane instrumentu</h3>
                             <dl>
                                 <div><dt>Ticker</dt><dd id="instrumentTicker">-</dd></div>
                                 <div><dt>ISIN</dt><dd id="instrumentIsin">-</dd></div>
@@ -600,11 +968,11 @@
                             </dl>
                         </div>
                         <div class="brokerage-info-list">
-                            <h5>Pozycje</h5>
+                            <h3>Pozycje</h3>
                             <div id="instrumentAccounts"></div>
                         </div>
                         <div class="brokerage-info-list">
-                            <h5>Ostatnia transakcja</h5>
+                            <h3>Ostatnia transakcja</h3>
                             <div id="instrumentLatestTransaction"></div>
                         </div>
                     </section>
@@ -650,6 +1018,7 @@
         const chartCanvas = document.getElementById('brokerageInstrumentChart');
         const portfolioChartSection = document.querySelector('[data-portfolio-history-url]');
         const portfolioChartCanvas = document.getElementById('brokeragePortfolioValueChart');
+        const portfolioChartAccountSelect = document.getElementById('brokeragePortfolioAccountSelect');
         const initialPortfolioHistoryElement = document.getElementById('brokerageInitialPortfolioHistory');
         const initialPortfolioHistory = initialPortfolioHistoryElement
             ? JSON.parse(initialPortfolioHistoryElement.textContent)
@@ -657,6 +1026,16 @@
         let instrumentChart = null;
         let portfolioValueChart = null;
         let activeInstrumentUrl = '';
+        let activePortfolioRangeParams = initialPortfolioHistory && initialPortfolioHistory.range
+            ? (
+                initialPortfolioHistory.range.mode === 'custom'
+                    ? {
+                        start_date: initialPortfolioHistory.range.start_date,
+                        end_date: initialPortfolioHistory.range.end_date,
+                    }
+                    : {days: initialPortfolioHistory.range.days || 365}
+            )
+            : {days: 365};
 
         const numberFormatter = new Intl.NumberFormat('pl-PL', {
             minimumFractionDigits: 2,
@@ -666,11 +1045,15 @@
             minimumFractionDigits: 0,
             maximumFractionDigits: 6,
         });
+        const percentFormatter = new Intl.NumberFormat('pl-PL', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        });
 
         const setText = (id, value) => {
             const element = document.getElementById(id);
             if (element) {
-                element.textContent = value || '-';
+                element.textContent = value === null || value === undefined || value === '' ? '-' : String(value);
             }
         };
 
@@ -686,6 +1069,170 @@
                 return '-';
             }
             return quantityFormatter.format(Number(value));
+        };
+
+        const formatPercent = (value, signed = false) => {
+            if (value === null || value === undefined || value === '' || !Number.isFinite(Number(value))) {
+                return '-';
+            }
+            const numericValue = Number(value);
+            const prefix = signed && numericValue > 0 ? '+' : '';
+            return `${prefix}${percentFormatter.format(numericValue)}%`;
+        };
+
+        const formatSignedMoney = (value, currency) => {
+            if (value === null || value === undefined || value === '' || !Number.isFinite(Number(value))) {
+                return '-';
+            }
+            const numericValue = Number(value);
+            const prefix = numericValue > 0 ? '+' : '';
+            return `${prefix}${formatMoney(numericValue, currency)}`;
+        };
+
+        const setMetricTone = (id, values) => {
+            const element = document.getElementById(id);
+            if (!element) {
+                return;
+            }
+            element.classList.remove('text-success', 'text-danger');
+            const numericValues = (Array.isArray(values) ? values : [values])
+                .filter((value) => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value)))
+                .map(Number);
+            if (numericValues.length && numericValues.every((value) => value > 0)) {
+                element.classList.add('text-success');
+            } else if (numericValues.length && numericValues.every((value) => value < 0)) {
+                element.classList.add('text-danger');
+            }
+        };
+
+        const normalizeProfitBuckets = (actualProfit) => {
+            if (Array.isArray(actualProfit)) {
+                return actualProfit;
+            }
+            if (!actualProfit || typeof actualProfit !== 'object') {
+                return [];
+            }
+            if (Array.isArray(actualProfit.buckets)) {
+                return actualProfit.buckets;
+            }
+            if (Array.isArray(actualProfit.currencies)) {
+                return actualProfit.currencies;
+            }
+            if (actualProfit.by_currency && typeof actualProfit.by_currency === 'object') {
+                return Object.entries(actualProfit.by_currency).map(([currency, bucket]) => ({currency, ...bucket}));
+            }
+            return [];
+        };
+
+        const renderActualProfit = (actualProfit) => {
+            const buckets = normalizeProfitBuckets(actualProfit);
+            if (!buckets.length) {
+                setText('instrumentActualProfit', '-');
+                setText('instrumentActualProfitMeta', 'Brak danych o przepływach');
+                setMetricTone('instrumentActualProfit', []);
+                return;
+            }
+
+            const values = buckets.map((bucket) => bucket.total_profit);
+            const resultParts = buckets.map((bucket) => {
+                const result = formatSignedMoney(bucket.total_profit, bucket.currency);
+                const returnPercent = formatPercent(bucket.return_percent, true);
+                return returnPercent === '-' ? result : `${result} (${returnPercent})`;
+            });
+            const sourceLabels = {
+                'XTB cash ledger': 'Rejestr przepływów XTB',
+                'Szacunek z pozycji': 'Szacunek z pozycji',
+            };
+            const sources = [...new Set(
+                buckets
+                    .map((bucket) => sourceLabels[bucket.source] || bucket.source)
+                    .filter(Boolean),
+            )];
+            const currencies = buckets.map((bucket) => bucket.currency).filter(Boolean);
+            setText('instrumentActualProfit', resultParts.join(' · '));
+            setText(
+                'instrumentActualProfitMeta',
+                `${sources.join(' / ') || 'Dane pozycji'}${currencies.length > 1 ? ' · waluty pokazane oddzielnie' : ''}`,
+            );
+            setMetricTone('instrumentActualProfit', values);
+        };
+
+        const renderMarketStatistics = (data) => {
+            const statistics = data.market_statistics || {};
+            const firstPurchase = data.first_purchase || {};
+            const historySync = data.history_sync || {};
+            const currency = data.instrument.currency;
+            const priceChange = statistics.price_change_since_purchase;
+            const priceChangePercent = statistics.price_change_since_purchase_percent;
+
+            if (priceChange !== null && priceChange !== undefined) {
+                setText(
+                    'instrumentSincePurchase',
+                    `${formatSignedMoney(priceChange, currency)} (${formatPercent(priceChangePercent, true)})`,
+                );
+            } else {
+                setText('instrumentSincePurchase', '-');
+            }
+            setMetricTone('instrumentSincePurchase', priceChangePercent);
+            const firstPurchaseDetails = [];
+            if (firstPurchase.price !== null && firstPurchase.price !== undefined) {
+                firstPurchaseDetails.push(`zakup po ${formatMoney(firstPurchase.price, currency)}`);
+            }
+            if (firstPurchase.quantity !== null && firstPurchase.quantity !== undefined) {
+                firstPurchaseDetails.push(`${formatQuantity(firstPurchase.quantity)} szt.`);
+            }
+            if (firstPurchase.date) {
+                firstPurchaseDetails.push(formatDate(firstPurchase.date));
+            }
+            if (firstPurchase.account) {
+                firstPurchaseDetails.push(firstPurchase.account);
+            }
+            setText('instrumentSincePurchaseMeta', firstPurchaseDetails.join(' · ') || 'Brak pierwszego zakupu');
+
+            setText('instrumentCagr', formatPercent(statistics.cagr_percent, true));
+            setMetricTone('instrumentCagr', statistics.cagr_percent);
+            setText(
+                'instrumentCagrMeta',
+                statistics.first_date && statistics.last_date
+                    ? `${formatDate(statistics.first_date)} — ${formatDate(statistics.last_date)}`
+                    : 'Za mało danych do annualizacji',
+            );
+
+            setText('instrumentAnnualizedVolatility', formatPercent(statistics.annualized_volatility_percent));
+            setText('instrumentMaximumDrawdown', formatPercent(statistics.maximum_drawdown_percent, true));
+            setMetricTone('instrumentMaximumDrawdown', statistics.maximum_drawdown_percent);
+            setText(
+                'instrumentMaximumDrawdownMeta',
+                statistics.maximum_drawdown_peak_date && statistics.maximum_drawdown_trough_date
+                    ? `${formatDate(statistics.maximum_drawdown_peak_date)} → ${formatDate(statistics.maximum_drawdown_trough_date)}`
+                    : 'Brak pełnego cyklu spadkowego',
+            );
+            setText('instrumentBestDay', formatPercent(statistics.best_day_percent, true));
+            setMetricTone('instrumentBestDay', statistics.best_day_percent);
+            setText('instrumentBestDayMeta', statistics.best_day_date ? formatDate(statistics.best_day_date) : 'Za mało danych');
+            setText('instrumentWorstDay', formatPercent(statistics.worst_day_percent, true));
+            setMetricTone('instrumentWorstDay', statistics.worst_day_percent);
+            setText('instrumentWorstDayMeta', statistics.worst_day_date ? formatDate(statistics.worst_day_date) : 'Za mało danych');
+            setText('instrumentPositiveSessions', formatPercent(statistics.positive_sessions_percent));
+            setText('instrumentAverageDailyReturn', formatPercent(statistics.average_daily_return_percent, true));
+            setMetricTone('instrumentAverageDailyReturn', statistics.average_daily_return_percent);
+            setText(
+                'instrumentSessionsCount',
+                statistics.sessions !== null && statistics.sessions !== undefined
+                    ? `${statistics.sessions} sesji w próbie`
+                    : 'Brak zapisanych sesji',
+            );
+
+            const syncThrough = historySync.through || historySync.synced_through || historySync.history_synced_through;
+            const localCount = historySync.local_points ?? historySync.local_count ?? statistics.sessions;
+            const syncParts = ['Zapis lokalny'];
+            if (localCount !== null && localCount !== undefined) {
+                syncParts.push(`${localCount} sesji`);
+            }
+            if (syncThrough) {
+                syncParts.push(`do ${formatDate(syncThrough)}`);
+            }
+            setText('instrumentHistorySync', syncParts.join(' · '));
         };
 
         const formatDate = (value) => {
@@ -709,7 +1256,7 @@
             document.getElementById('brokerageInstrumentLoading').classList.remove('d-none');
             document.getElementById('brokerageInstrumentError').classList.add('d-none');
             document.getElementById('brokerageInstrumentDetail').classList.add('d-none');
-            document.querySelectorAll('[data-history-days], #brokerageCustomRangeForm button').forEach((control) => {
+            document.querySelectorAll('[data-history-days], [data-history-since-purchase], #brokerageCustomRangeForm button').forEach((control) => {
                 control.disabled = false;
             });
             setText('brokerageInstrumentModalTitle', 'Ładowanie');
@@ -728,15 +1275,19 @@
         };
 
         const setChartControlsBusy = (isBusy) => {
-            document.querySelectorAll('[data-history-days], #brokerageCustomRangeForm button, #brokerageHistoryStartDate, #brokerageHistoryEndDate').forEach((control) => {
+            document.querySelectorAll('[data-history-days], [data-history-since-purchase], #brokerageCustomRangeForm button, #brokerageHistoryStartDate, #brokerageHistoryEndDate').forEach((control) => {
                 control.disabled = isBusy;
             });
         };
 
         const setPortfolioChartControlsBusy = (isBusy) => {
-            document.querySelectorAll('[data-portfolio-history-days], #brokeragePortfolioRangeForm button, #brokeragePortfolioStartDate, #brokeragePortfolioEndDate').forEach((control) => {
+            document.querySelectorAll('[data-portfolio-history-days], #brokeragePortfolioRangeForm button, #brokeragePortfolioStartDate, #brokeragePortfolioEndDate, #brokeragePortfolioAccountSelect').forEach((control) => {
                 control.disabled = isBusy;
             });
+            const chartShell = document.querySelector('.brokerage-portfolio-chart-shell');
+            if (chartShell) {
+                chartShell.setAttribute('aria-busy', String(isBusy));
+            }
         };
 
         const setPortfolioWarning = (warnings) => {
@@ -753,33 +1304,67 @@
             const points = data.points || [];
             const currency = data.currency || 'PLN';
             const summary = data.summary || {};
+            const coverage = data.coverage || {};
             const range = data.range || {};
+            const scope = data.scope || {};
+            const accountName = scope.account_name || 'Wszystkie konta';
+            const selectedAccountValue = scope.is_all || !scope.account_id
+                ? 'all'
+                : String(scope.account_id);
 
             if (portfolioValueChart) {
                 portfolioValueChart.destroy();
                 portfolioValueChart = null;
             }
 
-            document.getElementById('brokeragePortfolioLatestValue').textContent = formatMoney(summary.latest_value, currency);
-            document.getElementById('brokeragePortfolioValueChange').textContent = summary.change !== null && summary.change !== undefined
-                ? `${formatMoney(summary.change, currency)} (${summary.change_percent || '0.00'}%)`
+            const latestTotalValue = summary.latest_total_value ?? summary.latest_value;
+            const totalChange = summary.total_change ?? summary.change;
+            const totalChangePercent = summary.total_change_percent ?? summary.change_percent;
+            document.getElementById('brokeragePortfolioLatestValue').textContent = formatMoney(latestTotalValue, currency);
+            document.getElementById('brokeragePortfolioValueChange').textContent = totalChange !== null && totalChange !== undefined
+                ? `${formatMoney(totalChange, currency)} (${totalChangePercent || '0.00'}%)`
                 : '-';
 
             const priceSources = data.price_sources && data.price_sources.length ? data.price_sources.join(', ') : 'brak cen';
             const fxSource = data.fx_source ? `${data.fx_source}${data.fx_table_date ? ` · ${data.fx_table_date}` : ''}` : '';
             document.getElementById('brokeragePortfolioValueSource').textContent = fxSource ? `${priceSources} · ${fxSource}` : priceSources;
+            const coverageElement = document.getElementById('brokeragePortfolioCoverage');
+            if (coverageElement) {
+                const dayCoverage = coverage.days
+                    ? `${coverage.complete_days || 0}/${coverage.days} pełnych dni`
+                    : 'brak dni';
+                const positionCoverage = coverage.positions
+                    ? `${coverage.priced_positions || 0}/${coverage.positions} pozycji`
+                    : 'brak otwartych pozycji';
+                coverageElement.textContent = `${dayCoverage} · ${positionCoverage}${coverage.is_complete === false ? ' · dane częściowe' : ''}`;
+            }
             document.getElementById('brokeragePortfolioStartDate').value = range.start_date || '';
             document.getElementById('brokeragePortfolioEndDate').value = range.end_date || '';
-            document.getElementById('brokeragePortfolioValueMeta').textContent = data.scope && data.scope.is_all
-                ? 'Wszystkie konta · PLN po aktualnym kursie'
-                : `${data.scope ? data.scope.account_name : 'Konto'} · ${currency}`;
+            document.getElementById('brokeragePortfolioChartTitle').textContent = `Wartość portfela · ${scope.is_all ? 'wszystkie konta' : accountName}`;
+            document.getElementById('brokeragePortfolioValueMeta').textContent = scope.is_all
+                ? `Papiery i gotówka w PLN${fxSource ? ` · ${fxSource}` : ''}`
+                : `${accountName} · ${currency} · papiery i saldo gotówkowe${fxSource ? ` · ${fxSource}` : ''}`;
+            const chartA11ySummary = document.getElementById('brokeragePortfolioChartA11ySummary');
+            if (chartA11ySummary) {
+                chartA11ySummary.textContent = points.length
+                    ? `${accountName}: od ${formatDate(points[0].date)} do ${formatDate(points[points.length - 1].date)}, ostatnia łączna wartość ${formatMoney(latestTotalValue, currency)}, w tym papiery ${formatMoney(summary.latest_securities_value, currency)} i gotówka ${formatMoney(summary.latest_cash_value, currency)}. Zmiana wartości ${formatMoney(totalChange, currency)}.`
+                    : `${accountName}: brak punktów wartości portfela w wybranym okresie.`;
+            }
+            if (portfolioChartAccountSelect) {
+                portfolioChartAccountSelect.value = selectedAccountValue;
+            }
+            if (portfolioChartSection) {
+                portfolioChartSection.dataset.portfolioAccount = selectedAccountValue;
+            }
             document.querySelectorAll('[data-portfolio-history-days]').forEach((button) => {
-                button.classList.toggle('active', range.mode === 'days' && String(range.days) === button.dataset.portfolioHistoryDays);
+                const isActive = range.mode === 'days' && String(range.days) === button.dataset.portfolioHistoryDays;
+                button.classList.toggle('active', isActive);
+                button.setAttribute('aria-pressed', String(isActive));
             });
             setPortfolioWarning(data.warnings || []);
 
             if (!points.length || typeof Chart === 'undefined') {
-                emptyState.textContent = 'Brak danych do wykresu wartości portfela.';
+                emptyState.textContent = `Brak danych do wykresu dla: ${accountName}.`;
                 emptyState.classList.remove('d-none');
                 return;
             }
@@ -793,17 +1378,45 @@
                 type: 'line',
                 data: {
                     labels: points.map((point) => point.date),
-                    datasets: [{
-                        label: `Wartość · ${currency}`,
-                        data: points.map((point) => Number(point.value)),
-                        borderColor: '#0d6efd',
-                        backgroundColor: 'rgba(13, 110, 253, 0.10)',
-                        borderWidth: 2,
-                        pointRadius: 0,
-                        pointHoverRadius: 4,
-                        tension: 0.22,
-                        fill: true,
-                    }],
+                    datasets: [
+                        {
+                            label: 'Papiery',
+                            data: points.map((point) => point.securities_value === null || point.securities_value === undefined ? null : Number(point.securities_value)),
+                            borderColor: '#0f766e',
+                            backgroundColor: 'transparent',
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            pointHoverRadius: 3,
+                            tension: 0.22,
+                            spanGaps: false,
+                            fill: false,
+                        },
+                        {
+                            label: 'Gotówka',
+                            data: points.map((point) => point.cash_value === null || point.cash_value === undefined ? null : Number(point.cash_value)),
+                            borderColor: '#d97706',
+                            backgroundColor: 'transparent',
+                            borderDash: [5, 4],
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            pointHoverRadius: 3,
+                            tension: 0.15,
+                            spanGaps: false,
+                            fill: false,
+                        },
+                        {
+                            label: 'Razem',
+                            data: points.map((point) => point.total_value === null || point.total_value === undefined ? null : Number(point.total_value)),
+                            borderColor: '#2563eb',
+                            backgroundColor: 'rgba(37, 99, 235, 0.09)',
+                            borderWidth: 3,
+                            pointRadius: 0,
+                            pointHoverRadius: 4,
+                            tension: 0.22,
+                            spanGaps: false,
+                            fill: true,
+                        },
+                    ],
                 },
                 options: {
                     responsive: true,
@@ -814,12 +1427,17 @@
                     },
                     plugins: {
                         legend: {
-                            display: false,
+                            display: true,
+                            labels: {
+                                color: mutedColor,
+                                usePointStyle: true,
+                                boxWidth: 8,
+                            },
                         },
                         tooltip: {
                             callbacks: {
                                 title: (items) => formatDate(items[0].label),
-                                label: (item) => `Wartość: ${formatMoney(item.raw, currency)}`,
+                                label: (item) => `${item.dataset.label}: ${formatMoney(item.raw, currency)}`,
                             },
                         },
                     },
@@ -827,7 +1445,8 @@
                         x: {
                             ticks: {
                                 color: mutedColor,
-                                maxTicksLimit: 8,
+                                maxTicksLimit: window.innerWidth < 576 ? 4 : 8,
+                                maxRotation: 0,
                             },
                             grid: {
                                 color: borderColor,
@@ -853,12 +1472,15 @@
             }
 
             const url = new URL(portfolioChartSection.dataset.portfolioHistoryUrl, window.location.origin);
-            const account = portfolioChartSection.dataset.portfolioAccount;
+            const account = portfolioChartAccountSelect
+                ? portfolioChartAccountSelect.value
+                : portfolioChartSection.dataset.portfolioAccount;
             if (account) {
                 url.searchParams.set('account', account);
             }
-            if (params) {
-                Object.entries(params).forEach(([key, value]) => {
+            const requestedRange = params || activePortfolioRangeParams;
+            if (requestedRange) {
+                Object.entries(requestedRange).forEach(([key, value]) => {
                     if (value !== null && value !== undefined && value !== '') {
                         url.searchParams.set(key, value);
                     }
@@ -867,7 +1489,10 @@
 
             setPortfolioChartControlsBusy(true);
             const emptyState = document.getElementById('brokeragePortfolioValueChartEmpty');
-            emptyState.textContent = 'Ładowanie wykresu wartości portfela.';
+            const selectedOption = portfolioChartAccountSelect
+                ? portfolioChartAccountSelect.options[portfolioChartAccountSelect.selectedIndex]
+                : null;
+            emptyState.textContent = `Ładowanie wykresu: ${selectedOption ? selectedOption.textContent.trim() : 'wybrane konto'}.`;
             emptyState.classList.remove('d-none');
             setPortfolioWarning([]);
             try {
@@ -1069,7 +1694,8 @@
                         x: {
                             ticks: {
                                 color: mutedColor,
-                                maxTicksLimit: 8,
+                                maxTicksLimit: window.innerWidth < 576 ? 4 : 8,
+                                maxRotation: 0,
                             },
                             grid: {
                                 color: borderColor,
@@ -1102,6 +1728,8 @@
 
             setText('instrumentLastPrice', formatMoney(instrument.last_price, instrument.currency));
             setText('instrumentLastPriceMeta', `${instrument.market_data_source || 'Ręcznie'} · ${formatDateTime(instrument.last_price_at)}`);
+            renderActualProfit(data.actual_profit);
+            renderMarketStatistics(data);
             setText('instrumentHistoryChange', summary.change !== null && summary.change !== undefined
                 ? `${formatMoney(summary.change, instrument.currency)} (${summary.change_percent || '0.00'}%)`
                 : '-');
@@ -1112,9 +1740,12 @@
                 ? `${formatMoney(summary.low, instrument.currency)} - ${formatMoney(summary.high, instrument.currency)}`
                 : '-');
             setText('instrumentHistorySource', data.history_source || 'brak źródła');
-            setText('instrumentHistoryCount', summary.points_count ? `${summary.points_count} punktów dziennych` : 'Brak punktów cenowych');
+            setText('instrumentHistoryCount', summary.points_count
+                ? `${summary.points_count} punktów dziennych · dane odczytywane z lokalnej historii`
+                : 'Brak punktów cenowych w wybranym zakresie');
             document.getElementById('brokerageHistoryStartDate').value = historyRange.start_date || '';
             document.getElementById('brokerageHistoryEndDate').value = historyRange.end_date || '';
+            document.querySelector('[data-history-since-purchase]').classList.toggle('active', historyRange.mode === 'since_purchase');
             document.querySelectorAll('[data-history-days]').forEach((button) => {
                 button.classList.toggle('active', historyRange.mode === 'days' && String(historyRange.days) === button.dataset.historyDays);
             });
@@ -1182,6 +1813,17 @@
             }
         };
 
+        document.querySelector('[data-history-since-purchase]').addEventListener('click', async () => {
+            if (!activeInstrumentUrl) {
+                return;
+            }
+            try {
+                await loadInstrumentData({since_purchase: '1'});
+            } catch (error) {
+                showError(error.message || 'Nie udało się pobrać danych instrumentu.');
+            }
+        });
+
         document.querySelectorAll('[data-history-days]').forEach((button) => {
             button.addEventListener('click', async () => {
                 if (!activeInstrumentUrl) {
@@ -1212,7 +1854,8 @@
 
         document.querySelectorAll('[data-portfolio-history-days]').forEach((button) => {
             button.addEventListener('click', async () => {
-                await loadPortfolioValueChart({days: button.dataset.portfolioHistoryDays});
+                activePortfolioRangeParams = {days: button.dataset.portfolioHistoryDays};
+                await loadPortfolioValueChart(activePortfolioRangeParams);
             });
         });
 
@@ -1220,26 +1863,35 @@
             event.preventDefault();
             const startDate = document.getElementById('brokeragePortfolioStartDate').value;
             const endDate = document.getElementById('brokeragePortfolioEndDate').value;
-            await loadPortfolioValueChart({start_date: startDate, end_date: endDate});
+            activePortfolioRangeParams = {start_date: startDate, end_date: endDate};
+            await loadPortfolioValueChart(activePortfolioRangeParams);
         });
+
+        if (portfolioChartAccountSelect) {
+            portfolioChartAccountSelect.addEventListener('change', () => {
+                const targetUrl = new URL(window.location.href);
+                if (portfolioChartAccountSelect.value === 'all') {
+                    targetUrl.searchParams.delete('account');
+                } else {
+                    targetUrl.searchParams.set('account', portfolioChartAccountSelect.value);
+                }
+                window.location.assign(targetUrl.toString());
+            });
+        }
 
         document.querySelectorAll('[data-instrument-detail-url]').forEach((row) => {
             const open = () => openInstrumentModal(row.dataset.instrumentDetailUrl);
-
-            row.addEventListener('click', (event) => {
-                if (event.target.closest('[data-instrument-action], a, button, form, input')) {
-                    return;
-                }
-                open();
-            });
-
-            row.addEventListener('keydown', (event) => {
-                if (event.key !== 'Enter' && event.key !== ' ') {
-                    return;
-                }
-                event.preventDefault();
-                open();
-            });
+            const trigger = row.querySelector('[data-instrument-detail-trigger]');
+            if (trigger) {
+                trigger.addEventListener('click', open);
+                trigger.addEventListener('keydown', (event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') {
+                        return;
+                    }
+                    event.preventDefault();
+                    open();
+                });
+            }
         });
 
         if (initialPortfolioHistory) {

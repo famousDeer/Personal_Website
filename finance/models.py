@@ -72,6 +72,8 @@ class BrokerageAccount(models.Model):
     broker = models.CharField(max_length=20, choices=BROKER_CHOICES)
     account_type = models.CharField(max_length=20, choices=ACCOUNT_TYPE_CHOICES, default=STANDARD)
     currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='PLN')
+    external_account_id = models.CharField(max_length=120, blank=True)
+    last_import_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -79,6 +81,11 @@ class BrokerageAccount(models.Model):
         ordering = ['broker', 'account_type', 'currency', 'name']
         constraints = [
             models.UniqueConstraint(fields=['user', 'name'], name='unique_user_brokerage_account_name'),
+            models.UniqueConstraint(
+                fields=['user', 'broker', 'external_account_id'],
+                condition=~Q(external_account_id=''),
+                name='unique_user_broker_external_account',
+            ),
         ]
 
     @property
@@ -114,6 +121,10 @@ class BrokerageInstrument(models.Model):
     last_price = models.DecimalField(max_digits=14, decimal_places=4, blank=True, null=True)
     last_price_at = models.DateTimeField(blank=True, null=True)
     market_data_source = models.CharField(max_length=80, blank=True)
+    history_synced_from = models.DateField(blank=True, null=True)
+    history_synced_through = models.DateField(blank=True, null=True)
+    history_sync_at = models.DateTimeField(blank=True, null=True)
+    history_sync_error = models.CharField(max_length=500, blank=True)
 
     class Meta:
         db_table = 'brokerage_instruments'
@@ -210,6 +221,164 @@ class BrokerageDividend(models.Model):
     def __str__(self):
         return f"{self.instrument.ticker} dividend {self.payment_date}"
 
+
+class BrokerageCashOperation(models.Model):
+    DEPOSIT = 'deposit'
+    WITHDRAWAL = 'withdrawal'
+    INTERNAL_TRANSFER = 'internal_transfer'
+    BUY = 'buy'
+    SELL = 'sell'
+    DIVIDEND = 'dividend'
+    WITHHOLDING_TAX = 'withholding_tax'
+    INTEREST = 'interest'
+    INTEREST_TAX = 'interest_tax'
+    FEE = 'fee'
+    OTHER = 'other'
+    OPERATION_TYPE_CHOICES = [
+        (DEPOSIT, 'Wpłata'),
+        (WITHDRAWAL, 'Wypłata'),
+        (INTERNAL_TRANSFER, 'Przelew wewnętrzny'),
+        (BUY, 'Kupno'),
+        (SELL, 'Sprzedaż'),
+        (DIVIDEND, 'Dywidenda'),
+        (WITHHOLDING_TAX, 'Podatek u źródła'),
+        (INTEREST, 'Odsetki'),
+        (INTEREST_TAX, 'Podatek od odsetek'),
+        (FEE, 'Opłata'),
+        (OTHER, 'Inna operacja'),
+    ]
+
+    account = models.ForeignKey(BrokerageAccount, on_delete=models.CASCADE, related_name='cash_operations')
+    instrument = models.ForeignKey(
+        BrokerageInstrument,
+        on_delete=models.SET_NULL,
+        related_name='cash_operations',
+        null=True,
+        blank=True,
+    )
+    operation_type = models.CharField(max_length=20, choices=OPERATION_TYPE_CHOICES)
+    occurred_at = models.DateTimeField()
+    amount = models.DecimalField(max_digits=18, decimal_places=4)
+    currency = models.CharField(max_length=3, choices=BrokerageAccount.CURRENCY_CHOICES)
+    external_id = models.CharField(max_length=120, blank=True)
+    position_external_id = models.CharField(max_length=120, blank=True)
+    description = models.CharField(max_length=500, blank=True)
+    product = models.CharField(max_length=255, blank=True)
+    import_source = models.CharField(max_length=40, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'brokerage_cash_operations'
+        ordering = ['-occurred_at', '-id']
+        indexes = [
+            models.Index(fields=['account', 'occurred_at']),
+            models.Index(fields=['instrument', 'occurred_at']),
+            models.Index(fields=['account', 'operation_type', 'occurred_at']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['account', 'import_source', 'external_id'],
+                condition=~Q(external_id=''),
+                name='unique_broker_cash_import_operation',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.get_operation_type_display()} {self.amount} {self.currency}"
+
+
+class BrokeragePositionSnapshot(models.Model):
+    account = models.ForeignKey(BrokerageAccount, on_delete=models.CASCADE, related_name='position_snapshots')
+    instrument = models.ForeignKey(BrokerageInstrument, on_delete=models.CASCADE, related_name='position_snapshots')
+    as_of = models.DateTimeField()
+    quantity = models.DecimalField(max_digits=18, decimal_places=6)
+    market_value = models.DecimalField(max_digits=18, decimal_places=4)
+    current_price = models.DecimalField(max_digits=18, decimal_places=6, blank=True, null=True)
+    profit = models.DecimalField(max_digits=18, decimal_places=4, blank=True, null=True)
+    profit_percent = models.DecimalField(max_digits=12, decimal_places=4, blank=True, null=True)
+    currency = models.CharField(max_length=3, choices=BrokerageAccount.CURRENCY_CHOICES)
+    source = models.CharField(max_length=80, blank=True)
+
+    class Meta:
+        db_table = 'brokerage_position_snapshots'
+        ordering = ['-as_of', 'instrument__ticker']
+        indexes = [
+            models.Index(fields=['account', 'as_of']),
+            models.Index(fields=['instrument', 'as_of']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['account', 'instrument', 'as_of'],
+                name='unique_broker_position_snapshot',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.account} - {self.instrument.ticker} @ {self.as_of}"
+
+
+class BrokeragePriceSnapshot(models.Model):
+    instrument = models.ForeignKey(BrokerageInstrument, on_delete=models.CASCADE, related_name='price_snapshots')
+    observed_at = models.DateTimeField()
+    price = models.DecimalField(max_digits=18, decimal_places=6)
+    source = models.CharField(max_length=80, blank=True)
+
+    class Meta:
+        db_table = 'brokerage_price_snapshots'
+        ordering = ['-observed_at']
+        indexes = [
+            models.Index(fields=['instrument', 'observed_at']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['instrument', 'observed_at'],
+                name='unique_broker_price_snapshot',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.instrument.ticker} {self.price} @ {self.observed_at}"
+
+
+class BrokerageDailyPrice(models.Model):
+    instrument = models.ForeignKey(
+        BrokerageInstrument,
+        on_delete=models.CASCADE,
+        related_name='daily_prices',
+    )
+    trading_date = models.DateField()
+    open = models.DecimalField(max_digits=18, decimal_places=6, blank=True, null=True)
+    high = models.DecimalField(max_digits=18, decimal_places=6, blank=True, null=True)
+    low = models.DecimalField(max_digits=18, decimal_places=6, blank=True, null=True)
+    close = models.DecimalField(max_digits=18, decimal_places=6)
+    adjusted_close = models.DecimalField(max_digits=18, decimal_places=6, blank=True, null=True)
+    volume = models.BigIntegerField(blank=True, null=True)
+    currency = models.CharField(max_length=3, blank=True)
+    provider_symbol = models.CharField(max_length=32, blank=True)
+    source = models.CharField(max_length=80, blank=True)
+    is_final = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'brokerage_daily_prices'
+        ordering = ['trading_date']
+        indexes = [
+            models.Index(
+                fields=['instrument', 'trading_date'],
+                name='broker_dly_instr_date_idx',
+            ),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['instrument', 'trading_date'],
+                name='unique_broker_daily_price',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.instrument.ticker} {self.close} @ {self.trading_date}"
+
 # Expense and Income database
 class Monthly(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='monthly_records')
@@ -250,6 +419,13 @@ class Daily(models.Model):
         null=True,
         blank=True,
     )
+    brokerage_account = models.ForeignKey(
+        BrokerageAccount,
+        on_delete=models.SET_NULL,
+        related_name='investment_expenses',
+        null=True,
+        blank=True,
+    )
     import_source = models.CharField(max_length=40, blank=True)
     external_id = models.CharField(max_length=120, blank=True)
 
@@ -269,6 +445,49 @@ class Daily(models.Model):
     def __str__(self):
         account_name = self.account.display_name if self.account else self.user.username
         return f"{account_name} – {self.date} – {self.title}"
+
+
+class InvestmentFunding(models.Model):
+    PENDING = 'pending'
+    MATCHED = 'matched'
+    NEEDS_REVIEW = 'needs_review'
+    STATUS_CHOICES = [
+        (PENDING, 'Oczekuje'),
+        (MATCHED, 'Dopasowane'),
+        (NEEDS_REVIEW, 'Wymaga weryfikacji'),
+    ]
+
+    expense = models.OneToOneField(Daily, on_delete=models.CASCADE, related_name='investment_funding')
+    account = models.ForeignKey(BrokerageAccount, on_delete=models.CASCADE, related_name='investment_fundings')
+    cash_operation = models.OneToOneField(
+        BrokerageCashOperation,
+        on_delete=models.SET_NULL,
+        related_name='investment_funding',
+        null=True,
+        blank=True,
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=PENDING)
+    source_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    source_currency = models.CharField(
+        max_length=3,
+        choices=BrokerageAccount.CURRENCY_CHOICES,
+        default='PLN',
+    )
+    occurred_on = models.DateField()
+    match_method = models.CharField(max_length=80, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'investment_fundings'
+        ordering = ['-occurred_on', '-id']
+        indexes = [
+            models.Index(fields=['account', 'occurred_on']),
+            models.Index(fields=['status', 'occurred_on']),
+        ]
+
+    def __str__(self):
+        return f"{self.account} - {self.source_amount} {self.source_currency} ({self.get_status_display()})"
 
 class Income(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='income_records')

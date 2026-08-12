@@ -1,12 +1,17 @@
 from django.contrib import admin
 from .models import (
     BrokerageAccount,
+    BrokerageCashOperation,
+    BrokerageDailyPrice,
     BrokerageDividend,
     BrokerageInstrument,
+    BrokeragePositionSnapshot,
+    BrokeragePriceSnapshot,
     BrokerageTransaction,
     Daily,
     FinanceAccount,
     Income,
+    InvestmentFunding,
     Monthly,
 )
 
@@ -36,9 +41,9 @@ class IncomeAdmin(admin.ModelAdmin):
 
 @admin.register(BrokerageAccount)
 class BrokerageAccountAdmin(admin.ModelAdmin):
-    list_display = ('name', 'user', 'broker', 'account_type', 'currency')
+    list_display = ('name', 'user', 'broker', 'account_type', 'currency', 'external_account_id', 'last_import_at')
     list_filter = ('broker', 'account_type', 'currency')
-    search_fields = ('name', 'user__username')
+    search_fields = ('name', 'external_account_id', 'user__username')
 
 
 @admin.register(BrokerageInstrument)
@@ -60,3 +65,38 @@ class BrokerageDividendAdmin(admin.ModelAdmin):
     list_display = ('payment_date', 'account', 'instrument', 'gross_amount_per_share', 'currency', 'tax_rate', 'status')
     list_filter = ('status', 'payment_date', 'currency')
     search_fields = ('instrument__ticker', 'account__name')
+
+
+@admin.register(BrokerageCashOperation)
+class BrokerageCashOperationAdmin(admin.ModelAdmin):
+    list_display = ('occurred_at', 'account', 'operation_type', 'amount', 'currency', 'instrument', 'external_id')
+    list_filter = ('operation_type', 'currency', 'account')
+    search_fields = ('account__name', 'instrument__ticker', 'external_id', 'description', 'product')
+
+
+@admin.register(BrokeragePositionSnapshot)
+class BrokeragePositionSnapshotAdmin(admin.ModelAdmin):
+    list_display = ('as_of', 'account', 'instrument', 'quantity', 'market_value', 'currency', 'source')
+    list_filter = ('currency', 'source', 'account')
+    search_fields = ('account__name', 'instrument__ticker', 'instrument__name')
+
+
+@admin.register(BrokeragePriceSnapshot)
+class BrokeragePriceSnapshotAdmin(admin.ModelAdmin):
+    list_display = ('observed_at', 'instrument', 'price', 'source')
+    list_filter = ('source',)
+    search_fields = ('instrument__ticker', 'instrument__name')
+
+
+@admin.register(BrokerageDailyPrice)
+class BrokerageDailyPriceAdmin(admin.ModelAdmin):
+    list_display = ('trading_date', 'instrument', 'close', 'adjusted_close', 'currency', 'source', 'is_final')
+    list_filter = ('source', 'currency', 'is_final')
+    search_fields = ('instrument__ticker', 'instrument__name', 'provider_symbol')
+
+
+@admin.register(InvestmentFunding)
+class InvestmentFundingAdmin(admin.ModelAdmin):
+    list_display = ('occurred_on', 'account', 'source_amount', 'source_currency', 'status', 'cash_operation')
+    list_filter = ('status', 'source_currency', 'account')
+    search_fields = ('account__name', 'expense__title', 'cash_operation__external_id')

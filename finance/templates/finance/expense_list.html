@@ -304,6 +304,18 @@
                             <span class="badge bg-info-subtle text-info rounded-pill px-3 fw-normal">
                                 {{ expense.category }}
                             </span>
+                            <div class="small mt-2">
+                                {% if expense.brokerage_account %}
+                                    <span class="text-muted">{{ expense.brokerage_account.name }}</span>
+                                    {% if expense.investment_funding %}
+                                        <span class="badge rounded-pill ms-1 {% if expense.investment_funding.status == 'matched' %}bg-success-subtle text-success{% elif expense.investment_funding.status == 'needs_review' %}bg-warning-subtle text-warning{% else %}bg-secondary-subtle text-secondary{% endif %}">
+                                            {{ expense.investment_funding.get_status_display }}
+                                        </span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-warning"><i class="bi bi-link-45deg"></i> Nieprzypisana do konta</span>
+                                {% endif %}
+                            </div>
                         </td>
                         <td class="text-end fw-bold text-info" style="font-variant-numeric: tabular-nums;">
                             -{{ expense.cost|floatformat:2|intcomma }} zł
@@ -351,6 +363,18 @@
                             <span class="badge bg-info-subtle text-info rounded-pill fw-normal">
                                 {{ expense.category }}
                             </span>
+                            <div class="small mt-1">
+                                {% if expense.brokerage_account %}
+                                    <span class="text-muted">{{ expense.brokerage_account.name }}</span>
+                                    {% if expense.investment_funding %}
+                                        <span class="badge rounded-pill ms-1 {% if expense.investment_funding.status == 'matched' %}bg-success-subtle text-success{% elif expense.investment_funding.status == 'needs_review' %}bg-warning-subtle text-warning{% else %}bg-secondary-subtle text-secondary{% endif %}">
+                                            {{ expense.investment_funding.get_status_display }}
+                                        </span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-warning"><i class="bi bi-link-45deg"></i> Nieprzypisana</span>
+                                {% endif %}
+                            </div>
                         </div>
                         <span class="fw-bold fs-4 text-info" style="font-variant-numeric: tabular-nums;">
                             -{{ expense.cost|floatformat:2|intcomma }}&nbsp;zł

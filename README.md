@@ -113,9 +113,10 @@ Database variables expected by settings (example):
 - The legacy aliases DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT are still accepted.
 
 Brokerage market data:
-- ALPHA_VANTAGE_API_KEY: quotes and dividends for supported foreign instruments
+- Current quotes for open XTB positions are fetched in provider-safe Yahoo Finance batches; no key is required.
+- ALPHA_VANTAGE_API_KEY: optional legacy fallback and explicitly requested dividend synchronization; ordinary price refreshes do not consume its daily quota
 - OPENFIGI_API_KEY: ISIN to ticker/instrument mapping
-- STOOQ_API_KEY: historical Stooq CSV data used by brokerage price charts; get it from `https://stooq.pl/q/d/?s=kru&get_apikey`
+- STOOQ_API_KEY: optional historical Stooq CSV fallback; imported XTB instruments use Yahoo Finance history by default
 
 Note: Ensure your config/settings.py reads these variables to configure DATABASES.
 

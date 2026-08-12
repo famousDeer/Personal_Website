@@ -26,12 +26,16 @@ class BootstrapFinanceFormMixin:
 class BrokerageAccountForm(BootstrapFinanceFormMixin, forms.ModelForm):
     class Meta:
         model = BrokerageAccount
-        fields = ['name', 'broker', 'account_type', 'currency']
+        fields = ['name', 'broker', 'account_type', 'currency', 'external_account_id']
         labels = {
             'name': 'Nazwa konta',
             'broker': 'Broker',
             'account_type': 'Typ konta',
             'currency': 'Waluta konta',
+            'external_account_id': 'Numer rachunku u brokera',
+        }
+        help_texts = {
+            'external_account_id': 'Opcjonalnie. Dla XTB zostanie automatycznie uzupełniony przy imporcie raportu.',
         }
 
 
@@ -224,12 +228,32 @@ class BrokerageTransactionForm(BootstrapFinanceFormMixin, forms.ModelForm):
         }
 
 
+class MultipleFileInput(forms.ClearableFileInput):
+    allow_multiple_selected = True
+
+
+class MultipleFileField(forms.FileField):
+    widget = MultipleFileInput
+
+    def clean(self, data, initial=None):
+        single_file_clean = super().clean
+        if isinstance(data, (list, tuple)):
+            return [single_file_clean(item, initial) for item in data]
+        return [single_file_clean(data, initial)]
+
+
 class BrokerageTransactionImportForm(BootstrapFinanceFormMixin, forms.Form):
     MAX_UPLOAD_SIZE = 5 * 1024 * 1024
-    account = forms.ModelChoiceField(label='Konto XTB', queryset=BrokerageAccount.objects.none())
-    file = forms.FileField(
-        label='Plik XLSX z XTB',
-        help_text='Obsługiwany jest eksport XLSX z zakładkami OPEN POSITION HISTORY i CLOSED POSITION HISTORY.',
+    MAX_FILE_COUNT = 12
+    account = forms.ModelChoiceField(
+        label='Konto XTB (opcjonalnie)',
+        queryset=BrokerageAccount.objects.none(),
+        required=False,
+        help_text='Pozostaw puste, aby dopasować lub utworzyć konta po numerach i walutach z plików.',
+    )
+    file = MultipleFileField(
+        label='Pliki XLSX z XTB',
+        help_text='Możesz wybrać jednocześnie eksporty PLN, EUR, USD i IKE. Najlepszy wynik daje raport obejmujący pełną historię.',
     )
 
     def __init__(self, *args, user=None, **kwargs):
@@ -238,14 +262,21 @@ class BrokerageTransactionImportForm(BootstrapFinanceFormMixin, forms.Form):
             BrokerageAccount.objects.filter(user=user, broker=BrokerageAccount.BROKER_XTB)
             if user else BrokerageAccount.objects.none()
         )
+        self.fields['file'].widget.attrs.update({
+            'accept': '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'multiple': True,
+        })
 
     def clean_file(self):
-        uploaded_file = self.cleaned_data['file']
-        if not uploaded_file.name.lower().endswith('.xlsx'):
-            raise forms.ValidationError('Wgraj plik XLSX wyeksportowany z XTB.')
-        if uploaded_file.size > self.MAX_UPLOAD_SIZE:
-            raise forms.ValidationError('Plik importu może mieć maksymalnie 5 MB.')
-        return uploaded_file
+        uploaded_files = self.cleaned_data['file']
+        if len(uploaded_files) > self.MAX_FILE_COUNT:
+            raise forms.ValidationError(f'Możesz wgrać maksymalnie {self.MAX_FILE_COUNT} plików jednocześnie.')
+        for uploaded_file in uploaded_files:
+            if not uploaded_file.name.lower().endswith('.xlsx'):
+                raise forms.ValidationError('Wgraj wyłącznie pliki XLSX wyeksportowane z XTB.')
+            if uploaded_file.size > self.MAX_UPLOAD_SIZE:
+                raise forms.ValidationError(f'Plik {uploaded_file.name} przekracza limit 5 MB.')
+        return uploaded_files
 
 
 class BankTransactionImportForm(BootstrapFinanceFormMixin, forms.Form):
