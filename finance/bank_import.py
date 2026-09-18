@@ -303,45 +303,79 @@ def _source_by_rules(candidate_text):
     return 'Inne', 'domyślnie'
 
 
-def _historical_expense_match(account, store, row):
-    text = normalize_text(' '.join([store, _combined_text(row)]))
-    if not text:
+HISTORY_LOOKUP_LIMIT = 500
+MIN_EXPENSE_STORE_KEY_LENGTH = 3
+MIN_INCOME_TITLE_KEY_LENGTH = 4
+
+
+class BankHistoryIndex:
+    """Znormalizowana historia konta, zbudowana raz na cały import.
+
+    Poprzednio każdy wiersz wyciągu odpytywał bazę o 500 ostatnich rekordów
+    i normalizował je od nowa - dla wyciągu z 300 pozycjami to 600 zapytań
+    i 300 000 wywołań ``normalize_text``. Tutaj zapytania idą raz, a klucze
+    są znormalizowane raz.
+
+    Semantyka dopasowania jest identyczna: rekordy zachowują kolejność malejąco
+    po dacie i wygrywa pierwszy pasujący. Klucze powtórzone są pomijane, bo
+    przy dopasowaniu "pierwszy wygrywa" późniejszy duplikat i tak nie mógłby
+    zostać zwrócony.
+    """
+
+    __slots__ = ('expenses', 'incomes')
+
+    def __init__(self, account):
+        self.expenses = []
+        self.incomes = []
+        if account is None:
+            return
+
+        seen_stores = set()
+        expense_entries = (
+            Daily.objects
+            .filter(account=account)
+            .exclude(store='')
+            .order_by('-date')
+            .values('store', 'category', 'title')[:HISTORY_LOOKUP_LIMIT]
+        )
+        for entry in expense_entries:
+            store_key = normalize_text(entry['store'])
+            if len(store_key) < MIN_EXPENSE_STORE_KEY_LENGTH or store_key in seen_stores:
+                continue
+            seen_stores.add(store_key)
+            self.expenses.append((store_key, entry))
+
+        seen_titles = set()
+        income_entries = (
+            Income.objects
+            .filter(account=account)
+            .order_by('-date')
+            .values('title', 'source')[:HISTORY_LOOKUP_LIMIT]
+        )
+        for entry in income_entries:
+            title_key = normalize_text(entry['title'])
+            if len(title_key) < MIN_INCOME_TITLE_KEY_LENGTH or title_key in seen_titles:
+                continue
+            seen_titles.add(title_key)
+            self.incomes.append((title_key, entry))
+
+    def match_expense(self, store, row):
+        text = normalize_text(' '.join([store, _combined_text(row)]))
+        if not text:
+            return None
+        for store_key, entry in self.expenses:
+            if store_key in text or text in store_key:
+                return entry
         return None
 
-    entries = (
-        Daily.objects
-        .filter(account=account)
-        .exclude(store='')
-        .order_by('-date')
-        .values('store', 'category', 'title')[:500]
-    )
-    for entry in entries:
-        store_key = normalize_text(entry['store'])
-        if len(store_key) < 3:
-            continue
-        if store_key in text or text in store_key:
-            return entry
-    return None
-
-
-def _historical_income_match(account, row):
-    text = normalize_text(_combined_text(row))
-    if not text:
+    def match_income(self, row):
+        text = normalize_text(_combined_text(row))
+        if not text:
+            return None
+        for title_key, entry in self.incomes:
+            if title_key in text or text in title_key:
+                return entry
         return None
-
-    entries = (
-        Income.objects
-        .filter(account=account)
-        .order_by('-date')
-        .values('title', 'source')[:500]
-    )
-    for entry in entries:
-        title_key = normalize_text(entry['title'])
-        if len(title_key) < 4:
-            continue
-        if title_key in text or text in title_key:
-            return entry
-    return None
 
 
 def _expense_title(category, store, row):
@@ -401,7 +435,9 @@ def _external_id(row, import_source):
     return f'{import_source}:{digest}'
 
 
-def _candidate_from_row(index, row_number, row, account, import_source=MILLENNIUM_SOURCE):
+def _candidate_from_row(index, row_number, row, account, import_source=MILLENNIUM_SOURCE, history=None):
+    if history is None:
+        history = BankHistoryIndex(account)
     debit = _optional_decimal(row.get('Obciążenia'))
     credit = _optional_decimal(row.get('Uznania'))
     if debit is None and credit is None:
@@ -414,7 +450,7 @@ def _candidate_from_row(index, row_number, row, account, import_source=MILLENNIU
         amount = abs(debit)
         store = _expense_store(row)
         rule_category, rule_reason = _category_by_rules(' '.join([store, _combined_text(row)]))
-        historical_match = _historical_expense_match(account, store, row) if account else None
+        historical_match = history.match_expense(store, row) if account else None
         if rule_category == INVESTMENT_CATEGORY:
             category = rule_category
             title = _expense_title(category, store, row)
@@ -443,7 +479,7 @@ def _candidate_from_row(index, row_number, row, account, import_source=MILLENNIU
         )
 
     amount = abs(credit)
-    historical_match = _historical_income_match(account, row) if account else None
+    historical_match = history.match_income(row) if account else None
     if historical_match:
         source = historical_match['source']
         title = historical_match['title'] or _income_title(row)
@@ -476,31 +512,49 @@ def _mark_duplicates(candidates, account):
         Income.objects.filter(account=account, external_id__in=external_ids).values_list('external_id', flat=True)
     )
 
+    # Wykrywanie "podobnych" pozycji robiło jedno zapytanie na kandydata, czyli
+    # 300 zapytań dla wyciągu z 300 wierszami. Tutaj obie tabele są pobierane
+    # raz, ograniczone do dat występujących w pliku, a porównanie idzie po
+    # zbiorach kluczy.
+    candidate_dates = {candidate.date for candidate in candidates if candidate.date}
+    expense_keys_with_store = set()
+    expense_keys_any_store = set()
+    income_keys = set()
+    if candidate_dates:
+        for entry in Daily.objects.filter(
+            account=account,
+            date__in=candidate_dates,
+        ).values('date', 'cost', 'title', 'store'):
+            title_key = (entry['title'] or '').lower()
+            expense_keys_any_store.add((entry['date'], entry['cost'], title_key))
+            expense_keys_with_store.add(
+                (entry['date'], entry['cost'], title_key, (entry['store'] or '').lower())
+            )
+        for entry in Income.objects.filter(
+            account=account,
+            date__in=candidate_dates,
+        ).values('date', 'amount', 'title'):
+            income_keys.add((entry['date'], entry['amount'], (entry['title'] or '').lower()))
+
     for candidate in candidates:
         if candidate.external_id in existing_expenses or candidate.external_id in existing_incomes:
             candidate.duplicate = True
             candidate.duplicate_reason = 'już zaimportowano'
             continue
 
+        title_key = (candidate.title or '').lower()
         if candidate.is_expense:
-            possible_duplicate = Daily.objects.filter(
-                account=account,
-                date=candidate.date,
-                cost=candidate.amount,
-                title__iexact=candidate.title,
-            )
             if candidate.store:
-                possible_duplicate = possible_duplicate.filter(store__iexact=candidate.store)
-            if possible_duplicate.exists():
+                found = (
+                    candidate.date, candidate.amount, title_key, candidate.store.lower()
+                ) in expense_keys_with_store
+            else:
+                found = (candidate.date, candidate.amount, title_key) in expense_keys_any_store
+            if found:
                 candidate.possible_duplicate = True
                 candidate.duplicate_reason = 'podobny wydatek już istnieje'
         else:
-            if Income.objects.filter(
-                account=account,
-                date=candidate.date,
-                amount=candidate.amount,
-                title__iexact=candidate.title,
-            ).exists():
+            if (candidate.date, candidate.amount, title_key) in income_keys:
                 candidate.possible_duplicate = True
                 candidate.duplicate_reason = 'podobny przychód już istnieje'
 
@@ -514,6 +568,7 @@ def _parse_millennium_csv_text(text, account):
 
     warnings = []
     candidates = []
+    history = BankHistoryIndex(account)
     for row_number, raw_row in enumerate(reader, start=2):
         row = {_clean_header(key): _clean_text(value) for key, value in raw_row.items() if key is not None}
         if not any(row.values()):
@@ -525,7 +580,7 @@ def _parse_millennium_csv_text(text, account):
             continue
 
         try:
-            candidate = _candidate_from_row(len(candidates), row_number, row, account)
+            candidate = _candidate_from_row(len(candidates), row_number, row, account, history=history)
         except (ValueError, ArithmeticError) as exc:
             warnings.append(f'Pominięto wiersz {row_number}: {exc}.')
             continue
@@ -570,6 +625,7 @@ def _parse_ing_csv_text(text, account):
 
     warnings = []
     candidates = []
+    history = BankHistoryIndex(account)
     for row_number, values in enumerate(reader, start=row_number + 1):
         row = _ing_row(headers, values)
         if not any(row.values()):
@@ -596,6 +652,7 @@ def _parse_ing_csv_text(text, account):
                 row,
                 account,
                 import_source=ING_SOURCE,
+                history=history,
             )
         except (ValueError, ArithmeticError) as exc:
             warnings.append(f'Pominięto wiersz {row_number}: {exc}.')

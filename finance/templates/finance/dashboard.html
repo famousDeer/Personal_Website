@@ -4,31 +4,28 @@
 
 {% block content_finance %}
 
-<div class="card border-0 shadow-sm action-card mb-4 animate-fade-in">
-    <div class="card-body p-4">
-        <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
-            <div>
-                <div class="small text-uppercase fw-bold text-muted mb-1">Panel finansowy</div>
-                <h2 class="fw-bold mb-1 text-primary">{{ active_finance_account.display_name }}</h2>
-                <div class="text-muted small">Bilans wybranego miesiąca:
-                    <span class="fw-bold {% if balance >= 0 %}text-success{% else %}text-danger{% endif %}">
-                        {{ balance|floatformat:2 }} zł
-                    </span>
-                </div>
-            </div>
-            <div class="d-flex gap-2 flex-wrap justify-content-end">
-                <a href="{% url 'finance:add_expense' %}" class="btn btn-danger rounded-pill px-3"><i class="bi bi-dash-circle me-1"></i> Wydatek</a>
-                <a href="{% url 'finance:add_income' %}" class="btn btn-success rounded-pill px-3"><i class="bi bi-plus-circle me-1"></i> Przychód</a>
-                <a href="{% url 'finance:reports' %}" class="btn btn-soft-neutral rounded-pill px-3"><i class="bi bi-graph-up me-1"></i> Raporty</a>
-            </div>
-        </div>
-        <form method="get" action="." class="row g-2 align-items-end mt-3">
+{% comment %} Nazwa konta jest już w przełączniku wyżej, więc nagłówek nie powtarza jej
+   po raz drugi. Bilans - liczba, dla której otwiera się tę stronę - dostaje
+   rolę głównej metryki zamiast drobnego dopisku pod tytułem. {% endcomment %}
+<div class="u-page-head">
+    <div>
+        <span class="u-eyebrow">Panel finansowy</span>
+        <h1 class="u-page-title">Wrzesień w skrócie</h1>
+        <p class="u-page-sub">
+            Bilans miesiąca:
+            <strong class="u-num {% if balance >= 0 %}u-metric-value is-income{% else %}u-metric-value is-expense{% endif %}"
+                    style="font-size:var(--fs-lead)">{{ balance|floatformat:2 }} zł</strong>
+        </p>
+    </div>
+
+    <div class="u-page-actions">
+        <form method="get" action="." class="d-flex align-items-center gap-2">
             {% for category in selected_cost_categories %}
                 <input type="hidden" name="cost_category" value="{{ category }}">
             {% endfor %}
-            <div class="col-md-4 col-lg-3">
-                <label class="form-label small text-uppercase fw-bold text-muted">Miesiąc</label>
-                <select class="form-select form-select-sm" name="month" onchange="this.form.submit()">
+            <div class="u-account-switch">
+                <label for="month-select">Miesiąc</label>
+                <select id="month-select" name="month" onchange="this.form.submit()">
                     {% now "Y-m" as current_ym %}
                     <option value="{{ current_ym }}" {% if not current_month_filter or current_month_filter == current_ym %}selected{% endif %}>
                         Bieżący
@@ -41,21 +38,21 @@
                 </select>
             </div>
         </form>
+        <a href="{% url 'finance:add_expense' %}" class="u-btn u-btn-expense"><i class="bi bi-dash-circle"></i> Wydatek</a>
+        <a href="{% url 'finance:add_income' %}" class="u-btn u-btn-income"><i class="bi bi-plus-circle"></i> Przychód</a>
+        <a href="{% url 'finance:reports' %}" class="u-btn u-btn-ghost"><i class="bi bi-graph-up"></i> Raporty</a>
     </div>
 </div>
 
-<div class="row mb-4 animate-fade-in-up" style="animation-delay: 0.1s;">
-    <div class="col-12">
-        <div class="card border-0 shadow-sm action-card">
-            <div class="card-header bg-transparent border-0 pt-4 px-4 pb-0 d-flex justify-content-between align-items-center">
-                <h5 class="fw-bold mb-0"><i class="bi bi-bar-chart-line me-2 text-primary"></i>Przychody vs Wydatki i Inwestycje</h5>
-            </div>
-            <div class="card-body p-4">
-                <div style="height: 400px;">
-                    <canvas id="incomeExpenseChart"></canvas>
-                </div>
-            </div>
+<div class="u-card u-card-pad mb-4">
+    <div class="u-section-head">
+        <div>
+            <h2 class="u-section-title">Przebieg miesiąca</h2>
+            <p class="u-page-sub mb-0">Narastająco od pierwszego dnia miesiąca.</p>
         </div>
+    </div>
+    <div class="u-chart">
+        <canvas id="incomeExpenseChart"></canvas>
     </div>
 </div>
 
@@ -129,164 +126,109 @@
     </div>
 </div>
 
-<div class="row g-3 mb-4 animate-fade-in-up" style="animation-delay: 0.05s;">
-{% load l10n %} 
-<div class="col-md-6">
-    <div class="card border-0 shadow-sm action-card h-100">
-        <div class="card-body d-flex align-items-center p-3">
-            <div class="icon-box bg-primary-subtle text-primary me-3" style="width: 50px; height: 50px;">
-                <i class="bi bi-piggy-bank fs-4"></i>
+{% load l10n %}
+<div class="u-metric-grid mb-4">
+        <div class="u-metric">
+            <div class="u-metric-label"><i class="bi bi-piggy-bank"></i> Stopa oszczędności</div>
+            <div class="u-metric-value u-num {% if savings_rate < 0 %}is-expense{% endif %}">
+                {{ savings_rate|floatformat:1 }}%
             </div>
-            <div class="flex-grow-1">
-                <h6 class="text-muted text-uppercase small fw-bold mb-1">Stopa Oszczędności</h6>
-                <div class="d-flex align-items-center">
-                    <h4 class="mb-0 fw-bold me-2 {% if savings_rate < 0 %}text-danger{% endif %}">
-                        {{ savings_rate|floatformat:1 }}%
-                    </h4>
-                    
-                    <div class="progress flex-grow-1" style="height: 8px; background-color: #e9ecef;">
-                        <div class="progress-bar 
-                             {% if savings_rate >= 20 %}bg-success
-                             {% elif savings_rate > 0 %}bg-warning
-                             {% else %}bg-danger{% endif %}" 
-                             
-                             role="progressbar" 
-                             
-                             /* LOGIKA OBLICZANIA SZEROKOŚCI */
-                             style="width: 
-                                {% if savings_rate < 0 %}
-                                    100% /* Alarm: pełny pasek na czerwono */
-                                {% elif savings_rate >= 20 %}
-                                    100% /* Cel osiągnięty: pełny pasek na zielono */
-                                {% else %}
-                                    /* Obliczamy % realizacji celu: (savings_rate / 20) * 100 */
-                                    {% widthratio savings_rate 20 100 %}%
-                                {% endif %}"
-                             
-                             /* Dostępność: Teraz max to 20 (Twój cel) */
-                             aria-valuenow="{{ savings_rate|unlocalize }}" 
-                             aria-valuemin="0" 
-                             aria-valuemax="20">
+            <div class="u-meter" role="progressbar"
+                 aria-valuenow="{{ savings_rate|unlocalize }}" aria-valuemin="0" aria-valuemax="20"
+                 aria-label="Realizacja celu oszczędnościowego">
+                <div class="u-meter-fill" style="width: {% if savings_rate >= 20 %}100{% elif savings_rate <= 0 %}0{% else %}{% widthratio savings_rate 20 100 %}{% endif %}%"></div>
+            </div>
+            <div class="u-metric-note">
+                {% if savings_rate < 0 %}
+                    Przekroczono budżet
+                {% elif savings_rate >= 20 %}
+                    Cel 20% osiągnięty
+                {% else %}
+                    Cel 20% · realizacja {% widthratio savings_rate 20 100 %}%
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="u-metric">
+            <div class="u-metric-label"><i class="bi bi-calendar-day"></i> Średnie wydatki dzienne</div>
+            <div class="u-metric-value u-num">{{ daily_average|floatformat:2 }} zł</div>
+            <div class="u-metric-note">
+                Prognoza na koniec miesiąca: <strong>{{ projected_expense|floatformat:0 }} zł</strong>
+            </div>
+        </div>
+</div>
+
+{% load humanize %}
+<div class="u-metric-grid mb-4">
+        <div class="u-metric is-income">
+            <div class="u-metric-label"><i class="bi bi-arrow-up-circle"></i> Przychody</div>
+            <div class="u-metric-value is-income u-num">{{ total_income|floatformat:2|intcomma }} zł</div>
+        </div>
+
+        <div class="u-metric is-expense">
+            <div class="u-metric-label"><i class="bi bi-arrow-down-circle"></i> Wydatki</div>
+            <div class="u-metric-value is-expense u-num">{{ spending_total|floatformat:2|intcomma }} zł</div>
+            <div class="u-metric-note">Bez inwestycji</div>
+        </div>
+
+        <div class="u-metric is-invest">
+            <div class="u-metric-label"><i class="bi bi-piggy-bank"></i> Inwestycje</div>
+            <div class="u-metric-value is-invest u-num">{{ investment_total|floatformat:2|intcomma }} zł</div>
+        </div>
+</div>
+
+<div class="row mb-4 g-4">
+    <div class="col-lg-6">
+        <div class="u-card u-card-pad h-100">
+            <div class="u-section-head">
+                <h2 class="u-section-title">Na co idą pieniądze</h2>
+                <a href="{% url 'finance:reports' %}" class="u-btn u-btn-ghost">Raporty</a>
+            </div>
+            {% if categories %}
+                {% comment %} Ranking poziomy zamiast wykresu kołowego: kąty porównuje się
+                   źle, długości dobrze, a nazwa kategorii jest przy słupku
+                   zamiast w legendzie. {% endcomment %}
+                <div class="u-rank">
+                    {% for row in category_rows %}
+                        <div class="u-rank-row">
+                            <div class="u-rank-head">
+                                <span class="u-rank-name">{{ row.name }}</span>
+                                <span class="u-rank-value">{{ row.amount|floatformat:0|intcomma }} zł</span>
+                            </div>
+                            <div class="u-rank-track">
+                                <div class="u-rank-fill" style="width: {{ row.percent|unlocalize }}%; --bar-color: var(--cat-{{ row.slot }});"></div>
+                            </div>
                         </div>
-                    </div>
+                    {% endfor %}
                 </div>
-                
-                <small class="text-muted" style="font-size: 0.75rem;">
-                    {% if savings_rate < 0 %}
-                        <span class="text-danger fw-bold">Przekroczono budżet!</span>
-                    {% elif savings_rate >= 20 %}
-                        <span class="text-success fw-bold">Cel osiągnięty!</span>
-                    {% else %}
-                        Cel: 20% (Realizacja: {% widthratio savings_rate 20 100 %}%)
-                    {% endif %}
-                </small>
-            </div>
-        </div>
-    </div>
-</div>
-
-    <div class="col-md-6">
-        <div class="card border-0 shadow-sm action-card h-100">
-            <div class="card-body d-flex align-items-center p-3">
-                <div class="icon-box bg-warning-subtle text-warning me-3" style="width: 50px; height: 50px;">
-                    <i class="bi bi-calendar-day fs-4"></i>
-                </div>
-                <div>
-                    <h6 class="text-muted text-uppercase small fw-bold mb-1">Średnie wydatki dzienne</h6>
-                    <h4 class="mb-0 fw-bold">{{ daily_average|floatformat:2 }} zł</h4>
-                    <small class="text-muted" style="font-size: 0.75rem;">
-                        Prognoza na koniec mies.: <span class="fw-bold">{{ projected_expense|floatformat:0 }} zł</span>
-                    </small>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-{% load humanize %} 
-<div class="row g-3 mb-4 animate-fade-in-up" style="animation-delay: 0.05s;">    
-    <div class="col-md-4">
-        <div class="card border-0 shadow-sm action-card h-100">
-            <div class="card-body d-flex align-items-center p-3">
-                <div class="icon-box bg-success-subtle text-success me-3" style="width: 50px; height: 50px;">
-                    <i class="bi bi-graph-up-arrow fs-4"></i>
-                </div>
-                <div class="flex-grow-1">
-                    <h6 class="text-muted text-uppercase small fw-bold mb-1">Przychody</h6>
-                    <div class="d-flex align-items-center">
-                        <h4 class="mb-0 fw-bold me-2 text-success">
-                            {{ total_income|floatformat:2|intcomma }} zł
-                        </h4>
-                    </div>
-                </div>
-            </div>
+            {% else %}
+                <p class="u-page-sub mb-0">Brak wydatków w tym miesiącu.</p>
+            {% endif %}
         </div>
     </div>
 
-    <div class="col-md-4">
-        <div class="card border-0 shadow-sm action-card h-100">
-            <div class="card-body d-flex align-items-center p-3">
-                <div class="icon-box bg-danger-subtle text-danger me-3" style="width: 50px; height: 50px;">
-                    <i class="bi bi-graph-down-arrow fs-4"></i>
-                </div>
-                <div>
-                    <h6 class="text-muted text-uppercase small fw-bold mb-1">Wydatki</h6>
-                    <h4 class="mb-0 fw-bold text-danger">
-                        {{ spending_total|floatformat:2|intcomma }} zł
-                    </h4>
-                    <small class="text-muted" style="font-size: 0.75rem;">Bez inwestycji</small>
-                </div>
+    <div class="col-lg-6">
+        <div class="u-card u-card-pad h-100">
+            <div class="u-section-head">
+                <h2 class="u-section-title">Skąd przychodzą pieniądze</h2>
             </div>
-        </div>
-    </div>
-
-    <div class="col-md-4">
-        <div class="card border-0 shadow-sm action-card h-100">
-            <div class="card-body d-flex align-items-center p-3">
-                <div class="icon-box bg-info-subtle text-info me-3" style="width: 50px; height: 50px;">
-                    <i class="bi bi-piggy-bank fs-4"></i>
+            {% if income_sources %}
+                <div class="u-rank">
+                    {% for row in income_rows %}
+                        <div class="u-rank-row">
+                            <div class="u-rank-head">
+                                <span class="u-rank-name">{{ row.name }}</span>
+                                <span class="u-rank-value">{{ row.amount|floatformat:0|intcomma }} zł</span>
+                            </div>
+                            <div class="u-rank-track">
+                                <div class="u-rank-fill" style="width: {{ row.percent|unlocalize }}%; --bar-color: var(--income);"></div>
+                            </div>
+                        </div>
+                    {% endfor %}
                 </div>
-                <div>
-                    <h6 class="text-muted text-uppercase small fw-bold mb-1">Inwestycje</h6>
-                    <h4 class="mb-0 fw-bold text-info">
-                        {{ investment_total|floatformat:2|intcomma }} zł
-                    </h4>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row mb-4 g-4 animate-fade-in-up" style="animation-delay: 0.2s;">
-    <div class="col-md-6">
-        <div class="card border-0 shadow-sm action-card h-100">
-            <div class="card-header bg-transparent border-0 pt-4 px-4 pb-0 text-center">
-                <h5 class="fw-bold mb-0"><i class="bi bi-pie-chart me-2 text-danger"></i>Kategorie Wydatków</h5>
-            </div>
-            <div class="card-body d-flex flex-column justify-content-center align-items-center p-4">
-                <div style="position: relative; height: 300px; width: 100%; max-width: 350px;">
-                    <canvas id="expenseChart"></canvas>
-                </div>
-                {% if not categories %}
-                    <div class="text-center mt-3 text-muted small">Brak danych</div>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-
-    <div class="col-md-6">
-        <div class="card border-0 shadow-sm action-card h-100">
-            <div class="card-header bg-transparent border-0 pt-4 px-4 pb-0 text-center">
-                <h5 class="fw-bold mb-0"><i class="bi bi-pie-chart me-2 text-success"></i>Źródła Przychodów</h5>
-            </div>
-            <div class="card-body d-flex flex-column justify-content-center align-items-center p-4">
-                <div style="position: relative; height: 300px; width: 100%; max-width: 350px;">
-                    <canvas id="incomeChart"></canvas>
-                </div>
-                {% if not income_sources %}
-                    <div class="text-center mt-3 text-muted small">Brak danych</div>
-                {% endif %}
-            </div>
+            {% else %}
+                <p class="u-page-sub mb-0">Brak przychodów w tym miesiącu.</p>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -296,13 +238,13 @@
     <div class="col-lg-4">
         <div class="card border-0 shadow-sm action-card h-100 overflow-hidden rounded-4">
             <div class="card-header bg-transparent border-0 pt-4 px-4 pb-3 d-flex justify-content-between align-items-center">
-                <h5 class="fw-bold mb-0 text-danger"><i class="bi bi-clock-history me-2"></i>Ostatnie wydatki</h5>
+                <h2 class="u-section-title">Ostatnie wydatki</h2>
                 <a href="{% url 'finance:expense_list' %}" class="btn btn-sm btn-outline-secondary text-muted rounded-pill px-3">Więcej</a>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
                     <table class="table table-hover align-middle custom-table mb-0">
-                        <thead class="bg-light">
+                        <thead>
                             <tr>
                                 <th class="ps-4 text-muted small border-0">Data</th>
                                 <th class="text-muted small border-0">Opis</th>
@@ -334,13 +276,13 @@
     <div class="col-lg-4">
         <div class="card border-0 shadow-sm action-card h-100 overflow-hidden rounded-4">
             <div class="card-header bg-transparent border-0 pt-4 px-4 pb-3 d-flex justify-content-between align-items-center">
-                <h5 class="fw-bold mb-0 text-info"><i class="bi bi-clock-history me-2"></i>Ostatnie inwestycje</h5>
+                <h2 class="u-section-title">Ostatnie inwestycje</h2>
                 <a href="{% url 'finance:expense_list' %}?category=Inwestycje" class="btn btn-sm btn-outline-secondary text-muted rounded-pill px-3">Więcej</a>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
                     <table class="table table-hover align-middle custom-table mb-0">
-                        <thead class="bg-light">
+                        <thead>
                             <tr>
                                 <th class="ps-4 text-muted small border-0">Data</th>
                                 <th class="text-muted small border-0">Opis</th>
@@ -372,13 +314,13 @@
     <div class="col-lg-4">
         <div class="card border-0 shadow-sm action-card h-100 overflow-hidden rounded-4">
             <div class="card-header bg-transparent border-0 pt-4 px-4 pb-3 d-flex justify-content-between align-items-center">
-                <h5 class="fw-bold mb-0 text-success"><i class="bi bi-clock-history me-2"></i>Ostatnie wpływy</h5>
+                <h2 class="u-section-title">Ostatnie wpływy</h2>
                 <a href="{% url 'finance:income_list' %}" class="btn btn-sm btn-outline-secondary text-muted rounded-pill px-3">Więcej</a>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
                     <table class="table table-hover align-middle custom-table mb-0">
-                        <thead class="bg-light">
+                        <thead>
                             <tr>
                                 <th class="ps-4 text-muted small border-0">Data</th>
                                 <th class="text-muted small border-0">Źródło</th>
@@ -410,143 +352,33 @@
 {{ categories|json_script:"expense-labels-data" }}
 {{ amounts|json_script:"expense-amounts-data" }}
 {{ income_sources|json_script:"income-labels-data" }}
-{{ income_amounts|json_script:"income-amounts-data" }}
 {{ days_in_month|json_script:"days-in-month-data" }}
 {{ daily_incomes_data|json_script:"daily-incomes-data" }}
 {{ daily_expenses_data|json_script:"daily-expenses-data" }}
 {{ daily_investments_data|json_script:"daily-investments-data" }}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% load static %}
+<script src="{% static 'vendor/chart/chart.umd.js' %}"></script>
+<script src="{% static 'js/charts.js' %}"></script>
 <script>
-    // --- KONFIGURACJA CHART.JS ---
-    
-    // Wykrywanie trybu ciemnego
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    const textColor = isDark ? '#e0e0e0' : '#666';
-    const gridColor = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
+    (function () {
+        var canvas = document.getElementById('incomeExpenseChart');
+        if (!canvas || typeof Chart === 'undefined') { return; }
 
-    Chart.defaults.color = textColor;
-    Chart.defaults.borderColor = gridColor;
-    Chart.defaults.font.family = "'Segoe UI', 'Roboto', 'sans-serif'";
+        Chart.defaults.font.family = getComputedStyle(document.documentElement)
+            .getPropertyValue('--font-ui') || 'system-ui, sans-serif';
 
-    const expenseLabels = JSON.parse(document.getElementById('expense-labels-data').textContent);
-    const expenseAmounts = JSON.parse(document.getElementById('expense-amounts-data').textContent);
-    const incomeLabels = JSON.parse(document.getElementById('income-labels-data').textContent);
-    const incomeAmounts = JSON.parse(document.getElementById('income-amounts-data').textContent);
-    const daysInMonth = JSON.parse(document.getElementById('days-in-month-data').textContent);
-    const dailyIncomes = JSON.parse(document.getElementById('daily-incomes-data').textContent);
-    const dailyExpenses = JSON.parse(document.getElementById('daily-expenses-data').textContent);
-    const dailyInvestments = JSON.parse(document.getElementById('daily-investments-data').textContent);
+        var data = {
+            days: JSON.parse(document.getElementById('days-in-month-data').textContent),
+            incomes: JSON.parse(document.getElementById('daily-incomes-data').textContent),
+            expenses: JSON.parse(document.getElementById('daily-expenses-data').textContent),
+            investments: JSON.parse(document.getElementById('daily-investments-data').textContent)
+        };
 
-    // --- 1. WYKRES KOŁOWY WYDATKÓW (Pie + Bez Legendy) ---
-    const expenseCtx = document.getElementById('expenseChart').getContext('2d');
-    new Chart(expenseCtx, {
-        type: 'pie', // Zostajemy przy klasycznym kole
-        data: {
-            labels: expenseLabels,
-            datasets: [{
-                data: expenseAmounts,
-                backgroundColor: [
-                    '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
-                    '#FF9F40', '#C9CBCF', '#E5E7EB', '#FBBF24', '#10B981'
-                ],
-                borderWidth: 2,
-                borderColor: isDark ? '#212529' : '#fff' // Ramka pasująca do tła karty
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false }, // UKRYCIE LEGENDY
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            let value = context.parsed;
-                            return ` ${context.label}: ${value.toFixed(2)} zł`;
-                        }
-                    }
-                }
-            }
-        }
-    });
-
-    // --- 2. WYKRES KOŁOWY PRZYCHODÓW (Pie + Bez Legendy) ---
-    const incomeCtx = document.getElementById('incomeChart').getContext('2d');
-    new Chart(incomeCtx, {
-        type: 'pie',
-        data: {
-            labels: incomeLabels,
-            datasets: [{
-                data: incomeAmounts,
-                backgroundColor: ['#28a745', '#17a2b8', '#6c757d', '#ffc107', '#dc3545'],
-                borderWidth: 2,
-                borderColor: isDark ? '#212529' : '#fff'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false }, // UKRYCIE LEGENDY
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            let value = context.parsed;
-                            return ` ${context.label}: ${value.toFixed(2)} zł`;
-                        }
-                    }
-                }
-            }
-        }
-    });
-
-    // --- 3. WYKRES SŁUPKOWY (BAR CHART) ---
-    const mainCtx = document.getElementById('incomeExpenseChart').getContext('2d');
-    new Chart(mainCtx, {
-        type: 'bar', // Powrót do słupków
-        data: {
-            labels: daysInMonth,
-            datasets: [{
-                label: 'Przychody',
-                data: dailyIncomes,
-                backgroundColor: 'rgba(75, 192, 192, 0.7)',
-                borderColor: 'rgba(75, 192, 192, 1)',
-                borderWidth: 1,
-                borderRadius: 4, // Zaokrąglenie góry słupka
-            }, {
-                label: 'Wydatki',
-                data: dailyExpenses,
-                backgroundColor: 'rgba(255, 99, 132, 0.7)',
-                borderColor: 'rgba(255, 99, 132, 1)',
-                borderWidth: 1,
-                borderRadius: 4,
-            }, {
-                label: 'Inwestycje',
-                data: dailyInvestments,
-                backgroundColor: 'rgba(13, 202, 240, 0.7)',
-                borderColor: 'rgba(13, 202, 240, 1)',
-                borderWidth: 1,
-                borderRadius: 4,
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { position: 'top' },
-            },
-            scales: {
-                x: { 
-                    grid: { display: false } 
-                },
-                y: { 
-                    beginAtZero: true,
-                    ticks: {
-                        callback: function(value) { return value + ' zł'; }
-                    }
-                }
-            }
-        }
-    });
+        // Rejestracja przez AppCharts sprawia, że wykres przemaluje się sam
+        // po przełączeniu motywu - kolory pochodzą z tokenów CSS.
+        AppCharts.register(function () {
+            return AppCharts.cumulativeMonth(canvas, data);
+        });
+    })();
 </script>
 {% endblock %}

@@ -4,99 +4,79 @@
 
 {% block content_finance %}
 {% load humanize %}
-<div class="d-flex justify-content-between align-items-end gap-3 flex-wrap mb-4">
+<div class="u-page-head">
     <div>
-        <div class="small text-uppercase fw-bold text-muted mb-1">Analiza</div>
-        <h2 class="fw-bold mb-1"><i class="bi bi-graph-up text-primary me-2"></i>Raporty finansowe</h2>
-        <p class="text-muted mb-0">Ostatnie miesiące, top kategorie i pełny bilans konta.</p>
+        <span class="u-eyebrow">Analiza</span>
+        <h1 class="u-page-title">Raporty finansowe</h1>
+        <p class="u-page-sub">Ostatnie miesiące, top kategorie i pełny bilans konta.</p>
     </div>
-    <div class="d-flex gap-2 flex-wrap">
-        <a href="{% url 'finance:add_expense' %}" class="btn btn-outline-danger rounded-pill px-3">
-            <i class="bi bi-dash-circle me-1"></i> Wydatek
-        </a>
-        <a href="{% url 'finance:add_income' %}" class="btn btn-success rounded-pill px-3">
-            <i class="bi bi-plus-circle me-1"></i> Przychód
-        </a>
+    <div class="u-page-actions">
+        <a href="{% url 'finance:add_expense' %}" class="u-btn u-btn-expense"><i class="bi bi-dash-circle"></i> Wydatek</a>
+        <a href="{% url 'finance:add_income' %}" class="u-btn u-btn-income"><i class="bi bi-plus-circle"></i> Przychód</a>
     </div>
 </div>
 
-<!-- Summary expenses, incomes and balance -->
-<div class="row g-3 mb-4">
-    <div class="col-12 col-sm-6 col-xl-3">
-        <div class="card border-success report-summary-card h-100">
-            <div class="card-body">
-                <h5 class="card-title text-success">
-                    <i class="bi bi-arrow-up-circle"></i> Całkowite przychody
-                </h5>
-                <div class="report-summary-value text-success">{{ total_income_all|floatformat:2|intcomma }} zł</div>
-            </div>
-        </div>
+{% comment %} Kafelki podsumowania: pasek koloru przy krawędzi zamiast
+   kolorowej obwódki i kolorowego nagłówka. Identyfikacja zostaje, ale nie
+   rywalizuje z liczbą o uwagę. {% endcomment %}
+<div class="u-metric-grid mb-4">
+    <div class="u-metric is-income">
+        <div class="u-metric-label"><i class="bi bi-arrow-up-circle"></i> Całkowite przychody</div>
+        <div class="u-metric-value is-income u-num">{{ total_income_all|floatformat:2|intcomma }} zł</div>
     </div>
-    <div class="col-12 col-sm-6 col-xl-3">
-        <div class="card border-danger report-summary-card h-100">
-            <div class="card-body">
-                <h5 class="card-title text-danger">
-                   <i class="bi bi-arrow-down-circle"></i> Całkowite wydatki
-                </h5>
-                <div class="report-summary-value text-danger">{{ total_spending_all|floatformat:2|intcomma }} zł</div>
-                <small class="text-muted">Bez kategorii inwestycje</small>
-            </div>
-        </div>
+
+    <div class="u-metric is-expense">
+        <div class="u-metric-label"><i class="bi bi-arrow-down-circle"></i> Całkowite wydatki</div>
+        <div class="u-metric-value is-expense u-num">{{ total_spending_all|floatformat:2|intcomma }} zł</div>
+        <div class="u-metric-note">Bez kategorii inwestycje</div>
     </div>
-    <div class="col-12 col-sm-6 col-xl-3">
-        <div class="card border-info report-summary-card h-100">
-            <div class="card-body">
-                <h5 class="card-title text-info">
-                    <i class="bi bi-piggy-bank"></i> Całkowite inwestycje
-                </h5>
-                <div class="report-summary-value text-info">{{ total_investment_all|floatformat:2|intcomma }} zł</div>
-            </div>
-        </div>
+
+    <div class="u-metric is-invest">
+        <div class="u-metric-label"><i class="bi bi-piggy-bank"></i> Całkowite inwestycje</div>
+        <div class="u-metric-value is-invest u-num">{{ total_investment_all|floatformat:2|intcomma }} zł</div>
     </div>
-    <div class="col-12 col-sm-6 col-xl-3">
-        <div class="card border-primary report-summary-card h-100">
-            <div class="card-body">
-                <h5 class="card-title text-primary">
-                    <i class="bi bi-wallet2"></i> Bilans całkowity
-                </h5>
-                <div class="report-summary-value {% if balance_all >= 0 %}text-success{% else %}text-danger{% endif %}">{{ balance_all|floatformat:2|intcomma }} zł</div>
-                <small class="text-muted">Bilans uwzględnia także inwestycje</small>
-            </div>
-        </div>
+
+    <div class="u-metric">
+        <div class="u-metric-label"><i class="bi bi-wallet2"></i> Bilans całkowity</div>
+        <div class="u-metric-value u-num {% if balance_all >= 0 %}is-income{% else %}is-expense{% endif %}">{{ balance_all|floatformat:2|intcomma }} zł</div>
+        <div class="u-metric-note">Uwzględnia także inwestycje</div>
     </div>
 </div>
 
 <!-- Chart of income and expense for lat 6 months -->
 <div class="row mb-4">
     <div class="col-md-12">
-        <div class="card shadow-sm border-0"> <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
-                <h5 class="mb-0 text-primary fw-bold">Przychody vs Wydatki i Inwestycje (6 m-cy)</h5>
-                <button class="btn btn-sm btn-outline-secondary rounded-circle" onclick="toggleChartFullscreen()" title="Powiększ wykres">
+        <div class="u-card u-card-pad">
+            <div class="u-section-head">
+                <div>
+                    <h2 class="u-section-title">Sześć ostatnich miesięcy</h2>
+                    <p class="u-page-sub mb-0">Przychody, wydatki i inwestycje miesiąc po miesiącu.</p>
+                </div>
+                <button class="u-btn u-btn-ghost" onclick="toggleChartFullscreen()" title="Powiększ wykres">
                     <i class="bi bi-arrows-fullscreen" id="fullscreenIcon"></i>
                 </button>
             </div>
-            
-            <div class="card-body p-3" id="chartContainer" style="position: relative; height: 400px; width: 100%;">
-                <button id="closeFullscreenBtn" class="btn btn-light shadow position-absolute top-0 end-0 m-3 d-none" onclick="toggleChartFullscreen()" style="z-index: 10000;">
+
+            <div class="u-chart" id="chartContainer">
+                <button id="closeFullscreenBtn" class="u-btn u-btn-ghost position-absolute top-0 end-0 m-3 d-none" onclick="toggleChartFullscreen()" style="z-index: 10000;">
                     <i class="bi bi-x-lg"></i> Zamknij
                 </button>
-                
                 <canvas id="incomeExpenseChart"></canvas>
             </div>
         </div>
     </div>
 </div>
 
-<div class="row">
+<div class="row g-4 mb-4">
     <!-- Top 5 expensive category -->
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">Top 5 Kategorii Wydatków</h5>
+    <div class="col-12">
+        <div class="u-card u-card-pad h-100">
+            <div class="u-section-head">
+                <h2 class="u-section-title">Top 5 kategorii wydatków</h2>
             </div>
-            <div class="card-body">
+            <div>
                 <div class="table-responsive">
-                    <table class="table table-sm align-middle">
+                    <table class="u-table">
                         <thead>
                             <tr>
                                 <th>Kategoria</th>
@@ -107,9 +87,9 @@
                             {% for category in top_categories %}
                             <tr>
                                 <td>
-                                    <span class="badge bg-secondary">{{ category.category }}</span>
+                                    <span class="u-chip">{{ category.category }}</span>
                                 </td>
-                                <td class="text-end text-danger text-nowrap">{{ category.total|floatformat:2|intcomma }} zł</td>
+                                <td class="u-amount is-expense">{{ category.total|floatformat:2|intcomma }} zł</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -119,15 +99,18 @@
         </div>
     </div>
     
+</div>
+
+<div class="row g-4">
     <!-- Summary expenses, incomes and balance for every monht -->
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">Podsumowanie Miesięczne</h5>
+    <div class="col-12">
+        <div class="u-card u-card-pad h-100">
+            <div class="u-section-head">
+                <h2 class="u-section-title">Podsumowanie miesięczne</h2>
             </div>
-            <div class="card-body p-0">
+            <div>
                 <div class="table-responsive d-none d-md-block">
-                    <table class="table table-sm align-middle mb-0 report-monthly-table">
+                    <table class="u-table report-monthly-table">
                         <thead>
                             <tr>
                                 <th>Miesiąc</th>
@@ -141,9 +124,9 @@
                             {% for record in monthly_records %}
                             <tr>
                                 <td>{{ record.date|date:"F Y" }}</td>
-                                <td class="text-end text-success text-nowrap">{{ record.total_income|floatformat:2|intcomma }} zł</td>
-                                <td class="text-end text-danger text-nowrap">{{ record.spending_total|floatformat:2|intcomma }} zł</td>
-                                <td class="text-end text-info text-nowrap">{{ record.investment_total|floatformat:2|intcomma }} zł</td>
+                                <td class="u-amount is-income">{{ record.total_income|floatformat:2|intcomma }} zł</td>
+                                <td class="u-amount is-expense">{{ record.spending_total|floatformat:2|intcomma }} zł</td>
+                                <td class="u-amount is-invest">{{ record.investment_total|floatformat:2|intcomma }} zł</td>
                                 <td class="text-end text-nowrap {% if record.total_income >= record.total_expense %}text-success{% else %}text-danger{% endif %}">{{ record.monthly_balance|floatformat:2|intcomma }} zł</td>
                             </tr>
                             {% endfor %}
@@ -160,15 +143,15 @@
                             </div>
                             <div class="report-month-row">
                                 <span>Przychody</span>
-                                <strong class="text-success">{{ record.total_income|floatformat:2|intcomma }} zł</strong>
+                                <strong class="u-amount is-income u-num">{{ record.total_income|floatformat:2|intcomma }} zł</strong>
                             </div>
                             <div class="report-month-row">
                                 <span>Wydatki</span>
-                                <strong class="text-danger">{{ record.spending_total|floatformat:2|intcomma }} zł</strong>
+                                <strong class="u-amount is-expense u-num">{{ record.spending_total|floatformat:2|intcomma }} zł</strong>
                             </div>
                             <div class="report-month-row">
                                 <span>Inwestycje</span>
-                                <strong class="text-info">{{ record.investment_total|floatformat:2|intcomma }} zł</strong>
+                                <strong class="u-amount is-invest u-num">{{ record.investment_total|floatformat:2|intcomma }} zł</strong>
                             </div>
                         </div>
                     {% empty %}
@@ -184,7 +167,9 @@
 {{ income_data|json_script:"report-income-data" }}
 {{ expense_data|json_script:"report-expense-data" }}
 {{ investment_data|json_script:"report-investment-data" }}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% load static %}
+<script src="{% static 'vendor/chart/chart.umd.js' %}"></script>
+<script src="{% static 'js/charts.js' %}"></script>
 <script>
     // --- FUNKCJA DO OBSŁUGI FULLSCREEN ---
     function toggleChartFullscreen() {
@@ -216,79 +201,40 @@
         }
     }
 
-    // --- TWOJA KONFIGURACJA WYKRESU ---
+    // Wykres na wspólnej konfiguracji: kolory pochodzą z tokenów CSS, więc
+    // słupek "wydatki" ma dokładnie ten sam odcień co kwota wydatku w tabeli,
+    // a przełączenie motywu przemalowuje wykres bez przeładowania strony.
     const labels = JSON.parse(document.getElementById('report-months-labels').textContent);
     const income = JSON.parse(document.getElementById('report-income-data').textContent);
     const expense = JSON.parse(document.getElementById('report-expense-data').textContent);
     const investments = JSON.parse(document.getElementById('report-investment-data').textContent);
-    // Zabezpieczenie przed pustymi danymi przy Math.max
-    const safeIncome = income.length ? income : [0];
-    const safeExpense = expense.length ? expense : [0];
-    const safeInvestments = investments.length ? investments : [0];
-    
-    const rawMax = Math.max(...safeIncome, ...safeExpense, ...safeInvestments);
-    // Jeśli max to 0, ustawmy domyślnie np. 2000 żeby wykres nie był płaski
-    const maxValue = rawMax > 0 ? Math.ceil(rawMax / 2000) * 2000 : 2000;
 
-    const ctx = document.getElementById('incomeExpenseChart').getContext('2d');
-    const incomeExpenseChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Przychody',
-                data: income,
-                borderColor: 'rgb(75, 192, 192)',
-                backgroundColor: 'rgba(75, 192, 192, 0.7)',
-                tension: 0.1,
-                borderRadius: 5, // Ładniejsze słupki
-            }, {
-                label: 'Wydatki',
-                data: expense,
-                borderColor: 'rgb(255, 99, 132)',
-                backgroundColor: 'rgba(255, 99, 132, 0.7)',
-                tension: 0.1,
-                borderRadius: 5,
-            }, {
-                label: 'Inwestycje',
-                data: investments,
-                borderColor: 'rgb(13, 202, 240)',
-                backgroundColor: 'rgba(13, 202, 240, 0.7)',
-                tension: 0.1,
-                borderRadius: 5,
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false, // KLUCZOWE: pozwala wykresowi wypełnić kontener fullscreen
-            layout: {
-                padding: 10
-            },
-            plugins: {
-                legend: {
-                    display: true,
-                    position: 'top',
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true, // Zamiast min: 0
-                    max: maxValue,
-                    ticks: {
-                        // Zmniejszamy liczbę linii na małych ekranach
-                        maxTicksLimit: 8,
-                        callback: function(value) {
-                            return value + ' zł';
-                        }
-                    }
+    const canvas = document.getElementById('incomeExpenseChart');
+    if (canvas && typeof Chart !== 'undefined' && window.AppCharts) {
+        Chart.defaults.font.family = getComputedStyle(document.documentElement)
+            .getPropertyValue('--font-ui') || 'system-ui, sans-serif';
+
+        AppCharts.register(function () {
+            const p = AppCharts.palette();
+            const options = AppCharts.baseOptions();
+            options.layout = { padding: 4 };
+            // Słupki grupowane: odstęp między nimi ułatwia porównanie
+            // sąsiednich miesięcy bez dodatkowych linii pomocniczych.
+            options.datasets = { bar: { categoryPercentage: 0.7, barPercentage: 0.82 } };
+
+            return new Chart(canvas, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'Przychody', data: income, backgroundColor: p.income, borderRadius: 4, borderSkipped: false },
+                        { label: 'Wydatki', data: expense, backgroundColor: p.expense, borderRadius: 4, borderSkipped: false },
+                        { label: 'Inwestycje', data: investments, backgroundColor: p.invest, borderRadius: 4, borderSkipped: false }
+                    ]
                 },
-                x: {
-                    grid: {
-                        display: false // Wygląda czyściej na mobile
-                    }
-                }
-            }
-        }
-    });
+                options: options
+            });
+        });
+    }
 </script>
 {% endblock %}

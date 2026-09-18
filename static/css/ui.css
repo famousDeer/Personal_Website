@@ -1,0 +1,1237 @@
+/* =========================================================================
+   Warstwa komponentów
+   =========================================================================
+   Ładowana PO style.css, więc dostraja istniejące widoki bez przepisywania
+   165 kB starych reguł. Nowe komponenty mają własne nazwy klas (u-*, app-*),
+   a nadpisania celują wyłącznie w te miejsca, gdzie stary arkusz zapisał
+   kolory na sztywno i przez to wypadał z motywu ciemnego.
+   ========================================================================= */
+
+/* --- Znacznik wersji arkusza ------------------------------------------- */
+/* W trybie deweloperskim adresy plików statycznych nie mają skrótu treści,
+   więc po edycji CSS nie da się na pierwszy rzut oka stwierdzić, czy
+   przeglądarka pokazuje nową wersję, czy wydanie z cache. Ten znacznik
+   odpowiada na to jednym poleceniem w konsoli przeglądarki:
+
+     getComputedStyle(document.documentElement).getPropertyValue('--ui-build')
+
+   Jeśli zwróci inną wartość niż poniżej, arkusz jest z cache. */
+:root {
+    --ui-build: "2026-09-19-b";
+}
+
+/* --- Podstawa ---------------------------------------------------------- */
+body {
+    background: var(--surface-0);
+    color: var(--ink-2);
+    font-family: var(--font-ui);
+    font-size: var(--fs-body);
+    line-height: var(--lh-normal);
+    -webkit-font-smoothing: antialiased;
+    /* Stary arkusz odsuwał treść o 70 px pod nawigację fixed-top.
+       Nowa nawigacja jest sticky i płynie w normalnym układzie, więc ten
+       odstęp zostawiałby pusty pas nad paskiem. */
+    padding-top: 0;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    color: var(--ink-1);
+    line-height: var(--lh-tight);
+    letter-spacing: -0.011em;
+}
+
+/* Liczby w tabelach i kafelkach mają równą szerokość cyfr, żeby kolumna
+   kwot nie "drgała" między wierszami. */
+.u-num,
+.u-metric-value,
+.u-table td.u-amount,
+.u-kpi-value {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+}
+
+/* =========================================================================
+   Powłoka aplikacji
+   ========================================================================= */
+.app-shell {
+    max-width: var(--shell-max);
+    margin-inline: auto;
+    padding-inline: var(--sp-4);
+}
+
+.app-nav {
+    position: sticky;
+    top: 0;
+    z-index: 1030;
+    background: color-mix(in srgb, var(--surface-1) 88%, transparent);
+    backdrop-filter: saturate(180%) blur(14px);
+    -webkit-backdrop-filter: saturate(180%) blur(14px);
+    border-bottom: 1px solid var(--line-1);
+}
+
+.app-nav-inner {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-4);
+    height: var(--nav-h);
+    max-width: var(--shell-max);
+    margin-inline: auto;
+    padding-inline: var(--sp-4);
+}
+
+.app-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    font-weight: 700;
+    font-size: var(--fs-lead);
+    color: var(--ink-1);
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.app-brand-mark {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: var(--r-sm);
+    background: var(--brand-gradient);
+    color: #fff;
+    font-size: 0.9rem;
+    box-shadow: 0 4px 12px var(--brand-ring);
+}
+
+.app-nav-links {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+    margin-inline: auto;
+}
+
+.app-nav-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.44rem 0.8rem;
+    border-radius: var(--r-pill);
+    color: var(--ink-3);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.app-nav-link:hover {
+    background: var(--surface-3);
+    color: var(--ink-1);
+}
+
+.app-nav-link.is-active {
+    background: var(--brand-100);
+    color: var(--brand-800);
+}
+
+:root[data-theme="dark"] .app-nav-link.is-active {
+    background: rgba(30, 170, 107, 0.16);
+    color: var(--brand-300);
+}
+
+.app-nav-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    margin-left: auto;
+}
+
+.app-icon-btn {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-pill);
+    background: var(--surface-1);
+    color: var(--ink-2);
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.app-icon-btn:hover {
+    background: var(--surface-3);
+    color: var(--ink-1);
+}
+
+/* =========================================================================
+   Nagłówek strony - jeden wzorzec zamiast trzech
+   -------------------------------------------------------------------------
+   etykietka wersalikami -> tytuł -> zdanie kontekstu -> akcje po prawej
+   ========================================================================= */
+.u-page-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--sp-4);
+    margin-bottom: var(--sp-5);
+}
+
+.u-eyebrow {
+    display: block;
+    font-size: var(--fs-eyebrow);
+    font-weight: 700;
+    letter-spacing: var(--tracking-eyebrow);
+    text-transform: uppercase;
+    color: var(--ink-4);
+    margin-bottom: 0.3rem;
+}
+
+.u-page-title {
+    margin: 0;
+    font-size: var(--fs-h1);
+    font-weight: 700;
+    color: var(--ink-1);
+}
+
+.u-page-sub {
+    margin: 0.35rem 0 0;
+    font-size: var(--fs-sm);
+    color: var(--ink-3);
+    max-width: 62ch;
+}
+
+.u-page-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+}
+
+/* Nagłówek sekcji wewnątrz karty - zawsze do lewej, nigdy kolorowy.
+   Kolorowe nagłówki sekcji były głównym źródłem wrażenia "tęczy". */
+.u-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-4);
+}
+
+.u-section-title {
+    margin: 0;
+    font-size: var(--fs-h3);
+    font-weight: 650;
+    color: var(--ink-1);
+}
+
+/* =========================================================================
+   Karty
+   ========================================================================= */
+.u-card {
+    background: var(--surface-1);
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-lg);
+    box-shadow: var(--sh-1);
+}
+
+.u-card-pad { padding: var(--sp-5); }
+.u-card-pad-sm { padding: var(--sp-4); }
+
+.u-card-hover {
+    transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+
+.u-card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--sh-2);
+}
+
+/* Karta hero w języku spiżarni */
+.u-hero {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    padding: var(--sp-5);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: var(--r-lg);
+    background: var(--brand-gradient);
+    color: var(--ink-on-brand);
+    box-shadow: var(--sh-brand);
+}
+
+.u-hero .u-eyebrow { color: rgba(255, 255, 255, 0.72); }
+.u-hero h1, .u-hero h2, .u-hero .u-page-title { color: #fff; }
+.u-hero p { color: rgba(255, 255, 255, 0.86); }
+
+/* =========================================================================
+   Kafelki metryk
+   ========================================================================= */
+.u-metric-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: var(--sp-4);
+}
+
+.u-metric {
+    position: relative;
+    padding: var(--sp-4);
+    background: var(--surface-1);
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-md);
+    box-shadow: var(--sh-1);
+    overflow: hidden;
+}
+
+/* Cienki pasek koloru zamiast kolorowego nagłówka - identyfikacja bez
+   malowania tekstu na kolor. */
+.u-metric::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background: var(--metric-accent, var(--ink-4));
+}
+
+.u-metric.is-income { --metric-accent: var(--income); }
+.u-metric.is-expense { --metric-accent: var(--expense); }
+.u-metric.is-invest { --metric-accent: var(--invest); }
+
+.u-metric-label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: var(--fs-eyebrow);
+    font-weight: 700;
+    letter-spacing: var(--tracking-eyebrow);
+    text-transform: uppercase;
+    color: var(--ink-4);
+    margin-bottom: 0.4rem;
+}
+
+.u-metric-value {
+    font-size: var(--fs-metric);
+    font-weight: 700;
+    color: var(--ink-1);
+    line-height: 1.1;
+}
+
+.u-metric-value.is-income { color: var(--income-ink); }
+.u-metric-value.is-expense { color: var(--expense-ink); }
+.u-metric-value.is-invest { color: var(--invest-ink); }
+
+.u-metric-note {
+    margin-top: 0.3rem;
+    font-size: var(--fs-caption);
+    color: var(--ink-3);
+}
+
+/* Pasek postępu (stopa oszczędności) */
+.u-meter {
+    height: 6px;
+    margin-top: var(--sp-3);
+    border-radius: var(--r-pill);
+    background: var(--surface-3);
+    overflow: hidden;
+}
+
+.u-meter-fill {
+    height: 100%;
+    border-radius: var(--r-pill);
+    background: var(--brand-gradient);
+    transition: width var(--dur) var(--ease);
+}
+
+/* =========================================================================
+   Chipy i odznaki
+   ========================================================================= */
+.u-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: var(--r-pill);
+    background: var(--neutral-bg);
+    color: var(--ink-2);
+    font-size: var(--fs-caption);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.u-chip.is-income { background: var(--income-bg); color: var(--income-ink); }
+.u-chip.is-expense { background: var(--expense-bg); color: var(--expense-ink); }
+.u-chip.is-invest { background: var(--invest-bg); color: var(--invest-ink); }
+
+.u-chip-dot::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex: none;
+}
+
+/* =========================================================================
+   Tabele danych
+   -------------------------------------------------------------------------
+   Gęściej niż wcześniej, z wyraźniejszym kontrastem i bez animacji
+   wejścia - opóźnione pojawianie się wierszy utrudniało czytanie listy.
+   ========================================================================= */
+.u-table-wrap {
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-lg);
+    background: var(--surface-1);
+    overflow: hidden;
+}
+
+.u-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--fs-sm);
+}
+
+.u-table thead th {
+    padding: 0.6rem var(--sp-4);
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--line-1);
+    font-size: var(--fs-eyebrow);
+    font-weight: 700;
+    letter-spacing: var(--tracking-eyebrow);
+    text-transform: uppercase;
+    color: var(--ink-4);
+    text-align: left;
+    white-space: nowrap;
+}
+
+.u-table tbody td {
+    padding: 0.62rem var(--sp-4);
+    border-bottom: 1px solid var(--line-2);
+    color: var(--ink-2);
+    vertical-align: middle;
+}
+
+.u-table tbody tr:last-child td { border-bottom: 0; }
+
+.u-table tbody tr {
+    transition: background var(--dur-fast) var(--ease);
+}
+
+.u-table tbody tr:hover { background: var(--surface-2); }
+
+.u-table .u-amount {
+    text-align: right;
+    font-weight: 650;
+    color: var(--ink-1);
+    white-space: nowrap;
+}
+
+.u-table .u-amount.is-income { color: var(--income-ink); }
+.u-table .u-amount.is-expense { color: var(--expense-ink); }
+.u-table .u-amount.is-invest { color: var(--invest-ink); }
+
+.u-table-date {
+    font-weight: 650;
+    color: var(--ink-1);
+}
+
+.u-table-date small {
+    display: block;
+    font-weight: 500;
+    font-size: var(--fs-caption);
+    color: var(--ink-4);
+    text-transform: uppercase;
+}
+
+/* Wersja mobilna tabeli: każdy wiersz staje się kartą, a nagłówki kolumn
+   wędrują do atrybutu data-label. Poziome przewijanie tabeli na telefonie
+   jest gorsze niż przebudowa układu. */
+@media (max-width: 767.98px) {
+    .u-table--cards thead { display: none; }
+
+    .u-table--cards,
+    .u-table--cards tbody,
+    .u-table--cards tr,
+    .u-table--cards td {
+        display: block;
+        width: 100%;
+    }
+
+    .u-table--cards tr {
+        padding: var(--sp-3) var(--sp-4);
+        border-bottom: 1px solid var(--line-2);
+    }
+
+    .u-table--cards td {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: var(--sp-3);
+        padding: 0.15rem 0;
+        border: 0;
+    }
+
+    .u-table--cards td::before {
+        content: attr(data-label);
+        flex: none;
+        font-size: var(--fs-eyebrow);
+        font-weight: 700;
+        letter-spacing: var(--tracking-eyebrow);
+        text-transform: uppercase;
+        color: var(--ink-4);
+    }
+
+    .u-table--cards td:empty { display: none; }
+    .u-table--cards .u-amount { text-align: right; font-size: var(--fs-body); }
+}
+
+/* =========================================================================
+   Przełącznik konta - kompaktowy pasek zamiast karty na 300 px
+   ========================================================================= */
+.u-account-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-4);
+}
+
+.u-account-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: 0.3rem 0.35rem 0.3rem 0.75rem;
+    background: var(--surface-1);
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-pill);
+    box-shadow: var(--sh-1);
+}
+
+.u-account-switch label {
+    font-size: var(--fs-eyebrow);
+    font-weight: 700;
+    letter-spacing: var(--tracking-eyebrow);
+    text-transform: uppercase;
+    color: var(--ink-4);
+    margin: 0;
+}
+
+.u-account-switch select {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--ink-1);
+    font-size: var(--fs-sm);
+    font-weight: 650;
+    padding: 0.2rem 1.4rem 0.2rem 0.2rem;
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%2364748b' d='M4.5 6.5 8 10l3.5-3.5z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.3rem center;
+    background-size: 14px;
+}
+
+.u-account-switch select:focus-visible {
+    outline: 2px solid var(--brand-500);
+    outline-offset: 2px;
+    border-radius: var(--r-sm);
+}
+
+/* =========================================================================
+   Przyciski
+   ========================================================================= */
+.u-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.5rem 1rem;
+    border: 1px solid transparent;
+    border-radius: var(--r-pill);
+    font-size: var(--fs-sm);
+    font-weight: 650;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease),
+                background var(--dur-fast) var(--ease);
+}
+
+.u-btn:active { transform: translateY(1px); }
+
+.u-btn-primary {
+    background: var(--brand-gradient);
+    color: #fff;
+    box-shadow: 0 6px 16px var(--brand-ring);
+}
+
+.u-btn-primary:hover { color: #fff; box-shadow: 0 10px 22px var(--brand-ring); }
+
+.u-btn-ghost {
+    background: var(--surface-1);
+    border-color: var(--line-1);
+    color: var(--ink-2);
+}
+
+.u-btn-ghost:hover { background: var(--surface-3); color: var(--ink-1); }
+
+.u-btn-expense {
+    background: var(--expense-bg);
+    color: var(--expense-ink);
+    border-color: transparent;
+}
+
+.u-btn-income {
+    background: var(--income-bg);
+    color: var(--income-ink);
+    border-color: transparent;
+}
+
+/* =========================================================================
+   Wykresy
+   ========================================================================= */
+.u-chart {
+    position: relative;
+    width: 100%;
+    height: clamp(220px, 34vw, 320px);
+}
+
+.u-chart-sm { height: clamp(180px, 26vw, 240px); }
+
+.u-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-3);
+}
+
+.u-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: var(--fs-caption);
+    color: var(--ink-3);
+}
+
+.u-legend-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    flex: none;
+}
+
+/* Lista rankingowa - zastępuje wykres kołowy kategorii.
+   Wykres kołowy zmusza do porównywania kątów; poziome słupki
+   porównuje się długością, a etykiety są czytelne bez legendy. */
+.u-rank { display: grid; gap: 0.7rem; }
+
+.u-rank-row { display: grid; gap: 0.3rem; }
+
+.u-rank-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    font-size: var(--fs-sm);
+}
+
+.u-rank-name { color: var(--ink-2); font-weight: 600; }
+.u-rank-value { color: var(--ink-1); font-weight: 650; font-variant-numeric: tabular-nums; }
+
+.u-rank-track {
+    height: 8px;
+    border-radius: var(--r-pill);
+    background: var(--surface-3);
+    overflow: hidden;
+}
+
+.u-rank-fill {
+    height: 100%;
+    border-radius: var(--r-pill);
+    background: var(--bar-color, var(--brand-500));
+}
+
+/* =========================================================================
+   Dolna nawigacja mobilna
+   -------------------------------------------------------------------------
+   Cztery moduły aplikacji w zasięgu kciuka. Zastępuje rozwijane menu
+   hamburgera przy typowej nawigacji między modułami.
+   ========================================================================= */
+.app-tabbar {
+    display: none;
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 1040;
+    padding: 0.35rem 0.5rem calc(0.35rem + env(safe-area-inset-bottom));
+    background: color-mix(in srgb, var(--surface-1) 92%, transparent);
+    backdrop-filter: saturate(180%) blur(16px);
+    -webkit-backdrop-filter: saturate(180%) blur(16px);
+    border-top: 1px solid var(--line-1);
+}
+
+.app-tabbar-inner {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    gap: 0.15rem;
+}
+
+.app-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0.35rem 0.2rem;
+    border-radius: var(--r-sm);
+    color: var(--ink-4);
+    font-size: 0.625rem;
+    font-weight: 650;
+    text-decoration: none;
+    min-height: 48px;          /* cel dotykowy */
+    justify-content: center;
+}
+
+.app-tab i { font-size: 1.15rem; line-height: 1; }
+
+.app-tab.is-active { color: var(--brand-600); }
+
+:root[data-theme="dark"] .app-tab.is-active { color: var(--brand-300); }
+
+@media (max-width: 991.98px) {
+    .app-tabbar { display: block; }
+
+    /* Miejsce na pasek, żeby nie zasłaniał końca strony */
+    body { padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom)); }
+}
+
+/* =========================================================================
+   Korekty mobilne
+   ========================================================================= */
+@media (max-width: 767.98px) {
+    .app-shell { padding-inline: var(--sp-3); }
+
+    .u-page-head {
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--sp-3);
+        margin-bottom: var(--sp-4);
+    }
+
+    .u-page-actions .u-btn { flex: 1 1 auto; }
+
+    .u-card-pad { padding: var(--sp-4); }
+
+    .u-metric-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-3); }
+
+    .u-hero { padding: var(--sp-4); }
+}
+
+/* =========================================================================
+   Nadpisania starego arkusza
+   -------------------------------------------------------------------------
+   Punktowe poprawki tam, gdzie style.css zapisał kolory na sztywno albo
+   wprowadzał animacje utrudniające czytanie danych.
+   ========================================================================= */
+
+/* Wejściowe wygaszanie zostawiało wiersze tabeli puste przez ułamek sekundy
+   i wyglądało jak błąd ładowania. Treść ma być widoczna od razu. */
+.animate-fade-in,
+.animate-fade-in * {
+    animation: none !important;
+    opacity: 1 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* Kolorowe nagłówki sekcji (czerwony/cyjanowy/zielony) czytają się
+   przestarzale; identyfikację niesie chip lub pasek przy kafelku. */
+.card-title.text-danger,
+.card-title.text-info,
+.card-title.text-success,
+h5.text-danger, h5.text-info, h5.text-success {
+    color: var(--ink-1) !important;
+}
+
+/* =========================================================================
+   Most do zmiennych Bootstrapa
+   -------------------------------------------------------------------------
+   Bootstrap 5.3 ma własny system motywów oparty na atrybucie data-bs-theme
+   i zestawie zmiennych --bs-*. base.html ustawia ten atrybut razem z naszym
+   data-theme, dzięki czemu dropdowny, tabele, modale i pola formularzy
+   przełączają się na wariant ciemny zamiast malować białe tła.
+
+   Poniżej podpinamy najważniejsze zmienne Bootstrapa pod nasze tokeny, żeby
+   jego komponenty nie były "ogólnie ciemne", tylko zgodne z paletą
+   aplikacji. Arkusz ładuje się po bootstrap.min.css, więc te wartości
+   wygrywają.
+   ========================================================================= */
+:root,
+:root[data-bs-theme="light"],
+:root[data-bs-theme="dark"] {
+    --bs-body-bg: var(--surface-0);
+    --bs-body-color: var(--ink-2);
+    --bs-emphasis-color: var(--ink-1);
+    --bs-secondary-bg: var(--surface-2);
+    --bs-tertiary-bg: var(--surface-3);
+    --bs-secondary-color: var(--ink-3);
+    --bs-tertiary-color: var(--ink-4);
+    --bs-border-color: var(--line-1);
+    --bs-border-color-translucent: var(--line-2);
+    --bs-link-color: var(--brand-600);
+    --bs-link-hover-color: var(--brand-700);
+    --bs-heading-color: var(--ink-1);
+}
+
+/* WAŻNE: Bootstrap 5.3 deklaruje zmienne komponentów na KLASIE komponentu
+   (.nav, .dropdown-menu, .table, .pagination, .card, .list-group, .modal),
+   a nie na :root. Deklaracja na bliższym przodku wygrywa z dziedziczeniem,
+   więc mapowanie tych zmiennych w :root nie miałoby żadnego efektu -
+   trzeba je ustawić na tych samych selektorach co Bootstrap. */
+
+.nav {
+    --bs-nav-link-color: var(--ink-2);
+    --bs-nav-link-hover-color: var(--ink-1);
+    --bs-nav-link-disabled-color: var(--ink-4);
+}
+
+.nav-pills {
+    --bs-nav-pills-link-active-bg: var(--brand-700);
+    --bs-nav-pills-link-active-color: #fff;
+}
+
+.nav-tabs {
+    --bs-nav-tabs-border-color: var(--line-1);
+    --bs-nav-tabs-link-active-color: var(--ink-1);
+    --bs-nav-tabs-link-active-bg: var(--surface-1);
+    --bs-nav-tabs-link-active-border-color: var(--line-1);
+}
+
+.dropdown-menu {
+    --bs-dropdown-bg: var(--surface-1);
+    --bs-dropdown-color: var(--ink-2);
+    --bs-dropdown-border-color: var(--line-1);
+    --bs-dropdown-divider-bg: var(--line-2);
+    --bs-dropdown-link-color: var(--ink-2);
+    --bs-dropdown-link-hover-bg: var(--surface-3);
+    --bs-dropdown-link-hover-color: var(--ink-1);
+    --bs-dropdown-link-active-bg: var(--brand-700);
+    --bs-dropdown-link-active-color: #fff;
+    --bs-dropdown-header-color: var(--ink-4);
+}
+
+.table {
+    --bs-table-bg: transparent;
+    --bs-table-color: var(--ink-2);
+    --bs-table-border-color: var(--line-2);
+    --bs-table-hover-bg: var(--surface-2);
+    --bs-table-hover-color: var(--ink-1);
+    --bs-table-striped-bg: var(--surface-2);
+    --bs-table-striped-color: var(--ink-2);
+}
+
+.pagination {
+    --bs-pagination-bg: var(--surface-1);
+    --bs-pagination-color: var(--ink-2);
+    --bs-pagination-border-color: var(--line-1);
+    --bs-pagination-hover-bg: var(--surface-3);
+    --bs-pagination-hover-color: var(--ink-1);
+    --bs-pagination-focus-bg: var(--surface-3);
+    --bs-pagination-focus-color: var(--ink-1);
+    --bs-pagination-active-bg: var(--brand-700);
+    --bs-pagination-active-border-color: var(--brand-700);
+    --bs-pagination-active-color: #fff;
+    --bs-pagination-disabled-bg: var(--surface-2);
+    --bs-pagination-disabled-color: var(--ink-4);
+}
+
+.card {
+    --bs-card-bg: var(--surface-1);
+    --bs-card-color: var(--ink-2);
+    --bs-card-border-color: var(--line-1);
+    --bs-card-cap-bg: transparent;
+}
+
+.list-group {
+    --bs-list-group-bg: var(--surface-1);
+    --bs-list-group-color: var(--ink-2);
+    --bs-list-group-border-color: var(--line-1);
+    --bs-list-group-action-hover-bg: var(--surface-3);
+    --bs-list-group-action-hover-color: var(--ink-1);
+    --bs-list-group-active-bg: var(--brand-700);
+    --bs-list-group-active-border-color: var(--brand-700);
+}
+
+.modal {
+    --bs-modal-bg: var(--surface-1);
+    --bs-modal-color: var(--ink-2);
+    --bs-modal-border-color: var(--line-1);
+    --bs-modal-header-border-color: var(--line-2);
+    --bs-modal-footer-border-color: var(--line-2);
+}
+
+.accordion {
+    --bs-accordion-bg: var(--surface-1);
+    --bs-accordion-color: var(--ink-2);
+    --bs-accordion-border-color: var(--line-1);
+    --bs-accordion-btn-color: var(--ink-2);
+    --bs-accordion-active-bg: var(--surface-2);
+    --bs-accordion-active-color: var(--ink-1);
+}
+
+.offcanvas, .offcanvas-start, .offcanvas-end, .offcanvas-top, .offcanvas-bottom {
+    --bs-offcanvas-bg: var(--surface-1);
+    --bs-offcanvas-color: var(--ink-2);
+    --bs-offcanvas-border-color: var(--line-1);
+}
+
+.popover {
+    --bs-popover-bg: var(--surface-1);
+    --bs-popover-body-color: var(--ink-2);
+    --bs-popover-border-color: var(--line-1);
+}
+
+/* Bootstrapowe tła pomocnicze, których używają starsze szablony.
+   Bez tego karty i paski filtrów zostawały jasne w trybie ciemnym. */
+.bg-light,
+.bg-body-tertiary,
+.bg-body-secondary {
+    background-color: var(--surface-2) !important;
+    color: var(--ink-2);
+}
+
+.bg-white,
+.bg-body {
+    background-color: var(--surface-1) !important;
+}
+
+/* Hover na wierszach i pozycjach list - jawnie z tokenów, żeby nie zależeć
+   od tego, czy dany szablon użył klasy .table-hover. */
+.table-hover > tbody > tr:hover > *,
+.list-group-item-action:hover,
+.dropdown-item:hover,
+.dropdown-item:focus {
+    background-color: var(--surface-3);
+    color: var(--ink-1);
+}
+
+.dropdown-item.active,
+.dropdown-item:active {
+    background-color: var(--brand-600);
+    color: #fff;
+}
+
+/* Stary arkusz trzyma reguły motywu ciemnego w zagnieżdżonym bloku
+   [data-theme="dark"] { ... }, więc jego selektory mają wyższą
+   specyficzność niż nasze i wymuszają niebieskie podświetlenie oraz szary
+   panel dropdownu spoza palety. Poniższe reguły celują w ten sam poziom
+   specyficzności, a przy tle panelu powtarzamy !important, bo oryginał
+   też go użył. */
+:root[data-theme="dark"] .dropdown-menu {
+    background-color: var(--surface-1) !important;
+    border-color: var(--line-1);
+    box-shadow: var(--sh-3);
+}
+
+:root[data-theme="dark"] .dropdown-item {
+    color: var(--ink-2);
+}
+
+:root[data-theme="dark"] .dropdown-item:hover,
+:root[data-theme="dark"] .dropdown-item:focus {
+    background-color: var(--surface-3);
+    color: var(--ink-1);
+}
+
+:root[data-theme="dark"] .dropdown-item.active,
+:root[data-theme="dark"] .dropdown-item:active {
+    background-color: var(--brand-600);
+    color: #fff;
+}
+
+:root[data-theme="dark"] .dropdown-divider {
+    border-top-color: var(--line-1);
+}
+
+/* Wiersze tabel w starym stylu oraz komponenty, których hover w Bootstrapie
+   korzysta z jasnego --bs-tertiary-bg (paginacja, listy, przyciski
+   drugorzędne). Bez tego na ciemnym tle pojawiało się niemal białe pole. */
+:root[data-theme="dark"] .custom-table tbody tr:hover,
+:root[data-theme="dark"] .table-hover > tbody > tr:hover > * {
+    background-color: var(--surface-2);
+    color: var(--ink-1);
+}
+
+.page-link:hover,
+.btn-light:hover,
+.btn-outline-secondary:hover {
+    background-color: var(--surface-3);
+    border-color: var(--line-1);
+    color: var(--ink-1);
+}
+
+/* =========================================================================
+   Kontrast wypełnionych przycisków i paginacji
+   -------------------------------------------------------------------------
+   Domyślne kolory Bootstrapa dają biały tekst na jasnych wypełnieniach:
+   biały na #0d6efd to 3,7:1, a biały na zieleni sukcesu bywa poniżej 3:1.
+   W trybie jasnym używamy więc ciemniejszych wypełnień z białym tekstem,
+   a w ciemnym odwracamy relację - jaśniejsze wypełnienie z ciemnym tekstem.
+   Każda para została policzona; najniższa wynosi 5,85:1.
+   ========================================================================= */
+.btn-success  { --bs-btn-bg: var(--brand-700); --bs-btn-border-color: var(--brand-700);
+                --bs-btn-hover-bg: var(--brand-800); --bs-btn-hover-border-color: var(--brand-800);
+                --bs-btn-color: #fff; --bs-btn-hover-color: #fff; }
+.btn-primary  { --bs-btn-bg: #1d5599; --bs-btn-border-color: #1d5599;
+                --bs-btn-hover-bg: #17447a; --bs-btn-hover-border-color: #17447a;
+                --bs-btn-color: #fff; --bs-btn-hover-color: #fff; }
+.btn-danger   { --bs-btn-bg: #a52a1f; --bs-btn-border-color: #a52a1f;
+                --bs-btn-hover-bg: #8a2219; --bs-btn-hover-border-color: #8a2219;
+                --bs-btn-color: #fff; --bs-btn-hover-color: #fff; }
+.btn-info     { --bs-btn-bg: #1d5599; --bs-btn-border-color: #1d5599;
+                --bs-btn-hover-bg: #17447a; --bs-btn-hover-border-color: #17447a;
+                --bs-btn-color: #fff; --bs-btn-hover-color: #fff; }
+
+:root[data-theme="dark"] .btn-success {
+    --bs-btn-bg: #2fbe8a; --bs-btn-border-color: #2fbe8a;
+    --bs-btn-hover-bg: #4cd3a3; --bs-btn-hover-border-color: #4cd3a3;
+    --bs-btn-color: #0f172a; --bs-btn-hover-color: #0f172a;
+}
+:root[data-theme="dark"] .btn-primary,
+:root[data-theme="dark"] .btn-info {
+    --bs-btn-bg: #6aa5ee; --bs-btn-border-color: #6aa5ee;
+    --bs-btn-hover-bg: #8fbcf5; --bs-btn-hover-border-color: #8fbcf5;
+    --bs-btn-color: #0f172a; --bs-btn-hover-color: #0f172a;
+}
+:root[data-theme="dark"] .btn-danger {
+    --bs-btn-bg: #f08b84; --bs-btn-border-color: #f08b84;
+    --bs-btn-hover-bg: #f5a9a3; --bs-btn-hover-border-color: #f5a9a3;
+    --bs-btn-color: #0f172a; --bs-btn-hover-color: #0f172a;
+}
+
+/* Paginacja: aktywna strona miała biały tekst na bootstrapowym błękicie
+   (2,98:1 w jasnym, 3,96:1 w ciemnym). Marka daje 5,85:1.
+   Szablon oznacza bieżącą stronę klasą .bg-primary, nie .page-item.active,
+   więc celujemy w oba warianty. */
+.page-item.active .page-link,
+.page-link.active,
+.page-link.bg-primary,
+:root[data-theme="dark"] .page-link.bg-primary {
+    background-color: var(--brand-700) !important;
+    border-color: var(--brand-700);
+    color: #fff !important;
+}
+
+/* Wypełnione przyciski w trybie ciemnym.
+   Stary arkusz ustawia tu background-color wprost (nie przez zmienne
+   --bs-btn-*), a kolor tekstu dodatkowo z !important - mapowanie zmiennych
+   nie miało jak wygrać. Dlatego te reguły też działają bezpośrednio.
+   Jaśniejsze wypełnienie z ciemnym tekstem daje 7,5:1 zamiast 2,93:1. */
+:root[data-theme="dark"] .btn-success,
+:root[data-theme="dark"] .btn-success:focus {
+    background-color: #2fbe8a;
+    border-color: #2fbe8a;
+    color: #0f172a !important;
+}
+:root[data-theme="dark"] .btn-success:hover {
+    background-color: #4cd3a3;
+    border-color: #4cd3a3;
+    color: #0f172a !important;
+}
+
+:root[data-theme="dark"] .btn-primary,
+:root[data-theme="dark"] .btn-primary:focus,
+:root[data-theme="dark"] .btn-info,
+:root[data-theme="dark"] .btn-info:focus {
+    background-color: #6aa5ee;
+    border-color: #6aa5ee;
+    color: #0f172a !important;
+}
+:root[data-theme="dark"] .btn-primary:hover,
+:root[data-theme="dark"] .btn-info:hover {
+    background-color: #8fbcf5;
+    border-color: #8fbcf5;
+    color: #0f172a !important;
+}
+
+:root[data-theme="dark"] .btn-danger,
+:root[data-theme="dark"] .btn-danger:focus {
+    background-color: #f08b84;
+    border-color: #f08b84;
+    color: #0f172a !important;
+}
+:root[data-theme="dark"] .btn-danger:hover {
+    background-color: #f5a9a3;
+    border-color: #f5a9a3;
+    color: #0f172a !important;
+}
+
+/* Pomarańcz "warning" z białym tekstem dawał 2,85:1 - najgorszy wynik
+   w całym interfejsie. Pomarańcz jest zbyt jasny na biały tekst w każdym
+   rozsądnym odcieniu, więc w obu motywach tekst jest ciemny. */
+.btn-warning,
+.btn-warning:focus,
+.btn-warning.text-white {
+    background-color: #e67e22;
+    border-color: #e67e22;
+    color: #0f172a !important;
+}
+.btn-warning:hover,
+.btn-warning.text-white:hover {
+    background-color: #f0a35a;
+    border-color: #f0a35a;
+    color: #0f172a !important;
+}
+
+/* Stary arkusz ma własny wariant dla motywu ciemnego w bloku zagnieżdżonym,
+   więc trzeba tę samą specyficzność. */
+:root[data-theme="dark"] .btn-warning,
+:root[data-theme="dark"] .btn-warning:focus,
+:root[data-theme="dark"] .btn-warning:hover {
+    background-color: #f0a35a;
+    border-color: #f0a35a;
+    color: #0f172a !important;
+}
+
+/* =========================================================================
+   Tekst drugorzędny w komponentach portfela i nawigacji tygodnia
+   -------------------------------------------------------------------------
+   Te klasy używały --text-muted ze starego arkusza (3,4-4,3:1 na hoverze).
+   Tekst drugorzędny z tokenów daje ponad 4,5:1 w obu motywach.
+   ========================================================================= */
+.brokerage-row-meta,
+.brokerage-account-meta,
+.week-nav-btn {
+    color: var(--ink-3);
+}
+
+.brokerage-account-identity {
+    color: var(--invest-ink);
+}
+
+.week-nav-btn:hover,
+.brokerage-row:hover .brokerage-row-meta {
+    color: var(--ink-2);
+}
+
+/* Drobne przyciski zakresu ("1M", "3M", "1R") na wykresie portfela. */
+.btn-outline-secondary {
+    --bs-btn-color: var(--ink-2);
+    --bs-btn-border-color: var(--line-1);
+    --bs-btn-hover-color: var(--ink-1);
+    --bs-btn-hover-bg: var(--surface-3);
+    --bs-btn-hover-border-color: var(--line-1);
+    --bs-btn-active-bg: var(--brand-700);
+    --bs-btn-active-border-color: var(--brand-700);
+    --bs-btn-active-color: #fff;
+}
+
+/* Atrybucja Leaflet na mapie podróży - domyślnie szara na jasnym kafelku. */
+.leaflet-control-attribution,
+.leaflet-control-attribution a {
+    color: #2b3440 !important;
+    background: rgba(255, 255, 255, 0.88) !important;
+}
+
+/* Przyciski oznaczone .text-muted (np. "Więcej" przy listach) schodziły
+   na hoverze do 4,03:1. Tekst podstawowy daje 9,28:1. */
+.btn.text-muted:hover,
+.btn.text-muted:focus-visible {
+    color: var(--ink-2) !important;
+}
+
+/* Ikonowe przyciski akcji w tabelach (edytuj / usuń). Bootstrapowe
+   .text-primary i .text-danger na jasnym tle .btn-light dawały 4,0:1.
+   Ciemniejsze stopnie tej samej barwy podnoszą to powyżej 7:1, zachowując
+   czytelny podział na akcję neutralną i destrukcyjną. */
+.btn-light.text-primary,
+.btn-light.text-primary:hover,
+.btn-light.text-primary:focus-visible {
+    color: var(--invest-ink) !important;
+}
+
+.btn-light.text-danger,
+.btn-light.text-danger:hover,
+.btn-light.text-danger:focus-visible {
+    color: var(--expense-ink) !important;
+}
+
+/* Zakładki i linki nawigacji.
+
+   Stary arkusz wymusza tu kolory przez !important:
+     .nav-link { color: var(--text-main) !important; }
+     .nav-link:hover, .nav-link.show, .nav-link.active {
+         color: #0d6efd !important; background: rgba(13,110,253,.08); }
+   Przez to ani zmienne Bootstrapa, ani zwykłe reguły (nawet te w bloku
+   <style> konkretnej strony) nie miały szans - nieaktywna zakładka
+   schodziła na hoverze do 4,0:1. Odpowiadamy tym samym poziomem mocy. */
+.nav-link {
+    color: var(--ink-2) !important;
+}
+
+.nav-link:hover,
+.nav-link:focus-visible {
+    color: var(--ink-1) !important;
+    background: var(--surface-3);
+}
+
+.nav-pills .nav-link.active,
+.nav-pills .show > .nav-link {
+    background-color: var(--brand-700);
+    color: #fff !important;
+}
+
+.nav-tabs .nav-link.active {
+    background-color: var(--surface-1);
+    color: var(--ink-1) !important;
+    border-color: var(--line-1);
+}
+
+/* Linki nawigacji głównej mają własny komponent i nie powinny dziedziczyć
+   powyższego wymuszenia. */
+.app-nav-link { color: var(--ink-3) !important; }
+.app-nav-link:hover { color: var(--ink-1) !important; }
+.app-nav-link.is-active { color: var(--brand-800) !important; }
+:root[data-theme="dark"] .app-nav-link.is-active { color: var(--brand-300) !important; }
+
+/* Stare klasy Bootstrapa w kartach - podpięcie pod tokeny, żeby motyw
+   ciemny nie zostawiał białych plam. */
+.card {
+    background-color: var(--surface-1);
+    border-color: var(--line-1);
+    color: var(--ink-2);
+}
+
+.table { color: var(--ink-2); }
+
+.form-control, .form-select {
+    background-color: var(--surface-2);
+    border-color: var(--line-1);
+    color: var(--ink-1);
+}
+
+.form-control:focus, .form-select:focus {
+    background-color: var(--surface-1);
+    border-color: var(--brand-500);
+    color: var(--ink-1);
+    box-shadow: 0 0 0 3px var(--brand-ring);
+}
+
+.form-control::placeholder { color: var(--ink-4); }
+
+.text-muted { color: var(--ink-3) !important; }
+
+/* Widoczny focus dla nawigacji klawiaturą - wcześniej ginął przy
+   niestandardowych przyciskach. */
+a:focus-visible,
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+.u-btn:focus-visible,
+.app-nav-link:focus-visible,
+.app-tab:focus-visible {
+    outline: 2px solid var(--brand-500);
+    outline-offset: 2px;
+}

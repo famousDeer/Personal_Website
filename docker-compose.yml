@@ -1,15 +1,19 @@
 services:
   db:
     image: postgres:15-alpine
+    # Poświadczenia pochodzą z .env (ten sam plik, z którego czyta je Django),
+    # więc nie mogą się rozjechać i nie trafiają do repozytorium.
     environment:
-      POSTGRES_DB: finance_db
-      POSTGRES_USER: finance
-      POSTGRES_PASSWORD: 1234
+      POSTGRES_DB: ${DATABASE_NAME:-finance_db}
+      POSTGRES_USER: ${DATABASE_USER:-finance}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?Ustaw DATABASE_PASSWORD w pliku .env}
       POSTGRES_MAX_CONNECTIONS: 50
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5433:5432"
+      # Tylko localhost hosta. Baza nie jest wystawiona na sieć domową;
+      # z Pi łączysz się przez `docker compose exec db psql` albo tunel SSH.
+      - "127.0.0.1:5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB -h localhost"]
       interval: 5s
@@ -21,6 +25,7 @@ services:
     command: sh -c " python manage.py migrate && python manage.py collectstatic --noinput && gunicorn --bind 0.0.0.0:8000 --workers 2 --threads 2 --timeout 60 --graceful-timeout 120 --keep-alive 2 --access-logfile - --error-logfile - --log-level info config.wsgi:application"
     volumes:
       - ./media:/app/media
+      - ./private_media:/app/private_media
     ports:
       - "8000:8000"
     env_file:
@@ -35,9 +40,22 @@ services:
 
   web-dev:
     build: .
-    command: sh -c "python manage.py makemigrations && python manage.py migrate && python manage.py collectstatic --noinput && python manage.py runserver 0.0.0.0:8000"
-    volumes: 
+    # Bez `makemigrations`: w kontenerze nowe migracje zapisywałyby się do
+    # warstwy obrazu i ginęły przy przebudowie, a baza zostawała zmigrowana do
+    # stanu, którego nie ma w repozytorium. Migracje generuj świadomie:
+    #   docker compose run --rm web-dev python manage.py makemigrations
+    command: sh -c "python manage.py migrate && python manage.py collectstatic --noinput && python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      # Kod NIE jest montowany z hosta. Gdy repozytorium leży w iCloud Drive
+      # (albo innym File Providerze), pliki niepobrane lokalnie są tylko
+      # placeholderami i odczyt przez mount Dockera kończy się błędem
+      # "OSError: [Errno 35] Resource deadlock avoided". Kod trafia do obrazu
+      # przez COPY podczas builda, co działa niezależnie od iCloud.
+      #
+      # Podgląd zmian na żywo: patrz docker-compose.override.yml opisany
+      # w README (tylko dla repozytorium poza iCloud Drive).
       - ./media:/app/media
+      - ./private_media:/app/private_media
     ports:
       - "8000:8000"
     env_file:

@@ -1,22 +1,65 @@
-{% load static %}
-<!DOCTYPE html>
+{% load static %}<!DOCTYPE html>
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#f4f6f8" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
+
+    {% comment %} Znacznik wersji szablonów. Usługa web-dev nie montuje kodu z hosta
+       (mount na repozytorium w iCloud Drive kończy się błędem "Errno 35"), więc
+       kod trafia do obrazu przez COPY i kontener jest zamrożoną kopią z momentu
+       builda. Zmiana szablonu albo CSS jest widoczna dopiero po przebudowie.
+
+       Ten znacznik i --ui-build w ui.css odpowiadają na dwa różne pytania:
+         app-build  - czy KONTENER ma świeży kod (trzeba przebudować obraz),
+         --ui-build - czy PRZEGLĄDARKA ma świeży arkusz (trzeba wyczyścić cache).
+       Sprawdzenie obu jednym poleceniem w konsoli przeglądarki:
+
+         [document.querySelector('meta[name=app-build]').content,
+          getComputedStyle(document.documentElement).getPropertyValue('--ui-build')]
+    {% endcomment %}
+    <meta name="app-build" content="2026-09-19-b">
+
     <title>{% block title %}Finanse{% endblock %}</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+
+    {% comment %} Motyw ustawiany przed pierwszym malowaniem. Wcześniej robił to skrypt
+       na DOMContentLoaded, przez co przy każdym wejściu mignął jasny motyw.
+
+       Ustawiamy DWA atrybuty. data-theme obsługuje własne style aplikacji,
+       a data-bs-theme jest atrybutem, którego szuka Bootstrap 5.3. Bez tego
+       drugiego komponenty Bootstrapa (dropdowny, tabele, modale, pola
+       formularzy) zostają w wariancie jasnym i malują białe tła hovera na
+       ciemnym tle - podświetlenie staje się nieczytelne. {% endcomment %}
+    <script>
+        (function () {
+            var theme = 'light';
+            try {
+                var saved = localStorage.getItem('theme');
+                theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            } catch (e) { /* tryb prywatny */ }
+            document.documentElement.setAttribute('data-theme', theme);
+            document.documentElement.setAttribute('data-bs-theme', theme);
+        })();
+    </script>
+
+    {% comment %} Biblioteki serwowane lokalnie: aplikacja działa bez internetu,
+       ładuje się szybciej w sieci domowej i nie ujawnia ruchu CDN-om. {% endcomment %}
+    <link rel="stylesheet" href="{% static 'css/tokens.css' %}">
+    <link rel="stylesheet" href="{% static 'vendor/bootstrap/bootstrap.min.css' %}">
+    <link rel="stylesheet" href="{% static 'vendor/bootstrap-icons/bootstrap-icons.css' %}">
+    <link rel="stylesheet" href="{% static 'vendor/flatpickr/flatpickr.min.css' %}">
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <link rel="stylesheet" href="{% static 'css/ui.css' %}">
     {% block extra_css %}{% endblock %}
 </head>
 <body>
-<nav class="navbar navbar-expand-lg fixed-top modern-navbar">
-    <div class="container">
-        
-        <a class="navbar-brand d-flex align-items-center gap-2" href="{% block navbar_brand_url %}{% url 'index' %}{% endblock %}">
-            <i class="bi bi-grid-fill text-primary"></i>
+
+<header class="app-nav">
+    <div class="app-nav-inner">
+        <a class="app-brand" href="{% block navbar_brand_url %}{% url 'index' %}{% endblock %}">
+            <span class="app-brand-mark"><i class="bi bi-house-heart-fill"></i></span>
             {% if request.path == '/' %}
                 <span>Dashboard</span>
             {% else %}
@@ -24,176 +67,176 @@
             {% endif %}
         </a>
 
-        <button class="navbar-toggler border-0 shadow-none" type="button" data-bs-toggle="collapse" data-bs-target="#navbars">
-            <span class="navbar-toggler-icon"></span>
-        </button>
+        {% if user.is_authenticated %}
+        <nav class="app-nav-links d-none d-lg-flex" aria-label="Główna nawigacja">
+            <div class="dropdown">
+                <a class="app-nav-link {% if request.resolver_match.namespace == 'finance' %}is-active{% endif %}"
+                   href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="bi bi-cash-coin"></i> Finanse <i class="bi bi-chevron-down" style="font-size:.7em"></i>
+                </a>
+                <ul class="dropdown-menu">
+                    <li><a class="dropdown-item" href="{% url 'finance:dashboard' %}"><i class="bi bi-speedometer2 me-2"></i>Panel finansowy</a></li>
+                    <li><a class="dropdown-item" href="{% url 'finance:expense_list' %}"><i class="bi bi-arrow-down-circle me-2"></i>Wydatki</a></li>
+                    <li><a class="dropdown-item" href="{% url 'finance:income_list' %}"><i class="bi bi-arrow-up-circle me-2"></i>Przychody</a></li>
+                    <li><a class="dropdown-item" href="{% url 'finance:reports' %}"><i class="bi bi-graph-up me-2"></i>Raporty</a></li>
+                    <li><a class="dropdown-item" href="{% url 'finance:brokerage' %}"><i class="bi bi-graph-up-arrow me-2"></i>Konta maklerskie</a></li>
+                    <li><a class="dropdown-item" href="{% url 'finance:travels' %}"><i class="bi bi-airplane me-2"></i>Podróże</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="{% url 'finance:index' %}">Strona główna finansów</a></li>
+                </ul>
+            </div>
 
-        <div class="collapse navbar-collapse" id="navbars">
-            
-            <ul class="navbar-nav mx-auto mb-2 mb-lg-0">
-                {% if user.is_authenticated %}
-                    
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle {% if request.resolver_match.namespace == 'finance' %}active{% endif %}" href="#" id="financeDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-cash-coin me-1"></i> Finanse
-                        </a>
-                        <ul class="dropdown-menu" aria-labelledby="financeDropdown">
-                            <li><a class="dropdown-item fw-bold" href="{% url 'finance:index' %}">Strona główna</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{% url 'finance:dashboard' %}"><i class="bi bi-speedometer2"></i> Panel finansowy</a></li>
-                            <li><a class="dropdown-item" href="{% url 'finance:expense_list' %}"><i class="bi bi-cash-stack"></i> Wydatki</a></li>
-                            <li><a class="dropdown-item" href="{% url 'finance:income_list' %}"><i class="bi bi-cash-stack"></i> Przychody</a></li>
-                            <li><a class="dropdown-item" href="{% url 'finance:reports' %}"><i class="bi bi-graph-up"></i> Raporty</a></li>
-                            <li><a class="dropdown-item" href="{% url 'finance:brokerage' %}"><i class="bi bi-graph-up-arrow"></i> Konta maklerskie</a></li>
-                            <li><a class="dropdown-item" href="{% url 'finance:travels' %}"><i class="bi bi-airplane"></i> Podróże</a></li>
-                        </ul>
-                    </li>
+            <div class="dropdown">
+                <a class="app-nav-link {% if request.resolver_match.namespace == 'cooking' %}is-active{% endif %}"
+                   href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="bi bi-egg-fried"></i> Kuchnia <i class="bi bi-chevron-down" style="font-size:.7em"></i>
+                </a>
+                <ul class="dropdown-menu">
+                    <li><a class="dropdown-item" href="{% url 'cooking:pantry' %}"><i class="bi bi-box-seam me-2"></i>Spiżarnia</a></li>
+                    <li><a class="dropdown-item" href="{% url 'cooking:shopping-list' %}"><i class="bi bi-cart-check me-2"></i>Listy zakupów</a></li>
+                    <li><a class="dropdown-item" href="{% url 'cooking:recipe-list' %}"><i class="bi bi-receipt me-2"></i>Przepisy</a></li>
+                    <li><a class="dropdown-item" href="{% url 'cooking:cook' %}"><i class="bi bi-play-circle me-2"></i>Gotuj</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="{% url 'cooking:index' %}">Strona główna kuchni</a></li>
+                </ul>
+            </div>
 
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle {% if request.resolver_match.namespace == 'habits' %}active{% endif %}" href="#" id="habitsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-check-circle me-1"></i> Nawyki
-                        </a>
-                        <ul class="dropdown-menu" aria-labelledby="habitsDropdown">
-                            <li><a class="dropdown-item fw-bold" href="{% url 'habits:index' %}">Moje Nawyki</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{% url 'habits:list' %}"><i class="bi bi-list-check"></i> Lista Nawyków</a></li>
-                            <li><a class="dropdown-item" href="#"><i class="bi bi-graph-up"></i> Statystyki</a></li>
-                        </ul>
-                    </li>
+            <div class="dropdown">
+                <a class="app-nav-link {% if request.resolver_match.namespace == 'cars' %}is-active{% endif %}"
+                   href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="bi bi-car-front-fill"></i> Garaż <i class="bi bi-chevron-down" style="font-size:.7em"></i>
+                </a>
+                <ul class="dropdown-menu">
+                    <li><a class="dropdown-item" href="{% url 'cars:garage' %}"><i class="bi bi-car-front me-2"></i>Mój garaż</a></li>
+                    <li><a class="dropdown-item" href="{% url 'cars:add_car' %}"><i class="bi bi-plus-lg me-2"></i>Dodaj samochód</a></li>
+                </ul>
+            </div>
 
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle {% if request.resolver_match.namespace == 'cooking' %}active{% endif %}" href="#" id="cookingDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-egg-fried me-1"></i> Gotowanie
-                        </a>
-                        <ul class="dropdown-menu" aria-labelledby="cookingDropdown">
-                            <li><a class="dropdown-item fw-bold" href="{% url 'cooking:index' %}">Gotowanie</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{% url 'cooking:cook' %}"><i class="bi bi-play-circle"></i> Gotuj</a></li>
-                            <li><a class="dropdown-item" href="{% url 'cooking:recipe-list' %}"><i class="bi bi-receipt"></i> Przepisy</a></li>
-                            <li><a class="dropdown-item" href="{% url 'cooking:pantry' %}"><i class="bi bi-box-seam"></i> Spiżarnia</a></li>
-                            <li><a class="dropdown-item" href="{% url 'cooking:shopping-list' %}"><i class="bi bi-cart-check"></i> Listy zakupów</a></li>
-                        </ul>
-                    </li>
+            <a class="app-nav-link {% if request.resolver_match.namespace == 'habits' %}is-active{% endif %}"
+               href="{% url 'habits:list' %}">
+                <i class="bi bi-check2-circle"></i> Nawyki
+            </a>
 
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle {% if request.resolver_match.namespace == 'cars' %}active{% endif %}" href="#" id="carsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-car-front-fill me-1"></i> Samochody
-                        </a>
-                        <ul class="dropdown-menu" aria-labelledby="carsDropdown">
-                            <li><a class="dropdown-item fw-bold" href="{% url 'cars:garage' %}">Mój Garaż</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{% url 'cars:add_car' %}"><i class="bi bi-plus-lg"></i> Dodaj Samochód</a></li>
-                        </ul>
-                    </li>
+            {% block navbar %}{% endblock %}
+        </nav>
+        {% endif %}
 
-                    {% block navbar %}{% endblock %}
-                
+        <div class="app-nav-actions">
+            <button class="app-icon-btn" id="theme-toggle" type="button"
+                    title="Przełącz tryb jasny i ciemny" aria-label="Przełącz tryb kolorystyczny">
+                <i class="bi bi-moon-stars-fill" id="theme-icon"></i>
+            </button>
+
+            {% if user.is_authenticated %}
+                <div class="dropdown">
+                    <button class="app-icon-btn" type="button" data-bs-toggle="dropdown"
+                            aria-expanded="false" aria-label="Menu konta">
+                        <i class="bi bi-person-fill"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><span class="dropdown-item-text small text-muted">Zalogowano jako<br><strong>{{ user.username }}</strong></span></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="{% url 'profile' %}"><i class="bi bi-person-gear me-2"></i>Profil i konta</a></li>
+                        <li>
+                            <form method="post" action="{% url 'logout' %}">
+                                {% csrf_token %}
+                                <button type="submit" class="dropdown-item"><i class="bi bi-box-arrow-right me-2"></i>Wyloguj</button>
+                            </form>
+                        </li>
+                    </ul>
+                </div>
+            {% else %}
+                <a class="u-btn u-btn-ghost" href="{% url 'login' %}">Zaloguj</a>
+                {% if public_signup_enabled %}
+                    <a class="u-btn u-btn-primary d-none d-sm-inline-flex" href="{% url 'signup' %}">Rejestracja</a>
                 {% endif %}
-            </ul>
-
-            <ul class="navbar-nav">
-                {% if user.is_authenticated %}
-                    <li class="nav-item d-flex align-items-center gap-2"> 
-                        <a href="{% url 'profile' %}" class="nav-link btn-account-pill">
-                            <i class="bi bi-person-circle me-1"></i> {{ user.username }}
-                        </a>
-                        
-                        <form method="post" action="{% url 'logout' %}" class="d-inline">
-                            {% csrf_token %}
-                            <button type="submit" class="nav-link btn-logout">
-                                <i class="bi bi-box-arrow-right"></i> Wyloguj
-                            </button>
-                        </form>
-
-                        <button class="btn btn-link nav-link py-0 px-2" id="theme-toggle" type="button" title="Przełącz tryb" aria-label="Przełącz tryb kolorystyczny">
-                            <i class="bi bi-moon-stars-fill" id="theme-icon"></i>
-                        </button>
-                    </li>
-                {% else %}
-                    <li class="nav-item d-flex align-items-center gap-2">
-                        
-                        <a class="nav-link" href="{% url 'login' %}">Zaloguj</a>
-
-                        {% if public_signup_enabled %}
-                            <a class="btn btn-primary rounded-pill px-4 text-white" href="{% url 'signup' %}">
-                                Rejestracja
-                            </a>
-                        {% endif %}
-
-                        <button class="btn btn-link nav-link py-0 px-2" id="theme-toggle" type="button" title="Przełącz tryb" aria-label="Przełącz tryb kolorystyczny">
-                            <i class="bi bi-moon-stars-fill" id="theme-icon"></i>
-                        </button>
-                    </li>
-                {% endif %}
-            </ul>
+            {% endif %}
         </div>
     </div>
-</nav>
+</header>
 
-<div class="container my-3 my-lg-3 p-3 p-lg-3 page-content">
+<main class="app-shell my-4 page-content">
     {% if messages %}
         {% for message in messages %}
             <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
                 {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Zamknij"></button>
             </div>
         {% endfor %}
     {% endif %}
     {% block content %}{% endblock %}
-</div>
+</main>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/pl.js"></script>
+{% if user.is_authenticated %}
+{% comment %} Dolna nawigacja na telefonie: cztery moduły w zasięgu kciuka zamiast
+   rozwijanego menu hamburgera. Na desktopie ukryta. {% endcomment %}
+<nav class="app-tabbar" aria-label="Nawigacja mobilna">
+    <div class="app-tabbar-inner">
+        <a class="app-tab {% if request.path == '/' %}is-active{% endif %}" href="{% url 'index' %}">
+            <i class="bi bi-house-door-fill"></i><span>Start</span>
+        </a>
+        <a class="app-tab {% if request.resolver_match.namespace == 'finance' %}is-active{% endif %}" href="{% url 'finance:dashboard' %}">
+            <i class="bi bi-cash-coin"></i><span>Finanse</span>
+        </a>
+        <a class="app-tab {% if request.resolver_match.namespace == 'cooking' %}is-active{% endif %}" href="{% url 'cooking:pantry' %}">
+            <i class="bi bi-box-seam"></i><span>Kuchnia</span>
+        </a>
+        <a class="app-tab {% if request.resolver_match.namespace == 'cars' %}is-active{% endif %}" href="{% url 'cars:garage' %}">
+            <i class="bi bi-car-front-fill"></i><span>Garaż</span>
+        </a>
+        <a class="app-tab {% if request.resolver_match.url_name == 'profile' %}is-active{% endif %}" href="{% url 'profile' %}">
+            <i class="bi bi-person"></i><span>Konto</span>
+        </a>
+    </div>
+</nav>
+{% endif %}
+
+<script src="{% static 'vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
+<script src="{% static 'vendor/flatpickr/flatpickr.min.js' %}"></script>
+<script src="{% static 'vendor/flatpickr/pl.js' %}"></script>
 <script>
-    document.addEventListener('DOMContentLoaded', () => {
-        const toggleButton = document.getElementById('theme-toggle');
-        const themeIcon = document.getElementById('theme-icon');
-        const htmlElement = document.documentElement; // Znacznik <html>
+    (function () {
+        var icon = document.getElementById('theme-icon');
+        var button = document.getElementById('theme-toggle');
+        var root = document.documentElement;
 
-        // 1. Sprawdź zapisany motyw lub preferencje systemowe
-        const savedTheme = localStorage.getItem('theme');
-        const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-
-        let currentTheme = savedTheme || (systemPrefersDark ? 'dark' : 'light');
-        
-        // Funkcja aplikująca motyw
-        function applyTheme(theme) {
-            htmlElement.setAttribute('data-theme', theme);
-            localStorage.setItem('theme', theme);
-            
-            // Zmiana ikony
-            if (theme === 'dark') {
-                themeIcon.classList.remove('bi-moon-stars-fill');
-                themeIcon.classList.add('bi-sun-fill'); // Ikona słońca w trybie ciemnym
-            } else {
-                themeIcon.classList.remove('bi-sun-fill');
-                themeIcon.classList.add('bi-moon-stars-fill'); // Ikona księżyca w trybie jasnym
-            }
+        function syncIcon(theme) {
+            if (!icon) { return; }
+            icon.classList.toggle('bi-sun-fill', theme === 'dark');
+            icon.classList.toggle('bi-moon-stars-fill', theme !== 'dark');
         }
 
-        // Załaduj motyw na starcie
-        applyTheme(currentTheme);
+        syncIcon(root.getAttribute('data-theme'));
 
-        // 2. Obsługa kliknięcia
-        toggleButton.addEventListener('click', () => {
-            currentTheme = currentTheme === 'light' ? 'dark' : 'light';
-            applyTheme(currentTheme);
-        });
-
-        if (typeof flatpickr !== 'undefined') {
-            flatpickr.localize(flatpickr.l10ns.pl);
-
-            document.querySelectorAll('[data-flatpickr="date"]').forEach((input) => {
-                flatpickr(input, {
-                    dateFormat: 'd.m.Y',
-                    allowInput: true,
-                    disableMobile: true,
-                    monthSelectorType: 'static',
-                });
+        if (button) {
+            button.addEventListener('click', function () {
+                var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+                root.setAttribute('data-theme', next);
+                // Bootstrap czyta własny atrybut - musi iść w parze,
+                // inaczej jego komponenty zostaną w poprzednim wariancie.
+                root.setAttribute('data-bs-theme', next);
+                try { localStorage.setItem('theme', next); } catch (e) { /* tryb prywatny */ }
+                syncIcon(next);
+                // Wykresy czytają kolory z tokenów, więc po zmianie motywu
+                // trzeba je przemalować.
+                document.dispatchEvent(new CustomEvent('themechange', { detail: { theme: next } }));
             });
         }
-    });
+
+        document.addEventListener('DOMContentLoaded', function () {
+            if (typeof flatpickr !== 'undefined') {
+                flatpickr.localize(flatpickr.l10ns.pl);
+                document.querySelectorAll('[data-flatpickr="date"]').forEach(function (input) {
+                    flatpickr(input, {
+                        dateFormat: 'd.m.Y',
+                        allowInput: true,
+                        disableMobile: true,
+                        monthSelectorType: 'static',
+                    });
+                });
+            }
+        });
+    })();
 </script>
 {% block extra_js %}{% endblock %}
 </body>

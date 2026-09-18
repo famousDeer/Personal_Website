@@ -232,22 +232,74 @@ USE_THOUSAND_SEPARATOR = True
 # Media files
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+PRIVATE_MEDIA_ROOT = BASE_DIR / 'private_media'
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+# Zasoby wspólne dla całego projektu, niezwiązane z jedną aplikacją:
+# static/vendor/ trzyma biblioteki frontendowe (Bootstrap, Chart.js, Leaflet,
+# flatpickr, summernote), które wcześniej ładowały się z CDN-ów. Serwer domowy
+# w LAN-ie ma działać bez internetu, a lokalne pliki ładują się szybciej
+# i nie ujawniają ruchu użytkowników zewnętrznym dostawcom.
+STATICFILES_DIRS = [BASE_DIR / 'static']
 STATICFILES_STORAGE_BACKEND = (
     'django.contrib.staticfiles.storage.StaticFilesStorage'
     if RUNNING_TESTS
     else 'django.contrib.staticfiles.storage.ManifestStaticFilesStorage'
 )
 STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
     'staticfiles': {
         'BACKEND': STATICFILES_STORAGE_BACKEND,
     },
 }
-WHITENOISE_MAX_AGE = 60 * 60 * 24 * 7
+# Jak długo przeglądarka może trzymać plik statyczny bez pytania serwera.
+#
+# Z DEBUG=False ManifestStaticFilesStorage wkleja skrót treści w nazwę pliku
+# (ui.a1b2c3.css), więc zmiana arkusza zmienia adres i tydzień w cache jest
+# bezpieczny - stary adres po prostu przestaje być używany.
+#
+# Z DEBUG=True Django celowo zwraca adresy BEZ skrótu (HashedFilesMixin._url
+# omija hashowanie, gdy settings.DEBUG). Adres zostaje ten sam po każdej
+# edycji CSS, więc tydzień w cache oznacza, że przeglądarka przez tydzień
+# podaje starą wersję arkusza i poprawki "nie działają" - zwykłe odświeżenie
+# nawet nie pyta serwera, bo wpis w cache jest jeszcze świeży. W trybie
+# deweloperskim plik musi więc być zawsze walidowany.
+WHITENOISE_MAX_AGE = 0 if DEBUG else 60 * 60 * 24 * 7
+
+# Cache
+# Domyślny LocMemCache jest cache'em per-proces, a gunicorn uruchamia kilka
+# workerów - ten sam wykres historii portfela liczyłby się osobno w każdym
+# z nich. Cache plikowy leży we wspólnym systemie plików kontenera, więc
+# workery współdzielą wpisy bez dodatkowej usługi (Redis/Memcached).
+# Testy zostają na LocMemCache, żeby nie dotykać dysku i nie wyciekać stanu
+# między przypadkami testowymi.
+if RUNNING_TESTS:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'website-finance-tests',
+        }
+    }
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': os.environ.get(
+                'CACHE_BACKEND',
+                'django.core.cache.backends.filebased.FileBasedCache',
+            ),
+            'LOCATION': os.environ.get('CACHE_LOCATION', '/tmp/website-finance-cache'),
+            'TIMEOUT': int(os.environ.get('CACHE_TIMEOUT', '300')),
+            'OPTIONS': {
+                'MAX_ENTRIES': int(os.environ.get('CACHE_MAX_ENTRIES', '1000')),
+            },
+        }
+    }
+
 ALPHA_VANTAGE_API_KEY = os.environ.get('ALPHA_VANTAGE_API_KEY', '')
 OPENFIGI_API_KEY = os.environ.get('OPENFIGI_API_KEY', '')
 STOOQ_API_KEY = os.environ.get('STOOQ_API_KEY', '')
@@ -257,6 +309,16 @@ TRAVEL_GEOCODING_USER_AGENT = os.environ.get(
     'TRAVEL_GEOCODING_USER_AGENT',
     'Website-Finance travel map geocoder',
 )
+OPEN_FOOD_FACTS_ENABLED = env_bool('OPEN_FOOD_FACTS_ENABLED', True)
+OPEN_FOOD_FACTS_TIMEOUT = float(os.environ.get('OPEN_FOOD_FACTS_TIMEOUT', '2.5'))
+OPEN_FOOD_FACTS_RATE_LIMIT = int(os.environ.get('OPEN_FOOD_FACTS_RATE_LIMIT', '12'))
+OPEN_FOOD_FACTS_IMAGE_MAX_BYTES = int(
+    os.environ.get('OPEN_FOOD_FACTS_IMAGE_MAX_BYTES', str(2 * 1024 * 1024))
+)
+OPEN_FOOD_FACTS_USER_AGENT = (
+    os.environ.get('OPEN_FOOD_FACTS_USER_AGENT')
+    or 'WebsiteFinance/1.0 (https://github.com/famousDeer/Personal_Website)'
+).strip()
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

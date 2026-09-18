@@ -1,190 +1,854 @@
 {% extends 'cooking/index.html' %}
-{% load humanize %}
+{% load humanize static %}
 
 {% block title %}Spiżarnia{% endblock %}
+{% block cooking_editor_assets %}{% endblock %}
 
 {% block content_cooking %}
-<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-4 animate-fade-in">
-    <div>
-        <div class="small text-uppercase fw-bold text-muted mb-1">Kontrola zapasów</div>
-        <h2 class="fw-bold mb-1 recipe-title">Spiżarnia</h2>
-        <p class="text-muted mb-0">Aktualny stan produktów, tempo zużycia i terminy uzupełnień.</p>
-    </div>
-    <div class="d-flex flex-wrap gap-2">
-        <a href="{% url 'cooking:shopping-list' %}" class="btn btn-outline-primary rounded-pill px-4 fw-bold">
-            <i class="bi bi-cart-check me-1"></i> Listy zakupów
-        </a>
-        <a href="{% url 'cooking:add-pantry-product' %}" class="btn btn-success rounded-pill px-4 fw-bold">
-            <i class="bi bi-plus-lg me-1"></i> Dodaj produkt
-        </a>
-    </div>
-</div>
+<div id="pantry-scanner"
+     data-lookup-url="{% url 'cooking:pantry-barcode-lookup' %}"
+     data-action-url="{% url 'cooking:pantry-barcode-action' %}"
+     data-register-url="{% url 'cooking:pantry-barcode-register' %}"
+     data-zxing-url="{% static 'cooking/vendor/zxing-browser-0.2.1.min.js' %}">
+    <form class="d-none" data-scanner-csrf>{% csrf_token %}</form>
 
-<div class="row g-3 mb-4 animate-fade-in-up">
-    <div class="col-md-3">
-        <div class="pantry-metric">
-            <div class="small text-uppercase fw-bold text-muted">Produkty</div>
-            <div class="fs-3 fw-bold">{{ product_count }}</div>
+    <header class="pantry-page-heading animate-fade-in">
+        <div>
+            <span class="pantry-page-eyebrow"><i class="bi bi-house-heart" aria-hidden="true"></i> Spiżarnia domowa</span>
+            <h2 class="recipe-title">Spiżarnia pod kontrolą</h2>
+            <p>Skanuj produkty przy wkładaniu i zużyciu. Stan oraz termin kolejnego zakupu policzą się automatycznie.</p>
         </div>
-    </div>
-    <div class="col-md-3">
-        <div class="pantry-metric">
-            <div class="small text-uppercase fw-bold text-muted">Do uzupełnienia</div>
-            <div class="fs-3 fw-bold text-danger">{{ low_stock_count }}</div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="pantry-metric">
-            <div class="small text-uppercase fw-bold text-muted">Zużycie łącznie</div>
-            <div class="fs-3 fw-bold">{{ total_consumed|floatformat:2 }}</div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="pantry-metric">
-            <div class="small text-uppercase fw-bold text-muted">Ruchy</div>
-            <div class="fs-3 fw-bold">{{ movement_count }}</div>
-        </div>
-    </div>
-</div>
+        <details class="pantry-more-tools">
+            <summary><i class="bi bi-three-dots" aria-hidden="true"></i> Więcej opcji</summary>
+            <nav class="pantry-page-links" aria-label="Pozostałe narzędzia spiżarni">
+                <a href="{% url 'cooking:shopping-list' %}" class="btn btn-outline-primary rounded-pill fw-bold">
+                    <i class="bi bi-cart-check" aria-hidden="true"></i>
+                    <span>Listy zakupów</span>
+                </a>
+                <a href="{% url 'cooking:add-pantry-product' %}" class="btn btn-light rounded-pill fw-bold">
+                    <i class="bi bi-pencil-square" aria-hidden="true"></i>
+                    <span>Dodaj bez kodu</span>
+                </a>
+            </nav>
+        </details>
+    </header>
 
-<div class="card border-0 shadow-sm action-card mb-4 animate-fade-in-up">
-    <div class="card-body p-3">
-        <form method="get" class="row g-2 align-items-end">
-            <div class="col-lg-5">
-                <label class="form-label small text-uppercase fw-bold text-muted">Szukaj</label>
-                <input type="text" name="q" class="form-control form-control-sm" placeholder="Produkt lub kategoria..." value="{{ current_search }}">
+    <section class="pantry-scan-hero animate-fade-in-up" aria-labelledby="pantry-scan-title">
+        <div class="pantry-scan-hero-copy">
+            <span class="pantry-scan-eyebrow"><span aria-hidden="true"></span> Skaner gotowy</span>
+            <h3 id="pantry-scan-title">Jeden skan. Aktualny stan.</h3>
+            <p>Skieruj aparat na kod kreskowy. Rozpoznamy produkt i od razu przygotujemy właściwą operację.</p>
+
+            <div class="pantry-scan-modes" aria-label="Dostępne operacje po zeskanowaniu">
+                <span class="is-consume">
+                    <i class="bi bi-dash-lg" aria-hidden="true"></i>
+                    <span><strong>Zużywasz</strong><small>{% if scanner_auto_action_enabled %}domyślna akcja po {{ scanner_auto_action_timeout_seconds }} s{% else %}potwierdzasz ręcznie po skanie{% endif %}</small></span>
+                </span>
+                <span class="is-add">
+                    <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                    <span><strong>Dodajesz</strong><small>jedno lub wiele opakowań</small></span>
+                </span>
             </div>
-            <div class="col-md-4 col-lg-3">
-                <label class="form-label small text-uppercase fw-bold text-muted">Kategoria</label>
-                <select name="category" class="form-select form-select-sm">
-                    <option value="">Wszystkie</option>
-                    {% for category in categories %}
-                        <option value="{{ category }}" {% if current_category == category %}selected{% endif %}>{{ category }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-md-4 col-lg-2">
-                <label class="form-label small text-uppercase fw-bold text-muted">Stan</label>
-                <select name="status" class="form-select form-select-sm">
-                    <option value="">Wszystkie</option>
-                    <option value="low" {% if current_status == 'low' %}selected{% endif %}>Niski</option>
-                    <option value="empty" {% if current_status == 'empty' %}selected{% endif %}>Brak</option>
-                    <option value="ok" {% if current_status == 'ok' %}selected{% endif %}>OK</option>
-                </select>
-            </div>
-            <div class="col-md-4 col-lg-2 d-flex gap-2">
-                <button type="submit" class="btn btn-sm btn-primary w-100 rounded-3">
-                    <i class="bi bi-funnel-fill"></i> Filtruj
-                </button>
-                {% if current_search or current_category or current_status %}
-                    <a href="{% url 'cooking:pantry' %}" class="btn btn-sm btn-outline-secondary rounded-3" title="Wyczyść">
-                        <i class="bi bi-x-lg"></i>
-                    </a>
-                {% endif %}
-            </div>
-        </form>
+        </div>
+
+        <div class="pantry-scan-action">
+            <button type="button" class="btn pantry-scan-launch-button" aria-label="Uruchom skaner produktów" data-bs-toggle="modal"
+                    data-bs-target="#pantryScannerModal" data-open-scanner>
+                <span class="pantry-scan-button-icon"><i class="bi bi-upc-scan" aria-hidden="true"></i></span>
+                <span>
+                    <strong>Skanuj produkt</strong>
+                    <small>Uruchom aparat lub użyj zdjęcia</small>
+                </span>
+                <i class="bi bi-arrow-right" aria-hidden="true"></i>
+            </button>
+            <p class="pantry-scan-privacy"><i class="bi bi-shield-check" aria-hidden="true"></i> Aparat działa tylko podczas skanowania</p>
+        </div>
+    </section>
+
+    <section class="pantry-metrics animate-fade-in-up" aria-label="Podsumowanie spiżarni">
+        <article class="pantry-metric">
+            <span class="pantry-metric-icon bg-primary-subtle text-primary"><i class="bi bi-grid" aria-hidden="true"></i></span>
+            <span>
+                <small>Różne produkty</small>
+                <strong>{{ product_count }}</strong>
+            </span>
+        </article>
+        <article class="pantry-metric {% if low_stock_count %}is-alert{% endif %}">
+            <span class="pantry-metric-icon bg-danger-subtle text-danger"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i></span>
+            <span>
+                <small>Do uzupełnienia</small>
+                <strong>{{ low_stock_count }}</strong>
+            </span>
+        </article>
+        <article class="pantry-metric">
+            <span class="pantry-metric-icon bg-success-subtle text-success"><i class="bi bi-boxes" aria-hidden="true"></i></span>
+            <span>
+                <small>Pełne opakowania</small>
+                <strong>{{ total_package_count }}</strong>
+            </span>
+        </article>
+    </section>
+
+    <details class="pantry-filter-panel mb-4 animate-fade-in-up" {% if current_search or current_category or current_status %}open{% endif %}>
+        <summary>
+            <span><i class="bi bi-search me-2"></i>Szukaj i filtruj produkty</span>
+            {% if current_search or current_category or current_status %}<span class="badge text-bg-primary rounded-pill">Aktywne</span>{% endif %}
+        </summary>
+        <div class="p-3 border-top">
+            <form method="get" class="row g-2 align-items-end">
+                <div class="col-lg-5">
+                    <label class="form-label small text-uppercase fw-bold text-muted" for="pantry-filter-search">Szukaj</label>
+                    <input id="pantry-filter-search" type="text" name="q" class="form-control form-control-sm"
+                           placeholder="Nazwa, kategoria lub kod..." value="{{ current_search }}">
+                </div>
+                <div class="col-md-4 col-lg-3">
+                    <label class="form-label small text-uppercase fw-bold text-muted" for="pantry-filter-category">Kategoria</label>
+                    <select id="pantry-filter-category" name="category" class="form-select form-select-sm">
+                        <option value="">Wszystkie</option>
+                        {% for category in categories %}
+                            <option value="{{ category }}" {% if current_category == category %}selected{% endif %}>{{ category }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4 col-lg-2">
+                    <label class="form-label small text-uppercase fw-bold text-muted" for="pantry-filter-status">Stan</label>
+                    <select id="pantry-filter-status" name="status" class="form-select form-select-sm">
+                        <option value="">Wszystkie</option>
+                        <option value="low" {% if current_status == 'low' %}selected{% endif %}>Do uzupełnienia</option>
+                        <option value="empty" {% if current_status == 'empty' %}selected{% endif %}>Brak</option>
+                        <option value="ok" {% if current_status == 'ok' %}selected{% endif %}>OK</option>
+                    </select>
+                </div>
+                <div class="col-md-4 col-lg-2 d-flex gap-2">
+                    <button type="submit" class="btn btn-sm btn-primary w-100">
+                        <i class="bi bi-funnel-fill"></i> Filtruj
+                    </button>
+                    {% if current_search or current_category or current_status %}
+                        <a href="{% url 'cooking:pantry' %}" class="btn btn-sm btn-outline-secondary" title="Wyczyść filtry">
+                            <i class="bi bi-x-lg"></i>
+                        </a>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </details>
+
+    <div class="pantry-section-heading">
+        <div>
+            <div class="small text-uppercase fw-bold text-muted">Twoje zapasy</div>
+            <h3>Produkty w spiżarni</h3>
+            <p>Termin zakupu jest aktualizowany wraz z każdym zeskanowanym zużyciem.</p>
+        </div>
+        <span class="pantry-section-count">{{ product_count }} prod.</span>
     </div>
-</div>
 
-{% if product_groups %}
-    <div class="pantry-category-list animate-fade-in-up">
-        {% for group in product_groups %}
-            <section class="pantry-category-panel">
-                <button class="pantry-category-header" type="button" data-bs-toggle="collapse" data-bs-target="#pantry-category-{{ forloop.counter }}" aria-expanded="{% if forloop.first or current_category %}true{% else %}false{% endif %}" aria-controls="pantry-category-{{ forloop.counter }}">
-                    <span class="d-flex align-items-center gap-2 min-w-0">
-                        <i class="bi bi-chevron-down pantry-category-chevron"></i>
-                        <span class="fw-bold text-truncate">{{ group.name }}</span>
-                    </span>
-                    <span class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-                        {% if group.low_count %}
-                            <span class="badge bg-danger-subtle text-danger rounded-pill">{{ group.low_count }} niski stan</span>
-                        {% endif %}
-                        <span class="badge bg-secondary-subtle text-secondary rounded-pill">{{ group.count }} prod.</span>
-                    </span>
-                </button>
+    {% if product_groups %}
+        <div class="pantry-category-list animate-fade-in-up">
+            {% for group in product_groups %}
+                <section class="pantry-category-panel">
+                    <button class="pantry-category-header" type="button" data-bs-toggle="collapse"
+                            data-bs-target="#pantry-category-{{ forloop.counter }}"
+                            aria-expanded="{% if forloop.first or current_category %}true{% else %}false{% endif %}"
+                            aria-controls="pantry-category-{{ forloop.counter }}">
+                        <span class="d-flex align-items-center gap-2 min-w-0">
+                            <i class="bi bi-chevron-down pantry-category-chevron"></i>
+                            <span class="fw-bold text-truncate">{{ group.name }}</span>
+                        </span>
+                        <span class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+                            {% if group.low_count %}
+                                <span class="badge bg-danger-subtle text-danger rounded-pill">{{ group.low_count }} do uzupełnienia</span>
+                            {% endif %}
+                            <span class="badge bg-secondary-subtle text-secondary rounded-pill">{{ group.count }} prod.</span>
+                        </span>
+                    </button>
 
-                <div id="pantry-category-{{ forloop.counter }}" class="collapse {% if forloop.first or current_category %}show{% endif %}">
-                    <div class="pantry-compact-list">
-                        {% for card in group.cards %}
-                            {% with product=card.product %}
-                                <article class="pantry-compact-row">
-                                    <div class="pantry-compact-main">
-                                        <div class="d-flex align-items-center gap-2 min-w-0">
-                                            {% if product.stock_status == 'empty' %}
-                                                <span class="pantry-status-dot bg-danger" title="Brak"></span>
-                                            {% elif product.stock_status == 'low' %}
-                                                <span class="pantry-status-dot bg-warning" title="Niski stan"></span>
-                                            {% else %}
-                                                <span class="pantry-status-dot bg-primary" title="OK"></span>
-                                            {% endif %}
-                                            <div class="min-w-0">
-                                                <h3 class="h6 fw-bold mb-0 text-truncate">{{ product.name }}</h3>
-                                                <div class="small text-muted">
-                                                    min.
-                                                    {% if product.unit == 'szt' %}{{ product.minimum_quantity|floatformat:0 }}{% else %}{{ product.minimum_quantity|floatformat:2 }}{% endif %}
-                                                    {{ product.display_unit }}
+                    <div id="pantry-category-{{ forloop.counter }}" class="collapse {% if forloop.first or current_category %}show{% endif %}">
+                        <div class="pantry-product-grid">
+                            {% for card in group.cards %}
+                                {% with product=card.product %}
+                                    <article class="pantry-product-card is-{{ product.stock_status }}"
+                                             data-pantry-product-id="{{ product.id }}"
+                                             data-product-package-size="{{ product.quantity_per_scan }}"
+                                             data-product-unit="{{ product.unit }}">
+                                        <div class="pantry-product-card-head">
+                                            <div class="pantry-product-visual">
+                                                {% if product.image %}
+                                                    <img class="pantry-product-thumb"
+                                                         src="{% url 'cooking:pantry-product-image' product.id %}"
+                                                         alt="Zdjęcie produktu {{ product.name }}" loading="lazy">
+                                                {% elif card.catalog_entry.image %}
+                                                    <img class="pantry-product-thumb"
+                                                         src="{% url 'cooking:pantry-catalog-image' card.catalog_entry.id %}"
+                                                         alt="Zdjęcie produktu {{ product.name }}" loading="lazy">
+                                                {% else %}
+                                                    <span class="pantry-product-thumb-placeholder" aria-hidden="true">
+                                                        <i class="bi bi-box-seam"></i>
+                                                    </span>
+                                                {% endif %}
+                                            </div>
+                                            <div class="pantry-product-title min-w-0">
+                                                <div class="pantry-product-title-row">
+                                                    <h4>{{ product.name }}</h4>
+                                                    {% if product.stock_status == 'empty' %}
+                                                        <span class="pantry-stock-badge is-empty">Brak</span>
+                                                    {% elif product.stock_status == 'low' %}
+                                                        <span class="pantry-stock-badge is-low">Niski stan</span>
+                                                    {% else %}
+                                                        <span class="pantry-stock-badge is-ok">W zapasie</span>
+                                                    {% endif %}
                                                 </div>
+                                                <p>
+                                                    {% if card.catalog_entry.brand %}<span>{{ card.catalog_entry.brand }}</span>{% endif %}
+                                                    {% if product.barcode %}<span><i class="bi bi-upc" aria-hidden="true"></i> {{ product.barcode }}</span>{% endif %}
+                                                </p>
                                             </div>
                                         </div>
-                                    </div>
 
-                                    <div class="pantry-compact-stock">
-                                        <span class="fw-bold">
-                                            {% if product.unit == 'szt' %}{{ product.current_quantity|floatformat:0 }}{% else %}{{ product.current_quantity|floatformat:2 }}{% endif %}
-                                        </span>
-                                        <span class="text-muted small">{{ product.display_unit }}</span>
-                                    </div>
+                                        <div class="pantry-product-stock-grid">
+                                            <div class="pantry-product-stock-primary">
+                                                <span class="pantry-product-stock-label">Opakowania</span>
+                                                <strong>
+                                                    <span data-product-package-stock>{% if product.package_count_is_known %}{{ product.current_package_count }}{% else %}—{% endif %}</span>
+                                                    <small>szt.</small>
+                                                </strong>
+                                                <span class="pantry-product-stock-hint">{% if product.package_count_is_known %}pełne opakowania{% else %}liczba niepodana{% endif %}</span>
+                                            </div>
+                                            <div class="pantry-product-stock-total">
+                                                <span class="pantry-product-stock-label">Łącznie</span>
+                                                <strong data-product-total-stock>
+                                                    <span data-product-stock>{% if product.unit == 'szt' %}{{ product.current_quantity|floatformat:0 }}{% else %}{{ product.current_quantity|floatformat:2 }}{% endif %}</span>
+                                                    <small>{{ product.display_unit }}</small>
+                                                </strong>
+                                                <span class="pantry-product-stock-hint">
+                                                    1 opak. = {% if product.unit == 'szt' %}{{ product.quantity_per_scan|floatformat:0 }}{% else %}{{ product.quantity_per_scan|floatformat:2 }}{% endif %} {{ product.display_unit }}
+                                                </span>
+                                            </div>
+                                        </div>
 
-                                    <div class="pantry-compact-meta">
-                                        <span class="text-muted small">Zużycie/dzień</span>
-                                        <strong>{{ card.average_daily|floatformat:2 }} {{ product.display_unit }}</strong>
-                                    </div>
+                                        {% with forecast=card.forecast %}
+                                            <section class="pantry-product-forecast is-{{ forecast.status|default:'no_history' }}{% if forecast.is_due or forecast.at_or_below_minimum %} is-due{% endif %}"
+                                                     aria-label="Prognoza zakupu produktu {{ product.name }}">
+                                                <div class="pantry-forecast-heading">
+                                                    <span class="pantry-forecast-label">
+                                                        <i class="bi bi-stars" aria-hidden="true"></i>
+                                                        Prognoza zakupu
+                                                    </span>
+                                                    {% if forecast.status == 'ready' %}
+                                                        <span class="pantry-confidence-badge is-{{ forecast.confidence }}"
+                                                              title="Wynik pewności: {{ forecast.confidence_score|floatformat:0 }}%">
+                                                            {% if forecast.confidence == 'high' %}Wysoka pewność
+                                                            {% elif forecast.confidence == 'medium' %}Średnia pewność
+                                                            {% else %}Niska pewność{% endif %}
+                                                        </span>
+                                                    {% endif %}
+                                                </div>
 
-                                    <div class="pantry-compact-meta">
-                                        <span class="text-muted small">Kup do</span>
-                                        <strong class="{% if card.restock_in_days != None and card.restock_in_days <= 3 %}text-danger{% endif %}">
-                                            {% if card.restock_date %}{{ card.restock_date|date:"d.m" }}{% else %}-{% endif %}
-                                        </strong>
-                                    </div>
+                                                {% if forecast.at_or_below_minimum %}
+                                                    <div class="pantry-forecast-main">
+                                                        <span>Zapas osiągnął ustawione minimum</span>
+                                                        <strong>Uzupełnij teraz</strong>
+                                                        <small>
+                                                            {% if forecast.status == 'no_history' %}Nie mamy jeszcze historii zużycia, dlatego sugestia opiera się na progu minimalnym.
+                                                            {% elif forecast.status == 'cold_start' %}Prognoza nadal się uczy, ale bieżący stan wymaga już uzupełnienia.
+                                                            {% else %}Zakup zabezpieczy zapas przed kolejnym cyklem zużycia.{% endif %}
+                                                        </small>
+                                                    </div>
+                                                    <div class="pantry-forecast-signals" aria-label="Sugerowany zakup">
+                                                        {% if forecast.suggested_packages %}
+                                                            <span><i class="bi bi-bag-plus" aria-hidden="true"></i> Kup {{ forecast.suggested_packages }} opak.</span>
+                                                        {% elif forecast.suggested_quantity %}
+                                                            <span><i class="bi bi-bag-plus" aria-hidden="true"></i> Kup {{ forecast.suggested_quantity|floatformat:2 }} {{ product.display_unit }}</span>
+                                                        {% endif %}
+                                                    </div>
+                                                {% elif not forecast or forecast.status == 'no_history' %}
+                                                    <div class="pantry-forecast-learning">
+                                                        <span class="pantry-forecast-state-icon"><i class="bi bi-activity" aria-hidden="true"></i></span>
+                                                        <span>
+                                                            <strong>Uczę się zużycia</strong>
+                                                            <small>Zeskanuj kilka zużyć, a wyznaczymy wiarygodny termin zakupu.</small>
+                                                        </span>
+                                                    </div>
+                                                {% elif forecast.status == 'cold_start' %}
+                                                    <div class="pantry-forecast-learning">
+                                                        <span class="pantry-forecast-state-icon"><i class="bi bi-hourglass-split" aria-hidden="true"></i></span>
+                                                        <span>
+                                                            <strong>{% if forecast.buy_date %}Orientacyjnie kup do {{ forecast.buy_date|date:"d.m" }}{% else %}Pierwsza prognoza w przygotowaniu{% endif %}</strong>
+                                                            <small>Mamy {{ forecast.event_count }} zdarzeń z {{ forecast.history_days }} dni. Kolejne skany zwiększą pewność.</small>
+                                                        </span>
+                                                    </div>
+                                                {% else %}
+                                                    <div class="pantry-forecast-main">
+                                                        <span>
+                                                            {% if forecast.is_due %}Czas uzupełnić zapas
+                                                            {% else %}Kup najpóźniej{% endif %}
+                                                        </span>
+                                                        <strong>
+                                                            {% if forecast.is_due %}Kup teraz
+                                                            {% elif forecast.buy_date %}{{ forecast.buy_date|date:"d.m" }}
+                                                            {% else %}Termin nieustalony{% endif %}
+                                                        </strong>
+                                                        {% if forecast.minimum_date_from %}
+                                                            <small>
+                                                                Minimum prawdopodobnie
+                                                                {{ forecast.minimum_date_from|date:"d.m" }}{% if forecast.minimum_date_to and forecast.minimum_date_to != forecast.minimum_date_from %}–{{ forecast.minimum_date_to|date:"d.m" }}{% endif %}
+                                                            </small>
+                                                        {% endif %}
+                                                    </div>
 
-                                    <div class="pantry-compact-actions">
-                                        <form method="post" action="{% url 'cooking:pantry-movement' product.id %}" class="pantry-inline-form">
-                                            {% csrf_token %}
-                                            <input type="hidden" name="movement_type" value="consume">
-                                            <input type="number" name="quantity" step="{% if product.unit == 'szt' %}1{% else %}0.01{% endif %}" min="{% if product.unit == 'szt' %}1{% else %}0.01{% endif %}" class="form-control form-control-sm" placeholder="Zużyj" required>
-                                            <button class="btn btn-sm btn-outline-danger" type="submit" title="Zapisz zużycie">
-                                                <i class="bi bi-dash-lg"></i>
-                                            </button>
-                                        </form>
-                                        <form method="post" action="{% url 'cooking:pantry-movement' product.id %}" class="pantry-inline-form">
-                                            {% csrf_token %}
-                                            <input type="hidden" name="movement_type" value="purchase">
-                                            <input type="number" name="quantity" step="{% if product.unit == 'szt' %}1{% else %}0.01{% endif %}" min="{% if product.unit == 'szt' %}1{% else %}0.01{% endif %}" class="form-control form-control-sm" placeholder="Dodaj" required>
-                                            <button class="btn btn-sm btn-outline-success" type="submit" title="Zapisz uzupełnienie">
-                                                <i class="bi bi-plus-lg"></i>
-                                            </button>
-                                        </form>
-                                    </div>
-                                </article>
-                            {% endwith %}
-                        {% endfor %}
+                                                    <div class="pantry-forecast-signals" aria-label="Szczegóły prognozy">
+                                                        {% if forecast.trend == 'rising' %}
+                                                            <span class="is-rising"><i class="bi bi-graph-up-arrow" aria-hidden="true"></i> Zużycie rośnie{% if forecast.trend_percent != None %} o {{ forecast.trend_percent|floatformat:0 }}%{% endif %}</span>
+                                                        {% elif forecast.trend == 'falling' %}
+                                                            <span class="is-falling"><i class="bi bi-graph-down-arrow" aria-hidden="true"></i> Zużycie spada{% if forecast.trend_percent != None %} o {{ forecast.trend_percent|floatformat:0 }}%{% endif %}</span>
+                                                        {% elif forecast.trend == 'stable' %}
+                                                            <span><i class="bi bi-arrow-right" aria-hidden="true"></i> Tempo stabilne</span>
+                                                        {% endif %}
+                                                        {% if forecast.suggested_packages %}
+                                                            <span><i class="bi bi-bag-plus" aria-hidden="true"></i> Kup {{ forecast.suggested_packages }} opak.</span>
+                                                        {% elif forecast.suggested_quantity %}
+                                                            <span><i class="bi bi-bag-plus" aria-hidden="true"></i> Kup {{ forecast.suggested_quantity|floatformat:2 }} {{ product.display_unit }}</span>
+                                                        {% endif %}
+                                                    </div>
+
+                                                    <details class="pantry-forecast-details">
+                                                        <summary>Skąd ta prognoza?</summary>
+                                                        <p>
+                                                            Tempo {{ forecast.rate|floatformat:2 }} {{ product.display_unit }}/dzień,
+                                                            {{ forecast.event_count }} zdarzeń z {{ forecast.history_days }} dni.
+                                                            {% if forecast.model == 'intermittent' %}Produkt jest używany nieregularnie, dlatego prognoza uwzględnia odstępy między użyciami.
+                                                            {% else %}Nowsze zużycia mają większy wpływ na termin niż starsze.{% endif %}
+                                                        </p>
+                                                    </details>
+                                                {% endif %}
+                                            </section>
+                                        {% endwith %}
+
+                                        <details class="pantry-product-manual">
+                                            <summary>
+                                                <span><i class="bi bi-sliders" aria-hidden="true"></i> Operacje ręczne</span>
+                                                <small>gdy nie możesz skanować</small>
+                                            </summary>
+                                            <div class="pantry-product-manual-body">
+                                                <form method="post" action="{% url 'cooking:pantry-movement' product.id %}" class="pantry-inline-form" data-manual-movement-form>
+                                                    {% csrf_token %}
+                                                    <input type="hidden" name="movement_type" value="consume">
+                                                    <input type="hidden" name="operation_id" value="{{ card.manual_consume_id }}">
+                                                    <label class="visually-hidden" for="consume-{{ product.id }}">Ilość do zużycia</label>
+                                                    <div class="input-group">
+                                                        <span class="input-group-text">−</span>
+                                                        {% if product.tracks_packages %}
+                                                            <input id="consume-{{ product.id }}" type="number" name="package_count"
+                                                                   step="1" min="1" max="9999"
+                                                                   class="form-control" inputmode="numeric" placeholder="Liczba opakowań" required>
+                                                            <span class="input-group-text">opak.</span>
+                                                        {% else %}
+                                                            <input id="consume-{{ product.id }}" type="number" name="quantity"
+                                                                   step="0.01" min="0.01" max="99999999.99"
+                                                                   class="form-control" inputmode="decimal" placeholder="Ilość" required>
+                                                            <span class="input-group-text">{{ product.display_unit }}</span>
+                                                        {% endif %}
+                                                        <button class="btn btn-outline-danger" type="submit">Zużyj</button>
+                                                    </div>
+                                                </form>
+                                                <form method="post" action="{% url 'cooking:pantry-movement' product.id %}" class="pantry-inline-form" data-manual-movement-form>
+                                                    {% csrf_token %}
+                                                    <input type="hidden" name="movement_type" value="purchase">
+                                                    <input type="hidden" name="operation_id" value="{{ card.manual_purchase_id }}">
+                                                    <label class="visually-hidden" for="purchase-{{ product.id }}">Ilość do dodania</label>
+                                                    <div class="input-group">
+                                                        <span class="input-group-text">+</span>
+                                                        {% if product.tracks_packages %}
+                                                            <input id="purchase-{{ product.id }}" type="number" name="package_count"
+                                                                   step="1" min="1" max="9999"
+                                                                   class="form-control" inputmode="numeric" placeholder="Liczba opakowań" required>
+                                                            <span class="input-group-text">opak.</span>
+                                                        {% else %}
+                                                            <input id="purchase-{{ product.id }}" type="number" name="quantity"
+                                                                   step="0.01" min="0.01" max="99999999.99"
+                                                                   class="form-control" inputmode="decimal" placeholder="Ilość" required>
+                                                            <span class="input-group-text">{{ product.display_unit }}</span>
+                                                        {% endif %}
+                                                        <button class="btn btn-outline-success" type="submit">Dodaj</button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </details>
+                                    </article>
+                                {% endwith %}
+                            {% endfor %}
+                        </div>
                     </div>
-                </div>
-            </section>
-        {% endfor %}
-    </div>
-{% else %}
-    <div class="card border-0 shadow-sm action-card animate-fade-in-up">
-        <div class="card-body text-center py-5">
-            <div class="icon-box bg-light text-muted mx-auto mb-3 rounded-circle" style="width: 90px; height: 90px;">
-                <i class="bi bi-box-seam fs-1"></i>
-            </div>
-            <h3 class="fw-bold">Spiżarnia jest pusta</h3>
-            <p class="text-muted">Dodaj pierwszy produkt albo zmień filtry.</p>
-            <a href="{% url 'cooking:add-pantry-product' %}" class="btn btn-success rounded-pill px-4 mt-2">
-                <i class="bi bi-plus-lg me-1"></i> Dodaj produkt
+                </section>
+            {% endfor %}
+        </div>
+    {% elif has_any_products or filters_active %}
+        <div class="pantry-empty-state animate-fade-in-up">
+            <div class="pantry-empty-icon"><i class="bi bi-search" aria-hidden="true"></i></div>
+            <h3>Brak produktów spełniających filtry</h3>
+            <p>Zmień wyszukiwanie lub wyczyść filtry, aby ponownie zobaczyć zapasy.</p>
+            <a href="{% url 'cooking:pantry' %}" class="btn btn-outline-primary rounded-pill px-4">
+                <i class="bi bi-x-circle me-2" aria-hidden="true"></i>Wyczyść filtry
             </a>
         </div>
+    {% else %}
+        <div class="pantry-empty-state animate-fade-in-up">
+            <div class="pantry-empty-icon"><i class="bi bi-upc-scan" aria-hidden="true"></i></div>
+            <h3>Spiżarnia czeka na pierwszy skan</h3>
+            <p>Zacznij od kodu kreskowego — nazwę, wielkość opakowania i zdjęcie spróbujemy uzupełnić automatycznie.</p>
+            <button type="button" class="btn btn-success btn-lg rounded-pill px-4"
+                    data-bs-toggle="modal" data-bs-target="#pantryScannerModal" data-open-scanner>
+                <i class="bi bi-upc-scan me-2" aria-hidden="true"></i>Skanuj produkt
+            </button>
+        </div>
+    {% endif %}
+
+    <button type="button" class="btn pantry-mobile-scan-button d-md-none" data-bs-toggle="modal"
+            data-bs-target="#pantryScannerModal" data-open-scanner>
+        <i class="bi bi-upc-scan" aria-hidden="true"></i>
+        <span>Skanuj produkt</span>
+    </button>
+
+    <p class="small text-muted text-center mt-4 mb-0">
+        Dane katalogowe: <a href="https://world.openfoodfacts.org/" target="_blank" rel="noopener noreferrer">Open Food Facts</a>
+        (ODbL), zdjęcia CC BY-SA. Informacje społecznościowe mogą wymagać korekty.
+    </p>
+
+    <div class="modal fade pantry-scanner-modal" id="pantryScannerModal" tabindex="-1"
+         aria-labelledby="pantryScannerLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-fullscreen-md-down">
+            <div class="modal-content">
+                <div class="modal-header pantry-scanner-header">
+                    <div>
+                        <div class="small text-uppercase fw-bold opacity-75">Spiżarnia</div>
+                        <h2 class="modal-title h5 fw-bold mb-0" id="pantryScannerLabel">Skaner produktów</h2>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Zamknij skaner"></button>
+                </div>
+
+                <div class="modal-body p-0">
+                    <div class="pantry-camera-stage" data-camera-stage>
+                        <video data-scanner-video playsinline muted aria-label="Podgląd aparatu"></video>
+                        <div class="pantry-camera-placeholder" data-camera-placeholder>
+                            <i class="bi bi-camera-fill"></i>
+                        </div>
+                        <div class="pantry-scan-reticle" aria-hidden="true"><span></span></div>
+                        <div class="pantry-camera-status" data-camera-status>
+                            <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                            <span data-camera-status-text>Uruchamiam aparat…</span>
+                        </div>
+                    </div>
+
+                    <div class="pantry-scanner-sheet">
+                        <input class="visually-hidden" id="pantry-product-photo-camera" type="file" accept="image/*"
+                               capture="environment" tabindex="-1" aria-hidden="true" data-product-photo-camera>
+                        <input class="visually-hidden" id="pantry-product-photo-gallery" type="file" accept="image/*"
+                               tabindex="-1" aria-hidden="true" data-product-photo-gallery>
+
+                        <section data-scanner-panel="scanning">
+                            <div class="text-center mb-3">
+                                <h3 class="h5 fw-bold mb-1">Umieść kod w ramce</h3>
+                                <p class="small text-muted mb-0">Skan zatrzyma się automatycznie po rozpoznaniu kodu.</p>
+                            </div>
+
+                            <div class="alert alert-warning small d-none mb-3" role="status" data-camera-alert></div>
+
+                            <div class="d-grid gap-2">
+                                <label class="btn btn-outline-primary pantry-scanner-secondary-action" for="pantry-code-photo">
+                                    <i class="bi bi-camera me-2"></i>Zrób zdjęcie kodu
+                                </label>
+                                <input class="visually-hidden" id="pantry-code-photo" type="file" accept="image/*"
+                                       capture="environment" data-code-photo>
+                            </div>
+
+                            <details class="pantry-manual-code mt-3" data-manual-details>
+                                <summary>Nie działa? Wpisz kod ręcznie</summary>
+                                <form class="input-group mt-3" data-manual-code-form>
+                                    <input type="text" class="form-control" inputmode="numeric" autocomplete="off"
+                                           maxlength="64" placeholder="Np. 5901234123457" aria-label="Kod kreskowy"
+                                           data-manual-code>
+                                    <button class="btn btn-primary" type="submit">Sprawdź</button>
+                                </form>
+                            </details>
+                        </section>
+
+                        <section data-scanner-panel="known" hidden>
+                            <div class="pantry-result-card is-known">
+                                <div class="pantry-result-heading">
+                                    <div class="pantry-result-icon bg-primary-subtle text-primary" data-known-icon><i class="bi bi-box-seam"></i></div>
+                                    <div class="pantry-result-image" data-known-image-wrap hidden>
+                                        <img src="" alt="" data-known-image>
+                                    </div>
+                                    <div class="min-w-0">
+                                        <div class="small text-uppercase fw-bold text-success">Produkt rozpoznany</div>
+                                        <h3 class="h4 fw-bold mb-1 text-truncate" data-known-name></h3>
+                                        <div class="small text-muted mt-1" data-known-catalog-meta hidden></div>
+                                    </div>
+                                </div>
+
+                                <div class="pantry-known-stock-summary">
+                                    <div>
+                                        <span>Opakowania</span>
+                                        <strong><span data-known-package-stock>—</span> <small>szt.</small></strong>
+                                    </div>
+                                    <div>
+                                        <span>Łącznie</span>
+                                        <strong data-known-stock data-known-total-stock></strong>
+                                    </div>
+                                    <div>
+                                        <span>Jeden skan</span>
+                                        <strong data-known-scan-quantity></strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="pantry-catalog-description small text-muted mt-3" data-known-description hidden></div>
+                            <a class="pantry-catalog-source small mt-2" href="#" target="_blank" rel="noopener noreferrer"
+                               data-known-source hidden>Dane: Open Food Facts</a>
+
+                            <div class="pantry-photo-capture mt-3" data-known-photo-wrap hidden>
+                                <div class="pantry-photo-capture-copy">
+                                    <i class="bi bi-camera" aria-hidden="true"></i>
+                                    <span><strong>Brakuje zdjęcia</strong><small>Możesz je dodać przed wybraniem akcji.</small></span>
+                                </div>
+                                <div class="pantry-photo-source-actions">
+                                    <button class="btn btn-primary" type="button" data-photo-source="camera" data-photo-target="known">
+                                        <i class="bi bi-camera-fill" aria-hidden="true"></i>
+                                        <span>Zrób zdjęcie</span>
+                                    </button>
+                                    <button class="btn btn-outline-primary" type="button" data-photo-source="gallery" data-photo-target="known">
+                                        <i class="bi bi-images" aria-hidden="true"></i>
+                                        <span>Wybierz z galerii</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="pantry-countdown-paused mt-3" role="status" data-countdown-paused="known" hidden>
+                                <i class="bi bi-pause-circle-fill" aria-hidden="true"></i>
+                                <span><strong>Odliczanie wstrzymane</strong><small>Najpierw dodaj zdjęcie albo wybierz akcję ręcznie.</small></span>
+                            </div>
+
+                            <div class="pantry-countdown-paused mt-3" role="status" data-countdown-manual="known"{% if scanner_auto_action_enabled %} hidden{% endif %}>
+                                <i class="bi bi-hand-index-thumb-fill" aria-hidden="true"></i>
+                                <span><strong>Wybierz akcję ręcznie</strong><small>Nic nie zostanie dodane ani zużyte automatycznie.</small></span>
+                            </div>
+
+                            <div class="pantry-countdown mt-4" data-countdown="known" hidden>
+                                <div class="d-flex justify-content-between gap-3 small mb-2">
+                                    <span>Domyślnie: <strong>zużyto</strong></span>
+                                    <span><strong data-countdown-seconds>{{ scanner_auto_action_timeout_seconds }}</strong> s</span>
+                                </div>
+                                <div class="progress" role="progressbar" aria-label="Czas na wybór akcji" aria-valuemin="0" aria-valuemax="{{ scanner_auto_action_timeout_seconds }}">
+                                    <div class="progress-bar bg-danger" data-countdown-bar></div>
+                                </div>
+                            </div>
+
+                            <div class="pantry-known-count mt-3">
+                                <label for="pantry-known-count">Liczba opakowań</label>
+                                <div class="input-group input-group-sm">
+                                    <input id="pantry-known-count" class="form-control" type="number" min="1" max="9999"
+                                           step="1" value="1" inputmode="numeric" data-known-count>
+                                    <span class="input-group-text">opak.</span>
+                                </div>
+                                <small>Wybierz liczbę opakowań, a następnie „Zużyto” albo „Dodano”.</small>
+                            </div>
+
+                            <div class="pantry-scan-choice-grid mt-3">
+                                <button class="btn btn-outline-danger pantry-scan-choice" type="button" data-known-action="consume">
+                                    <i class="bi bi-dash-circle-fill"></i>
+                                    <span><strong>Zużyto</strong><small data-known-consume-label></small></span>
+                                </button>
+                                <button class="btn btn-success pantry-scan-choice" type="button" data-known-action="purchase">
+                                    <i class="bi bi-plus-circle-fill"></i>
+                                    <span><strong>Dodano</strong><small data-known-purchase-label></small></span>
+                                </button>
+                            </div>
+                        </section>
+
+                        <section data-scanner-panel="unknown" hidden>
+                            <div class="pantry-result-card is-new">
+                                <div class="pantry-result-heading">
+                                    <div class="pantry-result-icon bg-warning-subtle text-warning" data-unknown-icon><i class="bi bi-question-lg"></i></div>
+                                    <div class="pantry-result-image" data-unknown-image-wrap hidden>
+                                        <img src="" alt="" data-unknown-image>
+                                    </div>
+                                    <div class="min-w-0">
+                                        <div class="small text-uppercase fw-bold text-warning" data-unknown-eyebrow>Nowy kod</div>
+                                        <h3 class="h5 fw-bold mb-1" data-unknown-title>Tego produktu jeszcze nie znamy</h3>
+                                        <div class="small text-muted" data-unknown-meta hidden></div>
+                                        <div class="small text-muted text-break" data-unknown-code></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="pantry-catalog-description small text-muted mt-3" data-unknown-description hidden></div>
+                            <a class="pantry-catalog-source small mt-2" href="#" target="_blank" rel="noopener noreferrer"
+                               data-unknown-source hidden>Dane: Open Food Facts</a>
+
+                            <div class="pantry-photo-capture mt-3" data-unknown-photo-wrap hidden>
+                                <div class="pantry-photo-capture-copy">
+                                    <i class="bi bi-camera" aria-hidden="true"></i>
+                                    <span><strong>Dodaj zdjęcie produktu</strong><small>Możesz je zrobić przed zapisaniem produktu.</small></span>
+                                </div>
+                                <div class="pantry-photo-source-actions">
+                                    <button class="btn btn-primary" type="button" data-photo-source="camera" data-photo-target="register">
+                                        <i class="bi bi-camera-fill" aria-hidden="true"></i>
+                                        <span>Zrób zdjęcie</span>
+                                    </button>
+                                    <button class="btn btn-outline-primary" type="button" data-photo-source="gallery" data-photo-target="register">
+                                        <i class="bi bi-images" aria-hidden="true"></i>
+                                        <span>Wybierz z galerii</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="pantry-countdown-paused mt-3" role="status" data-countdown-paused="unknown" hidden>
+                                <i class="bi bi-pause-circle-fill" aria-hidden="true"></i>
+                                <span><strong>Odliczanie wstrzymane</strong><small>Zrób zdjęcie albo wybierz „Dodaj” lub „Dodaj wiele”.</small></span>
+                            </div>
+
+                            <div class="pantry-countdown-paused mt-3" role="status" data-countdown-manual="unknown"{% if scanner_auto_action_enabled %} hidden{% endif %}>
+                                <i class="bi bi-hand-index-thumb-fill" aria-hidden="true"></i>
+                                <span><strong>Wybierz sposób dodania</strong><small>Nic nie zostanie zapisane automatycznie.</small></span>
+                            </div>
+
+                            <div class="pantry-countdown mt-4" data-countdown="unknown" hidden>
+                                <div class="d-flex justify-content-between gap-3 small mb-2">
+                                    <span data-unknown-countdown-label>Za chwilę: <strong>formularz dla 1 opakowania</strong></span>
+                                    <span><strong data-countdown-seconds>{{ scanner_auto_action_timeout_seconds }}</strong> s</span>
+                                </div>
+                                <div class="progress" role="progressbar" aria-label="Czas na wybór sposobu dodania" aria-valuemin="0" aria-valuemax="{{ scanner_auto_action_timeout_seconds }}">
+                                    <div class="progress-bar bg-success" data-countdown-bar></div>
+                                </div>
+                            </div>
+
+                            <p class="small text-muted mt-3 mb-3" data-unknown-help>Przy pierwszym skanie podaj nazwę. Następnym razem rozpoznamy produkt automatycznie.</p>
+                            <div class="pantry-scan-choice-grid">
+                                <button class="btn btn-success pantry-scan-choice" type="button" data-register-mode="one">
+                                    <i class="bi bi-plus-circle-fill"></i>
+                                    <span><strong>Dodaj</strong><small data-register-one-detail>jedno opakowanie</small></span>
+                                </button>
+                                <button class="btn btn-outline-success pantry-scan-choice" type="button" data-register-mode="many">
+                                    <i class="bi bi-stack"></i>
+                                    <span><strong>Dodaj wiele</strong><small>2 lub więcej opakowań</small></span>
+                                </button>
+                            </div>
+                            <button class="btn btn-link btn-sm w-100 mt-2" type="button" data-edit-catalog hidden>
+                                Popraw dane przed dodaniem
+                            </button>
+                        </section>
+
+                        <section data-scanner-panel="register" hidden>
+                            <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+                                <div>
+                                    <div class="small text-uppercase fw-bold text-success">Nowy produkt</div>
+                                    <h3 class="h5 fw-bold mb-0" data-register-title>Dodaj produkt</h3>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-light" data-back-to-unknown>
+                                    <i class="bi bi-arrow-left"></i> Wstecz
+                                </button>
+                            </div>
+
+                            <form data-register-form>
+                                <div class="alert alert-info small py-2" data-register-catalog-note hidden>
+                                    Formularz został uzupełniony danymi Open Food Facts. Możesz je poprawić przed zapisem.
+                                </div>
+
+                                <div class="pantry-register-photo" data-register-photo-wrap>
+                                    <div class="pantry-register-photo-preview">
+                                        <img src="" alt="" data-register-photo-preview>
+                                        <span aria-hidden="true"><i class="bi bi-camera"></i></span>
+                                    </div>
+                                    <div class="pantry-register-photo-copy">
+                                        <strong data-register-photo-name>Dodaj zdjęcie produktu</strong>
+                                        <small>Zrobisz kadr przed zapisaniem</small>
+                                    </div>
+                                    <div class="pantry-photo-source-actions">
+                                        <button class="btn btn-primary" type="button" data-photo-source="camera" data-photo-target="register">
+                                            <i class="bi bi-camera-fill" aria-hidden="true"></i>
+                                            <span>Zrób zdjęcie</span>
+                                        </button>
+                                        <button class="btn btn-outline-primary" type="button" data-photo-source="gallery" data-photo-target="register">
+                                            <i class="bi bi-images" aria-hidden="true"></i>
+                                            <span>Wybierz z galerii</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="form-floating mb-3">
+                                    <input class="form-control" id="scanner-product-name" type="text" maxlength="160"
+                                           autocomplete="off" placeholder="Nazwa produktu" required data-register-name>
+                                    <label for="scanner-product-name">Nazwa produktu</label>
+                                </div>
+
+                                <div class="row g-2">
+                                    <div class="col-7">
+                                        <div class="form-floating">
+                                            <input class="form-control" id="scanner-quantity-per-scan" type="number"
+                                                   min="0.01" step="1" value="1" placeholder="Ilość" required
+                                                   data-register-quantity-per-scan>
+                                            <label for="scanner-quantity-per-scan">1 skan oznacza</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-5">
+                                        <div class="form-floating">
+                                            <select class="form-select" id="scanner-product-unit" data-register-unit>
+                                                {% for value, label in units %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                                            </select>
+                                            <label for="scanner-product-unit">Jednostka</label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="pantry-add-many mt-3" data-register-count-wrap hidden>
+                                    <div class="pantry-add-many-heading">
+                                        <span><i class="bi bi-stack" aria-hidden="true"></i> Ile sztuk dodajesz?</span>
+                                        <small>Każda sztuka ma tę samą ilość podaną wyżej.</small>
+                                    </div>
+                                    <div class="input-group input-group-lg">
+                                        <span class="input-group-text">×</span>
+                                        <input class="form-control" id="scanner-product-count" type="number" min="2" max="9999"
+                                               inputmode="numeric" step="1" value="2" placeholder="Liczba sztuk"
+                                               aria-label="Liczba dodawanych sztuk" data-register-count>
+                                        <span class="input-group-text">szt.</span>
+                                    </div>
+                                    <div class="pantry-add-many-total" aria-live="polite">
+                                        Łącznie dodasz: <strong data-register-total-preview>—</strong>
+                                    </div>
+                                </div>
+
+                                <div class="form-floating mt-2">
+                                    <select class="form-select" id="scanner-product-category" data-register-category>
+                                        <option value="">Bez kategorii</option>
+                                        {% for category in categories %}<option value="{{ category }}">{{ category }}</option>{% endfor %}
+                                    </select>
+                                    <label for="scanner-product-category">Kategoria (opcjonalnie)</label>
+                                </div>
+
+                                <div class="small text-muted mt-3"><i class="bi bi-upc me-1"></i><span data-register-code></span></div>
+                                <button class="btn btn-success btn-lg w-100 mt-4" type="submit" data-register-submit>
+                                    <span class="spinner-border spinner-border-sm me-2 d-none" data-button-spinner></span>
+                                    <span data-register-submit-label>Dodaj produkt</span>
+                                </button>
+                            </form>
+                        </section>
+
+                        <section data-scanner-panel="photo-camera" hidden>
+                            <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+                                <div>
+                                    <div class="small text-uppercase fw-bold text-primary">Aparat</div>
+                                    <h3 class="h5 fw-bold mb-0">Zrób zdjęcie produktu</h3>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-light" data-photo-camera-cancel>
+                                    <i class="bi bi-x-lg" aria-hidden="true"></i> Anuluj
+                                </button>
+                            </div>
+
+                            <div class="pantry-product-camera is-loading" data-photo-camera-view>
+                                <video autoplay playsinline muted aria-label="Podgląd aparatu do zdjęcia produktu"
+                                       data-photo-camera-video></video>
+                                <div class="pantry-product-camera-placeholder" data-photo-camera-placeholder>
+                                    <span class="spinner-border" aria-hidden="true"></span>
+                                    <strong data-photo-camera-status>Uruchamiam aparat…</strong>
+                                    <small>Przeglądarka może poprosić o zgodę na użycie kamery.</small>
+                                </div>
+                                <div class="pantry-product-camera-guide" aria-hidden="true"></div>
+                            </div>
+
+                            <div class="alert alert-warning small mt-3 mb-0" role="alert" data-photo-camera-error hidden></div>
+
+                            <button class="btn btn-primary btn-lg pantry-camera-shutter w-100 mt-3" type="button"
+                                    data-photo-camera-capture disabled>
+                                <i class="bi bi-camera-fill" aria-hidden="true"></i>
+                                <span>Zrób zdjęcie</span>
+                            </button>
+
+                            <div class="pantry-product-camera-fallback mt-2">
+                                <button class="btn btn-outline-primary" type="button" data-photo-camera-retry hidden>
+                                    <i class="bi bi-arrow-clockwise" aria-hidden="true"></i> Spróbuj ponownie
+                                </button>
+                                <button class="btn btn-light" type="button" data-photo-camera-gallery>
+                                    <i class="bi bi-images" aria-hidden="true"></i> Wybierz z galerii
+                                </button>
+                                <button class="btn btn-link btn-sm" type="button" data-photo-camera-system hidden>
+                                    Otwórz aparat systemowy
+                                </button>
+                            </div>
+                        </section>
+
+                        <section data-scanner-panel="crop" hidden>
+                            <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+                                <div>
+                                    <div class="small text-uppercase fw-bold text-primary">Zdjęcie produktu</div>
+                                    <h3 class="h5 fw-bold mb-0">Wykadruj zdjęcie</h3>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-light" data-crop-cancel>
+                                    <i class="bi bi-x-lg" aria-hidden="true"></i> Anuluj
+                                </button>
+                            </div>
+
+                            <div class="alert alert-danger small py-2" role="alert" data-crop-error hidden></div>
+                            <div class="pantry-crop-viewport is-loading" data-crop-viewport aria-label="Obszar kadrowania zdjęcia">
+                                <img src="" alt="Zdjęcie produktu do wykadrowania" draggable="false" data-crop-image>
+                                <div class="pantry-crop-loading" data-crop-loading>
+                                    <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                                    <span>Przygotowuję zdjęcie…</span>
+                                </div>
+                                <div class="pantry-crop-guide" aria-hidden="true"></div>
+                            </div>
+
+                            <div class="pantry-crop-controls mt-3">
+                                <div class="d-flex align-items-center justify-content-between gap-3">
+                                    <label class="fw-bold small" for="pantry-crop-zoom">Powiększenie</label>
+                                    <button class="btn btn-sm btn-light" type="button" data-crop-reset>
+                                        <i class="bi bi-bullseye" aria-hidden="true"></i> Wyśrodkuj
+                                    </button>
+                                </div>
+                                <div class="pantry-crop-zoom-row mt-2">
+                                    <i class="bi bi-image" aria-hidden="true"></i>
+                                    <input class="form-range" id="pantry-crop-zoom" type="range" min="1" max="3" step="0.01" value="1"
+                                           aria-label="Powiększenie zdjęcia" data-crop-zoom>
+                                    <i class="bi bi-image-fill" aria-hidden="true"></i>
+                                </div>
+                                <p class="small text-muted text-center mb-0">Przesuń zdjęcie palcem i ustaw produkt wewnątrz ramki.</p>
+                            </div>
+
+                            <button class="btn btn-primary btn-lg w-100 mt-3" type="button" data-crop-confirm disabled>
+                                <span class="spinner-border spinner-border-sm me-2 d-none" aria-hidden="true" data-crop-spinner></span>
+                                <i class="bi bi-check2 me-1" aria-hidden="true" data-crop-confirm-icon></i>
+                                Użyj tego zdjęcia
+                            </button>
+                        </section>
+
+                        <section class="text-center py-2" data-scanner-panel="success" hidden>
+                            <div class="pantry-success-mark mx-auto mb-3" data-success-icon><i class="bi bi-check-lg"></i></div>
+                            <div class="small text-uppercase fw-bold text-success" data-success-eyebrow>Gotowe</div>
+                            <h3 class="h4 fw-bold mt-1 mb-2" data-success-title></h3>
+                            <p class="text-muted mb-4" data-success-message></p>
+                            <button class="btn btn-primary w-100" type="button" data-scan-again>
+                                <i class="bi bi-upc-scan me-2"></i>Skanuj następny produkt
+                            </button>
+                        </section>
+
+                        <section class="text-center py-2" data-scanner-panel="error" hidden>
+                            <div class="pantry-error-mark mx-auto mb-3"><i class="bi bi-exclamation-lg"></i></div>
+                            <div class="small text-uppercase fw-bold text-danger">Nie udało się zapisać</div>
+                            <h3 class="h5 fw-bold mt-1 mb-2">Spróbuj ponownie</h3>
+                            <p class="text-muted mb-4" data-error-message></p>
+                            <div class="d-grid gap-2">
+                                <button class="btn btn-primary" type="button" data-retry-action>
+                                    <i class="bi bi-arrow-clockwise me-2"></i>Ponów operację
+                                </button>
+                                <button class="btn btn-light" type="button" data-scan-again>Skanuj inny produkt</button>
+                            </div>
+                        </section>
+
+                        <div class="visually-hidden" aria-live="assertive" aria-atomic="true" data-scanner-live></div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-{% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'cooking/js/pantry-scanner.js' %}"></script>
 {% endblock %}

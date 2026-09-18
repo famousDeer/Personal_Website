@@ -1,0 +1,48 @@
+# Podgląd zmian na żywo dla web-dev.
+#
+# Skopiuj do docker-compose.override.yml (Compose dociąga ten plik sam,
+# bez podawania go w -f):
+#
+#   cp docker-compose.override.yml.example docker-compose.override.yml
+#
+# Bez tego pliku kod trafia do kontenera wyłącznie przez COPY w Dockerfile,
+# więc KAŻDA zmiana szablonu, CSS-a czy widoku wymaga przebudowy:
+#
+#   docker compose up web-dev --build
+#
+# Z tym plikiem zmiany w szablonach i CSS widać po odświeżeniu strony,
+# a zmiany w Pythonie po automatycznym restarcie runservera.
+#
+# ---------------------------------------------------------------------------
+# WARUNEK dla repozytorium w iCloud Drive (a tam właśnie leży ten projekt)
+# ---------------------------------------------------------------------------
+# iCloud trzyma część plików jako podmianki bez treści na dysku. Docker czyta
+# je przez mount i dostaje "OSError: [Errno 35] Resource deadlock avoided",
+# co wywala kontener przy starcie.
+#
+# Żeby to zadziałało, katalog projektu musi być w całości pobrany lokalnie:
+#
+#   1. Finder -> katalog Website-Finance -> prawy przycisk
+#      -> "Pobierz teraz" / "Download Now"
+#   2. Ten sam katalog -> prawy przycisk -> "Zachowaj pobrane"
+#      / "Keep Downloaded"   <- to jest ważne, bez tego iCloud z czasem
+#      znowu usunie treść plików i błąd wróci
+#   3. Sprawdzenie, że nie ma już podmianek (powinno nic nie wypisać):
+#
+#        find . -name '.*.icloud' -not -path './.git/*'
+#
+# Jeśli kontener po włączeniu tego pliku wywali się na Errno 35, znaczy że
+# iCloud znów odchudził katalog - usuń docker-compose.override.yml i wróć
+# do przebudowy obrazu.
+
+services:
+  web-dev:
+    volumes:
+      - .:/app
+      # Katalogi generowane w kontenerze wyłączone z mounta: staticfiles
+      # powstaje przy collectstatic, a nazwane wolumeny nie przechodzą
+      # przez iCloud.
+      - staticfiles_dev:/app/staticfiles
+
+volumes:
+  staticfiles_dev:

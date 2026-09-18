@@ -547,11 +547,14 @@
         background-color: var(--surface-subtle) !important;
         border-color: var(--surface-border) !important;
     }
-    .nav-pills .nav-link { color: var(--text-muted); transition: all 0.2s; }
+    /* Nieaktywna zakladka miala 4,0:1 wzgledem tla - ponizej progu dla
+       tekstu. Kolor tekstu podstawowego daje ponad 9:1. Aktywna zakladka
+       przechodzi na kolor marki, spojnie z reszta interfejsu. */
+    .nav-pills .nav-link { color: var(--ink-2); transition: all 0.2s; }
     .nav-pills .nav-link.active {
-        background-color: var(--bs-primary);
-        color: white !important;
-        box-shadow: 0 4px 10px rgba(13, 110, 253, 0.3);
+        background-color: var(--brand-700);
+        color: #fff !important;
+        box-shadow: 0 4px 10px var(--brand-ring);
     }
     [data-theme="dark"] .nav-pills .nav-link.active {
         background-color: var(--tone-primary-bg) !important;

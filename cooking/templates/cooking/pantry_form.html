@@ -16,13 +16,48 @@
 
         <div class="card border-0 shadow-lg action-card animate-fade-in-up">
             <div class="card-body p-4 p-md-5">
-                <form method="post">
+                <form method="post" enctype="multipart/form-data">
                     {% csrf_token %}
 
                     <div class="form-floating mb-3">
                         <input type="text" class="form-control fs-5 fw-bold" id="name" name="name"
                                value="{{ form_values.name|default:'' }}" placeholder="Nazwa" required>
                         <label for="name">Nazwa produktu</label>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-7">
+                            <div class="form-floating">
+                                <input type="text" class="form-control" id="barcode" name="barcode"
+                                       inputmode="numeric" autocomplete="off"
+                                       value="{{ form_values.barcode|default:'' }}" placeholder="Kod kreskowy">
+                                <label for="barcode">Kod kreskowy (opcjonalnie)</label>
+                            </div>
+                        </div>
+                        <div class="col-md-5">
+                            <div class="form-floating">
+                                <input type="number" step="1" min="0.01" class="form-control"
+                                       id="quantity-per-scan" name="quantity_per_scan"
+                                       data-pantry-quantity-input
+                                       value="{{ form_values.quantity_per_scan|default:'1' }}" required>
+                                <label for="quantity-per-scan">Ilość na skan</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small text-uppercase fw-bold text-muted ms-1" for="pantry-product-image">
+                            Zdjęcie produktu (opcjonalnie)
+                        </label>
+                        <label class="pantry-photo-capture" for="pantry-product-image">
+                            <i class="bi bi-camera-fill" aria-hidden="true"></i>
+                            <span>
+                                <strong>Zrób zdjęcie lub wybierz plik</strong>
+                                <small>JPG, PNG albo WEBP, maksymalnie 5 MB</small>
+                            </span>
+                        </label>
+                        <input class="visually-hidden" id="pantry-product-image" type="file" name="image"
+                               accept="image/jpeg,image/png,image/webp" capture="environment">
                     </div>
 
                     <div class="row g-3">
@@ -51,11 +86,21 @@
 
                     <div class="row g-3 mt-1">
                         <div class="col-md-6">
-                            <label class="form-label small text-uppercase fw-bold text-muted ms-1">Aktualny stan</label>
+                            <label class="form-label small text-uppercase fw-bold text-muted ms-1">Liczba opakowań / sztuk</label>
+                            <input type="number" step="1" min="0" class="form-control form-control-lg"
+                                   name="current_package_count" value="{{ form_values.current_package_count|default:'0' }}"
+                                   data-pantry-package-count required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small text-uppercase fw-bold text-muted ms-1">Łączna ilość</label>
                             <input type="number" step="1" min="0" class="form-control form-control-lg"
                                    data-pantry-quantity-input
+                                   data-pantry-total-quantity
                                    name="current_quantity" value="{{ form_values.current_quantity|default:'0' }}" required>
                         </div>
+                    </div>
+
+                    <div class="row g-3 mt-1">
                         <div class="col-md-6">
                             <label class="form-label small text-uppercase fw-bold text-muted ms-1">Próg minimalny</label>
                             <input type="number" step="1" min="0" class="form-control form-control-lg"
@@ -98,6 +143,11 @@
     document.addEventListener('DOMContentLoaded', () => {
         const unitSelect = document.querySelector('[data-pantry-unit-select]');
         const quantityInputs = document.querySelectorAll('[data-pantry-quantity-input]');
+        const packageCountInput = document.querySelector('[data-pantry-package-count]');
+        const quantityPerScanInput = document.querySelector('#quantity-per-scan');
+        const totalQuantityInput = document.querySelector('[data-pantry-total-quantity]');
+        const imageInput = document.querySelector('#pantry-product-image');
+        const imagePicker = document.querySelector('label[for="pantry-product-image"]');
         if (!unitSelect || !quantityInputs.length) {
             return;
         }
@@ -111,6 +161,29 @@
         }
 
         unitSelect.addEventListener('change', syncQuantityStep);
+        function syncTotalQuantity() {
+            if (!packageCountInput || !quantityPerScanInput || !totalQuantityInput) {
+                return;
+            }
+            const count = Number(packageCountInput.value);
+            const perPackage = Number(quantityPerScanInput.value);
+            if (Number.isFinite(count) && Number.isFinite(perPackage)) {
+                totalQuantityInput.value = String(Math.round(count * perPackage * 100) / 100);
+            }
+        }
+
+        packageCountInput?.addEventListener('input', syncTotalQuantity);
+        quantityPerScanInput?.addEventListener('input', syncTotalQuantity);
+        imageInput?.addEventListener('change', () => {
+            const [file] = imageInput.files;
+            if (file && imagePicker) {
+                const title = imagePicker.querySelector('strong');
+                const detail = imagePicker.querySelector('small');
+                title.textContent = 'Zdjęcie gotowe';
+                detail.textContent = file.name;
+                imagePicker.classList.add('has-file');
+            }
+        });
         syncQuantityStep();
     });
 </script>

@@ -15,10 +15,10 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
 from django.views.generic import TemplateView
+from django.views.static import serve
 from django.conf import settings
-from django.conf.urls.static import static
 
 urlpatterns = [
     path('', TemplateView.as_view(template_name='home.html'), name='index'),
@@ -29,5 +29,19 @@ urlpatterns = [
     path('cooking/', include('cooking.urls')),
     path('cars/', include('cars.urls')),
 ]
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+# Publiczne media (zdjęcia przepisów, obrazki z katalogu produktów) muszą być
+# dostępne także przy DEBUG=0 - inaczej wyłączenie DEBUG na Pi gasi wszystkie
+# zdjęcia. Pomocnik django.conf.urls.static.static() zwraca pustą listę, gdy
+# DEBUG jest wyłączone, więc rejestrujemy trasę wprost.
+# Ruch jest niewielki (kilkadziesiąt obrazków w sieci domowej). Jeśli kiedyś
+# postawisz reverse proxy, przechwyć /media/ w nim i ta trasa przestanie być
+# używana. Prywatne zdjęcia produktów NIE idą tą drogą - są serwowane
+# widokami z kontrolą właściciela (cooking.views.PantryProductImageView).
+urlpatterns += [
+    re_path(
+        r'^%s(?P<path>.*)$' % settings.MEDIA_URL.lstrip('/'),
+        serve,
+        {'document_root': settings.MEDIA_ROOT},
+    ),
+]

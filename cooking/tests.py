@@ -1,24 +1,47 @@
+import json
+from io import BytesIO
+import tempfile
 from decimal import Decimal
 from datetime import timedelta
+from unittest.mock import patch
+from uuid import uuid4
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.core.signals import request_finished
+from django.db import close_old_connections
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from PIL import Image as PILImage
 
 from .models import (
     PantryMovement,
     PantryProduct,
+    ProductCatalogEntry,
+    ProductCatalogQuota,
     Recipe,
     RecipeStep,
     RecipeStepIngredient,
     ShoppingList,
     ShoppingListItem,
 )
+from .services.product_catalog import CatalogProductNotFound, CatalogUnavailable
+from .services.pantry_forecast import (
+    _intermittent_days_range,
+    forecast_pantry_product,
+    forecast_pantry_products,
+    infer_typical_shopping_weekday,
+)
 
 
 User = get_user_model()
+
+
+def make_test_image(name='product.png', color=(42, 132, 92)):
+    buffer = BytesIO()
+    PILImage.new('RGB', (24, 24), color=color).save(buffer, format='PNG')
+    return SimpleUploadedFile(name, buffer.getvalue(), content_type='image/png')
 
 
 class RecipeViewsTests(TestCase):
@@ -193,6 +216,7 @@ class PantryTests(TestCase):
             'category': 'Produkty suche',
             'unit': PantryProduct.UNIT_KILOGRAM,
             'current_quantity': '2.50',
+            'current_package_count': '3',
             'minimum_quantity': '0.50',
             'restock_lead_days': '4',
             'notes': 'Basmati',
@@ -201,10 +225,27 @@ class PantryTests(TestCase):
         self.assertEqual(response.status_code, 200)
         product = PantryProduct.objects.get(user=self.user, name='Ryż')
         self.assertEqual(product.current_quantity, Decimal('2.50'))
+        self.assertEqual(product.current_package_count, 3)
         self.assertEqual(product.minimum_quantity, Decimal('0.50'))
         movement = product.movements.get()
         self.assertEqual(movement.movement_type, PantryMovement.PURCHASE)
         self.assertEqual(movement.quantity, Decimal('2.50'))
+        self.assertEqual(movement.package_count, 3)
+
+    def test_add_pantry_product_rejects_inconsistent_package_total(self):
+        response = self.client.post(reverse('cooking:add-pantry-product'), {
+            'name': 'Niespójny jogurt',
+            'barcode': '5900000000998',
+            'unit': PantryProduct.UNIT_MILLILITER,
+            'quantity_per_scan': '200',
+            'current_quantity': '1000',
+            'current_package_count': '3',
+            'minimum_quantity': '0',
+        }, follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(PantryProduct.objects.filter(name='Niespójny jogurt').exists())
+        self.assertContains(response, 'Liczba opakowań nie odpowiada ilości łącznej')
 
     def test_pantry_movement_updates_stock_and_prediction(self):
         product = PantryProduct.objects.create(
@@ -231,12 +272,16 @@ class PantryTests(TestCase):
         self.assertEqual(response.status_code, 200)
         product.refresh_from_db()
         self.assertEqual(product.current_quantity, Decimal('900.00'))
+        self.assertEqual(product.current_package_count, 0)
+        self.assertIsNone(product.movements.order_by('-created_at').first().package_count)
         self.assertEqual(product.movements.filter(movement_type=PantryMovement.CONSUME).count(), 2)
 
+        forecast = forecast_pantry_product(product)
         average_daily = product.average_daily_consumption()
-        self.assertEqual(average_daily, Decimal('13.33333333333333333333333333'))
-        self.assertEqual(product.projected_depletion_date(), timezone.localdate() + timedelta(days=68))
-        self.assertEqual(product.suggested_restock_date(), timezone.localdate() + timedelta(days=63))
+        self.assertEqual(average_daily, forecast.rate)
+        self.assertGreater(average_daily, Decimal('13.33'))
+        self.assertEqual(product.projected_depletion_date(), forecast.minimum_date_to)
+        self.assertEqual(product.suggested_restock_date(), forecast.buy_date)
 
     def test_piece_unit_rejects_fractional_product_quantities(self):
         response = self.client.post(reverse('cooking:add-pantry-product'), {
@@ -291,6 +336,100 @@ class PantryTests(TestCase):
         self.assertEqual(product.current_quantity, Decimal('4.00'))
         self.assertEqual(product.movements.get().quantity, Decimal('2.00'))
 
+    def test_manual_package_movement_updates_count_and_total_quantity(self):
+        product = PantryProduct.objects.create(
+            user=self.user,
+            name='Jogurt',
+            unit=PantryProduct.UNIT_MILLILITER,
+            quantity_per_scan=Decimal('200.00'),
+            current_quantity=Decimal('1000.00'),
+            current_package_count=5,
+        )
+
+        response = self.client.post(reverse('cooking:pantry-movement', args=[product.id]), {
+            'movement_type': PantryMovement.CONSUME,
+            'package_count': '2',
+        }, follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        product.refresh_from_db()
+        self.assertEqual(product.current_package_count, 3)
+        self.assertEqual(product.current_quantity, Decimal('600.00'))
+        movement = product.movements.get()
+        self.assertEqual(movement.package_count, 2)
+        self.assertEqual(movement.quantity, Decimal('400.00'))
+
+    def test_manual_overconsumption_records_only_fulfilled_quantity(self):
+        product = PantryProduct.objects.create(
+            user=self.user,
+            name='Mały jogurt',
+            barcode='5900000000097',
+            unit=PantryProduct.UNIT_MILLILITER,
+            quantity_per_scan=Decimal('200.00'),
+            current_quantity=Decimal('200.00'),
+            current_package_count=1,
+        )
+
+        response = self.client.post(reverse('cooking:pantry-movement', args=[product.id]), {
+            'movement_type': PantryMovement.CONSUME,
+            'package_count': '5',
+        }, follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        product.refresh_from_db()
+        movement = product.movements.get()
+        self.assertEqual(product.current_quantity, Decimal('0.00'))
+        self.assertEqual(movement.quantity, Decimal('200.00'))
+        self.assertEqual(movement.requested_quantity, Decimal('1000.00'))
+        self.assertEqual(movement.package_count, 1)
+        self.assertEqual(movement.requested_package_count, 5)
+        self.assertTrue(movement.stock_was_insufficient)
+
+    def test_manual_movement_operation_id_is_idempotent(self):
+        product = PantryProduct.objects.create(
+            user=self.user,
+            name='Mleko idempotentne',
+            barcode='5900000000905',
+            unit=PantryProduct.UNIT_MILLILITER,
+            quantity_per_scan=Decimal('500.00'),
+            current_quantity=Decimal('1000.00'),
+            current_package_count=2,
+        )
+        operation_id = str(uuid4())
+        payload = {
+            'movement_type': PantryMovement.CONSUME,
+            'package_count': '1',
+            'operation_id': operation_id,
+        }
+
+        self.client.post(reverse('cooking:pantry-movement', args=[product.id]), payload)
+        self.client.post(reverse('cooking:pantry-movement', args=[product.id]), payload)
+
+        product.refresh_from_db()
+        self.assertEqual(product.current_quantity, Decimal('500.00'))
+        self.assertEqual(product.current_package_count, 1)
+        self.assertEqual(product.movements.count(), 1)
+        self.assertEqual(str(product.movements.get().scan_id), operation_id)
+
+    def test_manual_form_uses_base_quantity_for_unpacked_product(self):
+        product = PantryProduct.objects.create(
+            user=self.user,
+            name='Ryż luzem',
+            unit=PantryProduct.UNIT_KILOGRAM,
+            current_quantity=Decimal('2.50'),
+        )
+
+        response = self.client.get(reverse('cooking:pantry'))
+
+        self.assertContains(
+            response,
+            f'<input id="consume-{product.id}" type="number" name="quantity" '
+            'step="0.01" min="0.01" max="99999999.99" '
+            'class="form-control" inputmode="decimal" placeholder="Ilość" required>',
+            html=True,
+        )
+        self.assertContains(response, '<span class="input-group-text">kg</span>', html=True)
+
     def test_pantry_list_only_shows_logged_in_users_products(self):
         PantryProduct.objects.create(
             user=self.user,
@@ -323,6 +462,1141 @@ class PantryTests(TestCase):
             [group['name'] for group in response.context['product_groups']],
             ['Produkty suche', 'Nabiał'],
         )
+
+    def test_empty_product_without_history_shows_immediate_restock_alert(self):
+        PantryProduct.objects.create(
+            user=self.user,
+            name='Pusty produkt',
+            category='Inne',
+            unit=PantryProduct.UNIT_PACKAGE,
+            current_quantity=Decimal('0.00'),
+            minimum_quantity=Decimal('0.00'),
+        )
+
+        response = self.client.get(reverse('cooking:pantry'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Zapas osiągnął ustawione minimum')
+        self.assertContains(response, 'Uzupełnij teraz')
+
+    def test_due_forecast_is_included_in_restock_filter_even_above_minimum(self):
+        product = PantryProduct.objects.create(
+            user=self.user,
+            name='Produkt prognozowany',
+            unit=PantryProduct.UNIT_PIECE,
+            current_quantity=Decimal('3.00'),
+            minimum_quantity=Decimal('2.00'),
+            restock_lead_days=3,
+        )
+        for days_ago in range(30):
+            PantryMovement.objects.create(
+                product=product,
+                movement_type=PantryMovement.CONSUME,
+                quantity=Decimal('1.00'),
+                occurred_on=timezone.localdate() - timedelta(days=days_ago),
+            )
+
+        response = self.client.get(reverse('cooking:pantry'), {'status': 'low'})
+
+        self.assertContains(response, 'Produkt prognozowany')
+        self.assertEqual(response.context['product_count'], 1)
+
+    def test_active_filters_show_no_results_state_instead_of_first_scan_state(self):
+        PantryProduct.objects.create(
+            user=self.user,
+            name='Makaron',
+            unit=PantryProduct.UNIT_PACKAGE,
+            current_quantity=Decimal('1.00'),
+        )
+
+        response = self.client.get(reverse('cooking:pantry'), {'q': 'nie istnieje'})
+
+        self.assertContains(response, 'Brak produktów spełniających filtry')
+        self.assertNotContains(response, 'Spiżarnia czeka na pierwszy skan')
+        self.assertEqual(response.context['product_count'], 0)
+
+
+class PantryForecastTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='forecast-user', password='pass12345')
+        self.today = timezone.localdate()
+
+    def product(self, **overrides):
+        values = {
+            'user': self.user,
+            'name': f'Produkt {PantryProduct.objects.count() + 1}',
+            'unit': PantryProduct.UNIT_PIECE,
+            'current_quantity': Decimal('10.00'),
+            'minimum_quantity': Decimal('2.00'),
+            'quantity_per_scan': Decimal('1.00'),
+            'restock_lead_days': 2,
+        }
+        values.update(overrides)
+        return PantryProduct.objects.create(**values)
+
+    def consume(self, product, quantity, days_ago, package_count=None):
+        return PantryMovement.objects.create(
+            product=product,
+            movement_type=PantryMovement.CONSUME,
+            quantity=Decimal(str(quantity)),
+            package_count=package_count,
+            occurred_on=self.today - timedelta(days=days_ago),
+        )
+
+    def test_no_history_does_not_invent_purchase_date(self):
+        product = self.product()
+
+        forecast = forecast_pantry_product(product, today=self.today)
+
+        self.assertEqual(forecast.status, 'no_history')
+        self.assertEqual(forecast.model, 'none')
+        self.assertEqual(forecast.rate, Decimal('0.00'))
+        self.assertIsNone(forecast.buy_date)
+        self.assertFalse(forecast.is_due)
+
+    def test_no_history_at_minimum_recommends_one_full_package(self):
+        product = self.product(
+            barcode='5900000000011',
+            unit=PantryProduct.UNIT_MILLILITER,
+            current_quantity=Decimal('0.00'),
+            minimum_quantity=Decimal('0.00'),
+            quantity_per_scan=Decimal('200.00'),
+        )
+
+        forecast = forecast_pantry_product(product, today=self.today)
+
+        self.assertTrue(forecast.is_due)
+        self.assertEqual(forecast.buy_date, self.today)
+        self.assertEqual(forecast.suggested_packages, 1)
+        self.assertEqual(forecast.suggested_quantity, Decimal('200.00'))
+
+    def test_short_history_uses_actual_exposure_instead_of_fixed_thirty_days(self):
+        product = self.product(
+            unit=PantryProduct.UNIT_GRAM,
+            current_quantity=Decimal('1000.00'),
+            minimum_quantity=Decimal('200.00'),
+        )
+        self.consume(product, 100, days_ago=6)
+
+        forecast = forecast_pantry_product(product, today=self.today)
+
+        self.assertEqual(forecast.status, 'cold_start')
+        self.assertEqual(forecast.history_days, 7)
+        self.assertGreater(forecast.rate, Decimal('10.00'))
+        self.assertLess(forecast.rate, Decimal('20.00'))
+        self.assertIsNone(forecast.buy_date)
+        self.assertFalse(forecast.is_due)
+
+    def test_regular_consumption_produces_ready_forecast_and_minimum_range(self):
+        product = self.product(current_quantity=Decimal('12.00'), minimum_quantity=Decimal('2.00'))
+        for days_ago in range(30):
+            self.consume(product, 1, days_ago=days_ago, package_count=1)
+
+        forecast = forecast_pantry_product(product, today=self.today)
+
+        self.assertEqual(forecast.status, 'ready')
+        self.assertEqual(forecast.model, 'regular')
+        self.assertEqual(forecast.rate, Decimal('1.00'))
+        self.assertIsNotNone(forecast.minimum_date_from)
+        self.assertIsNotNone(forecast.minimum_date_to)
+        self.assertLessEqual(forecast.minimum_date_from, forecast.minimum_date_to)
+        self.assertLess(forecast.buy_date, forecast.minimum_date_from)
+
+    def test_intermittent_consumption_uses_separate_model(self):
+        product = self.product(current_quantity=Decimal('8.00'), minimum_quantity=Decimal('1.00'))
+        for days_ago in [0, 10, 20, 30, 40, 50]:
+            self.consume(product, 2, days_ago=days_ago)
+
+        forecast = forecast_pantry_product(product, today=self.today)
+
+        self.assertEqual(forecast.status, 'ready')
+        self.assertEqual(forecast.model, 'intermittent')
+        self.assertGreater(forecast.rate, Decimal('0.10'))
+        self.assertLess(forecast.rate, Decimal('0.40'))
+        self.assertGreater(
+            forecast.days_to_minimum_to,
+            forecast.days_to_minimum_from,
+        )
+
+    def test_intermittent_pattern_has_wider_range_than_regular_pattern_at_similar_rate(self):
+        regular = self.product(name='Regularny', current_quantity=Decimal('12.00'), minimum_quantity=Decimal('2.00'))
+        intermittent = self.product(name='Sporadyczny', current_quantity=Decimal('12.00'), minimum_quantity=Decimal('2.00'))
+        for days_ago in range(30):
+            self.consume(regular, 1, days_ago=days_ago)
+        for days_ago in range(0, 30, 5):
+            self.consume(intermittent, 5, days_ago=days_ago)
+
+        regular_forecast = forecast_pantry_product(regular, today=self.today)
+        intermittent_forecast = forecast_pantry_product(intermittent, today=self.today)
+
+        regular_width = regular_forecast.days_to_minimum_to - regular_forecast.days_to_minimum_from
+        intermittent_width = intermittent_forecast.days_to_minimum_to - intermittent_forecast.days_to_minimum_from
+        self.assertEqual(regular_forecast.model, 'regular')
+        self.assertEqual(intermittent_forecast.model, 'intermittent')
+        self.assertGreater(intermittent_width, regular_width)
+
+    def test_rare_single_event_uses_exact_geometric_quantiles(self):
+        days_from, days_to = _intermittent_days_range(
+            usable_stock=1.0,
+            event_probability=0.02,
+            event_size=5.0,
+            event_values=[5.0],
+            confidence_score=80,
+        )
+
+        self.assertEqual(days_from, 6)
+        self.assertEqual(days_to, 114)
+
+    def test_single_outlier_is_robustly_capped(self):
+        product = self.product(current_quantity=Decimal('40.00'), minimum_quantity=Decimal('2.00'))
+        for days_ago in range(30):
+            self.consume(product, 101 if days_ago == 3 else 1, days_ago=days_ago)
+
+        forecast = forecast_pantry_product(product, today=self.today)
+
+        self.assertEqual(forecast.model, 'regular')
+        self.assertLess(forecast.rate, Decimal('1.25'))
+
+    def test_days_after_stockout_are_censored_instead_of_zero_demand(self):
+        product = self.product(current_quantity=Decimal('0.00'), minimum_quantity=Decimal('0.00'))
+        self.consume(product, 1, days_ago=20, package_count=1)
+
+        forecast = forecast_pantry_product(product, today=self.today)
+
+        self.assertEqual(forecast.history_days, 1)
+        self.assertEqual(forecast.rate, Decimal('1.00'))
+
+    def test_purchase_quantity_rounds_up_to_complete_barcode_packages(self):
+        product = self.product(
+            barcode='5900000000028',
+            unit=PantryProduct.UNIT_MILLILITER,
+            current_quantity=Decimal('200.00'),
+            minimum_quantity=Decimal('200.00'),
+            quantity_per_scan=Decimal('200.00'),
+        )
+        for days_ago in range(0, 28, 4):
+            self.consume(product, 200, days_ago=days_ago, package_count=1)
+
+        forecast = forecast_pantry_product(product, today=self.today)
+
+        self.assertTrue(forecast.is_due)
+        self.assertGreaterEqual(forecast.suggested_packages, 1)
+        self.assertEqual(
+            forecast.suggested_quantity,
+            Decimal(forecast.suggested_packages) * product.quantity_per_scan,
+        )
+
+    def test_unpacked_product_without_history_uses_minimum_as_purchase_fallback(self):
+        product = self.product(
+            unit=PantryProduct.UNIT_GRAM,
+            current_quantity=Decimal('200.00'),
+            minimum_quantity=Decimal('200.00'),
+        )
+
+        forecast = forecast_pantry_product(product, today=self.today)
+
+        self.assertEqual(forecast.suggested_packages, 0)
+        self.assertEqual(forecast.suggested_quantity, Decimal('200.00'))
+
+    def test_aligned_shopping_day_marks_today_as_due(self):
+        product = self.product(
+            current_quantity=Decimal('4.00'),
+            minimum_quantity=Decimal('2.00'),
+            restock_lead_days=0,
+        )
+        for days_ago in range(30):
+            self.consume(product, 1, days_ago=days_ago)
+        expected = forecast_pantry_product(product, today=self.today)
+        shopping_weekday = (self.today.weekday() - 1) % 7
+
+        aligned = forecast_pantry_product(
+            product,
+            today=self.today,
+            shopping_weekday=shopping_weekday,
+        )
+
+        self.assertGreater(expected.buy_date, self.today)
+        self.assertEqual(aligned.buy_date, self.today)
+        self.assertTrue(aligned.is_due)
+
+    def test_typical_shopping_weekday_requires_a_clear_pattern(self):
+        saturdays = [self.today - timedelta(days=(self.today.weekday() - 5) % 7 + 7 * offset) for offset in range(4)]
+        self.assertEqual(infer_typical_shopping_weekday(saturdays), 5)
+        self.assertIsNone(infer_typical_shopping_weekday(saturdays[:2]))
+
+    def test_new_product_uses_local_category_prior_normalized_to_its_package(self):
+        learned = self.product(
+            name='Jogurt uczony',
+            category='Nabiał',
+            barcode='5900000000103',
+            unit=PantryProduct.UNIT_MILLILITER,
+            quantity_per_scan=Decimal('200.00'),
+            current_quantity=Decimal('2000.00'),
+            current_package_count=10,
+        )
+        new_product = self.product(
+            name='Jogurt nowy',
+            category='Nabiał',
+            barcode='5900000000110',
+            unit=PantryProduct.UNIT_MILLILITER,
+            quantity_per_scan=Decimal('100.00'),
+            current_quantity=Decimal('500.00'),
+            current_package_count=5,
+        )
+        for days_ago in range(30):
+            self.consume(learned, 200, days_ago=days_ago, package_count=1)
+
+        forecasts = forecast_pantry_products([learned, new_product], today=self.today)
+
+        self.assertEqual(forecasts[learned.pk].rate, Decimal('200.00'))
+        self.assertEqual(forecasts[new_product.pk].status, 'no_history')
+        self.assertEqual(forecasts[new_product.pk].rate, Decimal('100.00'))
+        self.assertIsNone(forecasts[new_product.pk].buy_date)
+
+
+class PantryBarcodeTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='scanner-user', password='pass12345')
+        self.other = User.objects.create_user(username='other-scanner-user', password='pass12345')
+        self.client.login(username='scanner-user', password='pass12345')
+        self.product = PantryProduct.objects.create(
+            user=self.user,
+            name='Batoniki',
+            barcode='5901234123457',
+            quantity_per_scan=Decimal('2.00'),
+            category='Produkty suche',
+            unit=PantryProduct.UNIT_PIECE,
+            current_quantity=Decimal('6.00'),
+            current_package_count=3,
+        )
+
+    def post_json(self, url_name, payload):
+        return self.client.post(
+            reverse(url_name),
+            data=json.dumps(payload),
+            content_type='application/json',
+        )
+
+    def test_pantry_page_contains_scanner_flow(self):
+        response = self.client.get(reverse('cooking:pantry'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Uruchom skaner')
+        self.assertContains(response, 'Wybierz akcję ręcznie')
+        self.assertContains(response, 'Nic nie zostanie zapisane automatycznie')
+        self.assertContains(response, 'Dodaj wiele')
+        self.assertContains(response, 'data-known-count')
+        self.assertContains(response, 'capture="environment"')
+        self.assertContains(response, 'data-product-photo-camera')
+        self.assertContains(response, 'data-product-photo-gallery')
+        self.assertContains(response, 'Wybierz z galerii')
+        self.assertContains(response, 'data-scanner-panel="photo-camera"')
+        self.assertContains(response, 'data-photo-camera-video')
+        self.assertContains(response, 'data-photo-camera-capture')
+        self.assertContains(response, 'data-scanner-panel="crop"')
+        self.assertContains(response, 'data-crop-viewport')
+        self.assertContains(response, 'data-countdown-manual="known"')
+        self.assertContains(response, 'data-countdown-manual="unknown"')
+        self.assertContains(response, reverse('cooking:pantry-barcode-lookup'))
+        page_html = response.content.decode()
+        self.assertIn('data-countdown="known" hidden', page_html)
+        self.assertIn('data-countdown="unknown" hidden', page_html)
+        camera_input = page_html.split('data-product-photo-camera', 1)[0].rsplit('<input', 1)[-1]
+        gallery_input = page_html.split('data-product-photo-gallery', 1)[0].rsplit('<input', 1)[-1]
+        self.assertIn('capture="environment"', camera_input)
+        self.assertNotIn('capture=', gallery_input)
+
+    def test_lookup_returns_known_and_unknown_without_mutating_stock(self):
+        known = self.client.get(reverse('cooking:pantry-barcode-lookup'), {
+            'barcode': self.product.barcode,
+        })
+        unknown = self.client.get(reverse('cooking:pantry-barcode-lookup'), {
+            'barcode': '0000000000001',
+        })
+
+        self.assertEqual(known.status_code, 200)
+        self.assertEqual(known.json()['status'], 'known')
+        self.assertEqual(known.json()['product']['quantity_per_scan'], '2.00')
+        self.assertEqual(known.json()['product']['current_package_count'], 3)
+        self.assertFalse(known.json()['auto_action_enabled'])
+        self.assertIsNone(known.json()['default_action'])
+        self.assertEqual(known.json()['timeout_ms'], 5000)
+        self.assertEqual(unknown.status_code, 200)
+        self.assertEqual(unknown.json()['status'], 'unknown')
+        self.assertFalse(unknown.json()['auto_action_enabled'])
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.current_quantity, Decimal('6.00'))
+        self.assertFalse(self.product.movements.exists())
+
+    @patch('cooking.views.PANTRY_SCANNER_AUTO_ACTION_TIMEOUT_MS', 7000)
+    @patch('cooking.views.PANTRY_SCANNER_AUTO_ACTION_ENABLED', True)
+    def test_lookup_can_expose_enabled_automatic_action(self):
+        response = self.client.get(reverse('cooking:pantry-barcode-lookup'), {
+            'barcode': self.product.barcode,
+        })
+        page = self.client.get(reverse('cooking:pantry'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['auto_action_enabled'])
+        self.assertEqual(response.json()['default_action'], PantryMovement.CONSUME)
+        self.assertEqual(response.json()['timeout_ms'], 7000)
+        self.assertContains(page, 'domyślna akcja po 7 s')
+        self.assertIn(
+            'data-countdown-manual="known" hidden',
+            page.content.decode(),
+        )
+
+    def test_lookup_does_not_expose_another_users_product(self):
+        PantryProduct.objects.create(
+            user=self.other,
+            name='Cudza kawa',
+            barcode='1111111111111',
+        )
+
+        response = self.client.get(reverse('cooking:pantry-barcode-lookup'), {
+            'barcode': '1111111111111',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'unknown')
+
+    def test_same_barcode_can_be_used_by_different_users(self):
+        other_product = PantryProduct.objects.create(
+            user=self.other,
+            name='Inne batoniki',
+            barcode=self.product.barcode,
+        )
+
+        self.assertEqual(other_product.barcode, self.product.barcode)
+
+    def test_known_scan_consumes_quantity_per_scan_and_is_idempotent(self):
+        scan_id = str(uuid4())
+        payload = {
+            'barcode': self.product.barcode,
+            'scan_id': scan_id,
+            'action': PantryMovement.CONSUME,
+            'count': 1,
+        }
+
+        first = self.post_json('cooking:pantry-barcode-action', payload)
+        second = self.post_json('cooking:pantry-barcode-action', payload)
+
+        self.assertEqual(first.status_code, 200)
+        self.assertFalse(first.json()['idempotent_replay'])
+        self.assertEqual(first.json()['quantity'], '2.00')
+        self.assertEqual(second.status_code, 200)
+        self.assertTrue(second.json()['idempotent_replay'])
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.current_quantity, Decimal('4.00'))
+        self.assertEqual(self.product.current_package_count, 2)
+        self.assertEqual(self.product.movements.count(), 1)
+        self.assertEqual(self.product.movements.get().package_count, 1)
+
+    def test_reusing_scan_id_with_different_payload_is_rejected(self):
+        scan_id = str(uuid4())
+        first = self.post_json('cooking:pantry-barcode-action', {
+            'barcode': self.product.barcode,
+            'scan_id': scan_id,
+            'action': PantryMovement.PURCHASE,
+            'count': 1,
+        })
+        conflict = self.post_json('cooking:pantry-barcode-action', {
+            'barcode': self.product.barcode,
+            'scan_id': scan_id,
+            'action': PantryMovement.PURCHASE,
+            'count': 2,
+        })
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(conflict.status_code, 409)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.current_quantity, Decimal('8.00'))
+        self.assertEqual(self.product.current_package_count, 4)
+        self.assertEqual(self.product.movements.count(), 1)
+
+    def test_known_scan_can_add_multiple_packages(self):
+        response = self.post_json('cooking:pantry-barcode-action', {
+            'barcode': self.product.barcode,
+            'scan_id': str(uuid4()),
+            'action': PantryMovement.PURCHASE,
+            'count': 3,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.current_quantity, Decimal('12.00'))
+        self.assertEqual(self.product.current_package_count, 6)
+        self.assertEqual(self.product.movements.get().quantity, Decimal('6.00'))
+        self.assertEqual(self.product.movements.get().package_count, 3)
+
+    def test_consumption_never_makes_stock_negative(self):
+        self.product.current_quantity = Decimal('1.00')
+        self.product.current_package_count = 1
+        self.product.save(update_fields=['current_quantity', 'current_package_count'])
+
+        response = self.post_json('cooking:pantry-barcode-action', {
+            'barcode': self.product.barcode,
+            'scan_id': str(uuid4()),
+            'action': PantryMovement.CONSUME,
+            'count': 1,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['stock_was_insufficient'])
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.current_quantity, Decimal('0.00'))
+        self.assertEqual(self.product.current_package_count, 0)
+        movement = self.product.movements.get()
+        self.assertEqual(movement.quantity, Decimal('1.00'))
+        self.assertEqual(movement.requested_quantity, Decimal('2.00'))
+        self.assertEqual(movement.package_count, 1)
+        self.assertEqual(movement.requested_package_count, 1)
+        self.assertTrue(movement.stock_was_insufficient)
+
+        replay = self.post_json('cooking:pantry-barcode-action', {
+            'barcode': self.product.barcode,
+            'scan_id': str(movement.scan_id),
+            'action': PantryMovement.CONSUME,
+            'count': 1,
+        })
+        self.assertEqual(replay.status_code, 200)
+        self.assertTrue(replay.json()['idempotent_replay'])
+        self.assertEqual(self.product.movements.count(), 1)
+
+    def test_unknown_code_cannot_be_used_as_known_action(self):
+        response = self.post_json('cooking:pantry-barcode-action', {
+            'barcode': '9999999999999',
+            'scan_id': str(uuid4()),
+            'action': PantryMovement.CONSUME,
+            'count': 1,
+        })
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()['ok'], False)
+        self.assertEqual(PantryMovement.objects.count(), 0)
+
+    def test_register_unknown_code_adds_many_in_one_movement(self):
+        response = self.post_json('cooking:pantry-barcode-register', {
+            'barcode': '0123456789012',
+            'scan_id': str(uuid4()),
+            'name': 'Mleko',
+            'quantity_per_scan': '1.50',
+            'unit': PantryProduct.UNIT_LITER,
+            'count': 4,
+            'category': 'Nabiał',
+        })
+
+        self.assertEqual(response.status_code, 201)
+        product = PantryProduct.objects.get(user=self.user, name='Mleko')
+        self.assertEqual(product.barcode, '0123456789012')
+        self.assertEqual(product.quantity_per_scan, Decimal('1.50'))
+        self.assertEqual(product.current_quantity, Decimal('6.00'))
+        self.assertEqual(product.current_package_count, 4)
+        movement = product.movements.get()
+        self.assertEqual(movement.movement_type, PantryMovement.PURCHASE)
+        self.assertEqual(movement.quantity, Decimal('6.00'))
+        self.assertEqual(movement.package_count, 4)
+
+    def test_register_can_attach_barcode_to_existing_product(self):
+        milk = PantryProduct.objects.create(
+            user=self.user,
+            name='Mleko',
+            unit=PantryProduct.UNIT_MILLILITER,
+            current_quantity=Decimal('500.00'),
+        )
+        ProductCatalogEntry.objects.create(
+            lookup_barcode='1234567890123',
+            status=ProductCatalogEntry.STATUS_FOUND,
+            product_type='food',
+            product_name='Mleko',
+            external_category='en:dairies, en:milks',
+            suggested_category='Nabiał',
+        )
+
+        response = self.post_json('cooking:pantry-barcode-register', {
+            'barcode': '1234567890123',
+            'scan_id': str(uuid4()),
+            'name': 'mleko',
+            'quantity_per_scan': '1',
+            'unit': PantryProduct.UNIT_LITER,
+            'count': 2,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()['created'])
+        milk.refresh_from_db()
+        self.assertEqual(milk.barcode, '1234567890123')
+        self.assertEqual(milk.quantity_per_scan, Decimal('1000.00'))
+        self.assertEqual(milk.current_quantity, Decimal('2500.00'))
+        self.assertEqual(milk.current_package_count, 3)
+        self.assertEqual(milk.category, 'Nabiał')
+
+    def test_register_does_not_overwrite_an_existing_category(self):
+        product = PantryProduct.objects.create(
+            user=self.user,
+            name='Napój własny',
+            category='Produkty suche',
+            unit=PantryProduct.UNIT_LITER,
+        )
+
+        response = self.post_json('cooking:pantry-barcode-register', {
+            'barcode': '2345678901234',
+            'scan_id': str(uuid4()),
+            'name': product.name,
+            'quantity_per_scan': '1',
+            'unit': PantryProduct.UNIT_LITER,
+            'count': 1,
+            'category': 'Napoje',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        product.refresh_from_db()
+        self.assertEqual(product.category, 'Produkty suche')
+
+    def test_register_is_idempotent(self):
+        payload = {
+            'barcode': '7654321098765',
+            'scan_id': str(uuid4()),
+            'name': 'Sok',
+            'quantity_per_scan': '1',
+            'unit': PantryProduct.UNIT_LITER,
+            'count': 2,
+        }
+
+        first = self.post_json('cooking:pantry-barcode-register', payload)
+        second = self.post_json('cooking:pantry-barcode-register', payload)
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 200)
+        self.assertTrue(second.json()['idempotent_replay'])
+        product = PantryProduct.objects.get(user=self.user, name='Sok')
+        self.assertEqual(product.current_quantity, Decimal('2.00'))
+        self.assertEqual(product.current_package_count, 2)
+        self.assertEqual(product.category, 'Inne')
+        self.assertEqual(product.movements.count(), 1)
+
+    def test_invalid_scanner_payloads_do_not_change_data(self):
+        invalid_count = self.post_json('cooking:pantry-barcode-action', {
+            'barcode': self.product.barcode,
+            'scan_id': str(uuid4()),
+            'action': PantryMovement.PURCHASE,
+            'count': 0,
+        })
+        invalid_barcode = self.client.get(reverse('cooking:pantry-barcode-lookup'), {
+            'barcode': '<script>',
+        })
+        invalid_json = self.client.post(
+            reverse('cooking:pantry-barcode-register'),
+            data='{',
+            content_type='application/json',
+        )
+        fractional_count = self.post_json('cooking:pantry-barcode-action', {
+            'barcode': self.product.barcode,
+            'scan_id': str(uuid4()),
+            'action': PantryMovement.PURCHASE,
+            'count': 1.5,
+        })
+        oversized = self.post_json('cooking:pantry-barcode-register', {
+            'barcode': '8888888888888',
+            'scan_id': str(uuid4()),
+            'name': 'Za dużo',
+            'quantity_per_scan': '99999999.99',
+            'unit': PantryProduct.UNIT_KILOGRAM,
+            'count': 2,
+        })
+        invalid_category = self.post_json('cooking:pantry-barcode-register', {
+            'barcode': '7777777777777',
+            'scan_id': str(uuid4()),
+            'name': 'Nieprawidłowa kategoria',
+            'quantity_per_scan': '1',
+            'unit': PantryProduct.UNIT_PACKAGE,
+            'count': 1,
+            'category': '<script>',
+        })
+
+        self.assertEqual(invalid_count.status_code, 400)
+        self.assertEqual(invalid_barcode.status_code, 400)
+        self.assertEqual(invalid_json.status_code, 400)
+        self.assertEqual(fractional_count.status_code, 400)
+        self.assertEqual(oversized.status_code, 400)
+        self.assertEqual(invalid_category.status_code, 400)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.current_quantity, Decimal('6.00'))
+        self.assertFalse(self.product.movements.exists())
+
+    def test_scanner_api_requires_login_and_csrf(self):
+        anonymous = Client()
+        login_response = anonymous.get(reverse('cooking:pantry-barcode-lookup'), {
+            'barcode': self.product.barcode,
+        })
+
+        csrf_client = Client(enforce_csrf_checks=True)
+        csrf_client.login(username='scanner-user', password='pass12345')
+        csrf_client.get(reverse('cooking:pantry'))
+        payload = json.dumps({
+            'barcode': self.product.barcode,
+            'scan_id': str(uuid4()),
+            'action': PantryMovement.PURCHASE,
+            'count': 1,
+        })
+        forbidden = csrf_client.post(
+            reverse('cooking:pantry-barcode-action'),
+            data=payload,
+            content_type='application/json',
+        )
+        token = csrf_client.cookies['csrftoken'].value
+        allowed = csrf_client.post(
+            reverse('cooking:pantry-barcode-action'),
+            data=payload,
+            content_type='application/json',
+            HTTP_X_CSRFTOKEN=token,
+        )
+
+        self.assertEqual(login_response.status_code, 302)
+        self.assertEqual(forbidden.status_code, 403)
+        self.assertEqual(allowed.status_code, 200)
+
+    def test_register_can_save_a_product_photo_and_serve_it_only_to_owner(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(PRIVATE_MEDIA_ROOT=media_root):
+            response = self.client.post(reverse('cooking:pantry-barcode-register'), {
+                'barcode': '2222222222222',
+                'scan_id': str(uuid4()),
+                'name': 'Jogurt waniliowy',
+                'quantity_per_scan': '200',
+                'unit': PantryProduct.UNIT_MILLILITER,
+                'count': '5',
+                'category': 'Nabiał',
+                'image': make_test_image(),
+            })
+
+            self.assertEqual(response.status_code, 201)
+            product = PantryProduct.objects.get(user=self.user, barcode='2222222222222')
+            self.assertTrue(product.image.name.startswith('pantry_product_images/'))
+            with self.assertRaises(ValueError):
+                _ = product.image.url
+            self.assertEqual(product.current_package_count, 5)
+            self.assertEqual(product.current_quantity, Decimal('1000.00'))
+            self.assertEqual(response.json()['product']['current_package_count'], 5)
+            self.assertTrue(response.json()['product']['image_url'])
+            self.assertTrue(response.json()['product']['image_upload_url'])
+
+            image_response = self.client.get(reverse('cooking:pantry-product-image', args=[product.id]))
+            self.assertEqual(image_response.status_code, 200)
+            self.assertEqual(image_response['Content-Type'], 'image/png')
+
+            self.client.logout()
+            self.client.login(username='other-scanner-user', password='pass12345')
+            hidden_response = self.client.get(reverse('cooking:pantry-product-image', args=[product.id]))
+            self.assertEqual(hidden_response.status_code, 404)
+
+    def test_known_product_photo_can_be_added_and_invalid_image_is_rejected(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(PRIVATE_MEDIA_ROOT=media_root):
+            invalid = self.client.post(
+                reverse('cooking:pantry-product-image-upload', args=[self.product.id]),
+                {'image': SimpleUploadedFile('fake.jpg', b'not-an-image', content_type='image/jpeg')},
+            )
+            self.assertEqual(invalid.status_code, 400)
+            self.product.refresh_from_db()
+            self.assertFalse(self.product.image)
+
+            uploaded = self.client.post(
+                reverse('cooking:pantry-product-image-upload', args=[self.product.id]),
+                {'image': make_test_image('batoniki.png')},
+            )
+            self.assertEqual(uploaded.status_code, 200)
+            self.product.refresh_from_db()
+            self.assertTrue(self.product.image)
+            self.assertEqual(uploaded.json()['product']['image_url'], reverse(
+                'cooking:pantry-product-image', args=[self.product.id],
+            ))
+
+    def test_photo_upload_endpoint_does_not_allow_editing_another_users_product(self):
+        self.client.logout()
+        self.client.login(username='other-scanner-user', password='pass12345')
+
+        response = self.client.post(
+            reverse('cooking:pantry-product-image-upload', args=[self.product.id]),
+            {'image': make_test_image()},
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.product.refresh_from_db()
+        self.assertFalse(self.product.image)
+
+
+@override_settings(OPEN_FOOD_FACTS_ENABLED=True, OPEN_FOOD_FACTS_RATE_LIMIT=12)
+class ProductCatalogLookupTests(TestCase):
+    barcode = '3017624010701'
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='catalog-user', password='pass12345')
+        self.other = User.objects.create_user(username='catalog-other', password='pass12345')
+        self.client.login(username='catalog-user', password='pass12345')
+
+    def lookup(self, barcode=None):
+        return self.client.get(reverse('cooking:pantry-barcode-lookup'), {
+            'barcode': barcode or self.barcode,
+        })
+
+    def catalog_product(self, **overrides):
+        product = {
+            'code': self.barcode,
+            'lang': 'de',
+            'product_type': 'food',
+            'product_name': 'Nutella',
+            'generic_name': 'Krem z orzechami laskowymi i kakao',
+            'brands': 'Ferrero',
+            'quantity': '400 g',
+            'product_quantity': 400,
+            'product_quantity_unit': 'g',
+            'categories': 'Spreads, Chocolate spreads',
+            'categories_tags': ['en:spreads', 'en:chocolate-spreads'],
+            'ingredients_text': 'Sugar, hazelnuts, cocoa.',
+            'image_front_small_url': (
+                'https://images.openfoodfacts.org/images/products/301/762/401/0701/front_de.200.jpg'
+            ),
+            'last_updated_t': 1785948506,
+        }
+        product.update(overrides)
+        return product
+
+    @patch('cooking.services.product_catalog._cache_catalog_image')
+    @patch('cooking.services.product_catalog._request_product')
+    def test_unknown_product_is_suggested_and_saved_in_local_catalog(self, request_product, cache_image):
+        request_product.return_value = self.catalog_product()
+
+        response = self.lookup()
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'unknown')
+        self.assertEqual(payload['catalog']['status'], 'found')
+        self.assertEqual(payload['catalog']['name'], 'Nutella')
+        self.assertEqual(payload['catalog']['brand'], 'Ferrero')
+        self.assertEqual(payload['catalog']['suggested_quantity_per_scan'], '400.00')
+        self.assertEqual(payload['catalog']['suggested_unit'], PantryProduct.UNIT_GRAM)
+        self.assertTrue(payload['catalog']['can_auto_register'])
+        self.assertEqual(response['Cache-Control'], 'private, no-store')
+
+        entry = ProductCatalogEntry.objects.get(lookup_barcode=self.barcode)
+        self.assertEqual(entry.product_name, 'Nutella')
+        self.assertEqual(entry.description, 'Krem z orzechami laskowymi i kakao')
+        self.assertEqual(entry.suggested_category, 'Produkty suche')
+        self.assertEqual(entry.status, ProductCatalogEntry.STATUS_FOUND)
+        self.assertTrue(entry.valid_until > timezone.now())
+        self.assertEqual(ProductCatalogQuota.objects.get().request_count, 1)
+        self.assertFalse(PantryProduct.objects.exists())
+        self.assertFalse(PantryMovement.objects.exists())
+        cache_image.assert_called_once()
+
+    @patch('cooking.services.product_catalog._cache_catalog_image')
+    @patch('cooking.services.product_catalog._request_product')
+    def test_canonical_category_tags_use_specific_priority(self, request_product, cache_image):
+        scenarios = [
+            (
+                '5901234567890',
+                self.catalog_product(
+                    code='5901234567890',
+                    product_name='Lody waniliowe',
+                    categories='Dairy desserts',
+                    categories_tags=[
+                        *(f'en:unmapped-category-{index:02d}-with-a-long-name' for index in range(8)),
+                        'en:dairies',
+                        'en:ice-creams-and-sorbets',
+                    ],
+                ),
+                'Mrożonki',
+            ),
+            (
+                '4006381333931',
+                self.catalog_product(
+                    code='4006381333931',
+                    product_name='Sok jabłkowy',
+                    categories='Fruit products',
+                    categories_tags=['en:fruits', 'en:beverages', 'en:fruit-juices'],
+                ),
+                'Napoje',
+            ),
+            (
+                '5012345678900',
+                self.catalog_product(
+                    code='5012345678900',
+                    product_name='Tuńczyk',
+                    categories='Fish',
+                    categories_tags=['en:fishes', 'en:canned-foods', 'en:canned-fishes'],
+                ),
+                'Konserwy',
+            ),
+            (
+                '8712345678906',
+                self.catalog_product(
+                    code='8712345678906',
+                    product_type='product',
+                    product_name='Płyn do naczyń',
+                    categories='Household products',
+                    categories_tags=['en:cleaning-products', 'en:dishwashing-products'],
+                ),
+                'Chemia domowa',
+            ),
+            (
+                '7612345678901',
+                self.catalog_product(
+                    code='7612345678901',
+                    product_type='petfood',
+                    product_name='Karma dla kota',
+                    categories='Pet food',
+                    categories_tags=['en:pet-foods'],
+                ),
+                'Inne',
+            ),
+            (
+                '3212345678908',
+                self.catalog_product(
+                    code='3212345678908',
+                    product_name='Produkt regionalny',
+                    categories='Mrożonki',
+                    categories_tags=['pl:mrozonki'],
+                ),
+                'Mrożonki',
+            ),
+            (
+                '2912345678904',
+                self.catalog_product(
+                    code='2912345678904',
+                    product_type='product',
+                    product_name='Produkt wielobranżowy',
+                    categories='Beverages',
+                    categories_tags=['en:beverages'],
+                ),
+                'Inne',
+            ),
+        ]
+        request_product.side_effect = [product for _, product, _ in scenarios]
+
+        for barcode, _, expected_category in scenarios:
+            with self.subTest(barcode=barcode):
+                response = self.lookup(barcode)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(
+                    response.json()['catalog']['suggested_category'],
+                    expected_category,
+                )
+                entry = ProductCatalogEntry.objects.get(lookup_barcode=barcode)
+                self.assertEqual(entry.suggested_category, expected_category)
+                self.assertTrue(entry.external_category)
+                if expected_category == 'Mrożonki':
+                    self.assertTrue(
+                        'en:ice-creams-and-sorbets' in entry.external_category
+                        or 'Mrożonki' in entry.external_category
+                    )
+                cached_response = self.lookup(barcode)
+                self.assertEqual(cached_response.json()['catalog']['cache_state'], 'hit')
+                self.assertEqual(
+                    cached_response.json()['catalog']['suggested_category'],
+                    expected_category,
+                )
+
+        self.assertEqual(request_product.call_count, len(scenarios))
+        self.assertEqual(cache_image.call_count, len(scenarios))
+
+    @patch('cooking.services.product_catalog._cache_catalog_image')
+    @patch('cooking.services.product_catalog._request_product')
+    def test_catalog_cache_is_shared_between_users_without_second_request(self, request_product, cache_image):
+        request_product.return_value = self.catalog_product()
+
+        first = self.lookup()
+        self.client.logout()
+        self.client.login(username='catalog-other', password='pass12345')
+        second = self.lookup()
+
+        self.assertEqual(first.json()['catalog']['cache_state'], 'refreshed')
+        self.assertEqual(second.json()['catalog']['cache_state'], 'hit')
+        self.assertEqual(second.json()['catalog']['name'], 'Nutella')
+        request_product.assert_called_once_with(self.barcode)
+        cache_image.assert_called_once()
+
+    @patch('cooking.services.product_catalog._request_product')
+    def test_not_found_response_is_cached_without_mutating_pantry(self, request_product):
+        request_product.side_effect = CatalogProductNotFound()
+
+        first = self.lookup()
+        second = self.lookup()
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.json()['catalog']['status'], 'not_found')
+        self.assertEqual(second.json()['catalog']['status'], 'not_found')
+        request_product.assert_called_once_with(self.barcode)
+        self.assertEqual(
+            ProductCatalogEntry.objects.get(lookup_barcode=self.barcode).status,
+            ProductCatalogEntry.STATUS_NOT_FOUND,
+        )
+        self.assertFalse(PantryProduct.objects.exists())
+
+    @patch('cooking.services.product_catalog._request_product')
+    def test_catalog_timeout_keeps_manual_flow_available(self, request_product):
+        request_product.side_effect = CatalogUnavailable()
+
+        response = self.lookup()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'unknown')
+        self.assertEqual(response.json()['catalog']['status'], 'unavailable')
+        entry = ProductCatalogEntry.objects.get(lookup_barcode=self.barcode)
+        self.assertIsNotNone(entry.retry_after)
+        self.assertFalse(PantryProduct.objects.exists())
+
+    @patch('cooking.services.product_catalog._request_product')
+    def test_alphanumeric_code_skips_external_catalog(self, request_product):
+        response = self.lookup('LOCAL-CODE-42')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['catalog']['status'], 'unsupported')
+        request_product.assert_not_called()
+        self.assertFalse(ProductCatalogEntry.objects.exists())
+
+    @patch('cooking.services.product_catalog._cache_catalog_image')
+    @patch('cooking.services.product_catalog._request_product')
+    def test_known_local_product_is_enriched_without_mutating_stock(self, request_product, cache_image):
+        request_product.return_value = self.catalog_product()
+        PantryProduct.objects.create(
+            user=self.user,
+            name='Produkt lokalny',
+            barcode=self.barcode,
+            current_quantity=Decimal('3.00'),
+        )
+
+        response = self.lookup()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'known')
+        self.assertEqual(response.json()['catalog']['status'], 'found')
+        self.assertEqual(response.json()['catalog']['name'], 'Nutella')
+        self.assertEqual(response.json()['product']['category'], 'Produkty suche')
+        request_product.assert_called_once_with(self.barcode)
+        product = PantryProduct.objects.get()
+        self.assertEqual(product.current_quantity, Decimal('3.00'))
+        self.assertEqual(product.category, 'Produkty suche')
+        self.assertFalse(PantryMovement.objects.exists())
+
+    @patch('cooking.services.product_catalog._cache_catalog_image')
+    @patch('cooking.services.product_catalog._request_product')
+    def test_known_product_keeps_category_chosen_by_user(self, request_product, cache_image):
+        request_product.return_value = self.catalog_product()
+        product = PantryProduct.objects.create(
+            user=self.user,
+            name='Produkt lokalny',
+            barcode=self.barcode,
+            category='Nabiał',
+            current_quantity=Decimal('3.00'),
+        )
+
+        response = self.lookup()
+
+        self.assertEqual(response.status_code, 200)
+        product.refresh_from_db()
+        self.assertEqual(product.category, 'Nabiał')
+        self.assertEqual(response.json()['product']['category'], 'Nabiał')
+        self.assertEqual(product.current_quantity, Decimal('3.00'))
+        self.assertFalse(PantryMovement.objects.exists())
+
+    def test_cached_category_is_recomputed_with_current_rules(self):
+        ProductCatalogEntry.objects.create(
+            lookup_barcode=self.barcode,
+            canonical_barcode=self.barcode,
+            status=ProductCatalogEntry.STATUS_FOUND,
+            product_type='food',
+            product_name='Sok jabłkowy',
+            external_category='en:fruits, en:beverages, en:fruit-juices',
+            suggested_category='Warzywa i owoce',
+            fetched_at=timezone.now(),
+            valid_until=timezone.now() + timedelta(days=7),
+        )
+
+        response = self.lookup()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['catalog']['cache_state'], 'hit')
+        self.assertEqual(response.json()['catalog']['suggested_category'], 'Napoje')
+        self.assertEqual(
+            ProductCatalogEntry.objects.get(lookup_barcode=self.barcode).suggested_category,
+            'Napoje',
+        )
+
+    @patch('cooking.services.product_catalog._cache_catalog_image')
+    @patch('cooking.services.product_catalog._request_product')
+    def test_untrusted_image_and_ambiguous_quantity_use_safe_fallbacks(self, request_product, cache_image):
+        request_product.return_value = self.catalog_product(
+            product_quantity=6,
+            product_quantity_unit='pieces',
+            image_front_small_url='http://attacker.example/product.jpg',
+        )
+
+        response = self.lookup()
+        catalog = response.json()['catalog']
+
+        self.assertEqual(catalog['status'], 'found')
+        self.assertEqual(catalog['suggested_quantity_per_scan'], '1.00')
+        self.assertEqual(catalog['suggested_unit'], PantryProduct.UNIT_PACKAGE)
+        self.assertEqual(catalog['image_url'], '')
+        cache_image.assert_called_once()
+
+    @override_settings(OPEN_FOOD_FACTS_RATE_LIMIT=1)
+    @patch('cooking.services.product_catalog._cache_catalog_image')
+    @patch('cooking.services.product_catalog._request_product')
+    def test_shared_rate_limit_prevents_excess_upstream_requests(self, request_product, cache_image):
+        request_product.return_value = self.catalog_product()
+
+        first = self.lookup()
+        second = self.lookup('5901234567890')
+
+        self.assertEqual(first.json()['catalog']['status'], 'found')
+        self.assertEqual(second.json()['catalog']['status'], 'unavailable')
+        self.assertEqual(second.json()['catalog']['cache_state'], 'rate_limited')
+        self.assertEqual(request_product.call_count, 1)
+
+    @patch('cooking.services.product_catalog._request_product')
+    def test_stale_found_entry_is_used_when_refresh_fails(self, request_product):
+        ProductCatalogEntry.objects.create(
+            lookup_barcode=self.barcode,
+            canonical_barcode=self.barcode,
+            status=ProductCatalogEntry.STATUS_FOUND,
+            product_name='Produkt z cache',
+            suggested_quantity_per_scan=Decimal('1.00'),
+            suggested_unit=PantryProduct.UNIT_PACKAGE,
+            fetched_at=timezone.now() - timedelta(days=31),
+            valid_until=timezone.now() - timedelta(days=1),
+        )
+        request_product.side_effect = CatalogUnavailable()
+
+        response = self.lookup()
+
+        self.assertEqual(response.json()['catalog']['status'], 'found')
+        self.assertEqual(response.json()['catalog']['cache_state'], 'stale')
+        self.assertEqual(response.json()['catalog']['name'], 'Produkt z cache')
+
+    def test_cached_image_is_served_only_to_authenticated_users(self):
+        with tempfile.TemporaryDirectory() as media_root, self.settings(MEDIA_ROOT=media_root):
+            entry = ProductCatalogEntry.objects.create(
+                lookup_barcode=self.barcode,
+                status=ProductCatalogEntry.STATUS_FOUND,
+                product_name='Produkt ze zdjęciem',
+                image=SimpleUploadedFile('product.jpg', b'local-image', content_type='image/jpeg'),
+            )
+            url = reverse('cooking:pantry-catalog-image', args=[entry.id])
+
+            response = self.client.get(url)
+            anonymous = Client().get(url)
+
+            self.assertEqual(response.status_code, 200)
+            # Exhausting a FileResponse emits request_finished. During a
+            # PostgreSQL TestCase transaction its regular connection closer
+            # would close the class-wide atomic connection between tests.
+            request_finished.disconnect(close_old_connections)
+            try:
+                self.assertEqual(b''.join(response.streaming_content), b'local-image')
+            finally:
+                request_finished.connect(close_old_connections)
+            self.assertEqual(anonymous.status_code, 302)
 
 
 class ShoppingListTests(TestCase):
@@ -418,9 +1692,13 @@ class ShoppingListTests(TestCase):
         shopping_list.refresh_from_db()
         bread = PantryProduct.objects.get(user=self.user, name='Chleb')
         self.assertEqual(product.current_quantity, Decimal('3.00'))
+        self.assertEqual(product.current_package_count, 0)
         self.assertEqual(bread.current_quantity, Decimal('1.00'))
+        self.assertEqual(bread.current_package_count, 1)
         self.assertEqual(shopping_list.status, ShoppingList.COMPLETED)
         self.assertEqual(product.movements.get().movement_type, PantryMovement.PURCHASE)
+        self.assertIsNone(product.movements.get().package_count)
+        self.assertEqual(bread.movements.get().package_count, 1)
         self.assertEqual(bread.movements.get().note, 'Lista zakupów: Po pracy')
 
     def test_edit_shopping_list_title(self):
@@ -494,6 +1772,8 @@ class CookModeTests(TestCase):
         self.assertEqual(movement.movement_type, PantryMovement.CONSUME)
         self.assertEqual(movement.quantity, Decimal('250.00'))
         self.assertEqual(movement.note, 'Gotowanie')
+        self.assertIsNone(movement.package_count)
+        self.assertEqual(product.current_package_count, 0)
 
     def test_cook_view_creates_missing_consumed_product(self):
         response = self.client.post(reverse('cooking:cook'), {
@@ -510,7 +1790,58 @@ class CookModeTests(TestCase):
         self.assertEqual(product.current_quantity, Decimal('0.00'))
         movement = product.movements.get()
         self.assertEqual(movement.movement_type, PantryMovement.CONSUME)
-        self.assertEqual(movement.quantity, Decimal('10.00'))
+        self.assertEqual(movement.quantity, Decimal('0.00'))
+        self.assertEqual(movement.requested_quantity, Decimal('10.00'))
+        self.assertTrue(movement.stock_was_insufficient)
+
+    def test_cook_view_records_only_fulfilled_quantity_when_stock_is_insufficient(self):
+        product = PantryProduct.objects.create(
+            user=self.user,
+            name='Masło',
+            unit=PantryProduct.UNIT_GRAM,
+            current_quantity=Decimal('100.00'),
+        )
+
+        response = self.client.post(reverse('cooking:cook'), {
+            'product_name': ['Masło'],
+            'quantity': ['250'],
+            'unit': [PantryProduct.UNIT_GRAM],
+            'category': ['Nabiał'],
+        }, follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        product.refresh_from_db()
+        movement = product.movements.get()
+        self.assertEqual(product.current_quantity, Decimal('0.00'))
+        self.assertEqual(movement.quantity, Decimal('100.00'))
+        self.assertEqual(movement.requested_quantity, Decimal('250.00'))
+        self.assertTrue(movement.stock_was_insufficient)
+
+    def test_cook_view_records_actual_package_count_change(self):
+        product = PantryProduct.objects.create(
+            user=self.user,
+            name='Jogurt do gotowania',
+            barcode='5900000000912',
+            unit=PantryProduct.UNIT_MILLILITER,
+            quantity_per_scan=Decimal('200.00'),
+            current_quantity=Decimal('1000.00'),
+            current_package_count=5,
+        )
+
+        response = self.client.post(reverse('cooking:cook'), {
+            'product_name': ['Jogurt do gotowania'],
+            'quantity': ['250'],
+            'unit': [PantryProduct.UNIT_MILLILITER],
+            'category': ['Nabiał'],
+        }, follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        product.refresh_from_db()
+        movement = product.movements.get()
+        self.assertEqual(product.current_quantity, Decimal('750.00'))
+        self.assertEqual(product.current_package_count, 4)
+        self.assertEqual(movement.package_count, 1)
+        self.assertEqual(movement.requested_package_count, 2)
 
     def test_cook_view_converts_weight_to_product_unit(self):
         product = PantryProduct.objects.create(

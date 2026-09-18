@@ -3,6 +3,8 @@ from django.contrib import admin
 from .models import (
     PantryMovement,
     PantryProduct,
+    ProductCatalogEntry,
+    ProductCatalogQuota,
     Recipe,
     RecipeStep,
     RecipeStepIngredient,
@@ -47,16 +49,33 @@ class RecipeStepIngredientAdmin(admin.ModelAdmin):
 
 @admin.register(PantryProduct)
 class PantryProductAdmin(admin.ModelAdmin):
-    list_display = ('name', 'user', 'category', 'current_quantity', 'unit', 'minimum_quantity', 'restock_lead_days')
-    search_fields = ('name', 'category', 'user__username')
+    list_display = ('name', 'barcode', 'quantity_per_scan', 'user', 'category', 'current_package_count', 'current_quantity', 'unit', 'minimum_quantity', 'restock_lead_days')
+    search_fields = ('name', 'barcode', 'category', 'user__username')
     list_filter = ('category', 'unit')
 
 
 @admin.register(PantryMovement)
 class PantryMovementAdmin(admin.ModelAdmin):
-    list_display = ('product', 'movement_type', 'quantity', 'occurred_on', 'created_at')
+    list_display = (
+        'product', 'movement_type', 'package_count', 'quantity',
+        'stock_was_insufficient', 'occurred_on', 'scan_id', 'created_at',
+    )
     search_fields = ('product__name', 'note')
-    list_filter = ('movement_type', 'occurred_on')
+    list_filter = ('movement_type', 'stock_was_insufficient', 'occurred_on')
+
+
+@admin.register(ProductCatalogEntry)
+class ProductCatalogEntryAdmin(admin.ModelAdmin):
+    list_display = ('product_name', 'lookup_barcode', 'brand', 'status', 'source', 'fetched_at', 'valid_until')
+    search_fields = ('product_name', 'brand', 'lookup_barcode', 'canonical_barcode')
+    list_filter = ('source', 'status', 'product_type')
+    readonly_fields = ('created_at', 'updated_at', 'fetched_at')
+
+
+@admin.register(ProductCatalogQuota)
+class ProductCatalogQuotaAdmin(admin.ModelAdmin):
+    list_display = ('source', 'request_count', 'window_started_at')
+    readonly_fields = ('source', 'request_count', 'window_started_at')
 
 
 class ShoppingListItemInline(admin.TabularInline):

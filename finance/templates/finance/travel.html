@@ -319,9 +319,19 @@
             scrollWheelZoom: false,
         });
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        // Polityka użycia kafelków OSM (operations.osmfoundation.org/policies/tiles):
+        // - jedyny wspierany endpoint to tile.openstreetmap.org bez subdomen {s};
+        //   stara forma a./b./c. jest wycofana i kończy się kafelkiem 403,
+        // - żądanie musi nieść nagłówek Referer. Strona ma SECURE_REFERRER_POLICY
+        //   ustawione na same-origin, co blokuje referrera przy żądaniach na inny
+        //   host, więc ustawiamy łagodniejszą politykę na samych kafelkach.
+        //   Atrybut referrerpolicy na elemencie ma pierwszeństwo przed polityką
+        //   dokumentu, dzięki czemu reszta serwisu zostaje przy same-origin,
+        // - atrybucja musi być widoczna na mapie i prowadzić do strony licencji.
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
-            attribution: '&copy; OpenStreetMap',
+            referrerPolicy: 'strict-origin-when-cross-origin',
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
         }).addTo(map);
 
         if (!points.length) {

@@ -14,6 +14,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.decorators import method_decorator
+from django.utils.formats import date_format
 from django.views import View
 from django_countries import countries as django_countries
 from rest_framework.permissions import IsAuthenticated
@@ -574,6 +575,36 @@ COST_OF_LIVING_CATEGORIES = [
     'Zakupy spozywcze', 'Paliwo', 'Rachunki', 'Zdrowie'
 ]
 INVESTMENT_CATEGORY = 'Inwestycje'
+
+
+def _ranking_rows(names, amounts, *, slots=1, limit=8):
+    """Buduje wiersze rankingu dla poziomych pasków na panelu.
+
+    Pasek jest skalowany do największej pozycji, nie do sumy: przy jednej
+    dominującej kategorii skalowanie do sumy sprowadzałoby resztę do kresek
+    nie do odróżnienia od zera.
+
+    ``slot`` to numer koloru z palety kategorii (1..slots). Przy ``slots=1``
+    wszystkie paski dostają ten sam kolor, bo kategoria jest już nazwana
+    przy pasku i kolor nie musi nieść tożsamości.
+    """
+    pairs = [(name, value) for name, value in zip(names, amounts) if value]
+    if not pairs:
+        return []
+
+    pairs.sort(key=lambda item: item[1], reverse=True)
+    pairs = pairs[:limit]
+    largest = max(value for _, value in pairs) or 1
+
+    rows = []
+    for index, (name, value) in enumerate(pairs):
+        rows.append({
+            'name': name,
+            'amount': value,
+            'percent': round(value / largest * 100, 1),
+            'slot': (index % slots) + 1,
+        })
+    return rows
 
 
 def get_available_expense_categories(account):
@@ -1391,6 +1422,13 @@ class DashboardView(View):
         amounts = [float(item['total']) for item in expenses_by_category]
         available_expense_categories = get_available_expense_categories(active_account)
 
+        # Wiersze rankingu zastępujące wykres kołowy. Szerokość paska liczymy
+        # względem największej pozycji, a nie względem sumy - dzięki temu
+        # najdłuższy pasek zawsze wypełnia tor i drobne kategorie pozostają
+        # widoczne. ``slot`` wskazuje kolor z palety kategorii; kolejność jest
+        # stała, więc kategoria nie zmienia barwy przy zmianie miesiąca.
+        category_rows = _ranking_rows(categories, amounts, slots=8)
+
         requested_cost_categories = request.GET.getlist('cost_category')
         if requested_cost_categories:
             selected_cost_categories = [
@@ -1409,6 +1447,7 @@ class DashboardView(View):
         )
         income_sources = [item['source'] for item in income_by_source]
         income_amounts = [float(item['total']) for item in income_by_source]
+        income_rows = _ranking_rows(income_sources, income_amounts)
         balance = monthly_record.total_income - monthly_record.total_expense
         recent_incomes = Income.objects.filter(account=active_account, month=monthly_record).order_by('-date')[:5]
         recent_expenses = Daily.objects.filter(
@@ -1458,6 +1497,8 @@ class DashboardView(View):
             'balance': balance,
             'categories': categories,
             'amounts': amounts,
+            'category_rows': category_rows,
+            'income_rows': income_rows,
             'income_sources': income_sources,
             'income_amounts': income_amounts,
             'recent_expenses': recent_expenses,
@@ -1979,7 +2020,11 @@ class ReportsView(View):
                 .aggregate(Sum('cost'))['cost__sum'] or 0
             )
             record.spending_total = record.total_expense - record.investment_total
-            months_labels.append(record.date.strftime('%B %Y'))
+            # strftime bierze nazwę miesiąca z locale procesu, czyli po
+            # angielsku - na wykresie wychodziło "April 2026" obok polskiego
+            # "Kwiecień 2026" w tabeli pod spodem. date_format tłumaczy przez
+            # LANGUAGE_CODE, tak samo jak filtr |date w szablonie.
+            months_labels.append(date_format(record.date, 'F Y'))
             income_data.append(float(record.total_income))
             expense_data.append(float(record.spending_total))
             investment_data.append(float(record.investment_total))

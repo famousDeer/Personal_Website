@@ -1,0 +1,255 @@
+/* =========================================================================
+   Tokeny systemu designu
+   =========================================================================
+   Ładowany PRZED style.css, więc definiuje słownik, z którego korzystają
+   warstwy wyżej. Język wizualny jest wyprowadzony z ekranu spiżarni
+   (.pantry-scan-launch) - to najnowszy i najbardziej dopracowany fragment
+   interfejsu, więc reszta aplikacji dostraja się do niego, a nie odwrotnie.
+
+   Kolory wykresów nie są dobierane "na oko": trójka przychód/wydatek/
+   inwestycja oraz paleta kategorii zostały sprawdzone pod kątem pasma
+   jasności, nasycenia, kontrastu do tła i rozróżnialności przy wadach
+   widzenia barw. Najważniejsza para - zielony przychód kontra czerwony
+   wydatek - ma separację deuteranopową ΔE 8,9 w obu motywach, czyli powyżej
+   progu 8. Zmieniając te wartości warto powtórzić walidację, bo
+   "ładniejszy" zielony bardzo łatwo zjeżdża w parę nierozróżnialną.
+   ========================================================================= */
+
+:root {
+    color-scheme: light;
+
+    /* --- Marka ------------------------------------------------------- */
+    --brand-900: #053b2e;
+    --brand-800: #075b36;
+    --brand-700: #087443;   /* kolor bazowy, zgodny z hero spiżarni */
+    --brand-600: #0f8a52;
+    --brand-500: #15965c;
+    --brand-400: #1eaa6b;
+    --brand-300: #4cc48d;
+    --brand-100: #d7f2e5;
+    --brand-50:  #eefaf4;
+
+    --brand-gradient:
+        radial-gradient(circle at 90% 10%, rgba(255, 255, 255, 0.18), transparent 28%),
+        linear-gradient(125deg, #087443 0%, #15965c 54%, #1eaa6b 100%);
+    --brand-gradient-soft: linear-gradient(135deg, var(--brand-50), #ffffff 70%);
+    --brand-ring: rgba(8, 116, 67, 0.22);
+
+    /* --- Powierzchnie i tekst ---------------------------------------- */
+    --surface-0: #f4f6f8;   /* tło strony */
+    --surface-1: #ffffff;   /* karta */
+    --surface-2: #f8fafc;   /* karta zagnieżdżona, nagłówek tabeli */
+    --surface-3: #eef2f6;   /* pasek, wypełnienie chipa */
+    --surface-inset: rgba(15, 23, 42, 0.04);
+
+    --ink-1: #0f172a;       /* nagłówki i liczby */
+    --ink-2: #334155;       /* tekst podstawowy */
+    --ink-3: #64748b;       /* tekst drugorzędny */
+    --ink-4: #94a3b8;       /* etykiety, osie wykresów */
+    --ink-on-brand: #ffffff;
+
+    --line-1: rgba(15, 23, 42, 0.10);   /* obrys karty */
+    --line-2: rgba(15, 23, 42, 0.06);   /* separator wiersza */
+
+    /* --- Semantyka finansowa ------------------------------------------
+       Te same wartości obsługują wykresy i interfejs, żeby kolor kwoty
+       w tabeli zgadzał się ze słupkiem na wykresie.                     */
+    --income:     #14a374;
+    --income-ink: #0b6e4e;
+    --income-bg:  rgba(20, 163, 116, 0.12);
+
+    --expense:     #d93a2b;
+    --expense-ink: #a52a1f;
+    --expense-bg:  rgba(217, 58, 43, 0.12);
+
+    --invest:     #2a78d6;
+    --invest-ink: #1d5599;
+    --invest-bg:  rgba(42, 120, 214, 0.12);
+
+    --neutral-bg: rgba(100, 116, 139, 0.12);
+
+    /* --- Paleta kategorii (kolejność jest stała, nigdy cykliczna) ----- */
+    --cat-1: #2a78d6;
+    --cat-2: #eb6834;
+    --cat-3: #1baf7a;
+    --cat-4: #eda100;
+    --cat-5: #e87ba4;
+    --cat-6: #008300;
+    --cat-7: #4a3aa7;
+    --cat-8: #e34948;
+
+    /* --- Siatka i osie wykresu --------------------------------------- */
+    --chart-grid: rgba(15, 23, 42, 0.08);
+    --chart-axis: #94a3b8;
+    --chart-surface: #ffffff;
+
+    /* Dymek Chart.js. Ma własne tokeny, bo nie jest ani powierzchnią karty,
+       ani kolorem tekstu - to panel unoszący się NAD wykresem i w obu
+       motywach jest ciemniejszy od tła, na którym leży. Wcześniej brał
+       kolor z --ink-1, co w motywie jasnym wychodziło dobrze przez
+       przypadek (ink-1 jest tam prawie czarny), a w ciemnym dawało białe
+       tło pod białym tekstem. */
+    --chart-tooltip-bg: #0f172a;
+    --chart-tooltip-ink: #f8fafc;
+    --chart-tooltip-line: rgba(255, 255, 255, 0.12);
+
+    /* --- Promienie ---------------------------------------------------- */
+    --r-xs: 8px;
+    --r-sm: 10px;
+    --r-md: 14px;
+    --r-lg: 18px;    /* karty i hero, jak w spiżarni */
+    --r-xl: 24px;
+    --r-pill: 999px;
+
+    /* --- Cienie ------------------------------------------------------- */
+    --sh-1: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
+    --sh-2: 0 4px 12px rgba(15, 23, 42, 0.06), 0 2px 4px rgba(15, 23, 42, 0.04);
+    --sh-3: 0 12px 30px rgba(15, 23, 42, 0.10);
+    --sh-brand: 0 18px 38px var(--brand-ring);
+
+    /* --- Skala odstępów ---------------------------------------------- */
+    --sp-1: 0.25rem;
+    --sp-2: 0.5rem;
+    --sp-3: 0.75rem;
+    --sp-4: 1rem;
+    --sp-5: 1.5rem;
+    --sp-6: 2rem;
+    --sp-7: 3rem;
+
+    /* --- Typografia ---------------------------------------------------
+       Jeden system zamiast trzech konkurujących wzorców nagłówków.      */
+    --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-num: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, monospace;
+
+    --fs-eyebrow: 0.6875rem;   /* wersalikowa etykietka nad tytułem */
+    --fs-caption: 0.75rem;
+    --fs-sm: 0.8125rem;
+    --fs-body: 0.9375rem;
+    --fs-lead: 1.0625rem;
+    --fs-h3: 1.125rem;
+    --fs-h2: 1.375rem;
+    --fs-h1: clamp(1.5rem, 1.1rem + 1.6vw, 2rem);
+    --fs-metric: clamp(1.5rem, 1.2rem + 1.2vw, 1.875rem);
+
+    --lh-tight: 1.2;
+    --lh-normal: 1.5;
+    --tracking-eyebrow: 0.08em;
+
+    /* --- Ruch ---------------------------------------------------------- */
+    --ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --dur-fast: 120ms;
+    --dur: 200ms;
+
+    /* --- Układ ---------------------------------------------------------- */
+    --shell-max: 1180px;
+    --nav-h: 60px;
+    --tabbar-h: 62px;   /* dolna nawigacja mobilna */
+}
+
+/* =========================================================================
+   Motyw ciemny
+   -------------------------------------------------------------------------
+   Kolory wykresów nie są automatycznym odwróceniem jasnych - to osobno
+   dobrane stopnie, sprawdzone na ciemnej powierzchni karty. Odwrócenie
+   jasnych dałoby barwy wypadające poza pasmo jasności dla ciemnego tła.
+   ========================================================================= */
+:root[data-theme="dark"] {
+    color-scheme: dark;
+
+    --surface-0: #0d1117;
+    --surface-1: #161b22;
+    --surface-2: #1a2029;
+    --surface-3: #222a35;
+    --surface-inset: rgba(255, 255, 255, 0.04);
+
+    --ink-1: #f0f4f8;
+    --ink-2: #cbd5e1;
+    --ink-3: #94a3b8;
+    --ink-4: #7d8da3;
+
+    --line-1: rgba(255, 255, 255, 0.10);
+    --line-2: rgba(255, 255, 255, 0.06);
+
+    --brand-gradient:
+        radial-gradient(circle at 90% 10%, rgba(255, 255, 255, 0.10), transparent 30%),
+        linear-gradient(125deg, #065c35 0%, #0f7a4a 54%, #16915c 100%);
+    --brand-gradient-soft: linear-gradient(135deg, rgba(8, 116, 67, 0.22), rgba(22, 27, 34, 0.9) 70%);
+    --brand-ring: rgba(0, 0, 0, 0.45);
+
+    --income:     #1aa878;
+    --income-ink: #4cd3a3;
+    --income-bg:  rgba(26, 168, 120, 0.18);
+
+    --expense:     #cf3f38;
+    --expense-ink: #f08b84;
+    --expense-bg:  rgba(207, 63, 56, 0.18);
+
+    --invest:     #4a8fe6;
+    --invest-ink: #8fbcf5;
+    --invest-bg:  rgba(74, 143, 230, 0.18);
+
+    --neutral-bg: rgba(148, 163, 184, 0.16);
+
+    --cat-1: #3987e5;
+    --cat-2: #d95926;
+    --cat-3: #199e70;
+    --cat-4: #c98500;
+    --cat-5: #d55181;
+    --cat-6: #008300;
+    --cat-7: #9085e9;
+    --cat-8: #e66767;
+
+    --chart-grid: rgba(255, 255, 255, 0.08);
+    --chart-axis: #8b9bb0;
+    --chart-surface: #161b22;
+
+    /* Jaśniejszy od karty (#161b22), żeby dymek odcinał się od wykresu,
+       a nie z nim zlewał. Tekst na tym tle ma kontrast 11,4:1. */
+    --chart-tooltip-bg: #2b3440;
+    --chart-tooltip-ink: #f0f4f8;
+    --chart-tooltip-line: rgba(255, 255, 255, 0.14);
+
+    --sh-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --sh-2: 0 4px 12px rgba(0, 0, 0, 0.45);
+    --sh-3: 0 12px 30px rgba(0, 0, 0, 0.55);
+    --sh-brand: 0 18px 38px rgba(0, 0, 0, 0.5);
+}
+
+/* Gdy użytkownik nie wybrał motywu ręcznie, idziemy za ustawieniem systemu.
+   Selektor jest słabszy niż [data-theme], więc jawny wybór zawsze wygrywa. */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]):not([data-theme="dark"]) {
+        color-scheme: dark;
+
+        --surface-0: #0d1117;
+        --surface-1: #161b22;
+        --surface-2: #1a2029;
+        --surface-3: #222a35;
+        --surface-inset: rgba(255, 255, 255, 0.04);
+
+        --ink-1: #f0f4f8;
+        --ink-2: #cbd5e1;
+        --ink-3: #94a3b8;
+        --ink-4: #7d8da3;
+
+        --line-1: rgba(255, 255, 255, 0.10);
+        --line-2: rgba(255, 255, 255, 0.06);
+
+        --income: #1aa878;
+        --income-ink: #4cd3a3;
+        --income-bg: rgba(26, 168, 120, 0.18);
+        --expense: #cf3f38;
+        --expense-ink: #f08b84;
+        --expense-bg: rgba(207, 63, 56, 0.18);
+        --invest: #4a8fe6;
+        --invest-ink: #8fbcf5;
+        --invest-bg: rgba(74, 143, 230, 0.18);
+
+        --chart-grid: rgba(255, 255, 255, 0.08);
+        --chart-axis: #8b9bb0;
+        --chart-surface: #161b22;
+        --chart-tooltip-bg: #2b3440;
+        --chart-tooltip-ink: #f0f4f8;
+        --chart-tooltip-line: rgba(255, 255, 255, 0.14);
+    }
+}

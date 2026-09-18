@@ -1,5 +1,7 @@
 # Website-Finance
-Personal web app for tracking incomes and expenses. Built with Django, PostgreSQL and Bootstrap.
+Self-hosted household dashboard for a home LAN, built with Django, PostgreSQL and
+Bootstrap and running in Docker on a Raspberry Pi 4. Five modules: household budget,
+brokerage portfolio, kitchen (recipes, pantry, shopping lists), car upkeep and habits.
 
 Demo image:
 <p align="center">
@@ -7,18 +9,53 @@ Demo image:
 </p>
 
 ## Features
-- Track expenses and incomes by date, category/source and store
-- Monthly totals and basic reports
-- User accounts (login/register/logout)
-- REST endpoints for records (authenticated)
-- Static assets served via WhiteNoise (in Docker)
+
+**Finance** (`finance`)
+- Expenses and incomes by date, category/source and store, with monthly totals
+- Personal and shared household accounts; a transfer to a shared account
+  automatically creates the matching income on the other side
+- Bank statement import from **Millennium** and **ING** CSV: duplicate detection by
+  a stable transaction identity, category suggestions from account history and
+  keyword rules, editable preview before anything is written
+- Brokerage portfolio: XTB XLSX import (transactions, cash operations, position
+  snapshots), FIFO cost basis, 19% capital gains tax with IKE accounts exempt,
+  daily price history and portfolio value charts
+- Market data from Yahoo Finance (bulk quotes), with Stooq and Alpha Vantage
+  fallbacks and OpenFigi ISIN lookup; NBP for FX rates
+- Travel log split into holiday and business trips, geocoded and shown on a map
+- Reports and a dashboard with end-of-month spending projection
+
+**Kitchen** (`cooking`)
+- Recipes visible to everyone, editable only by their author, with structured steps
+  and per-step ingredients
+- Pantry with barcode scanning, product metadata cached from Open Food Facts, and
+  stock tracked both as exact quantity and as a number of packages
+- Consumption forecasting per product: regular and intermittent demand models,
+  outlier capping, weekday factors, confidence scoring and a suggested buy date
+  aligned to your usual shopping day
+- Shopping lists generated from the forecast or entered by hand; completing a list
+  feeds the purchases back into the pantry
+
+**Car** (`cars`)
+- Fuel log with computed consumption, service history with itemised parts
+- Tyre sets tracked as mount/removal periods with driven distance
+- Service history export to PDF
+
+**Accounts** (`accounts`) — login, registration that can be closed after setup,
+shared household account management.
+
+**Habits** (`habits`) — models and CRUD only; not in active use yet.
 
 ## Tech stack
-- Python 3.11, Django 5
+- Python 3.11, Django 5.2
 - PostgreSQL 15
-- Bootstrap 5
+- Bootstrap 5, Chart.js
 - Docker + Docker Compose
-- Gunicorn (prod-like run in Docker)
+- Gunicorn (prod-like run in Docker), WhiteNoise for static files
+- pandas / numpy (statement import), reportlab (PDF), pillow (images),
+  django-countries (travel), djangorestframework (two authenticated endpoints)
+- No Celery or Redis: scheduled work runs through `manage.py` commands and cron.
+  All external API clients are written on the standard library (`urllib`).
 
 ## Quick start (Docker, recommended)
 Prerequisites:
@@ -27,15 +64,18 @@ Prerequisites:
 1) Create .env in the project root:
 ```dotenv
 SECRET_KEY=change-me
-DEBUG=1
+# Use 0 on a home server. With DEBUG=1 every error page shows a full traceback
+# including your settings, to anyone who can reach the host.
+DEBUG=0
 ALLOW_PUBLIC_SIGNUP=1
 ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,192.168.1.115,raspberrypi.local
 CSRF_TRUSTED_ORIGINS=http://localhost:8000,http://127.0.0.1:8000,http://192.168.1.115:8000,http://raspberrypi.local:8000
 
-# Database connection used by Django (settings.py should read these)
+# Database connection. Django reads these, and docker-compose.yml uses the same
+# values to initialise the Postgres container, so the two cannot drift apart.
 DATABASE_NAME=finance_db
 DATABASE_USER=finance
-DATABASE_PASSWORD=1234
+DATABASE_PASSWORD=choose-a-real-password
 DATABASE_HOST=db
 DATABASE_PORT=5432
 
@@ -43,6 +83,10 @@ DATABASE_PORT=5432
 ALPHA_VANTAGE_API_KEY=
 OPENFIGI_API_KEY=
 STOOQ_API_KEY=
+
+# Pantry catalog (optional; defaults work without these entries)
+OPEN_FOOD_FACTS_ENABLED=1
+OPEN_FOOD_FACTS_USER_AGENT=WebsiteFinance/1.0 (https://github.com/famousDeer/Personal_Website)
 ```
 
 2) Start the stack:
@@ -50,7 +94,18 @@ STOOQ_API_KEY=
 docker compose up -d --build
 ```
 - App: http://localhost:8000
-- DB (Postgres): exposed on localhost:5433 (mapped to container 5432)
+- DB (Postgres): bound to `127.0.0.1:5433` on the host only, so the database is not
+  reachable from the rest of the home network. Connect with
+  `docker compose exec db psql -U finance finance_db`, or over an SSH tunnel.
+
+> **Changing DATABASE_PASSWORD later:** Postgres only applies `POSTGRES_PASSWORD`
+> when it initialises an empty data directory. On an existing volume you must change
+> it inside the database as well, otherwise Django will fail to authenticate:
+> ```bash
+> docker compose exec db psql -U finance -d finance_db \
+>   -c "ALTER USER finance WITH PASSWORD 'the-new-password';"
+> ```
+> Then update `.env` to match and run `docker compose up -d`.
 
 3) Create an admin user:
 ```bash
@@ -62,37 +117,136 @@ The web service runs:
 - Collect static: python manage.py collectstatic --noinput
 - Server: gunicorn --bind 0.0.0.0:8000 config.wsgi:application
 
-## Local development (live reload)
-For Django auto-reload during development you can temporarily run the dev server instead of Gunicorn:
+## Local development
+The `web-dev` service runs the Django dev server instead of Gunicorn:
 ```bash
-# Option A: one-off run (stops when you close it)
-docker compose run --service-ports --rm web python manage.py runserver 0.0.0.0:8000
+docker compose up web-dev --build
 ```
-Or add a docker-compose.override.yml in the project root to always use runserver during dev:
-```yaml
-services:
-  web:
-    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
-    ports:
-      - "8000:8000"
-    environment:
-      - DEBUG=1
-    volumes:
-      - .:/app
-```
-Then run:
+It deliberately does **not** run `makemigrations`. Generating migrations inside a
+container without the source mounted writes them into a throwaway image layer, where
+they are lost on the next rebuild while the database has already moved on. Generate
+them explicitly instead, so they land in version control:
 ```bash
-docker compose up --build
+docker compose run --rm web-dev python manage.py makemigrations
 ```
 
-## Project structure (simplified)
+### A code change is not visible until the image is rebuilt
+
+`web-dev` does **not** bind-mount the source. The code reaches the container only
+through `COPY . .` in the Dockerfile, so the running container is a frozen snapshot
+taken at build time. Editing a template, a stylesheet or a view changes nothing in the
+browser until you rebuild:
+
+```bash
+docker compose up web-dev --build
+```
+
+This catches people out, because a normal Django dev setup reloads templates on save.
+Here it cannot: there is nothing connecting the file you edited to the container.
+
+Two build stamps make the state visible instead of guessable. Paste this into the
+browser console on any page:
+
+```js
+[document.querySelector('meta[name=app-build]').content,
+ getComputedStyle(document.documentElement).getPropertyValue('--ui-build')]
+```
+
+| Value | Lives in | Stale means |
+|---|---|---|
+| `app-build` | `templates/base.html` | the **container** is running old code → `docker compose up web-dev --build` |
+| `--ui-build` | `static/css/ui.css` | the **browser** is serving a cached stylesheet → hard reload (`Cmd+Shift+R`) |
+
+Both should read `2026-09-19-b`. If they disagree with each other, the container is
+fresh but the browser is not.
+
+### Live reload
+
+Copy the ready-made override and the rebuild step goes away:
+
+```bash
+cp docker-compose.override.yml.example docker-compose.override.yml
+```
+
+The file documents the one prerequisite on macOS: the project directory has to be
+fully downloaded from iCloud (**Keep Downloaded** in Finder), otherwise the mount hits
+the placeholder problem described below.
+
+> **Do not bind-mount the source if the repository lives in iCloud Drive**, OneDrive, Dropbox or any
+> other macOS File Provider folder. Files that are not materialised locally are only
+> placeholders, and reading one through a Docker bind mount fails with
+> `OSError: [Errno 35] Resource deadlock avoided` — the container dies on startup as
+> soon as Django imports a file that happens to be evicted.
+>
+> Keeping a git repository in a sync folder is worth avoiding for its own sake: the
+> provider can evict objects under `.git/`, and two machines syncing the same working
+> tree can corrupt it. Move the checkout to a plain local path such as `~/dev/` and
+> the bind mount, `git` and Docker all behave normally.
+
+## Tests
+```bash
+# Postgres, same as CI
+docker compose run --rm web-test
+
+# or locally against SQLite, without Docker
+python manage.py test --settings=config.test_settings
+```
+`config/test_settings.py` switches to SQLite and disables outbound calls to Nominatim
+and Open Food Facts, so the suite never touches the network. CI additionally runs
+`python manage.py makemigrations --check --dry-run` to catch uncommitted migrations.
+
+## Scheduled tasks (cron)
+Market data refresh and price history synchronisation are also available as
+management commands, so they do not have to run inside a web request:
+```bash
+# Current prices of open positions
+python manage.py refresh_market_data
+python manage.py refresh_market_data --user dawid       # selected users only
+python manage.py refresh_market_data --dividends        # also sync dividends (uses Alpha Vantage quota)
+
+# Incremental daily OHLC history
+python manage.py sync_price_history
+python manage.py sync_price_history --force             # ignore stored coverage and error backoff
+```
+Without `--user` they process every user who owns brokerage instruments. A failure for
+one user is reported on stderr and does not stop the run for the others.
+
+Example crontab on the Pi:
+```cron
+# Prices hourly during GPW trading hours
+0 9-18 * * 1-5 cd /path/to/Website-Finance && docker compose exec -T web python manage.py refresh_market_data
+# History once a day after the close
+30 22 * * 1-5 cd /path/to/Website-Finance && docker compose exec -T web python manage.py sync_price_history
+# Dividends once a week (Alpha Vantage has a daily quota)
+0 7 * * 6 cd /path/to/Website-Finance && docker compose exec -T web python manage.py refresh_market_data --dividends
+```
+
+## Project structure
 ```
 Website-Finance/
-├─ config/                # Django project (settings, urls, wsgi)
-├─ finance/               # App with views, models, templates, static
-│  ├─ templates/finance/  # Django templates
-│  └─ static/             # Static assets (e.g., css/style.css)
-├─ accounts/              # Auth related app
+├─ config/                    # Django project (settings, urls, wsgi, test_settings)
+├─ finance/                   # Budget, brokerage portfolio, travel
+│  ├─ bank_import.py          # Millennium / ING CSV import
+│  ├─ brokerage.py            # Portfolio summary, FIFO, capital gains tax
+│  ├─ brokerage_import.py     # XTB XLSX reader (no openpyxl)
+│  ├─ market_data.py          # Yahoo / Stooq / Alpha Vantage / OpenFigi / NBP
+│  ├─ portfolio_history.py    # Day-by-day portfolio valuation
+│  ├─ investment_funding.py   # Links budget expenses to broker deposits
+│  ├─ management/commands/    # refresh_market_data, sync_price_history
+│  ├─ templates/finance/
+│  └─ static/                 # css/style.css, js/
+├─ cooking/                   # Recipes, pantry, shopping lists
+│  ├─ services/
+│  │  ├─ pantry_forecast.py   # Consumption forecasting
+│  │  └─ product_catalog.py   # Open Food Facts cache
+│  └─ storage.py              # Private media storage for user photos
+├─ cars/                      # Fuel, services, tyres
+│  └─ pdf_utils.py            # Service history PDF
+├─ accounts/                  # Auth, shared household accounts
+├─ habits/                    # Not in active use yet
+├─ templates/                 # base.html, home.html, error pages
+├─ media/                     # Public uploads (recipe and catalog images)
+├─ private_media/             # Owner-only product photos, outside the public tree
 ├─ manage.py
 ├─ Dockerfile
 ├─ docker-compose.yml
@@ -101,8 +255,10 @@ Website-Finance/
 
 ## Environment variables
 Required at minimum:
-- SECRET_KEY: Django secret key (use a strong, unique value in production)
-- DEBUG: 1 for development, 0 for production
+- SECRET_KEY: Django secret key (use a strong, unique value in production). Required
+  when DEBUG is off; startup fails without it rather than falling back to a known key
+- DEBUG: 1 for development, 0 for production. `/media/` is served regardless of this
+  flag, so turning DEBUG off does not break recipe or product images
 - ALLOW_PUBLIC_SIGNUP: 1 to allow new users to register; set 0 on a home server after creating accounts
 - ALLOWED_HOSTS: comma-separated list (include your domain/IP in prod)
 - CSRF_TRUSTED_ORIGINS: comma-separated origins with scheme and port, e.g. `http://192.168.1.115:8000,http://raspberrypi.local:8000`
@@ -111,6 +267,21 @@ Required at minimum:
 Database variables expected by settings (example):
 - DATABASE_NAME, DATABASE_USER, DATABASE_PASSWORD, DATABASE_HOST, DATABASE_PORT
 - The legacy aliases DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT are still accepted.
+- DATABASE_URL takes precedence over all of the above when set.
+- `docker-compose.yml` reads DATABASE_NAME / DATABASE_USER / DATABASE_PASSWORD from the
+  same `.env` to initialise the Postgres container, so no credentials live in the repo.
+
+Cache:
+- Gunicorn runs several workers, and Django's default in-memory cache is per process.
+  The portfolio value history is therefore cached on the filesystem, which all workers
+  in the container share.
+- CACHE_BACKEND: optional, default `django.core.cache.backends.filebased.FileBasedCache`.
+  Point it at Redis or Memcached if you ever add one.
+- CACHE_LOCATION: optional, default `/tmp/website-finance-cache`
+- CACHE_TIMEOUT: optional, default `300` seconds
+- CACHE_MAX_ENTRIES: optional, default `1000`
+- Cache keys embed a version derived from your transaction, snapshot and price data, so
+  a stale chart can never be served after an import; restarting the container is safe.
 
 Brokerage market data:
 - Current quotes for open XTB positions are fetched in provider-safe Yahoo Finance batches; no key is required.
@@ -118,17 +289,42 @@ Brokerage market data:
 - OPENFIGI_API_KEY: ISIN to ticker/instrument mapping
 - STOOQ_API_KEY: optional historical Stooq CSV fallback; imported XTB instruments use Yahoo Finance history by default
 
-Note: Ensure your config/settings.py reads these variables to configure DATABASES.
+Pantry product catalog:
+- OPEN_FOOD_FACTS_ENABLED: optional, defaults to `1`; set `0` to disable external lookups while keeping the local cache
+- OPEN_FOOD_FACTS_USER_AGENT: identifies this installation to Open Food Facts; use `AppName/Version (contact URL or email)`
+- OPEN_FOOD_FACTS_TIMEOUT: upstream request timeout in seconds, default `2.5`
+- OPEN_FOOD_FACTS_RATE_LIMIT: shared server-side request budget per minute, default `12` (below the public API limit)
+- Product metadata is cached in PostgreSQL and product thumbnails in `media/pantry_catalog_images`. Open Food Facts data is ODbL and images are CC BY-SA; attribution is shown in the pantry UI.
+- Photos taken by a user for products missing a catalog image stay outside the public media tree in `private_media/pantry_product_images` and are served only to the product owner.
+- Docker mounts `private_media/` as a persistent application volume, so user photos survive container rebuilds.
+- Pantry stock keeps both the exact total quantity (for example `1000 ml`) and the number of scanned packages/items (for example `5 szt.`).
 
 ## Troubleshooting
 - Page not loading: run docker compose logs -f web and docker compose logs -f db
 - Static files not styled: confirm collectstatic ran and DEBUG/WhiteNoise configuration is correct
-- Cannot connect to DB: ensure DB_HOST=db and DB_PORT=5432 in .env when using Docker
+- Cannot connect to DB: ensure DATABASE_HOST=db and DATABASE_PORT=5432 in .env when using Docker.
+  If you changed DATABASE_PASSWORD on an existing volume, also run the `ALTER USER`
+  command shown in the Quick start section — Postgres keeps the password it was
+  initialised with.
+- `docker compose` refuses to start with a message about DATABASE_PASSWORD: the variable
+  is missing from `.env`. The database credentials are intentionally not hardcoded.
 - CSRF verification failed: open the app consistently with one address, e.g. always `http://192.168.1.115:8000` or always `http://raspberrypi.local:8000`, and include that exact origin in `CSRF_TRUSTED_ORIGINS`
+- Pantry live camera unavailable on a phone: browsers require HTTPS for camera streams (localhost is the development exception). Put the app behind an HTTPS reverse proxy and add its `https://` origin to `CSRF_TRUSTED_ORIGINS`; the scanner still offers photo and manual-code fallbacks over HTTP.
+- Pantry product was not recognized: Open Food Facts is community-maintained and does not contain every code. The scanner keeps the manual form available when a product is missing or the catalog is temporarily unavailable.
 
 ## Deployment notes (Raspberry Pi)
 - This project runs on ARM via Docker (Postgres 15-alpine and Python slim images support ARM)
 - You can automate hourly updates using a cron job that runs git pull and docker compose up -d --build
+- Set `DEBUG=0` in `.env`. Media files are served independently of that flag, so images
+  keep working; leaving DEBUG on exposes tracebacks with your settings to anyone on the LAN
+- The database port is bound to `127.0.0.1` only. Keep it that way, or put the port behind
+  a firewall rule if you genuinely need access from another machine
+- The app speaks plain HTTP, so session cookies travel unencrypted on the LAN. Behind an
+  HTTPS reverse proxy, set `SESSION_COOKIE_SECURE=1`, `CSRF_COOKIE_SECURE=1` and add the
+  `https://` origin to `CSRF_TRUSTED_ORIGINS`. This is also what the pantry camera needs
+- Prefer the `manage.py` commands above over the in-app refresh buttons for routine
+  updates. Market data calls are synchronous, and with two Gunicorn workers a slow
+  provider can occupy half the server's capacity
 
 ## License
 MIT (or your preferred license)

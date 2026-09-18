@@ -1,10 +1,11 @@
 # cooking/models.py
-from datetime import timedelta
-from decimal import Decimal, ROUND_CEILING
+from decimal import Decimal
 
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+
+from .storage import private_media_storage
 
 User = get_user_model()
 
@@ -94,12 +95,20 @@ class PantryProduct(models.Model):
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='pantry_products')
     name = models.CharField(max_length=160)
+    barcode = models.CharField(max_length=64, blank=True)
+    quantity_per_scan = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('1.00'))
     category = models.CharField(max_length=120, blank=True)
     unit = models.CharField(max_length=10, choices=UNIT_CHOICES, default=UNIT_PIECE)
     current_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
+    current_package_count = models.PositiveIntegerField(default=0)
     minimum_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
     restock_lead_days = models.PositiveSmallIntegerField(default=3)
     notes = models.TextField(blank=True)
+    image = models.ImageField(
+        upload_to='pantry_product_images',
+        storage=private_media_storage,
+        blank=True,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -108,6 +117,15 @@ class PantryProduct(models.Model):
         ordering = ['name']
         constraints = [
             models.UniqueConstraint(fields=['user', 'name'], name='unique_user_pantry_product_name'),
+            models.UniqueConstraint(
+                fields=['user', 'barcode'],
+                condition=~models.Q(barcode=''),
+                name='unique_user_pantry_product_barcode',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(quantity_per_scan__gt=0),
+                name='positive_pantry_product_quantity_per_scan',
+            ),
         ]
 
     def __str__(self):
@@ -125,26 +143,109 @@ class PantryProduct(models.Model):
             return 'low'
         return 'ok'
 
-    def average_daily_consumption(self, days=30):
-        since = timezone.localdate() - timedelta(days=days)
-        total = self.movements.filter(
-            movement_type=PantryMovement.CONSUME,
-            occurred_on__gte=since,
-        ).aggregate(total=models.Sum('quantity'))['total'] or Decimal('0')
-        return total / Decimal(days)
+    @property
+    def tracks_packages(self):
+        return bool(
+            self.barcode
+            or self.current_package_count > 0
+            or self.unit in [self.UNIT_PIECE, self.UNIT_PACKAGE]
+        )
 
-    def projected_depletion_date(self, days=30):
-        average = self.average_daily_consumption(days=days)
-        if average <= 0:
-            return None
-        days_left = self.current_quantity / average
-        return timezone.localdate() + timedelta(days=int(days_left.to_integral_value(rounding=ROUND_CEILING)))
+    @property
+    def package_count_is_known(self):
+        return self.tracks_packages
 
-    def suggested_restock_date(self, days=30):
-        depletion_date = self.projected_depletion_date(days=days)
-        if depletion_date is None:
-            return None
-        return depletion_date - timedelta(days=self.restock_lead_days)
+    def _pantry_forecast(self, days=90):
+        from .services.pantry_forecast import forecast_pantry_product
+
+        return forecast_pantry_product(self, max_history_days=max(int(days), 14))
+
+    def average_daily_consumption(self, days=90):
+        return self._pantry_forecast(days=days).rate
+
+    def projected_depletion_date(self, days=90):
+        return self._pantry_forecast(days=days).minimum_date_to
+
+    def suggested_restock_date(self, days=90):
+        return self._pantry_forecast(days=days).buy_date
+
+
+class ProductCatalogEntry(models.Model):
+    SOURCE_OPEN_FOOD_FACTS = 'open_food_facts'
+    SOURCE_CHOICES = [
+        (SOURCE_OPEN_FOOD_FACTS, 'Open Food Facts'),
+    ]
+
+    STATUS_PENDING = 'pending'
+    STATUS_FOUND = 'found'
+    STATUS_NOT_FOUND = 'not_found'
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Oczekuje na pobranie'),
+        (STATUS_FOUND, 'Znaleziony'),
+        (STATUS_NOT_FOUND, 'Nie znaleziony'),
+    ]
+
+    source = models.CharField(
+        max_length=40,
+        choices=SOURCE_CHOICES,
+        default=SOURCE_OPEN_FOOD_FACTS,
+    )
+    lookup_barcode = models.CharField(max_length=64)
+    canonical_barcode = models.CharField(max_length=64, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    product_type = models.CharField(max_length=20, blank=True)
+    product_name = models.CharField(max_length=160, blank=True)
+    brand = models.CharField(max_length=160, blank=True)
+    description = models.TextField(blank=True)
+    ingredients = models.TextField(blank=True)
+    external_category = models.CharField(max_length=255, blank=True)
+    suggested_category = models.CharField(max_length=120, blank=True)
+    quantity_text = models.CharField(max_length=80, blank=True)
+    suggested_quantity_per_scan = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        blank=True,
+        null=True,
+    )
+    suggested_unit = models.CharField(max_length=10, choices=PANTRY_UNIT_CHOICES, blank=True)
+    image = models.ImageField(upload_to='pantry_catalog_images', blank=True)
+    image_source_url = models.URLField(max_length=500, blank=True)
+    attribution_url = models.URLField(max_length=500, blank=True)
+    source_updated_at = models.DateTimeField(blank=True, null=True)
+    fetched_at = models.DateTimeField(blank=True, null=True)
+    valid_until = models.DateTimeField(blank=True, null=True, db_index=True)
+    refresh_started_at = models.DateTimeField(blank=True, null=True)
+    retry_after = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'product_catalog_entries'
+        ordering = ['product_name', 'lookup_barcode']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['source', 'lookup_barcode'],
+                name='unique_product_catalog_source_barcode',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['source', 'valid_until'], name='product_catalog_valid_idx'),
+        ]
+
+    def __str__(self):
+        return self.product_name or self.lookup_barcode
+
+
+class ProductCatalogQuota(models.Model):
+    source = models.CharField(max_length=40, unique=True)
+    window_started_at = models.DateTimeField(default=timezone.now)
+    request_count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = 'product_catalog_quotas'
+
+    def __str__(self):
+        return f'{self.source}: {self.request_count}'
 
 
 class PantryMovement(models.Model):
@@ -159,9 +260,16 @@ class PantryMovement(models.Model):
 
     product = models.ForeignKey(PantryProduct, on_delete=models.CASCADE, related_name='movements')
     movement_type = models.CharField(max_length=20, choices=MOVEMENT_TYPE_CHOICES)
+    # ``quantity`` is the amount that actually changed the stock. The requested
+    # values retain the user's intent for idempotency and stockout diagnostics.
     quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    package_count = models.PositiveIntegerField(blank=True, null=True)
+    requested_quantity = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    requested_package_count = models.PositiveIntegerField(blank=True, null=True)
+    stock_was_insufficient = models.BooleanField(default=False)
     occurred_on = models.DateField(default=timezone.localdate)
     note = models.CharField(max_length=255, blank=True)
+    scan_id = models.UUIDField(blank=True, null=True, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
