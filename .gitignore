@@ -14,3 +14,8 @@ __pycache__/
 /media/
 /private_media/
 /staticfiles/
+
+# Lokalny podgląd na żywo dla web-dev - zależy od maszyny (na Macu działa
+# tylko przy katalogu pobranym z iCloud), więc nie może trafić na Pi.
+# Wzór do skopiowania: docker-compose.override.yml.example
+docker-compose.override.yml
