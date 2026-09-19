@@ -1,5 +1,5 @@
 import json
-from io import BytesIO
+from io import BytesIO, StringIO
 import tempfile
 from decimal import Decimal
 from datetime import timedelta
@@ -26,7 +26,18 @@ from .models import (
     ShoppingList,
     ShoppingListItem,
 )
-from .services.product_catalog import CatalogProductNotFound, CatalogUnavailable
+from django.core.management import call_command
+from django.template import Context, Template
+from django.test import SimpleTestCase
+
+from .constants import PANTRY_CATEGORIES, PANTRY_CATEGORY_GROUPS
+from .services.product_catalog import (
+    CatalogProductNotFound,
+    CatalogUnavailable,
+    _pick_product_name,
+    _suggest_category,
+    _text_has_keyword,
+)
 from .services.pantry_forecast import (
     _intermittent_days_range,
     forecast_pantry_product,
@@ -460,7 +471,8 @@ class PantryTests(TestCase):
         self.assertNotContains(response, 'Cukier')
         self.assertEqual(
             [group['name'] for group in response.context['product_groups']],
-            ['Produkty suche', 'Nabiał'],
+            # Kolejność grup idzie za PANTRY_CATEGORY_GROUPS.
+            ['Nabiał', 'Produkty suche'],
         )
 
     def test_empty_product_without_history_shows_immediate_restock_alert(self):
@@ -1072,7 +1084,8 @@ class PantryBarcodeTests(TestCase):
         product = PantryProduct.objects.get(user=self.user, name='Sok')
         self.assertEqual(product.current_quantity, Decimal('2.00'))
         self.assertEqual(product.current_package_count, 2)
-        self.assertEqual(product.category, 'Inne')
+        # Bez wybranej kategorii podpowiedź bierze się z nazwy.
+        self.assertEqual(product.category, 'Napoje')
         self.assertEqual(product.movements.count(), 1)
 
     def test_invalid_scanner_payloads_do_not_change_data(self):
@@ -1275,13 +1288,19 @@ class ProductCatalogLookupTests(TestCase):
         self.assertEqual(payload['catalog']['brand'], 'Ferrero')
         self.assertEqual(payload['catalog']['suggested_quantity_per_scan'], '400.00')
         self.assertEqual(payload['catalog']['suggested_unit'], PantryProduct.UNIT_GRAM)
-        self.assertTrue(payload['catalog']['can_auto_register'])
+        # Wpis jest niemiecki (lang=de), a polskiej nazwy brak - taki produkt
+        # nie trafia do spiżarni jednym dotknięciem, tylko przez formularz.
+        self.assertEqual(payload['catalog']['name_language'], 'de')
+        self.assertFalse(payload['catalog']['name_is_polish'])
+        self.assertFalse(payload['catalog']['can_auto_register'])
+        self.assertFalse(payload['catalog']['remembered'])
         self.assertEqual(response['Cache-Control'], 'private, no-store')
 
         entry = ProductCatalogEntry.objects.get(lookup_barcode=self.barcode)
         self.assertEqual(entry.product_name, 'Nutella')
         self.assertEqual(entry.description, 'Krem z orzechami laskowymi i kakao')
-        self.assertEqual(entry.suggested_category, 'Produkty suche')
+        self.assertEqual(entry.suggested_category, 'Słodycze i przekąski')
+        self.assertEqual(entry.name_language, 'de')
         self.assertEqual(entry.status, ProductCatalogEntry.STATUS_FOUND)
         self.assertTrue(entry.valid_until > timezone.now())
         self.assertEqual(ProductCatalogQuota.objects.get().request_count, 1)
@@ -1347,7 +1366,7 @@ class ProductCatalogLookupTests(TestCase):
                     categories='Pet food',
                     categories_tags=['en:pet-foods'],
                 ),
-                'Inne',
+                'Dla zwierząt',
             ),
             (
                 '3212345678908',
@@ -1471,11 +1490,11 @@ class ProductCatalogLookupTests(TestCase):
         self.assertEqual(response.json()['status'], 'known')
         self.assertEqual(response.json()['catalog']['status'], 'found')
         self.assertEqual(response.json()['catalog']['name'], 'Nutella')
-        self.assertEqual(response.json()['product']['category'], 'Produkty suche')
+        self.assertEqual(response.json()['product']['category'], 'Słodycze i przekąski')
         request_product.assert_called_once_with(self.barcode)
         product = PantryProduct.objects.get()
         self.assertEqual(product.current_quantity, Decimal('3.00'))
-        self.assertEqual(product.category, 'Produkty suche')
+        self.assertEqual(product.category, 'Słodycze i przekąski')
         self.assertFalse(PantryMovement.objects.exists())
 
     @patch('cooking.services.product_catalog._cache_catalog_image')
@@ -1908,3 +1927,462 @@ class CookModeTests(TestCase):
         self.assertContains(response, 'Mąka')
         self.assertContains(response, '120.00')
         self.assertContains(response, 'Po dodaniu wymieszaj')
+
+
+
+class PantryCategoryListTests(SimpleTestCase):
+    def test_categories_are_grouped_and_other_is_last(self):
+        grouped = [category for _, categories in PANTRY_CATEGORY_GROUPS for category in categories]
+        self.assertEqual(list(PANTRY_CATEGORIES), [*grouped, 'Inne'])
+        self.assertEqual(len(set(PANTRY_CATEGORIES)), len(PANTRY_CATEGORIES))
+        # Stare nazwy muszą zostać - są zapisane jako tekst w produktach.
+        for legacy in ['Produkty suche', 'Nabiał', 'Warzywa i owoce', 'Mięso i ryby', 'Mrożonki',
+                       'Przyprawy', 'Konserwy', 'Napoje', 'Chemia domowa', 'Inne']:
+            self.assertIn(legacy, PANTRY_CATEGORIES)
+
+    def test_options_tag_renders_groups_and_marks_selection(self):
+        html = Template('{% load pantry_extras %}{% pantry_category_options value %}').render(
+            Context({'value': 'Kosmetyki i higiena'})
+        )
+        self.assertIn('<optgroup label="Spożywcze">', html)
+        self.assertIn('<optgroup label="Dom">', html)
+        self.assertIn('<option value="Kosmetyki i higiena" selected>', html)
+        self.assertEqual(html.count(' selected'), 1)
+        self.assertTrue(html.endswith('<option value="Inne">Inne</option>'))
+
+    def test_options_tag_escapes_selected_value(self):
+        html = Template('{% load pantry_extras %}{% pantry_category_options value %}').render(
+            Context({'value': '"><script>'})
+        )
+        self.assertNotIn('<script>', html)
+        self.assertNotIn(' selected', html)
+
+
+class PantryCategoryMappingTests(SimpleTestCase):
+    """Mapowanie na łańcuchach tagów takich, jakie zwraca API: tag i wszyscy
+    jego przodkowie z taksonomii openfoodfacts-server."""
+
+    TAG_CASES = [
+        ('food', ['en:flatbreads', 'en:breads', 'en:cereals-and-potatoes', 'en:cereals-and-their-products',
+                  'en:plant-based-foods', 'en:plant-based-foods-and-beverages'], 'Pieczywo'),
+        ('food', ['en:bread-crumbs', 'en:breads', 'en:cereals-and-potatoes', 'en:cereals-and-their-products',
+                  'en:plant-based-foods', 'en:plant-based-foods-and-beverages'], 'Produkty suche'),
+        ('food', ['en:coffee-capsules', 'en:beverage-preparations', 'en:beverages',
+                  'en:beverages-and-beverages-preparations', 'en:capsules', 'en:coffees', 'en:hot-beverages',
+                  'en:plant-based-foods', 'en:plant-based-foods-and-beverages'], 'Napoje'),
+        ('food', ['en:plant-based-milk-alternatives', 'en:beverages', 'en:beverages-and-beverages-preparations',
+                  'en:dairy-substitutes', 'en:milk-substitutes', 'en:plant-based-beverages',
+                  'en:plant-based-foods-and-beverages'], 'Nabiał'),
+        ('food', ['en:frozen-vegetables', 'en:frozen-foods', 'en:frozen-plant-based-foods',
+                  'en:fruits-and-vegetables-based-foods', 'en:plant-based-foods',
+                  'en:plant-based-foods-and-beverages', 'en:vegetable-based-foods-and-beverages',
+                  'en:vegetables-based-foods'], 'Mrożonki'),
+        ('food', ['en:dietary-supplements'], 'Leki i apteczka'),
+        ('product', ['en:toilet-papers', 'en:home-garden', 'en:household-paper-products',
+                     'en:household-supplies'], 'Artykuły papierowe'),
+        ('product', ['en:laundry-detergent', 'en:home-garden', 'en:household-supplies',
+                     'en:laundry-supplies'], 'Chemia domowa'),
+        ('product', ['en:diapers', 'en:baby-toddler', 'en:diapering'], 'Kosmetyki i higiena'),
+        ('product', ['en:cat-litter', 'en:animals-pet-supplies', 'en:cat-supplies', 'en:pet-supplies'],
+         'Dla zwierząt'),
+    ]
+
+    def test_real_taxonomy_chains(self):
+        for product_type, tags, expected in self.TAG_CASES:
+            with self.subTest(tag=tags[0]):
+                self.assertEqual(
+                    _suggest_category('', '', '', category_tags=tags, product_type=product_type),
+                    expected,
+                )
+
+    def test_product_type_defaults(self):
+        self.assertEqual(_suggest_category('Coś', '', '', category_tags=[], product_type='beauty'),
+                         'Kosmetyki i higiena')
+        self.assertEqual(_suggest_category('Coś', '', '', category_tags=[], product_type='petfood'),
+                         'Dla zwierząt')
+        self.assertEqual(_suggest_category('Ładowarka', '', '', category_tags=[], product_type='product'),
+                         'Inne')
+
+    def test_non_food_products_never_get_a_food_category(self):
+        self.assertEqual(
+            _suggest_category('Masło do ciała', '', '', category_tags=[], product_type='product'),
+            'Kosmetyki i higiena',
+        )
+        self.assertEqual(
+            _suggest_category('Ser', '', '', category_tags=['en:cheeses'], product_type='beauty'),
+            'Kosmetyki i higiena',
+        )
+
+    def test_polish_name_traps(self):
+        cases = [
+            ('Herbatniki maślane', 'Słodycze i przekąski'),
+            ('Herbata czarna', 'Napoje'),
+            ('Tabletki do zmywarki', 'Chemia domowa'),
+            ('Kapsułki do prania', 'Chemia domowa'),
+            ('Masło do ciała', 'Kosmetyki i higiena'),
+            ('Mleczko czyszczące', 'Chemia domowa'),
+            ('Sos pomidorowy', 'Przyprawy'),
+            ('Bułka tarta', 'Produkty suche'),
+            ('Serwetki papierowe', 'Artykuły papierowe'),
+            ('Ocet balsamiczny', 'Przyprawy'),
+            ('Syrop na kaszel', 'Leki i apteczka'),
+            ('Syrop malinowy', 'Napoje'),
+            ('Chipsy tortilla', 'Słodycze i przekąski'),
+            ('Milka czekolada', 'Słodycze i przekąski'),
+            ('Karma dla kota z łososiem', 'Dla zwierząt'),
+            ('Toilettenpapier', 'Artykuły papierowe'),
+            ('Prací gel', 'Chemia domowa'),
+        ]
+        for name, expected in cases:
+            with self.subTest(name=name):
+                self.assertEqual(
+                    _suggest_category(name, '', '', category_tags=[], product_type='food'),
+                    expected,
+                )
+
+    def test_keyword_matching_respects_word_boundaries(self):
+        self.assertTrue(_text_has_keyword('ser żółty', 'ser'))
+        self.assertFalse(_text_has_keyword('serwetki', 'ser'))
+        self.assertTrue(_text_has_keyword('mleczko czyszczące', 'czyszcząc*'))
+        self.assertFalse(_text_has_keyword('żel oczyszczający', 'czyszcząc*'))
+        self.assertTrue(_text_has_keyword('soft paper towels', 'paper towel*'))
+
+    def test_name_prefers_polish_then_english_then_original(self):
+        cases = [
+            ({'lang': 'de', 'product_name': 'Vollmilch', 'product_name_pl': 'Mleko pełne'}, ('Mleko pełne', 'pl')),
+            ({'lang': 'pl', 'product_name': 'Mleko Łaciate'}, ('Mleko Łaciate', 'pl')),
+            ({'lang': 'de', 'product_name': 'Spülmittel', 'generic_name_pl': 'Płyn do naczyń'},
+             ('Płyn do naczyń', 'pl')),
+            ({'lang': 'cs', 'product_name': 'Prací gel', 'product_name_en': 'Laundry gel'}, ('Laundry gel', 'en')),
+            ({'lang': 'de', 'product_name': 'Spülmittel'}, ('Spülmittel', 'de')),
+            ({}, ('', '')),
+        ]
+        for product, expected in cases:
+            with self.subTest(product=product):
+                self.assertEqual(_pick_product_name(product), expected)
+
+
+@override_settings(OPEN_FOOD_FACTS_ENABLED=True, OPEN_FOOD_FACTS_RATE_LIMIT=12)
+class HouseholdCatalogTests(TestCase):
+    barcode = '5900498028133'
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='dom-a', password='pass12345')
+        self.other = User.objects.create_user(username='dom-b', password='pass12345')
+        self.client.login(username='dom-a', password='pass12345')
+
+    def register(self, client=None, **overrides):
+        payload = {
+            'barcode': self.barcode,
+            'scan_id': str(uuid4()),
+            'name': 'Płyn do naczyń miętowy',
+            'category': 'Chemia domowa',
+            'quantity_per_scan': '900',
+            'unit': PantryProduct.UNIT_MILLILITER,
+            'count': 1,
+        }
+        payload.update(overrides)
+        return (client or self.client).post(
+            reverse('cooking:pantry-barcode-register'),
+            data=json.dumps(payload),
+            content_type='application/json',
+        )
+
+    def lookup(self, client=None):
+        return (client or self.client).get(
+            reverse('cooking:pantry-barcode-lookup'), {'barcode': self.barcode},
+        )
+
+    def other_client(self):
+        client = Client()
+        client.login(username='dom-b', password='pass12345')
+        return client
+
+    def off_entry(self, **overrides):
+        values = {
+            'source': ProductCatalogEntry.SOURCE_OPEN_FOOD_FACTS,
+            'lookup_barcode': self.barcode,
+            'status': ProductCatalogEntry.STATUS_FOUND,
+            'product_name': 'Spülmittel Minze',
+            'name_language': 'de',
+            'brand': 'Ludwik',
+            'product_type': 'product',
+            'external_category': 'en:dish-detergent-soap',
+            'suggested_category': 'Chemia domowa',
+            'attribution_url': 'https://world.openproductsfacts.org/product/5900498028133',
+            'valid_until': timezone.now() + timedelta(days=30),
+            'fetched_at': timezone.now(),
+        }
+        values.update(overrides)
+        return ProductCatalogEntry.objects.create(**values)
+
+    def test_registration_is_remembered_for_the_whole_household(self):
+        self.assertEqual(self.register().status_code, 201)
+
+        entry = ProductCatalogEntry.objects.get(
+            source=ProductCatalogEntry.SOURCE_HOUSEHOLD, lookup_barcode=self.barcode,
+        )
+        self.assertEqual(entry.product_name, 'Płyn do naczyń miętowy')
+        self.assertEqual(entry.suggested_category, 'Chemia domowa')
+        self.assertEqual(entry.suggested_unit, PantryProduct.UNIT_MILLILITER)
+        self.assertEqual(entry.suggested_quantity_per_scan, Decimal('900.00'))
+        self.assertIsNone(entry.valid_until)
+
+    @patch('cooking.services.product_catalog._request_product')
+    def test_remembered_product_wins_over_open_food_facts_without_network(self, request_product):
+        self.off_entry(valid_until=timezone.now() - timedelta(days=1))
+        self.register()
+
+        response = self.lookup(self.other_client())
+
+        request_product.assert_not_called()
+        catalog = response.json()['catalog']
+        self.assertEqual(response.json()['status'], 'unknown')  # drugi domownik nie ma go w spiżarni
+        self.assertEqual(catalog['name'], 'Płyn do naczyń miętowy')
+        self.assertEqual(catalog['suggested_category'], 'Chemia domowa')
+        self.assertEqual(catalog['source'], 'household')
+        self.assertEqual(catalog['source_label'], 'Zapamiętane w domu')
+        self.assertTrue(catalog['remembered'])
+        self.assertTrue(catalog['name_is_polish'])
+        self.assertTrue(catalog['can_auto_register'])
+        # marka i atrybucja nadal z Open Food Facts
+        self.assertEqual(catalog['brand'], 'Ludwik')
+        self.assertTrue(catalog['attribution_url'].startswith('https://world.openproductsfacts.org/'))
+
+    @patch('cooking.services.product_catalog._request_product')
+    def test_memory_survives_deleting_the_product(self, request_product):
+        self.register()
+        PantryProduct.objects.filter(user=self.user, barcode=self.barcode).delete()
+
+        catalog = self.lookup().json()['catalog']
+
+        request_product.assert_not_called()
+        self.assertEqual(catalog['name'], 'Płyn do naczyń miętowy')
+
+    def test_remembered_category_is_not_overridden_by_rules(self):
+        self.register(name='Coś nietypowego', category='Napoje')
+        entry = ProductCatalogEntry.objects.get(source=ProductCatalogEntry.SOURCE_HOUSEHOLD)
+        entry.external_category = 'en:dairies'
+        entry.save()
+
+        self.assertEqual(self.lookup().json()['catalog']['suggested_category'], 'Napoje')
+
+    def test_foreign_open_food_facts_name_requires_the_form(self):
+        self.off_entry()
+
+        catalog = self.lookup().json()['catalog']
+
+        self.assertEqual(catalog['name'], 'Spülmittel Minze')
+        self.assertEqual(catalog['name_language'], 'de')
+        self.assertFalse(catalog['name_is_polish'])
+        self.assertFalse(catalog['can_auto_register'])
+        self.assertFalse(catalog['remembered'])
+
+    def test_manual_add_with_barcode_is_remembered_and_category_suggested(self):
+        response = self.client.post(reverse('cooking:add-pantry-product'), {
+            'name': 'Papier toaletowy Velvet',
+            'barcode': '5901478007780',
+            'quantity_per_scan': '1',
+            'unit': PantryProduct.UNIT_PACKAGE,
+            'current_quantity': '0',
+            'minimum_quantity': '0',
+            'restock_lead_days': '3',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        product = PantryProduct.objects.get(user=self.user, barcode='5901478007780')
+        self.assertEqual(product.category, 'Artykuły papierowe')
+        entry = ProductCatalogEntry.objects.get(
+            source=ProductCatalogEntry.SOURCE_HOUSEHOLD, lookup_barcode='5901478007780',
+        )
+        self.assertEqual(entry.product_name, 'Papier toaletowy Velvet')
+
+    def test_known_product_in_other_category_is_upgraded_on_scan(self):
+        self.off_entry()
+        product = PantryProduct.objects.create(
+            user=self.user, name='Spülmittel', barcode=self.barcode, category='Inne',
+        )
+
+        self.lookup()
+
+        product.refresh_from_db()
+        self.assertEqual(product.category, 'Chemia domowa')
+
+
+class EditPantryProductTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='edytor', password='pass12345')
+        self.other = User.objects.create_user(username='sasiad', password='pass12345')
+        self.client.login(username='edytor', password='pass12345')
+        self.product = PantryProduct.objects.create(
+            user=self.user,
+            name='Spülmittel',
+            barcode='4001234567890',
+            category='Inne',
+            unit=PantryProduct.UNIT_MILLILITER,
+            quantity_per_scan=Decimal('500.00'),
+            current_quantity=Decimal('1000.00'),
+            current_package_count=2,
+        )
+        self.url = reverse('cooking:edit-pantry-product', args=[self.product.pk])
+
+    def post(self, **overrides):
+        data = {
+            'name': 'Płyn do naczyń',
+            'category': 'Chemia domowa',
+            'minimum_quantity': '500',
+            'restock_lead_days': '5',
+            'notes': 'Kupować większe opakowanie',
+        }
+        data.update(overrides)
+        return self.client.post(self.url, data)
+
+    def test_form_renders_current_values_with_grouped_categories(self):
+        self.product.minimum_quantity = Decimal('1.50')
+        self.product.save()
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'value="Spülmittel"')
+        self.assertContains(response, '<optgroup label="Dom">')
+        self.assertContains(response, '<option value="Inne" selected>')
+        # Decimal w polu liczbowym bez polskiego przecinka ("1,50" pole odrzuca)
+        self.assertContains(response, 'name="minimum_quantity" value="1.50"')
+        self.assertNotContains(response, 'value="1,50"')
+
+    def test_edit_updates_product_and_household_memory_without_touching_stock(self):
+        response = self.post()
+
+        self.assertRedirects(response, reverse('cooking:pantry'))
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.name, 'Płyn do naczyń')
+        self.assertEqual(self.product.category, 'Chemia domowa')
+        self.assertEqual(self.product.minimum_quantity, Decimal('500.00'))
+        self.assertEqual(self.product.restock_lead_days, 5)
+        self.assertEqual(self.product.current_quantity, Decimal('1000.00'))
+        self.assertEqual(self.product.current_package_count, 2)
+        self.assertEqual(self.product.unit, PantryProduct.UNIT_MILLILITER)
+        entry = ProductCatalogEntry.objects.get(
+            source=ProductCatalogEntry.SOURCE_HOUSEHOLD, lookup_barcode='4001234567890',
+        )
+        self.assertEqual(entry.product_name, 'Płyn do naczyń')
+        self.assertEqual(entry.suggested_category, 'Chemia domowa')
+
+    def test_edit_without_barcode_does_not_create_memory(self):
+        self.product.barcode = ''
+        self.product.save()
+
+        self.post()
+
+        self.assertFalse(ProductCatalogEntry.objects.exists())
+
+    def test_duplicate_name_and_bad_category_are_rejected(self):
+        PantryProduct.objects.create(user=self.user, name='Płyn do naczyń')
+
+        self.assertEqual(self.post().status_code, 400)
+        self.assertEqual(self.post(name='Inna nazwa', category='Wymyślona').status_code, 400)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.name, 'Spülmittel')
+
+    def test_cannot_edit_someone_elses_product(self):
+        other_product = PantryProduct.objects.create(user=self.other, name='Cudzy')
+
+        response = self.client.post(
+            reverse('cooking:edit-pantry-product', args=[other_product.pk]),
+            {'name': 'Przejęty', 'minimum_quantity': '0', 'restock_lead_days': '3'},
+        )
+
+        self.assertEqual(response.status_code, 404)
+        other_product.refresh_from_db()
+        self.assertEqual(other_product.name, 'Cudzy')
+
+    def test_pantry_card_links_to_edit_form(self):
+        response = self.client.get(reverse('cooking:pantry'))
+
+        self.assertContains(response, self.url)
+
+
+class LearnPantryCatalogCommandTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='uczen', password='pass12345')
+        self.partner = User.objects.create_user(username='partner', password='pass12345')
+        ProductCatalogEntry.objects.create(
+            source=ProductCatalogEntry.SOURCE_OPEN_FOOD_FACTS,
+            lookup_barcode='5900000000001',
+            status=ProductCatalogEntry.STATUS_FOUND,
+            product_name='Shampoo',
+            product_type='beauty',
+            suggested_category='Inne',  # stara reguła wrzucała kosmetyki do "Inne"
+        )
+        self.shampoo = PantryProduct.objects.create(
+            user=self.user, name='Szampon', barcode='5900000000001', category='Inne',
+        )
+        self.paper = PantryProduct.objects.create(
+            user=self.user, name='Papier toaletowy', category='Inne',
+        )
+        self.chosen = PantryProduct.objects.create(
+            user=self.user, name='Mleko', barcode='5900000000002', category='Napoje',
+        )
+
+    def run_command(self, *args):
+        out = StringIO()
+        call_command('learn_pantry_catalog', *args, stdout=out)
+        return out.getvalue()
+
+    def test_dry_run_changes_nothing(self):
+        output = self.run_command('--dry-run')
+
+        self.assertIn('Nic nie zostało zapisane', output)
+        self.shampoo.refresh_from_db()
+        self.assertEqual(self.shampoo.category, 'Inne')
+        self.assertFalse(
+            ProductCatalogEntry.objects.filter(source=ProductCatalogEntry.SOURCE_HOUSEHOLD).exists()
+        )
+        self.assertEqual(
+            ProductCatalogEntry.objects.get(lookup_barcode='5900000000001').suggested_category, 'Inne',
+        )
+
+    def test_run_recategorizes_other_and_remembers_barcodes(self):
+        self.run_command()
+
+        self.shampoo.refresh_from_db()
+        self.paper.refresh_from_db()
+        self.chosen.refresh_from_db()
+        self.assertEqual(self.shampoo.category, 'Kosmetyki i higiena')
+        self.assertEqual(self.paper.category, 'Artykuły papierowe')
+        self.assertEqual(self.chosen.category, 'Napoje')  # świadomy wybór zostaje
+        remembered = {
+            entry.lookup_barcode: entry
+            for entry in ProductCatalogEntry.objects.filter(source=ProductCatalogEntry.SOURCE_HOUSEHOLD)
+        }
+        self.assertEqual(set(remembered), {'5900000000001', '5900000000002'})
+        self.assertEqual(remembered['5900000000001'].suggested_category, 'Kosmetyki i higiena')
+        self.assertEqual(remembered['5900000000002'].product_name, 'Mleko')
+
+    def test_latest_product_wins_and_existing_memory_is_kept(self):
+        PantryProduct.objects.create(
+            user=self.partner, name='Mleko 2%', barcode='5900000000002', category='Nabiał',
+        )
+        ProductCatalogEntry.objects.create(
+            source=ProductCatalogEntry.SOURCE_HOUSEHOLD,
+            lookup_barcode='5900000000001',
+            status=ProductCatalogEntry.STATUS_FOUND,
+            product_name='Szampon pokrzywowy',
+            suggested_category='Kosmetyki i higiena',
+        )
+
+        self.run_command()
+
+        self.assertEqual(
+            ProductCatalogEntry.objects.get(
+                source=ProductCatalogEntry.SOURCE_HOUSEHOLD, lookup_barcode='5900000000002',
+            ).product_name,
+            'Mleko 2%',
+        )
+        self.assertEqual(
+            ProductCatalogEntry.objects.get(
+                source=ProductCatalogEntry.SOURCE_HOUSEHOLD, lookup_barcode='5900000000001',
+            ).product_name,
+            'Szampon pokrzywowy',
+        )

@@ -1,4 +1,5 @@
 {% extends 'cooking/index.html' %}
+{% load pantry_extras %}
 
 {% block title %}Dodaj produkt do spiżarni{% endblock %}
 
@@ -65,9 +66,7 @@
                             <div class="form-floating">
                                 <select class="form-select" id="category" name="category">
                                     <option value="">Bez kategorii</option>
-                                    {% for category in categories %}
-                                        <option value="{{ category }}" {% if form_values.category == category %}selected{% endif %}>{{ category }}</option>
-                                    {% endfor %}
+                                    {% pantry_category_options form_values.category %}
                                 </select>
                                 <label for="category">Kategoria</label>
                             </div>

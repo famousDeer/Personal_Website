@@ -17,7 +17,7 @@
 
    Jeśli zwróci inną wartość niż poniżej, arkusz jest z cache. */
 :root {
-    --ui-build: "2026-09-19-b";
+    --ui-build: "2026-09-19-c";
 }
 
 /* --- Podstawa ---------------------------------------------------------- */
@@ -1234,4 +1234,30 @@ input:focus-visible,
 .app-tab:focus-visible {
     outline: 2px solid var(--brand-500);
     outline-offset: 2px;
+}
+
+/* =========================================================================
+   Spiżarnia: przycisk edycji na karcie produktu
+   -------------------------------------------------------------------------
+   Wiersz tytułu rozkłada elementy na boki (space-between). margin-right:
+   auto przykleja ołówek do nazwy, a znacznik stanu zostaje po prawej.
+   ========================================================================= */
+.pantry-product-edit {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    margin: -2px auto 0 -0.25rem;
+    border-radius: var(--r-pill);
+    color: var(--ink-4);
+    font-size: 0.8rem;
+    text-decoration: none;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.pantry-product-edit:hover,
+.pantry-product-edit:focus-visible {
+    background: var(--surface-3);
+    color: var(--ink-1);
 }

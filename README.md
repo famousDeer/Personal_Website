@@ -28,8 +28,14 @@ Demo image:
 **Kitchen** (`cooking`)
 - Recipes visible to everyone, editable only by their author, with structured steps
   and per-step ingredients
-- Pantry with barcode scanning, product metadata cached from Open Food Facts, and
-  stock tracked both as exact quantity and as a number of packages
+- Pantry with barcode scanning, product metadata cached from the Open Food Facts
+  family (food, beauty, household products, pet food), and stock tracked both as
+  exact quantity and as a number of packages
+- Household memory for barcodes: the name and category someone confirms when adding
+  or editing a product become the suggestion for every later scan of that code, for
+  every user, even after the product is deleted (see [Pantry catalog](#pantry-catalog))
+- Fixed Polish category list for food and household goods (drugstore, cleaning,
+  paper, pets, medicines), mapped from the Open Facts taxonomies
 - Consumption forecasting per product: regular and intermittent demand models,
   outlier capping, weekday factors, confidence scoring and a suggested buy date
   aligned to your usual shopping day
@@ -157,7 +163,7 @@ browser console on any page:
 | `app-build` | `templates/base.html` | the **container** is running old code → `docker compose up web-dev --build` |
 | `--ui-build` | `static/css/ui.css` | the **browser** is serving a cached stylesheet → hard reload (`Cmd+Shift+R`) |
 
-Both should read `2026-09-19-b`. If they disagree with each other, the container is
+Both should read `2026-09-19-c`. If they disagree with each other, the container is
 fresh but the browser is not.
 
 ### Live reload
@@ -194,6 +200,46 @@ python manage.py test --settings=config.test_settings
 `config/test_settings.py` switches to SQLite and disables outbound calls to Nominatim
 and Open Food Facts, so the suite never touches the network. CI additionally runs
 `python manage.py makemigrations --check --dry-run` to catch uncommitted migrations.
+
+## Pantry catalog
+
+A barcode is looked up in this order:
+
+1. **Household memory** (`ProductCatalogEntry` with `source="household"`). Written when
+   a product is added from the scanner, added by hand with a barcode, or edited. It
+   never expires and never calls the network.
+2. **Open Food Facts** API v3 with `product_type=all`, cached locally for 30 days.
+
+No free barcode database covers Polish drugstore and household goods with Polish
+names (tested in September 2026: Open Food Facts found 3 of 8 typical products from
+Polish shops, the only complete source costs $99/month and requires deleting all
+cached data on cancellation). So the app treats its own confirmed data as the source
+of truth: a household buys the same things repeatedly, and each code needs to be
+corrected once.
+
+**Names.** Preference is Polish name, then Polish generic name, then English, then
+the product's original language. When the suggestion is not Polish, the scanner does
+not offer one-tap adding; the form opens with the foreign name selected, so typing
+replaces it.
+
+**Categories** live in `cooking/constants.py` as `PANTRY_CATEGORY_GROUPS`. Existing
+names are stored as plain text on products, so renaming one needs a data migration;
+adding one does not. Mapping rules are in `cooking/services/product_catalog.py`: tag
+rules keyed on Open Facts taxonomy nodes (the API returns every ancestor of a tag, so
+mid-level nodes are enough), then Polish/English/German/Czech keyword rules for
+products without usable tags.
+
+After upgrading an existing installation, run once:
+
+```bash
+docker compose exec web python manage.py learn_pantry_catalog --dry-run   # preview
+docker compose exec web python manage.py learn_pantry_catalog
+```
+
+It re-derives cached Open Food Facts suggestions with the current rules, moves
+products out of `Inne` (or no category) when a better category is found, and
+remembers every existing barcoded product for the whole household. Categories that
+were chosen deliberately, and existing household entries, are never overwritten.
 
 ## Scheduled tasks (cron)
 Market data refresh and price history synchronisation are also available as
@@ -236,9 +282,11 @@ Website-Finance/
 │  ├─ templates/finance/
 │  └─ static/                 # css/style.css, js/
 ├─ cooking/                   # Recipes, pantry, shopping lists
+│  ├─ constants.py            # Pantry category list and groups
+│  ├─ management/commands/    # learn_pantry_catalog
 │  ├─ services/
 │  │  ├─ pantry_forecast.py   # Consumption forecasting
-│  │  └─ product_catalog.py   # Open Food Facts cache
+│  │  └─ product_catalog.py   # Household memory, Open Food Facts cache, category mapping
 │  └─ storage.py              # Private media storage for user photos
 ├─ cars/                      # Fuel, services, tyres
 │  └─ pdf_utils.py            # Service history PDF

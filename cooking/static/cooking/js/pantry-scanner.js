@@ -312,6 +312,53 @@
         }
     }
 
+    // Nazwa języka w narzędniku, do zdania "tylko pod nazwą w języku ...".
+    const CATALOG_LANGUAGE_NAMES = {
+        en: 'angielskim', de: 'niemieckim', cs: 'czeskim', sk: 'słowackim',
+        fr: 'francuskim', it: 'włoskim', es: 'hiszpańskim', uk: 'ukraińskim',
+        hu: 'węgierskim', nl: 'niderlandzkim', lt: 'litewskim', ro: 'rumuńskim',
+        pt: 'portugalskim',
+    };
+
+    function catalogIsFound(catalog) {
+        return ['found', 'found_incomplete'].includes(catalog?.status);
+    }
+
+    // Katalog zna produkt, ale tylko pod nazwą, która nie jest po polsku.
+    // Taki produkt nie może trafić do spiżarni jednym dotknięciem - formularz
+    // prosi o polską nazwę, a serwer zapamiętuje ją dla całego domu.
+    function catalogNeedsPolishName(catalog) {
+        return catalogIsFound(catalog) && Boolean(catalog.name) && !catalog.name_is_polish;
+    }
+
+    function catalogLanguageLabel(catalog) {
+        return CATALOG_LANGUAGE_NAMES[catalog?.name_language] || 'obcym';
+    }
+
+    function catalogWhereFound(catalog) {
+        return catalog?.remembered ? 'wśród produktów zapamiętanych w domu' : 'w Open Food Facts';
+    }
+
+    function updateRegisterCatalogNote(catalog) {
+        const note = elements.registerCatalogNote;
+        const found = catalogIsFound(catalog);
+        note.hidden = !found;
+        if (!found) {
+            return;
+        }
+        const needsPolish = catalogNeedsPolishName(catalog);
+        note.classList.toggle('alert-info', !needsPolish);
+        note.classList.toggle('alert-warning', needsPolish);
+        if (catalog.remembered) {
+            note.textContent = 'Te dane zapisał wcześniej ktoś z domowników. Poprawki zapamiętam dla całego domu.';
+        } else if (needsPolish) {
+            note.textContent = `Baza zna ten produkt tylko pod nazwą w języku ${catalogLanguageLabel(catalog)}. `
+                + 'Wpisz polską nazwę - zapamiętam ją dla całego domu.';
+        } else {
+            note.textContent = 'Formularz uzupełniono danymi z Open Food Facts. Poprawki zapamiętam dla całego domu.';
+        }
+    }
+
     function catalogDescription(catalog) {
         if (catalog?.description) {
             return catalog.description;
@@ -1546,7 +1593,9 @@
         const hasImage = Boolean(catalogFound && state.catalog.image_url);
         elements.unknownEyebrow.classList.toggle('text-warning', !catalogFound);
         elements.unknownEyebrow.classList.toggle('text-success', catalogFound);
-        elements.unknownEyebrow.textContent = catalogFound ? 'Znaleziono w katalogu' : 'Nowy kod';
+        elements.unknownEyebrow.textContent = catalogFound
+            ? (state.catalog.remembered ? 'Zapamiętany w domu' : 'Znaleziono w katalogu')
+            : 'Nowy kod';
         elements.unknownTitle.textContent = catalogFound
             ? (state.catalog.name || 'Produkt wymaga uzupełnienia')
             : 'Tego produktu jeszcze nie znamy';
@@ -1581,7 +1630,11 @@
         if (!state.autoActionEnabled) {
             if (canAutoRegister) {
                 elements.unknownHelp.textContent = 'Sprawdź dane produktu, opcjonalnie dodaj zdjęcie, a następnie wybierz „Dodaj” albo „Dodaj wiele”.';
-                announce(`Znaleziono ${state.catalog.name} w Open Food Facts. Wybierz sposób dodania produktu.`);
+                announce(`Znaleziono ${state.catalog.name} ${catalogWhereFound(state.catalog)}. Wybierz sposób dodania produktu.`);
+            } else if (catalogNeedsPolishName(state.catalog)) {
+                elements.unknownHelp.textContent = `Baza zna ten produkt tylko pod nazwą w języku ${catalogLanguageLabel(state.catalog)}. `
+                    + 'Wybierz „Dodaj” i wpisz polską nazwę - zapamiętam ją dla całego domu.';
+                announce('Znaleziono produkt z nazwą w obcym języku. Przy dodawaniu wpisz polską nazwę.');
             } else if (state.catalog?.status === 'unavailable') {
                 elements.unknownHelp.textContent = 'Nie udało się teraz sprawdzić katalogu. Dane możesz uzupełnić ręcznie.';
                 announce('Nie udało się sprawdzić katalogu. Wybierz sposób ręcznego dodania produktu.');
@@ -1608,13 +1661,15 @@
             const timeoutSeconds = Math.max(1, Math.ceil(timeout / 1000));
             elements.unknownCountdownLabel.innerHTML = 'Domyślnie: <strong>dodaj 1</strong>';
             elements.unknownHelp.textContent = `Sprawdź podpowiedź. Jeśli nic nie zmienisz, za ${timeoutSeconds} sekund dodamy jedno opakowanie.`;
-            announce(`Znaleziono ${state.catalog.name} w Open Food Facts. Za ${timeoutSeconds} sekund dodamy jedno opakowanie.`);
+            announce(`Znaleziono ${state.catalog.name} ${catalogWhereFound(state.catalog)}. Za ${timeoutSeconds} sekund dodamy jedno opakowanie.`);
             startCountdown('unknown', timeout, addCatalogProductAutomatically);
             return;
         }
 
         elements.unknownCountdownLabel.innerHTML = 'Za chwilę: <strong>formularz dla 1 opakowania</strong>';
-        if (state.catalog?.status === 'unavailable') {
+        if (catalogNeedsPolishName(state.catalog)) {
+            elements.unknownHelp.textContent = `Baza zna ten produkt tylko pod nazwą w języku ${catalogLanguageLabel(state.catalog)}. Za chwilę otworzę formularz - wpisz polską nazwę.`;
+        } else if (state.catalog?.status === 'unavailable') {
             elements.unknownHelp.textContent = 'Nie udało się teraz sprawdzić katalogu. Dane możesz uzupełnić ręcznie.';
         } else if (state.catalog?.status === 'unsupported') {
             elements.unknownHelp.textContent = 'Ten typ kodu nie występuje w katalogu produktów. Uzupełnij dane ręcznie.';
@@ -1675,10 +1730,20 @@
         elements.registerTitle.textContent = isMany ? 'Dodaj wiele opakowań' : 'Dodaj jedno opakowanie';
         elements.registerCountWrap.hidden = !isMany;
         elements.registerCount.required = isMany;
+        // Pole ma min="2" (tryb "Dodaj wiele"). W trybie "Dodaj" jest ukryte
+        // i ma wartość 1, więc bez wyłączenia walidacja HTML po cichu
+        // blokowała wysłanie formularza - przeglądarka nie może nawet pokazać
+        // komunikatu przy niewidocznym polu. Wyłączone pole nie jest
+        // walidowane, a w tym trybie i tak wysyłamy count = 1.
+        elements.registerCount.disabled = !isMany;
         elements.registerCount.value = isMany ? '2' : '1';
         elements.registerSubmitLabel.textContent = isMany ? 'Dodaj do spiżarni' : 'Dodaj produkt';
-        elements.registerCatalogNote.hidden = !['found', 'found_incomplete'].includes(state.catalog?.status);
+        updateRegisterCatalogNote(state.catalog);
         elements.registerName.focus({ preventScroll: false });
+        if (catalogNeedsPolishName(state.catalog)) {
+            // Obca nazwa jest zaznaczona - pierwsze naciśnięcie klawisza ją zastępuje.
+            elements.registerName.select();
+        }
         updateRegisterTotalPreview();
         announce(isMany ? 'Wpisz dane produktu i liczbę opakowań.' : 'Wpisz nazwę nowego produktu.');
     }

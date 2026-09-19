@@ -1,0 +1,93 @@
+{% extends 'cooking/index.html' %}
+{% load pantry_extras l10n %}
+
+{% block title %}Edytuj: {{ product.name }}{% endblock %}
+{# Edytor przepisów (summernote + jQuery) jest tu zbędny, tak jak w pantry.html. #}
+{% block cooking_editor_assets %}{% endblock %}
+
+{% block content_cooking %}
+<div class="row justify-content-center">
+    <div class="col-lg-7 col-xl-6">
+        <div class="text-center mb-4 animate-fade-in">
+            <div class="icon-box bg-success-subtle text-success mx-auto mb-3 shadow-sm"
+                 style="width: 70px; height: 70px; font-size: 2rem; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                <i class="bi bi-pencil-square"></i>
+            </div>
+            <h2 class="fw-bold mb-1 recipe-title">Edytuj produkt</h2>
+            <p class="text-muted small mb-0">Popraw nazwę, kategorię i próg uzupełnienia.</p>
+        </div>
+
+        <div class="card border-0 shadow-lg action-card animate-fade-in-up">
+            <div class="card-body p-4 p-md-5">
+                {% if product.barcode %}
+                    <div class="alert alert-info small py-2 d-flex gap-2 align-items-start">
+                        <i class="bi bi-house-heart" aria-hidden="true"></i>
+                        <span>
+                            Kod <strong>{{ product.barcode }}</strong>.
+                            Poprawioną nazwę i kategorię zapamiętam dla tego kodu &ndash; każdy kolejny skan
+                            podpowie je całemu domowi, także po usunięciu produktu.
+                        </span>
+                    </div>
+                {% endif %}
+
+                <form method="post">
+                    {% csrf_token %}
+
+                    <div class="form-floating mb-3">
+                        <input type="text" class="form-control fs-5 fw-bold" id="name" name="name" maxlength="160"
+                               value="{{ form_values.name|default:'' }}" placeholder="Nazwa" required autofocus>
+                        <label for="name">Nazwa produktu</label>
+                    </div>
+
+                    <div class="form-floating mb-3">
+                        <select class="form-select" id="category" name="category">
+                            <option value="">Bez kategorii</option>
+                            {% pantry_category_options form_values.category %}
+                        </select>
+                        <label for="category">Kategoria</label>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-sm-6">
+                            <label class="form-label small text-uppercase fw-bold text-muted ms-1" for="minimum-quantity">
+                                Próg minimalny ({{ product.display_unit }})
+                            </label>
+                            <input type="number" min="0"
+                                   step="{% if product.unit == 'szt' or product.unit == 'opak' %}1{% else %}0.01{% endif %}"
+                                   class="form-control form-control-lg" id="minimum-quantity"
+                                   name="minimum_quantity" value="{{ form_values.minimum_quantity|default:'0'|unlocalize }}" required>
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label small text-uppercase fw-bold text-muted ms-1" for="restock-lead-days">
+                                Kup z wyprzedzeniem
+                            </label>
+                            <div class="input-group input-group-lg">
+                                <input type="number" min="0" class="form-control" id="restock-lead-days" name="restock_lead_days"
+                                       value="{{ form_values.restock_lead_days|default:'3'|unlocalize }}" required>
+                                <span class="input-group-text">dni</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-floating mt-3">
+                        <textarea class="form-control" id="notes" name="notes" placeholder="Notatki" style="height: 110px;">{{ form_values.notes|default:'' }}</textarea>
+                        <label for="notes">Notatki</label>
+                    </div>
+
+                    <p class="small text-muted mt-3 mb-0">
+                        Jednostka ({{ product.display_unit }}), wielkość opakowania i stan zmieniają się przez ruchy w spiżarni,
+                        bo od nich zależy historia i prognoza zużycia.
+                    </p>
+
+                    <div class="d-grid gap-2 mt-4">
+                        <button type="submit" class="btn btn-success btn-lg rounded-pill shadow-sm fw-bold">
+                            <i class="bi bi-check2-circle me-2"></i>Zapisz zmiany
+                        </button>
+                        <a href="{% url 'cooking:pantry' %}" class="btn btn-light btn-lg rounded-pill text-muted">Anuluj</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

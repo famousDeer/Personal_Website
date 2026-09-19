@@ -19,6 +19,7 @@ from PIL import Image, UnidentifiedImageError
 
 from .constants import (
     PANTRY_CATEGORIES,
+    PANTRY_CATEGORY_OTHER,
     PANTRY_SCANNER_AUTO_ACTION_ENABLED,
     PANTRY_SCANNER_AUTO_ACTION_TIMEOUT_MS,
 )
@@ -33,7 +34,11 @@ from .models import (
     ShoppingListItem,
 )
 from .services.product_catalog import (
+    cached_open_food_facts_entry,
+    household_catalog_entry,
     lookup_product_catalog,
+    remember_household_product,
+    suggest_category_from_name,
     suggested_category_for_catalog_entry,
 )
 from .services.pantry_forecast import (
@@ -130,25 +135,43 @@ def pantry_product_json(product):
 
 
 def pantry_catalog_json(result):
+    remembered = result.remembered
     payload = {
         'status': result.status,
         'cache_state': result.cache_state,
-        'source': ProductCatalogEntry.SOURCE_OPEN_FOOD_FACTS,
-        'source_label': 'Open Food Facts',
+        'source': (
+            ProductCatalogEntry.SOURCE_HOUSEHOLD
+            if remembered
+            else ProductCatalogEntry.SOURCE_OPEN_FOOD_FACTS
+        ),
+        'source_label': 'Zapamiętane w domu' if remembered else 'Open Food Facts',
+        'remembered': remembered,
         'cached_locally': bool(result.entry and result.entry.fetched_at),
     }
     entry = result.entry
     if result.status not in ['found', 'found_incomplete'] or not entry:
         return payload
 
-    image_cached_locally = bool(entry.image)
-    image_url = reverse('cooking:pantry-catalog-image', args=[entry.id]) if image_cached_locally else ''
+    # Nazwa, kategoria i ilość pochodzą z wpisu, który wygrał wyszukiwanie.
+    # Zdjęcie, marka i opis - z Open Food Facts, także dla produktu
+    # zapamiętanego w domu (jeśli baza go zna).
+    details = result.source_entry if remembered else entry
+    image_cached_locally = bool(details and details.image)
+    image_url = (
+        reverse('cooking:pantry-catalog-image', args=[details.id])
+        if image_cached_locally
+        else ''
+    )
+    name_language = '' if remembered else entry.name_language
+    name_is_polish = remembered or name_language == 'pl'
     payload.update({
         'name': entry.product_name,
-        'brand': entry.brand,
-        'description': entry.description,
-        'ingredients': entry.ingredients,
-        'quantity_text': entry.quantity_text,
+        'name_language': name_language,
+        'name_is_polish': name_is_polish,
+        'brand': details.brand if details else '',
+        'description': details.description if details else '',
+        'ingredients': details.ingredients if details else '',
+        'quantity_text': details.quantity_text if details else '',
         'suggested_quantity_per_scan': (
             format(entry.suggested_quantity_per_scan, '.2f')
             if entry.suggested_quantity_per_scan is not None
@@ -158,8 +181,11 @@ def pantry_catalog_json(result):
         'suggested_category': entry.suggested_category,
         'image_url': image_url,
         'image_cached_locally': image_cached_locally,
-        'attribution_url': entry.attribution_url,
-        'can_auto_register': bool(entry.product_name),
+        'attribution_url': details.attribution_url if details else '',
+        # Szybkie "Dodaj" jednym dotknięciem tylko z nazwą, której nie trzeba
+        # poprawiać. Obca nazwa idzie przez formularz, żeby do spiżarni nie
+        # trafiło "Spülmittel" zamiast "Płyn do naczyń".
+        'can_auto_register': bool(entry.product_name) and name_is_polish,
     })
     return payload
 
@@ -824,7 +850,14 @@ class PantryBarcodeLookupView(LoginRequiredMixin, View):
         product = PantryProduct.objects.filter(user=request.user, barcode=barcode).first()
         catalog = lookup_product_catalog(barcode)
         suggested_category = suggested_category_for_catalog_entry(catalog.entry)
-        if product and not product.category.strip() and suggested_category:
+        # Produkt bez kategorii albo w "Inne" dostaje lepszą podpowiedź, gdy
+        # taka jest. Kategorii wybranej świadomie nie ruszamy.
+        if (
+            product
+            and product.category.strip() in ['', PANTRY_CATEGORY_OTHER]
+            and suggested_category
+            and suggested_category != PANTRY_CATEGORY_OTHER
+        ):
             previous_category = product.category
             updated = PantryProduct.objects.filter(
                 pk=product.pk,
@@ -1049,13 +1082,14 @@ class PantryBarcodeRegisterView(LoginRequiredMixin, View):
             if len(name) > 160:
                 raise ValueError('Nazwa produktu może mieć maksymalnie 160 znaków.')
             requested_category = parse_pantry_category(payload.get('category'))
-            catalog_entry = ProductCatalogEntry.objects.filter(
-                source=ProductCatalogEntry.SOURCE_OPEN_FOOD_FACTS,
-                lookup_barcode=barcode,
-                status=ProductCatalogEntry.STATUS_FOUND,
-            ).first()
+            catalog_entry = household_catalog_entry(barcode) or cached_open_food_facts_entry(barcode)
             catalog_category = suggested_category_for_catalog_entry(catalog_entry)
-            category = requested_category or catalog_category or 'Inne'
+            category = (
+                requested_category
+                or catalog_category
+                or suggest_category_from_name(name)
+                or PANTRY_CATEGORY_OTHER
+            )
 
             count = parse_scan_count(payload.get('count'))
             unit = payload.get('unit') or PantryProduct.UNIT_PIECE
@@ -1149,6 +1183,15 @@ class PantryBarcodeRegisterView(LoginRequiredMixin, View):
             if image and not product.image:
                 product.image = image
             product.save()
+            # To, co domownik zatwierdził w formularzu, staje się podpowiedzią
+            # dla każdego kolejnego skanu tego kodu.
+            remember_household_product(
+                barcode,
+                name=product.name,
+                category=product.category,
+                unit=product.unit,
+                quantity_per_scan=product.quantity_per_scan,
+            )
             movement = PantryMovement.objects.create(
                 product=product,
                 movement_type=PantryMovement.PURCHASE,
@@ -1224,13 +1267,18 @@ class AddPantryProductView(LoginRequiredMixin, View):
                 raise ValueError('Wyprzedzenie zakupu nie może być ujemne.')
             image = validate_pantry_product_image(request.FILES.get('image'))
 
+            category = parse_pantry_category(request.POST.get('category'))
+            if not category:
+                suggested = suggest_category_from_name(name)
+                category = suggested if suggested != PANTRY_CATEGORY_OTHER else ''
+
             with transaction.atomic():
                 product = PantryProduct.objects.create(
                     user=request.user,
                     name=name,
                     barcode=barcode,
                     quantity_per_scan=quantity_per_scan,
-                    category=request.POST.get('category', '').strip(),
+                    category=category,
                     unit=unit,
                     current_quantity=current_quantity,
                     current_package_count=current_package_count,
@@ -1248,6 +1296,14 @@ class AddPantryProductView(LoginRequiredMixin, View):
                         occurred_on=timezone.localdate(),
                         note='Stan początkowy',
                     )
+                if barcode:
+                    remember_household_product(
+                        barcode,
+                        name=product.name,
+                        category=product.category,
+                        unit=product.unit,
+                        quantity_per_scan=product.quantity_per_scan,
+                    )
             messages.success(request, f'Dodano produkt: {product.name}.')
             return redirect('cooking:pantry')
         except Exception as exc:
@@ -1257,6 +1313,103 @@ class AddPantryProductView(LoginRequiredMixin, View):
                 'cooking/pantry_form.html',
                 get_pantry_form_context(form_values=form_values),
             )
+
+
+class EditPantryProductView(LoginRequiredMixin, View):
+    """Poprawa nazwy i kategorii istniejącego produktu.
+
+    Wcześniej nazwę dało się zmienić wyłącznie w panelu admina, więc produkt
+    dodany z obcą nazwą z katalogu zostawał z nią na zawsze. Jednostka,
+    wielkość opakowania i stan są tu celowo nieedytowalne - od nich zależy
+    historia ruchów i prognoza zużycia.
+    """
+
+    template_name = 'cooking/pantry_edit.html'
+
+    def _context(self, product, form_values=None):
+        values = form_values or {
+            'name': product.name,
+            'category': product.category,
+            'minimum_quantity': product.minimum_quantity,
+            'restock_lead_days': product.restock_lead_days,
+            'notes': product.notes,
+        }
+        remembered = household_catalog_entry(product.barcode) if product.barcode else None
+        return get_pantry_form_context(
+            product=product,
+            form_values=values,
+            remembered_entry=remembered,
+        )
+
+    def get(self, request, product_id):
+        product = get_object_or_404(PantryProduct, pk=product_id, user=request.user)
+        return render(request, self.template_name, self._context(product))
+
+    def post(self, request, product_id):
+        product = get_object_or_404(PantryProduct, pk=product_id, user=request.user)
+        try:
+            name = request.POST.get('name', '').strip()
+            if not name:
+                raise ValueError('Nazwa produktu jest wymagana.')
+            if len(name) > 160:
+                raise ValueError('Nazwa produktu może mieć maksymalnie 160 znaków.')
+            if PantryProduct.objects.filter(
+                user=request.user,
+                name__iexact=name,
+            ).exclude(pk=product.pk).exists():
+                raise ValueError('Masz już produkt o tej nazwie.')
+            category = parse_pantry_category(request.POST.get('category'))
+            minimum_quantity = parse_pantry_decimal(request.POST.get('minimum_quantity'))
+            validate_pantry_quantity_for_unit(minimum_quantity, product.unit)
+            try:
+                restock_lead_days = int(request.POST.get('restock_lead_days') or 3)
+            except ValueError:
+                raise ValueError('Wyprzedzenie zakupu musi być liczbą dni.') from None
+            if restock_lead_days < 0:
+                raise ValueError('Wyprzedzenie zakupu nie może być ujemne.')
+
+            with transaction.atomic():
+                product.name = name
+                product.category = category
+                product.minimum_quantity = minimum_quantity
+                product.restock_lead_days = restock_lead_days
+                product.notes = request.POST.get('notes', '').strip()
+                product.save(update_fields=[
+                    'name', 'category', 'minimum_quantity', 'restock_lead_days',
+                    'notes', 'updated_at',
+                ])
+                if product.barcode:
+                    remember_household_product(
+                        product.barcode,
+                        name=product.name,
+                        category=product.category,
+                        unit=product.unit,
+                        quantity_per_scan=product.quantity_per_scan,
+                    )
+        except ValueError as exc:
+            messages.error(request, f'Nie udało się zapisać zmian: {exc}')
+            return render(
+                request,
+                self.template_name,
+                self._context(product, form_values=request.POST),
+                status=400,
+            )
+        except IntegrityError:
+            messages.error(request, 'Nie udało się zapisać zmian: masz już produkt o tej nazwie.')
+            return render(
+                request,
+                self.template_name,
+                self._context(product, form_values=request.POST),
+                status=409,
+            )
+        if product.barcode:
+            messages.success(
+                request,
+                f'Zapisano: {product.name}. Następny skan tego kodu podpowie te dane całemu domowi.',
+            )
+        else:
+            messages.success(request, f'Zapisano: {product.name}.')
+        return redirect('cooking:pantry')
 
 
 class PantryMovementView(LoginRequiredMixin, View):

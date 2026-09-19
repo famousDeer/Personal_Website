@@ -1,4 +1,5 @@
 {% extends 'cooking/index.html' %} {% load static %} {% block title %}Dodaj nowy przepis{% endblock %}
+{% load pantry_extras %}
 
 {% block content_cooking %}
 
@@ -184,9 +185,7 @@
                                                 </select>
                                                 <select name="ingredient_category" class="form-select">
                                                     <option value="">Kategoria</option>
-                                                    {% for category in pantry_categories %}
-                                                        <option value="{{ category }}">{{ category }}</option>
-                                                    {% endfor %}
+                                                    {% pantry_category_options %}
                                                 </select>
                                                 <button class="btn btn-light" type="button" data-remove-ingredient title="Usuń składnik">
                                                     <i class="bi bi-x-lg"></i>

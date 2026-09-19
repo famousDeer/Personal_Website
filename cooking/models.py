@@ -172,8 +172,14 @@ class PantryProduct(models.Model):
 
 class ProductCatalogEntry(models.Model):
     SOURCE_OPEN_FOOD_FACTS = 'open_food_facts'
+    # Nazwa, kategoria i jednostka potwierdzone przez domowników. Wpis
+    # powstaje, gdy ktoś doda produkt ze skanera albo poprawi produkt z kodem,
+    # i ma pierwszeństwo przed Open Food Facts - również po usunięciu produktu
+    # ze spiżarni i dla każdego użytkownika tej instalacji. Nie wygasa.
+    SOURCE_HOUSEHOLD = 'household'
     SOURCE_CHOICES = [
         (SOURCE_OPEN_FOOD_FACTS, 'Open Food Facts'),
+        (SOURCE_HOUSEHOLD, 'Zapamiętane w domu'),
     ]
 
     STATUS_PENDING = 'pending'
@@ -195,6 +201,10 @@ class ProductCatalogEntry(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
     product_type = models.CharField(max_length=20, blank=True)
     product_name = models.CharField(max_length=160, blank=True)
+    # Język, z którego pochodzi product_name ("pl", "en", "de"...). Pusty,
+    # gdy baza go nie podała. Formularz skanera prosi o polską nazwę, gdy
+    # podpowiedź jest w innym języku.
+    name_language = models.CharField(max_length=8, blank=True)
     brand = models.CharField(max_length=160, blank=True)
     description = models.TextField(blank=True)
     ingredients = models.TextField(blank=True)
