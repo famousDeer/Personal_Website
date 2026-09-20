@@ -49,8 +49,8 @@ class RecipeStepIngredientAdmin(admin.ModelAdmin):
 
 @admin.register(PantryProduct)
 class PantryProductAdmin(admin.ModelAdmin):
-    list_display = ('name', 'barcode', 'quantity_per_scan', 'user', 'category', 'current_package_count', 'current_quantity', 'unit', 'minimum_quantity', 'restock_lead_days')
-    search_fields = ('name', 'barcode', 'category', 'user__username')
+    list_display = ('name', 'barcode', 'quantity_per_scan', 'created_by', 'category', 'current_package_count', 'current_quantity', 'unit', 'minimum_quantity', 'restock_lead_days')
+    search_fields = ('name', 'barcode', 'category', 'created_by__username')
     list_filter = ('category', 'unit')
 
 
@@ -85,8 +85,8 @@ class ShoppingListItemInline(admin.TabularInline):
 
 @admin.register(ShoppingList)
 class ShoppingListAdmin(admin.ModelAdmin):
-    list_display = ('title', 'user', 'source', 'status', 'created_at', 'updated_at')
-    search_fields = ('title', 'user__username', 'items__name')
+    list_display = ('title', 'created_by', 'source', 'status', 'created_at', 'updated_at')
+    search_fields = ('title', 'created_by__username', 'items__name')
     list_filter = ('source', 'status', 'created_at')
     inlines = [ShoppingListItemInline]
 

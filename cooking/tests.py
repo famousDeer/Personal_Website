@@ -10,7 +10,9 @@ from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.signals import request_finished
 from django.db import close_old_connections
-from django.test import Client, TestCase, override_settings
+from django.db import IntegrityError, connection, transaction
+from django.db.migrations.executor import MigrationExecutor
+from django.test import Client, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from PIL import Image as PILImage
@@ -234,7 +236,7 @@ class PantryTests(TestCase):
         }, follow=True)
 
         self.assertEqual(response.status_code, 200)
-        product = PantryProduct.objects.get(user=self.user, name='Ryż')
+        product = PantryProduct.objects.get(name='Ryż')
         self.assertEqual(product.current_quantity, Decimal('2.50'))
         self.assertEqual(product.current_package_count, 3)
         self.assertEqual(product.minimum_quantity, Decimal('0.50'))
@@ -260,7 +262,7 @@ class PantryTests(TestCase):
 
     def test_pantry_movement_updates_stock_and_prediction(self):
         product = PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Kawa',
             category='Napoje',
             unit=PantryProduct.UNIT_GRAM,
@@ -305,12 +307,12 @@ class PantryTests(TestCase):
         }, follow=True)
 
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(PantryProduct.objects.filter(user=self.user, name='Jajka').exists())
+        self.assertFalse(PantryProduct.objects.filter(name='Jajka').exists())
         self.assertContains(response, 'Dla jednostki &quot;szt.&quot; podaj liczbę całkowitą.')
 
     def test_piece_unit_rejects_fractional_movements(self):
         product = PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Jajka',
             unit=PantryProduct.UNIT_PIECE,
             current_quantity=Decimal('6.00'),
@@ -330,7 +332,7 @@ class PantryTests(TestCase):
 
     def test_piece_unit_accepts_integer_movements(self):
         product = PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Jajka',
             unit=PantryProduct.UNIT_PIECE,
             current_quantity=Decimal('6.00'),
@@ -349,7 +351,7 @@ class PantryTests(TestCase):
 
     def test_manual_package_movement_updates_count_and_total_quantity(self):
         product = PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Jogurt',
             unit=PantryProduct.UNIT_MILLILITER,
             quantity_per_scan=Decimal('200.00'),
@@ -372,7 +374,7 @@ class PantryTests(TestCase):
 
     def test_manual_overconsumption_records_only_fulfilled_quantity(self):
         product = PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Mały jogurt',
             barcode='5900000000097',
             unit=PantryProduct.UNIT_MILLILITER,
@@ -398,7 +400,7 @@ class PantryTests(TestCase):
 
     def test_manual_movement_operation_id_is_idempotent(self):
         product = PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Mleko idempotentne',
             barcode='5900000000905',
             unit=PantryProduct.UNIT_MILLILITER,
@@ -424,7 +426,7 @@ class PantryTests(TestCase):
 
     def test_manual_form_uses_base_quantity_for_unpacked_product(self):
         product = PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Ryż luzem',
             unit=PantryProduct.UNIT_KILOGRAM,
             current_quantity=Decimal('2.50'),
@@ -441,23 +443,23 @@ class PantryTests(TestCase):
         )
         self.assertContains(response, '<span class="input-group-text">kg</span>', html=True)
 
-    def test_pantry_list_only_shows_logged_in_users_products(self):
+    def test_pantry_list_shows_products_of_all_household_members(self):
         PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Makaron',
             category='Produkty suche',
             unit=PantryProduct.UNIT_PACKAGE,
             current_quantity=Decimal('3.00'),
         )
         PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Mleko',
             category='Nabiał',
             unit=PantryProduct.UNIT_LITER,
             current_quantity=Decimal('1.00'),
         )
         PantryProduct.objects.create(
-            user=self.other,
+            created_by=self.other,
             name='Cukier',
             unit=PantryProduct.UNIT_KILOGRAM,
             current_quantity=Decimal('1.00'),
@@ -468,16 +470,17 @@ class PantryTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Makaron')
         self.assertContains(response, 'Mleko')
-        self.assertNotContains(response, 'Cukier')
+        # Spiżarnia jest wspólna – produkt dodany przez innego domownika też widać.
+        self.assertContains(response, 'Cukier')
         self.assertEqual(
             [group['name'] for group in response.context['product_groups']],
-            # Kolejność grup idzie za PANTRY_CATEGORY_GROUPS.
-            ['Nabiał', 'Produkty suche'],
+            # Kolejność grup idzie za PANTRY_CATEGORY_GROUPS, produkty bez kategorii na końcu.
+            ['Nabiał', 'Produkty suche', 'Bez kategorii'],
         )
 
     def test_empty_product_without_history_shows_immediate_restock_alert(self):
         PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Pusty produkt',
             category='Inne',
             unit=PantryProduct.UNIT_PACKAGE,
@@ -493,7 +496,7 @@ class PantryTests(TestCase):
 
     def test_due_forecast_is_included_in_restock_filter_even_above_minimum(self):
         product = PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Produkt prognozowany',
             unit=PantryProduct.UNIT_PIECE,
             current_quantity=Decimal('3.00'),
@@ -515,7 +518,7 @@ class PantryTests(TestCase):
 
     def test_active_filters_show_no_results_state_instead_of_first_scan_state(self):
         PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Makaron',
             unit=PantryProduct.UNIT_PACKAGE,
             current_quantity=Decimal('1.00'),
@@ -535,7 +538,7 @@ class PantryForecastTests(TestCase):
 
     def product(self, **overrides):
         values = {
-            'user': self.user,
+            'created_by': self.user,
             'name': f'Produkt {PantryProduct.objects.count() + 1}',
             'unit': PantryProduct.UNIT_PIECE,
             'current_quantity': Decimal('10.00'),
@@ -772,7 +775,7 @@ class PantryBarcodeTests(TestCase):
         self.other = User.objects.create_user(username='other-scanner-user', password='pass12345')
         self.client.login(username='scanner-user', password='pass12345')
         self.product = PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Batoniki',
             barcode='5901234123457',
             quantity_per_scan=Decimal('2.00'),
@@ -858,10 +861,10 @@ class PantryBarcodeTests(TestCase):
             page.content.decode(),
         )
 
-    def test_lookup_does_not_expose_another_users_product(self):
-        PantryProduct.objects.create(
-            user=self.other,
-            name='Cudza kawa',
+    def test_lookup_finds_product_added_by_another_household_member(self):
+        product = PantryProduct.objects.create(
+            created_by=self.other,
+            name='Kawa ziarnista',
             barcode='1111111111111',
         )
 
@@ -870,16 +873,29 @@ class PantryBarcodeTests(TestCase):
         })
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['status'], 'unknown')
+        self.assertEqual(response.json()['status'], 'known')
+        self.assertEqual(response.json()['product']['id'], product.id)
 
-    def test_same_barcode_can_be_used_by_different_users(self):
-        other_product = PantryProduct.objects.create(
-            user=self.other,
-            name='Inne batoniki',
-            barcode=self.product.barcode,
-        )
+    def test_barcode_can_belong_to_only_one_product_in_the_household(self):
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            PantryProduct.objects.create(
+                created_by=self.other,
+                name='Inne batoniki',
+                barcode=self.product.barcode,
+            )
 
-        self.assertEqual(other_product.barcode, self.product.barcode)
+    def test_register_rejects_barcode_already_assigned_to_another_product(self):
+        response = self.client.post(reverse('cooking:pantry-barcode-register'), {
+            'barcode': self.product.barcode,
+            'scan_id': str(uuid4()),
+            'name': 'Inne batoniki',
+            'quantity_per_scan': '1',
+            'unit': PantryProduct.UNIT_PACKAGE,
+            'count': '1',
+        })
+
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(PantryProduct.objects.filter(name='Inne batoniki').exists())
 
     def test_known_scan_consumes_quantity_per_scan_and_is_idempotent(self):
         scan_id = str(uuid4())
@@ -999,7 +1015,7 @@ class PantryBarcodeTests(TestCase):
         })
 
         self.assertEqual(response.status_code, 201)
-        product = PantryProduct.objects.get(user=self.user, name='Mleko')
+        product = PantryProduct.objects.get(name='Mleko')
         self.assertEqual(product.barcode, '0123456789012')
         self.assertEqual(product.quantity_per_scan, Decimal('1.50'))
         self.assertEqual(product.current_quantity, Decimal('6.00'))
@@ -1011,7 +1027,7 @@ class PantryBarcodeTests(TestCase):
 
     def test_register_can_attach_barcode_to_existing_product(self):
         milk = PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Mleko',
             unit=PantryProduct.UNIT_MILLILITER,
             current_quantity=Decimal('500.00'),
@@ -1045,7 +1061,7 @@ class PantryBarcodeTests(TestCase):
 
     def test_register_does_not_overwrite_an_existing_category(self):
         product = PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Napój własny',
             category='Produkty suche',
             unit=PantryProduct.UNIT_LITER,
@@ -1081,7 +1097,7 @@ class PantryBarcodeTests(TestCase):
         self.assertEqual(first.status_code, 201)
         self.assertEqual(second.status_code, 200)
         self.assertTrue(second.json()['idempotent_replay'])
-        product = PantryProduct.objects.get(user=self.user, name='Sok')
+        product = PantryProduct.objects.get(name='Sok')
         self.assertEqual(product.current_quantity, Decimal('2.00'))
         self.assertEqual(product.current_package_count, 2)
         # Bez wybranej kategorii podpowiedź bierze się z nazwy.
@@ -1169,7 +1185,7 @@ class PantryBarcodeTests(TestCase):
         self.assertEqual(forbidden.status_code, 403)
         self.assertEqual(allowed.status_code, 200)
 
-    def test_register_can_save_a_product_photo_and_serve_it_only_to_owner(self):
+    def test_register_can_save_a_product_photo_and_serve_it_to_household(self):
         with tempfile.TemporaryDirectory() as media_root, override_settings(PRIVATE_MEDIA_ROOT=media_root):
             response = self.client.post(reverse('cooking:pantry-barcode-register'), {
                 'barcode': '2222222222222',
@@ -1183,7 +1199,7 @@ class PantryBarcodeTests(TestCase):
             })
 
             self.assertEqual(response.status_code, 201)
-            product = PantryProduct.objects.get(user=self.user, barcode='2222222222222')
+            product = PantryProduct.objects.get(barcode='2222222222222')
             self.assertTrue(product.image.name.startswith('pantry_product_images/'))
             with self.assertRaises(ValueError):
                 _ = product.image.url
@@ -1198,9 +1214,12 @@ class PantryBarcodeTests(TestCase):
             self.assertEqual(image_response['Content-Type'], 'image/png')
 
             self.client.logout()
+            household_response = self.client.get(reverse('cooking:pantry-product-image', args=[product.id]))
+            self.assertEqual(household_response.status_code, 302)
+
             self.client.login(username='other-scanner-user', password='pass12345')
-            hidden_response = self.client.get(reverse('cooking:pantry-product-image', args=[product.id]))
-            self.assertEqual(hidden_response.status_code, 404)
+            household_response = self.client.get(reverse('cooking:pantry-product-image', args=[product.id]))
+            self.assertEqual(household_response.status_code, 200)
 
     def test_known_product_photo_can_be_added_and_invalid_image_is_rejected(self):
         with tempfile.TemporaryDirectory() as media_root, override_settings(PRIVATE_MEDIA_ROOT=media_root):
@@ -1223,18 +1242,19 @@ class PantryBarcodeTests(TestCase):
                 'cooking:pantry-product-image', args=[self.product.id],
             ))
 
-    def test_photo_upload_endpoint_does_not_allow_editing_another_users_product(self):
+    def test_photo_upload_is_allowed_for_every_household_member(self):
         self.client.logout()
         self.client.login(username='other-scanner-user', password='pass12345')
 
-        response = self.client.post(
-            reverse('cooking:pantry-product-image-upload', args=[self.product.id]),
-            {'image': make_test_image()},
-        )
+        with tempfile.TemporaryDirectory() as media_root, override_settings(PRIVATE_MEDIA_ROOT=media_root):
+            response = self.client.post(
+                reverse('cooking:pantry-product-image-upload', args=[self.product.id]),
+                {'image': make_test_image()},
+            )
 
-        self.assertEqual(response.status_code, 404)
-        self.product.refresh_from_db()
-        self.assertFalse(self.product.image)
+            self.assertEqual(response.status_code, 200)
+            self.product.refresh_from_db()
+            self.assertTrue(self.product.image)
 
 
 @override_settings(OPEN_FOOD_FACTS_ENABLED=True, OPEN_FOOD_FACTS_RATE_LIMIT=12)
@@ -1478,7 +1498,7 @@ class ProductCatalogLookupTests(TestCase):
     def test_known_local_product_is_enriched_without_mutating_stock(self, request_product, cache_image):
         request_product.return_value = self.catalog_product()
         PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Produkt lokalny',
             barcode=self.barcode,
             current_quantity=Decimal('3.00'),
@@ -1502,7 +1522,7 @@ class ProductCatalogLookupTests(TestCase):
     def test_known_product_keeps_category_chosen_by_user(self, request_product, cache_image):
         request_product.return_value = self.catalog_product()
         product = PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Produkt lokalny',
             barcode=self.barcode,
             category='Nabiał',
@@ -1626,7 +1646,7 @@ class ShoppingListTests(TestCase):
 
     def test_generate_shopping_list_uses_low_pantry_stock(self):
         low_product = PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Ryż',
             category='Produkty suche',
             unit=PantryProduct.UNIT_KILOGRAM,
@@ -1634,7 +1654,7 @@ class ShoppingListTests(TestCase):
             minimum_quantity=Decimal('1.00'),
         )
         PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Makaron',
             category='Produkty suche',
             unit=PantryProduct.UNIT_PACKAGE,
@@ -1642,7 +1662,7 @@ class ShoppingListTests(TestCase):
             minimum_quantity=Decimal('1.00'),
         )
         PantryProduct.objects.create(
-            user=self.other,
+            created_by=self.other,
             name='Cukier',
             unit=PantryProduct.UNIT_KILOGRAM,
             current_quantity=Decimal('0.00'),
@@ -1652,14 +1672,16 @@ class ShoppingListTests(TestCase):
         response = self.client.post(reverse('cooking:generate-shopping-list'), follow=True)
 
         self.assertEqual(response.status_code, 200)
-        shopping_list = ShoppingList.objects.get(user=self.user)
+        shopping_list = ShoppingList.objects.get()
         self.assertEqual(shopping_list.source, ShoppingList.AUTOMATIC)
-        item = shopping_list.items.get()
+        self.assertEqual(shopping_list.created_by, self.user)
+        item = shopping_list.items.get(name='Ryż')
         self.assertEqual(item.pantry_product, low_product)
-        self.assertEqual(item.name, 'Ryż')
         self.assertEqual(item.quantity, Decimal('0.80'))
         self.assertFalse(shopping_list.items.filter(name='Makaron').exists())
-        self.assertFalse(shopping_list.items.filter(name='Cukier').exists())
+        # Spiżarnia jest wspólna: brakujący produkt dodany przez domownika też trafia na listę.
+        self.assertEqual(shopping_list.items.get(name='Cukier').quantity, Decimal('1.00'))
+        self.assertEqual(shopping_list.items.count(), 2)
 
     def test_create_manual_shopping_list_with_multiple_items(self):
         response = self.client.post(reverse('cooking:create-shopping-list'), {
@@ -1672,20 +1694,20 @@ class ShoppingListTests(TestCase):
         }, follow=True)
 
         self.assertEqual(response.status_code, 200)
-        shopping_list = ShoppingList.objects.get(user=self.user, title='Weekend')
+        shopping_list = ShoppingList.objects.get(title='Weekend')
         self.assertEqual(shopping_list.source, ShoppingList.MANUAL)
         self.assertEqual(shopping_list.items.count(), 2)
         self.assertEqual(shopping_list.items.get(name='Jajka').quantity, Decimal('6.00'))
 
     def test_complete_shopping_list_adds_purchased_items_to_pantry(self):
         product = PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Mleko',
             category='Nabiał',
             unit=PantryProduct.UNIT_LITER,
             current_quantity=Decimal('1.00'),
         )
-        shopping_list = ShoppingList.objects.create(user=self.user, title='Po pracy')
+        shopping_list = ShoppingList.objects.create(created_by=self.user, title='Po pracy')
         ShoppingListItem.objects.create(
             shopping_list=shopping_list,
             pantry_product=product,
@@ -1709,7 +1731,7 @@ class ShoppingListTests(TestCase):
         self.assertEqual(response.status_code, 200)
         product.refresh_from_db()
         shopping_list.refresh_from_db()
-        bread = PantryProduct.objects.get(user=self.user, name='Chleb')
+        bread = PantryProduct.objects.get(name='Chleb')
         self.assertEqual(product.current_quantity, Decimal('3.00'))
         self.assertEqual(product.current_package_count, 0)
         self.assertEqual(bread.current_quantity, Decimal('1.00'))
@@ -1721,7 +1743,7 @@ class ShoppingListTests(TestCase):
         self.assertEqual(bread.movements.get().note, 'Lista zakupów: Po pracy')
 
     def test_edit_shopping_list_title(self):
-        shopping_list = ShoppingList.objects.create(user=self.user, title='Stara nazwa')
+        shopping_list = ShoppingList.objects.create(created_by=self.user, title='Stara nazwa')
 
         response = self.client.post(reverse('cooking:edit-shopping-list', args=[shopping_list.id]), {
             'title': 'Nowa nazwa',
@@ -1733,7 +1755,7 @@ class ShoppingListTests(TestCase):
         self.assertContains(response, 'Nowa nazwa')
 
     def test_delete_shopping_list_removes_items(self):
-        shopping_list = ShoppingList.objects.create(user=self.user, title='Do usunięcia')
+        shopping_list = ShoppingList.objects.create(created_by=self.user, title='Do usunięcia')
         item = ShoppingListItem.objects.create(
             shopping_list=shopping_list,
             name='Mleko',
@@ -1747,20 +1769,30 @@ class ShoppingListTests(TestCase):
         self.assertFalse(ShoppingList.objects.filter(id=shopping_list.id).exists())
         self.assertFalse(ShoppingListItem.objects.filter(id=item.id).exists())
 
-    def test_other_user_cannot_open_shopping_list(self):
-        shopping_list = ShoppingList.objects.create(user=self.other, title='Cudza lista')
+    def test_household_member_can_open_shopping_list(self):
+        shopping_list = ShoppingList.objects.create(created_by=self.other, title='Lista Ani')
 
         response = self.client.get(reverse('cooking:shopping-list-detail', args=[shopping_list.id]))
 
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Lista Ani')
 
-    def test_other_user_cannot_delete_shopping_list(self):
-        shopping_list = ShoppingList.objects.create(user=self.other, title='Cudza lista')
+    def test_household_member_can_delete_shopping_list(self):
+        shopping_list = ShoppingList.objects.create(created_by=self.other, title='Lista Ani')
 
         response = self.client.post(reverse('cooking:delete-shopping-list', args=[shopping_list.id]))
 
-        self.assertEqual(response.status_code, 404)
-        self.assertTrue(ShoppingList.objects.filter(id=shopping_list.id).exists())
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(ShoppingList.objects.filter(id=shopping_list.id).exists())
+
+    def test_anonymous_user_cannot_open_shopping_list(self):
+        shopping_list = ShoppingList.objects.create(created_by=self.other, title='Lista Ani')
+        self.client.logout()
+
+        response = self.client.get(reverse('cooking:shopping-list-detail', args=[shopping_list.id]))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response['Location'])
 
 
 class CookModeTests(TestCase):
@@ -1770,7 +1802,7 @@ class CookModeTests(TestCase):
 
     def test_cook_view_consumes_existing_pantry_product(self):
         product = PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Mąka',
             category='Produkty suche',
             unit=PantryProduct.UNIT_GRAM,
@@ -1803,7 +1835,7 @@ class CookModeTests(TestCase):
         }, follow=True)
 
         self.assertEqual(response.status_code, 200)
-        product = PantryProduct.objects.get(user=self.user, name='Bazylia')
+        product = PantryProduct.objects.get(name='Bazylia')
         self.assertEqual(product.category, 'Przyprawy')
         self.assertEqual(product.unit, PantryProduct.UNIT_GRAM)
         self.assertEqual(product.current_quantity, Decimal('0.00'))
@@ -1815,7 +1847,7 @@ class CookModeTests(TestCase):
 
     def test_cook_view_records_only_fulfilled_quantity_when_stock_is_insufficient(self):
         product = PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Masło',
             unit=PantryProduct.UNIT_GRAM,
             current_quantity=Decimal('100.00'),
@@ -1838,7 +1870,7 @@ class CookModeTests(TestCase):
 
     def test_cook_view_records_actual_package_count_change(self):
         product = PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Jogurt do gotowania',
             barcode='5900000000912',
             unit=PantryProduct.UNIT_MILLILITER,
@@ -1864,7 +1896,7 @@ class CookModeTests(TestCase):
 
     def test_cook_view_converts_weight_to_product_unit(self):
         product = PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Cukier',
             unit=PantryProduct.UNIT_KILOGRAM,
             current_quantity=Decimal('1.00'),
@@ -1884,7 +1916,7 @@ class CookModeTests(TestCase):
 
     def test_cook_view_rejects_fractional_piece_product(self):
         product = PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Jajka',
             unit=PantryProduct.UNIT_PIECE,
             current_quantity=Decimal('6.00'),
@@ -2132,12 +2164,14 @@ class HouseholdCatalogTests(TestCase):
     def test_remembered_product_wins_over_open_food_facts_without_network(self, request_product):
         self.off_entry(valid_until=timezone.now() - timedelta(days=1))
         self.register()
+        # Produkt zużyty i usunięty ze wspólnej spiżarni – pamięć domowa zostaje.
+        PantryProduct.objects.filter(barcode=self.barcode).delete()
 
         response = self.lookup(self.other_client())
 
         request_product.assert_not_called()
         catalog = response.json()['catalog']
-        self.assertEqual(response.json()['status'], 'unknown')  # drugi domownik nie ma go w spiżarni
+        self.assertEqual(response.json()['status'], 'unknown')
         self.assertEqual(catalog['name'], 'Płyn do naczyń miętowy')
         self.assertEqual(catalog['suggested_category'], 'Chemia domowa')
         self.assertEqual(catalog['source'], 'household')
@@ -2152,7 +2186,7 @@ class HouseholdCatalogTests(TestCase):
     @patch('cooking.services.product_catalog._request_product')
     def test_memory_survives_deleting_the_product(self, request_product):
         self.register()
-        PantryProduct.objects.filter(user=self.user, barcode=self.barcode).delete()
+        PantryProduct.objects.filter(barcode=self.barcode).delete()
 
         catalog = self.lookup().json()['catalog']
 
@@ -2190,7 +2224,7 @@ class HouseholdCatalogTests(TestCase):
         })
 
         self.assertEqual(response.status_code, 302)
-        product = PantryProduct.objects.get(user=self.user, barcode='5901478007780')
+        product = PantryProduct.objects.get(barcode='5901478007780')
         self.assertEqual(product.category, 'Artykuły papierowe')
         entry = ProductCatalogEntry.objects.get(
             source=ProductCatalogEntry.SOURCE_HOUSEHOLD, lookup_barcode='5901478007780',
@@ -2200,7 +2234,7 @@ class HouseholdCatalogTests(TestCase):
     def test_known_product_in_other_category_is_upgraded_on_scan(self):
         self.off_entry()
         product = PantryProduct.objects.create(
-            user=self.user, name='Spülmittel', barcode=self.barcode, category='Inne',
+            created_by=self.user, name='Spülmittel', barcode=self.barcode, category='Inne',
         )
 
         self.lookup()
@@ -2215,7 +2249,7 @@ class EditPantryProductTests(TestCase):
         self.other = User.objects.create_user(username='sasiad', password='pass12345')
         self.client.login(username='edytor', password='pass12345')
         self.product = PantryProduct.objects.create(
-            user=self.user,
+            created_by=self.user,
             name='Spülmittel',
             barcode='4001234567890',
             category='Inne',
@@ -2248,7 +2282,7 @@ class EditPantryProductTests(TestCase):
         self.assertContains(response, '<optgroup label="Dom">')
         self.assertContains(response, '<option value="Inne" selected>')
         # Decimal w polu liczbowym bez polskiego przecinka ("1,50" pole odrzuca)
-        self.assertContains(response, 'name="minimum_quantity" value="1.50"')
+        self.assertContains(response, 'name="minimum_quantity" value="1.5"')
         self.assertNotContains(response, 'value="1,50"')
 
     def test_edit_updates_product_and_household_memory_without_touching_stock(self):
@@ -2278,29 +2312,384 @@ class EditPantryProductTests(TestCase):
         self.assertFalse(ProductCatalogEntry.objects.exists())
 
     def test_duplicate_name_and_bad_category_are_rejected(self):
-        PantryProduct.objects.create(user=self.user, name='Płyn do naczyń')
+        PantryProduct.objects.create(created_by=self.user, name='Płyn do naczyń')
 
         self.assertEqual(self.post().status_code, 400)
         self.assertEqual(self.post(name='Inna nazwa', category='Wymyślona').status_code, 400)
         self.product.refresh_from_db()
         self.assertEqual(self.product.name, 'Spülmittel')
 
-    def test_cannot_edit_someone_elses_product(self):
-        other_product = PantryProduct.objects.create(user=self.other, name='Cudzy')
+    def test_household_member_can_edit_product_added_by_someone_else(self):
+        other_product = PantryProduct.objects.create(created_by=self.other, name='Kawa Ani')
 
         response = self.client.post(
             reverse('cooking:edit-pantry-product', args=[other_product.pk]),
-            {'name': 'Przejęty', 'minimum_quantity': '0', 'restock_lead_days': '3'},
+            {'name': 'Kawa ziarnista', 'minimum_quantity': '0', 'restock_lead_days': '3'},
         )
 
-        self.assertEqual(response.status_code, 404)
+        self.assertRedirects(response, reverse('cooking:pantry'))
         other_product.refresh_from_db()
-        self.assertEqual(other_product.name, 'Cudzy')
+        self.assertEqual(other_product.name, 'Kawa ziarnista')
+        self.assertEqual(other_product.created_by, self.other)  # autor się nie zmienia
+
+    def test_edit_page_shows_author_and_delete_zone(self):
+        PantryMovement.objects.create(
+            product=self.product, movement_type=PantryMovement.CONSUME, quantity=Decimal('100'),
+        )
+
+        response = self.client.get(self.url)
+
+        self.assertContains(response, 'Dodane przez edytor')
+        self.assertContains(response, 'historia\n                    (1 ruch)')
+        self.assertContains(response, reverse('cooking:delete-pantry-product', args=[self.product.pk]))
+        self.assertContains(response, 'Zapomnij też kod 4001234567890')
+        self.assertContains(response, 'name="unit"')
+        self.assertContains(response, 'name="barcode"')
+        self.assertContains(response, 'id="pantry-unit-meta"')
+
+    def full_post(self, **overrides):
+        data = {
+            'name': 'Płyn do naczyń',
+            'barcode': '4001234567890',
+            'category': 'Chemia domowa',
+            'unit': PantryProduct.UNIT_MILLILITER,
+            'quantity_per_scan': '500',
+            'current_quantity': '1000',
+            'current_package_count': '2',
+            'minimum_quantity': '0',
+            'restock_lead_days': '3',
+            'notes': '',
+        }
+        data.update(overrides)
+        return self.client.post(self.url, data)
+
+    def test_full_edit_converts_unit_history_and_records_stock_correction(self):
+        PantryMovement.objects.create(
+            product=self.product, movement_type=PantryMovement.PURCHASE,
+            quantity=Decimal('1000.00'), package_count=2, occurred_on=timezone.localdate() - timedelta(days=3),
+        )
+        consume = PantryMovement.objects.create(
+            product=self.product, movement_type=PantryMovement.CONSUME,
+            quantity=Decimal('250.00'), requested_quantity=Decimal('300.00'),
+            occurred_on=timezone.localdate() - timedelta(days=1),
+        )
+
+        response = self.full_post(
+            barcode='4001234567891',
+            unit=PantryProduct.UNIT_LITER,
+            quantity_per_scan='0.5',
+            current_quantity='1.5',
+            current_package_count='3',
+            minimum_quantity='0.5',
+            restock_lead_days='7',
+        )
+
+        self.assertRedirects(response, reverse('cooking:pantry'))
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.unit, PantryProduct.UNIT_LITER)
+        self.assertEqual(self.product.barcode, '4001234567891')
+        self.assertEqual(self.product.quantity_per_scan, Decimal('0.50'))
+        self.assertEqual(self.product.current_quantity, Decimal('1.50'))
+        self.assertEqual(self.product.current_package_count, 3)
+        self.assertEqual(self.product.minimum_quantity, Decimal('0.50'))
+        self.assertEqual(self.product.restock_lead_days, 7)
+        consume.refresh_from_db()
+        self.assertEqual(consume.quantity, Decimal('0.25'))
+        self.assertEqual(consume.requested_quantity, Decimal('0.30'))
+        self.assertEqual(
+            self.product.movements.get(movement_type=PantryMovement.PURCHASE).quantity,
+            Decimal('1.00'),
+        )
+        adjustment = self.product.movements.get(movement_type=PantryMovement.ADJUST)
+        self.assertEqual(adjustment.quantity, Decimal('0.50'))
+        self.assertIn('Korekta w edycji produktu: 1 → 1,5 l', adjustment.note)
+        memory = ProductCatalogEntry.objects.get(
+            source=ProductCatalogEntry.SOURCE_HOUSEHOLD, lookup_barcode='4001234567891',
+        )
+        self.assertEqual(memory.suggested_unit, PantryProduct.UNIT_LITER)
+        self.assertEqual(memory.suggested_quantity_per_scan, Decimal('0.50'))
+        messages = [str(message) for message in response.wsgi_request._messages]
+        self.assertIn('Historia przeliczona na l (2 ruchy)', messages[0])
+
+    def test_stock_correction_is_not_treated_as_consumption_by_forecast(self):
+        self.full_post(current_quantity='500', current_package_count='1')
+
+        self.product.refresh_from_db()
+        adjustment = self.product.movements.get()
+        self.assertEqual(adjustment.movement_type, PantryMovement.ADJUST)
+        self.assertEqual(adjustment.quantity, Decimal('-500.00'))
+        forecast = forecast_pantry_product(self.product)
+        self.assertEqual(forecast.status, 'no_history')
+        self.assertEqual(forecast.event_count, 0)
+
+    def test_saving_without_stock_change_does_not_add_movements(self):
+        self.full_post(name='Płyn do naczyń Ludwik')
+
+        self.assertFalse(self.product.movements.exists())
+
+    def test_incompatible_unit_change_keeps_history_numbers(self):
+        consume = PantryMovement.objects.create(
+            product=self.product, movement_type=PantryMovement.CONSUME, quantity=Decimal('500.00'),
+        )
+
+        response = self.full_post(
+            unit=PantryProduct.UNIT_PACKAGE,
+            quantity_per_scan='1',
+            current_quantity='2',
+            current_package_count='2',
+        )
+
+        self.assertRedirects(response, reverse('cooking:pantry'))
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.unit, PantryProduct.UNIT_PACKAGE)
+        self.assertEqual(self.product.current_quantity, Decimal('2.00'))
+        consume.refresh_from_db()
+        self.assertEqual(consume.quantity, Decimal('500.00'))
+        messages = [str(message) for message in response.wsgi_request._messages]
+        self.assertIn('Historia ruchów bez przeliczenia', messages[0])
+
+    def test_package_count_must_match_stock_and_package_size(self):
+        response = self.full_post(current_package_count='5')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(response, 'Liczba opakowań (5) nie pasuje do stanu 1000 ml', status_code=400)
+        self.assertContains(response, 'powinno być 2', status_code=400)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.current_package_count, 2)
+        self.assertEqual(self.product.name, 'Spülmittel')
+
+    def test_whole_numbers_are_required_for_pieces(self):
+        response = self.full_post(
+            unit=PantryProduct.UNIT_PIECE, quantity_per_scan='1',
+            current_quantity='1.5', current_package_count='2',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.unit, PantryProduct.UNIT_MILLILITER)
+
+    def test_barcode_of_another_product_is_rejected(self):
+        PantryProduct.objects.create(created_by=self.other, name='Płyn Ani', barcode='5900000000999')
+
+        response = self.full_post(barcode='5900000000999')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(
+            response,
+            'Kod 5900000000999 jest już przypisany do produktu „Płyn Ani”.',
+            status_code=400,
+        )
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.barcode, '4001234567890')
+
+    def test_barcode_can_be_removed(self):
+        response = self.full_post(barcode='')
+
+        self.assertRedirects(response, reverse('cooking:pantry'))
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.barcode, '')
+
+    def test_open_shopping_list_items_follow_the_product(self):
+        active = ShoppingList.objects.create(created_by=self.other, title='Na sobotę')
+        done = ShoppingList.objects.create(
+            created_by=self.other, title='Zeszły tydzień', status=ShoppingList.COMPLETED,
+        )
+        open_item = ShoppingListItem.objects.create(
+            shopping_list=active, pantry_product=self.product, name='Spülmittel',
+            category='Inne', unit=PantryProduct.UNIT_MILLILITER, quantity=Decimal('500'),
+        )
+        old_item = ShoppingListItem.objects.create(
+            shopping_list=done, pantry_product=self.product, name='Spülmittel',
+            category='Inne', unit=PantryProduct.UNIT_MILLILITER, quantity=Decimal('500'),
+            is_purchased=True,
+        )
+
+        self.full_post(
+            unit=PantryProduct.UNIT_PACKAGE, quantity_per_scan='1',
+            current_quantity='2', current_package_count='2',
+        )
+
+        open_item.refresh_from_db()
+        old_item.refresh_from_db()
+        self.assertEqual(open_item.name, 'Płyn do naczyń')
+        self.assertEqual(open_item.category, 'Chemia domowa')
+        self.assertEqual(open_item.unit, PantryProduct.UNIT_PACKAGE)
+        self.assertEqual(old_item.name, 'Spülmittel')  # zakończona lista to historia
+        self.assertEqual(old_item.unit, PantryProduct.UNIT_MILLILITER)
+
+    def test_photo_can_be_replaced_and_removed(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(PRIVATE_MEDIA_ROOT=media_root):
+            self.product.image = make_test_image('stare.png')
+            self.product.save()
+            old_name = self.product.image.name
+            storage = self.product.image.storage
+            self.assertTrue(storage.exists(old_name))
+
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self.client.post(self.url, {
+                    'name': 'Płyn do naczyń',
+                    'image': make_test_image('nowe.png', color=(200, 10, 10)),
+                })
+            self.assertRedirects(response, reverse('cooking:pantry'))
+            self.product.refresh_from_db()
+            new_name = self.product.image.name
+            self.assertNotEqual(new_name, old_name)
+            self.assertFalse(storage.exists(old_name))
+            self.assertTrue(storage.exists(new_name))
+
+            with self.captureOnCommitCallbacks(execute=True):
+                self.client.post(self.url, {'name': 'Płyn do naczyń', 'remove_image': '1'})
+            self.product.refresh_from_db()
+            self.assertFalse(self.product.image)
+            self.assertFalse(storage.exists(new_name))
+
+    def test_invalid_photo_is_rejected_without_changes(self):
+        response = self.client.post(self.url, {
+            'name': 'Płyn do naczyń',
+            'image': SimpleUploadedFile('fake.jpg', b'not-an-image', content_type='image/jpeg'),
+        })
+
+        self.assertEqual(response.status_code, 400)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.name, 'Spülmittel')
+        self.assertFalse(self.product.image)
+
+    def test_rejected_form_keeps_typed_values(self):
+        PantryProduct.objects.create(created_by=self.other, name='Płyn Ani', barcode='5900000000999')
+
+        response = self.full_post(barcode='5900000000999', notes='Nowa notatka', restock_lead_days='9')
+
+        self.assertContains(response, 'value="5900000000999"', status_code=400)
+        self.assertContains(response, 'Nowa notatka', status_code=400)
+        self.assertContains(response, 'value="9"', status_code=400)
 
     def test_pantry_card_links_to_edit_form(self):
         response = self.client.get(reverse('cooking:pantry'))
 
         self.assertContains(response, self.url)
+
+
+class PlainDecimalFilterTests(SimpleTestCase):
+    def test_numbers_for_number_inputs(self):
+        from .templatetags.pantry_extras import plain_decimal
+
+        self.assertEqual(plain_decimal(Decimal('750.00')), '750')
+        self.assertEqual(plain_decimal(Decimal('1000.00')), '1000')
+        self.assertEqual(plain_decimal(Decimal('1.50')), '1.5')
+        self.assertEqual(plain_decimal(Decimal('0.00')), '0')
+        self.assertEqual(plain_decimal(3), '3')
+        self.assertEqual(plain_decimal('1,5'), '1,5')  # wpisany tekst wraca bez zmian
+
+
+class PolishCountTests(SimpleTestCase):
+    def test_plural_forms(self):
+        from .views import polish_count
+
+        forms = ('ruch', 'ruchy', 'ruchów')
+        self.assertEqual(polish_count(0, *forms), '0 ruchów')
+        self.assertEqual(polish_count(1, *forms), '1 ruch')
+        self.assertEqual(polish_count(3, *forms), '3 ruchy')
+        self.assertEqual(polish_count(5, *forms), '5 ruchów')
+        self.assertEqual(polish_count(12, *forms), '12 ruchów')
+        self.assertEqual(polish_count(22, *forms), '22 ruchy')
+
+
+class DeletePantryProductTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='dawid-del', password='pass12345')
+        self.other = User.objects.create_user(username='ania-del', password='pass12345')
+        self.client.login(username='ania-del', password='pass12345')  # usuwa inny domownik
+        self.product = PantryProduct.objects.create(
+            created_by=self.user,
+            name='Płyn do naczyń',
+            barcode='5900498028133',
+            category='Chemia domowa',
+            unit=PantryProduct.UNIT_MILLILITER,
+            quantity_per_scan=Decimal('900.00'),
+            current_quantity=Decimal('900.00'),
+            current_package_count=1,
+        )
+        PantryMovement.objects.create(
+            product=self.product, movement_type=PantryMovement.PURCHASE, quantity=Decimal('900.00'),
+        )
+        self.memory = ProductCatalogEntry.objects.create(
+            source=ProductCatalogEntry.SOURCE_HOUSEHOLD,
+            lookup_barcode='5900498028133',
+            status=ProductCatalogEntry.STATUS_FOUND,
+            product_name='Płyn do naczyń',
+            suggested_category='Chemia domowa',
+        )
+        shopping_list = ShoppingList.objects.create(created_by=self.user, title='Drogeria')
+        self.item = ShoppingListItem.objects.create(
+            shopping_list=shopping_list, pantry_product=self.product, name='Płyn do naczyń',
+            unit=PantryProduct.UNIT_MILLILITER, quantity=Decimal('900'),
+        )
+        self.url = reverse('cooking:delete-pantry-product', args=[self.product.pk])
+
+    def test_delete_requires_confirmation(self):
+        response = self.client.post(self.url)
+
+        self.assertRedirects(response, reverse('cooking:edit-pantry-product', args=[self.product.pk]))
+        self.assertTrue(PantryProduct.objects.filter(pk=self.product.pk).exists())
+
+    def test_get_is_not_allowed(self):
+        self.assertEqual(self.client.get(self.url).status_code, 405)
+        self.assertTrue(PantryProduct.objects.filter(pk=self.product.pk).exists())
+
+    def test_anonymous_user_cannot_delete(self):
+        self.client.logout()
+
+        response = self.client.post(self.url, {'confirm': '1'})
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response['Location'])
+        self.assertTrue(PantryProduct.objects.filter(pk=self.product.pk).exists())
+
+    def test_delete_removes_product_and_history_but_keeps_memory_and_list_items(self):
+        response = self.client.post(self.url, {'confirm': '1'}, follow=True)
+
+        self.assertRedirects(response, reverse('cooking:pantry'))
+        self.assertFalse(PantryProduct.objects.filter(pk=self.product.pk).exists())
+        self.assertFalse(PantryMovement.objects.exists())
+        self.item.refresh_from_db()
+        self.assertIsNone(self.item.pantry_product)
+        self.assertEqual(self.item.name, 'Płyn do naczyń')
+        self.assertTrue(ProductCatalogEntry.objects.filter(pk=self.memory.pk).exists())
+        self.assertContains(response, 'Usunięto produkt „Płyn do naczyń” razem z historią (1 ruch).')
+        self.assertContains(response, 'Kod zostaje w pamięci domu')
+
+        lookup = self.client.get(reverse('cooking:pantry-barcode-lookup'), {'barcode': '5900498028133'})
+        self.assertEqual(lookup.json()['status'], 'unknown')
+        self.assertEqual(lookup.json()['catalog']['name'], 'Płyn do naczyń')
+
+    def test_delete_can_forget_the_barcode(self):
+        response = self.client.post(self.url, {'confirm': '1', 'forget_barcode': '1'}, follow=True)
+
+        self.assertFalse(ProductCatalogEntry.objects.filter(pk=self.memory.pk).exists())
+        self.assertContains(response, 'Kod zapomniany')
+
+    def test_delete_removes_the_photo_file(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(PRIVATE_MEDIA_ROOT=media_root):
+            self.product.image = make_test_image()
+            self.product.save()
+            name = self.product.image.name
+            storage = self.product.image.storage
+
+            with self.captureOnCommitCallbacks(execute=True):
+                self.client.post(self.url, {'confirm': '1'})
+
+            self.assertFalse(storage.exists(name))
+
+    def test_completing_a_list_recreates_a_deleted_product(self):
+        self.client.post(self.url, {'confirm': '1'})
+        self.item.is_purchased = True
+        self.item.save()
+
+        self.client.post(reverse('cooking:complete-shopping-list', args=[self.item.shopping_list_id]))
+
+        product = PantryProduct.objects.get(name='Płyn do naczyń')
+        self.assertEqual(product.current_quantity, Decimal('900.00'))
+        self.assertEqual(product.created_by.username, 'ania-del')
 
 
 class LearnPantryCatalogCommandTests(TestCase):
@@ -2316,13 +2705,13 @@ class LearnPantryCatalogCommandTests(TestCase):
             suggested_category='Inne',  # stara reguła wrzucała kosmetyki do "Inne"
         )
         self.shampoo = PantryProduct.objects.create(
-            user=self.user, name='Szampon', barcode='5900000000001', category='Inne',
+            created_by=self.user, name='Szampon', barcode='5900000000001', category='Inne',
         )
         self.paper = PantryProduct.objects.create(
-            user=self.user, name='Papier toaletowy', category='Inne',
+            created_by=self.user, name='Papier toaletowy', category='Inne',
         )
         self.chosen = PantryProduct.objects.create(
-            user=self.user, name='Mleko', barcode='5900000000002', category='Napoje',
+            created_by=self.user, name='Mleko', barcode='5900000000002', category='Napoje',
         )
 
     def run_command(self, *args):
@@ -2360,9 +2749,9 @@ class LearnPantryCatalogCommandTests(TestCase):
         self.assertEqual(remembered['5900000000001'].suggested_category, 'Kosmetyki i higiena')
         self.assertEqual(remembered['5900000000002'].product_name, 'Mleko')
 
-    def test_latest_product_wins_and_existing_memory_is_kept(self):
+    def test_products_of_all_members_are_remembered_and_existing_memory_is_kept(self):
         PantryProduct.objects.create(
-            user=self.partner, name='Mleko 2%', barcode='5900000000002', category='Nabiał',
+            created_by=self.partner, name='Mleko 2%', barcode='5900000000003', category='Nabiał',
         )
         ProductCatalogEntry.objects.create(
             source=ProductCatalogEntry.SOURCE_HOUSEHOLD,
@@ -2376,7 +2765,7 @@ class LearnPantryCatalogCommandTests(TestCase):
 
         self.assertEqual(
             ProductCatalogEntry.objects.get(
-                source=ProductCatalogEntry.SOURCE_HOUSEHOLD, lookup_barcode='5900000000002',
+                source=ProductCatalogEntry.SOURCE_HOUSEHOLD, lookup_barcode='5900000000003',
             ).product_name,
             'Mleko 2%',
         )
@@ -2386,3 +2775,119 @@ class LearnPantryCatalogCommandTests(TestCase):
             ).product_name,
             'Szampon pokrzywowy',
         )
+
+
+class SharedPantryMigrationTests(TransactionTestCase):
+    """Migracja 0011 na danych dwóch domowników z nakładającymi się produktami."""
+
+    migrate_from = [('cooking', '0010_product_catalog_household_and_name_language')]
+    migrate_to = [('cooking', '0012_shared_pantry_constraints')]
+
+    def setUp(self):
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.migrate_from)
+        old = executor.loader.project_state(self.migrate_from).apps
+        User = old.get_model('auth', 'User')
+        Product = old.get_model('cooking', 'PantryProduct')
+        Movement = old.get_model('cooking', 'PantryMovement')
+        ShoppingList = old.get_model('cooking', 'ShoppingList')
+        Item = old.get_model('cooking', 'ShoppingListItem')
+        now = timezone.now()
+        dawid = User.objects.create(username='dawid')
+        ania = User.objects.create(username='ania')
+
+        def product(user, name, unit, qty, pkgs, minutes, **extra):
+            item = Product.objects.create(
+                user=user, name=name, unit=unit, current_quantity=Decimal(qty),
+                current_package_count=pkgs, quantity_per_scan=Decimal(extra.pop('per_scan', '1')),
+                **extra,
+            )
+            Product.objects.filter(pk=item.pk).update(created_at=now - timedelta(minutes=minutes))
+            return item
+
+        self.milk_d = product(dawid, 'Mleko', 'l', '2.00', 2, 60, barcode='5900000000100', category='Nabiał')
+        self.milk_a = product(ania, 'mleko', 'ml', '1500.00', 1, 50, per_scan='1000', minimum_quantity=Decimal('3000'))
+        self.milk_uht = product(ania, 'Mleko UHT', 'l', '1.00', 1, 40, barcode='5900000000100', notes='Na kawę')
+        product(dawid, 'Cukier', 'kg', '1.00', 1, 60)
+        product(ania, 'Cukier', 'szt', '3.00', 3, 30)
+        product(dawid, 'Ser', 'g', '200.00', 1, 60, category='Inne')
+        self.cheese_a = product(ania, 'Ser', 'g', '300.00', 1, 30, barcode='5900000000200', category='Nabiał')
+        product(dawid, 'Szampon', 'szt', '1.00', 1, 60, barcode='5900000000300')
+        product(ania, 'Szampon', 'szt', '2.00', 2, 30, barcode='5900000000400')
+        product(ania, 'Tylko Ani', 'szt', '1.00', 1, 30)
+
+        for amount in ['500.00', '250.00']:
+            Movement.objects.create(product=self.milk_a, movement_type='consume', quantity=Decimal(amount),
+                                    requested_quantity=Decimal(amount))
+        Movement.objects.create(product=self.milk_d, movement_type='purchase', quantity=Decimal('2.00'))
+        shopping = ShoppingList.objects.create(user=ania, title='Zakupy Ani')
+        Item.objects.create(shopping_list=shopping, name='mleko', pantry_product=self.milk_a,
+                            quantity=Decimal('1'), unit='l')
+
+    def tearDown(self):
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(executor.loader.graph.leaf_nodes())
+
+    def migrate(self):
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(self.migrate_to)
+        return executor.loader.project_state(self.migrate_to).apps
+
+    def test_preview_runs_before_migration_and_changes_nothing(self):
+        out = StringIO()
+        call_command('preview_shared_pantry', stdout=out)
+        output = out.getvalue()
+        self.assertIn('Do połączenia: 3', output)
+        self.assertIn('ze zmienioną nazwą: 2', output)
+        self.assertIn('"Cukier (ania)"', output)
+        self.assertIn('"Szampon (ania)"', output)
+        self.assertIn('Nic nie zostało zmienione.', output)
+        with connection.cursor() as cursor:
+            cursor.execute('SELECT COUNT(*) FROM pantry_products')
+            self.assertEqual(cursor.fetchone()[0], 10)
+
+    def test_migration_merges_duplicates_and_keeps_history(self):
+        new = self.migrate()
+        Product = new.get_model('cooking', 'PantryProduct')
+        Movement = new.get_model('cooking', 'PantryMovement')
+        Item = new.get_model('cooking', 'ShoppingListItem')
+        self.assertEqual(Product.objects.count(), 7)
+
+        milk = Product.objects.get(pk=self.milk_d.pk)
+        self.assertEqual(milk.name, 'Mleko')
+        self.assertEqual(milk.unit, 'l')
+        self.assertEqual(milk.current_quantity, Decimal('4.50'))       # 2 l + 1500 ml + 1 l
+        self.assertEqual(milk.current_package_count, 4)
+        self.assertEqual(milk.minimum_quantity, Decimal('3.00'))       # 3000 ml po przeliczeniu
+        self.assertEqual(milk.barcode, '5900000000100')
+        self.assertEqual(milk.notes, 'Na kawę')
+        self.assertEqual(milk.created_by.username, 'dawid')
+        # historia Ani przeniesiona i przeliczona na litry
+        consumed = sorted(Movement.objects.filter(product=milk, movement_type='consume')
+                          .values_list('quantity', flat=True))
+        self.assertEqual(consumed, [Decimal('0.25'), Decimal('0.50')])
+        self.assertEqual(Movement.objects.filter(product=milk).count(), 3)
+        self.assertEqual(Item.objects.get(name='mleko').pantry_product_id, milk.pk)
+
+        cheese = Product.objects.get(name='Ser')
+        self.assertEqual(cheese.current_quantity, Decimal('500.00'))
+        self.assertEqual(cheese.barcode, '5900000000200')               # przejęty od Ani
+        self.assertEqual(cheese.category, 'Nabiał')                     # "Inne" zastąpione
+
+        self.assertTrue(Product.objects.filter(name='Cukier (ania)', unit='szt').exists())
+        shampoo_a = Product.objects.get(name='Szampon (ania)')
+        self.assertEqual(shampoo_a.barcode, '5900000000400')           # różne kody - oba zostają
+        self.assertEqual(Product.objects.get(name='Szampon').barcode, '5900000000300')
+        self.assertTrue(Product.objects.filter(name='Tylko Ani').exists())
+
+    def test_constraints_hold_after_migration(self):
+        new = self.migrate()
+        Product = new.get_model('cooking', 'PantryProduct')
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                Product.objects.create(name='MLEKO', unit='l')
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                Product.objects.create(name='Inne mleko', unit='l', barcode='5900000000100')

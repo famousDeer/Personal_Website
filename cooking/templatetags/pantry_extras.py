@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django import template
 from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
@@ -35,3 +37,21 @@ def pantry_category_options(selected=''):
         ),
     )
     return mark_safe(groups + _option(PANTRY_CATEGORY_OTHER, selected))
+
+
+@register.filter
+def plain_decimal(value):
+    """Liczba do pola <input type="number">: 750.00 -> "750", 1.50 -> "1.5".
+
+    Bez polskiego przecinka (pole liczbowe go odrzuca) i bez zbędnych zer.
+    Wartości, które nie są liczbą (np. tekst odesłany w formularzu z błędem),
+    wracają bez zmian, żeby użytkownik zobaczył to, co wpisał.
+    """
+    if isinstance(value, Decimal):
+        if not value.is_finite():
+            return ''
+        text = f'{value.normalize():f}'
+        return text
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return plain_decimal(Decimal(str(value)))
+    return value

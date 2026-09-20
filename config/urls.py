@@ -36,8 +36,8 @@ urlpatterns = [
 # DEBUG jest wyłączone, więc rejestrujemy trasę wprost.
 # Ruch jest niewielki (kilkadziesiąt obrazków w sieci domowej). Jeśli kiedyś
 # postawisz reverse proxy, przechwyć /media/ w nim i ta trasa przestanie być
-# używana. Prywatne zdjęcia produktów NIE idą tą drogą - są serwowane
-# widokami z kontrolą właściciela (cooking.views.PantryProductImageView).
+# używana. Zdjęcia produktów ze spiżarni NIE idą tą drogą - są serwowane
+# widokiem wymagającym zalogowania (cooking.views.PantryProductImageView).
 urlpatterns += [
     re_path(
         r'^%s(?P<path>.*)$' % settings.MEDIA_URL.lstrip('/'),

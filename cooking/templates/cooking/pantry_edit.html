@@ -1,5 +1,5 @@
 {% extends 'cooking/index.html' %}
-{% load pantry_extras l10n %}
+{% load pantry_extras %}
 
 {% block title %}Edytuj: {{ product.name }}{% endblock %}
 {# Edytor przepisów (summernote + jQuery) jest tu zbędny, tak jak w pantry.html. #}
@@ -7,77 +7,169 @@
 
 {% block content_cooking %}
 <div class="row justify-content-center">
-    <div class="col-lg-7 col-xl-6">
+    <div class="col-lg-8 col-xl-7">
         <div class="text-center mb-4 animate-fade-in">
             <div class="icon-box bg-success-subtle text-success mx-auto mb-3 shadow-sm"
                  style="width: 70px; height: 70px; font-size: 2rem; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
                 <i class="bi bi-pencil-square"></i>
             </div>
             <h2 class="fw-bold mb-1 recipe-title">Edytuj produkt</h2>
-            <p class="text-muted small mb-0">Popraw nazwę, kategorię i próg uzupełnienia.</p>
+            <p class="text-muted small mb-0">
+                Spiżarnia jest wspólna &ndash; zmiany od razu widzą wszyscy domownicy.
+            </p>
+            <p class="text-muted small mb-0" data-product-origin>
+                Dodane przez {{ product.created_by.username|default:'nieznanego użytkownika' }}
+                &middot; {{ product.created_at|date:'j E Y' }}
+            </p>
         </div>
 
         <div class="card border-0 shadow-lg action-card animate-fade-in-up">
             <div class="card-body p-4 p-md-5">
-                {% if product.barcode %}
-                    <div class="alert alert-info small py-2 d-flex gap-2 align-items-start">
-                        <i class="bi bi-house-heart" aria-hidden="true"></i>
-                        <span>
-                            Kod <strong>{{ product.barcode }}</strong>.
-                            Poprawioną nazwę i kategorię zapamiętam dla tego kodu &ndash; każdy kolejny skan
-                            podpowie je całemu domowi, także po usunięciu produktu.
-                        </span>
-                    </div>
-                {% endif %}
-
-                <form method="post">
+                <form method="post" enctype="multipart/form-data" data-pantry-edit-form
+                      data-original-unit="{{ product.unit }}">
                     {% csrf_token %}
 
                     <div class="form-floating mb-3">
                         <input type="text" class="form-control fs-5 fw-bold" id="name" name="name" maxlength="160"
-                               value="{{ form_values.name|default:'' }}" placeholder="Nazwa" required autofocus>
+                               value="{{ form_values.name|default:'' }}" placeholder="Nazwa" required>
                         <label for="name">Nazwa produktu</label>
                     </div>
 
-                    <div class="form-floating mb-3">
-                        <select class="form-select" id="category" name="category">
-                            <option value="">Bez kategorii</option>
-                            {% pantry_category_options form_values.category %}
-                        </select>
-                        <label for="category">Kategoria</label>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-7">
+                            <div class="form-floating">
+                                <input type="text" class="form-control" id="barcode" name="barcode"
+                                       inputmode="numeric" autocomplete="off" maxlength="64"
+                                       value="{{ form_values.barcode|default:'' }}" placeholder="Kod kreskowy"
+                                       data-pantry-barcode>
+                                <label for="barcode">Kod kreskowy (opcjonalnie)</label>
+                            </div>
+                        </div>
+                        <div class="col-md-5">
+                            <div class="form-floating">
+                                <select class="form-select" id="category" name="category">
+                                    <option value="">Bez kategorii</option>
+                                    {% pantry_category_options form_values.category %}
+                                </select>
+                                <label for="category">Kategoria</label>
+                            </div>
+                        </div>
                     </div>
+                    {% if product.barcode %}
+                        <p class="small text-muted d-flex gap-2 align-items-start mb-4">
+                            <i class="bi bi-house-heart" aria-hidden="true"></i>
+                            <span>
+                                Nazwę, kategorię i opakowanie zapamiętam dla kodu &ndash; każdy kolejny skan
+                                podpowie je całemu domowi, także po usunięciu produktu.
+                            </span>
+                        </p>
+                    {% endif %}
 
+                    <h3 class="h6 text-uppercase fw-bold text-muted mt-2 mb-3">Opakowanie i stan</h3>
                     <div class="row g-3">
-                        <div class="col-sm-6">
-                            <label class="form-label small text-uppercase fw-bold text-muted ms-1" for="minimum-quantity">
-                                Próg minimalny ({{ product.display_unit }})
+                        <div class="col-sm-4">
+                            <label class="form-label small fw-bold text-muted ms-1" for="unit">Jednostka</label>
+                            <div class="input-group input-group-lg">
+                                <select class="form-select" id="unit" name="unit" required data-pantry-unit-select>
+                                    {% for value, label in units %}
+                                        <option value="{{ value }}" {% if form_values.unit == value %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-sm-8">
+                            <label class="form-label small fw-bold text-muted ms-1" for="quantity-per-scan">
+                                Wielkość opakowania (ilość na jeden skan)
                             </label>
-                            <input type="number" min="0"
-                                   step="{% if product.unit == 'szt' or product.unit == 'opak' %}1{% else %}0.01{% endif %}"
-                                   class="form-control form-control-lg" id="minimum-quantity"
-                                   name="minimum_quantity" value="{{ form_values.minimum_quantity|default:'0'|unlocalize }}" required>
+                            <div class="input-group input-group-lg">
+                                <input type="number" min="0.01" step="0.01" class="form-control"
+                                       id="quantity-per-scan" name="quantity_per_scan"
+                                       data-pantry-quantity-input data-pantry-package-size
+                                       value="{{ form_values.quantity_per_scan|default:'1'|plain_decimal }}" required>
+                                <span class="input-group-text" data-pantry-unit-label>{{ product.display_unit }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-info small py-2 mt-3 mb-0" data-pantry-unit-note hidden></div>
+
+                    <div class="row g-3 mt-1">
+                        <div class="col-sm-6">
+                            <label class="form-label small fw-bold text-muted ms-1" for="current-package-count">
+                                Liczba opakowań / sztuk
+                            </label>
+                            <div class="input-group input-group-lg">
+                                <input type="number" min="0" step="1" class="form-control"
+                                       id="current-package-count" name="current_package_count"
+                                       data-pantry-package-count
+                                       value="{{ form_values.current_package_count|default:'0'|plain_decimal }}" required>
+                                <span class="input-group-text">opak.</span>
+                            </div>
                         </div>
                         <div class="col-sm-6">
-                            <label class="form-label small text-uppercase fw-bold text-muted ms-1" for="restock-lead-days">
+                            <label class="form-label small fw-bold text-muted ms-1" for="current-quantity">Łączna ilość</label>
+                            <div class="input-group input-group-lg">
+                                <input type="number" min="0" step="0.01" class="form-control"
+                                       id="current-quantity" name="current_quantity"
+                                       data-pantry-quantity-input data-pantry-total-quantity
+                                       value="{{ form_values.current_quantity|default:'0'|plain_decimal }}" required>
+                                <span class="input-group-text" data-pantry-unit-label>{{ product.display_unit }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="small text-muted mt-2 mb-0">
+                        Zmiana stanu zapisze się w historii jako &bdquo;Korekta&rdquo; &ndash; prognoza nie potraktuje
+                        jej jak zużycia ani zakupu.
+                    </p>
+
+                    <div class="row g-3 mt-1">
+                        <div class="col-sm-6">
+                            <label class="form-label small fw-bold text-muted ms-1" for="minimum-quantity">Próg minimalny</label>
+                            <div class="input-group input-group-lg">
+                                <input type="number" min="0" step="0.01" class="form-control" id="minimum-quantity"
+                                       data-pantry-quantity-input
+                                       name="minimum_quantity" value="{{ form_values.minimum_quantity|default:'0'|plain_decimal }}" required>
+                                <span class="input-group-text" data-pantry-unit-label>{{ product.display_unit }}</span>
+                            </div>
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label small fw-bold text-muted ms-1" for="restock-lead-days">
                                 Kup z wyprzedzeniem
                             </label>
                             <div class="input-group input-group-lg">
-                                <input type="number" min="0" class="form-control" id="restock-lead-days" name="restock_lead_days"
-                                       value="{{ form_values.restock_lead_days|default:'3'|unlocalize }}" required>
+                                <input type="number" min="0" max="365" class="form-control" id="restock-lead-days"
+                                       name="restock_lead_days"
+                                       value="{{ form_values.restock_lead_days|default:'3'|plain_decimal }}" required>
                                 <span class="input-group-text">dni</span>
                             </div>
                         </div>
                     </div>
 
+                    <h3 class="h6 text-uppercase fw-bold text-muted mt-4 mb-3">Zdjęcie i notatki</h3>
+                    {% if product.image %}
+                        <div class="d-flex align-items-center gap-3 mb-3">
+                            <img class="pantry-product-thumb" src="{% url 'cooking:pantry-product-image' product.id %}"
+                                 alt="Obecne zdjęcie produktu {{ product.name }}">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="1" id="remove-image"
+                                       name="remove_image" data-pantry-remove-image>
+                                <label class="form-check-label" for="remove-image">Usuń obecne zdjęcie</label>
+                            </div>
+                        </div>
+                    {% endif %}
+                    <label class="pantry-photo-capture" for="pantry-product-image">
+                        <i class="bi bi-camera-fill" aria-hidden="true"></i>
+                        <span>
+                            <strong>{% if product.image %}Zmień zdjęcie{% else %}Dodaj zdjęcie{% endif %}</strong>
+                            <small>JPG, PNG albo WEBP, maksymalnie 5 MB</small>
+                        </span>
+                    </label>
+                    <input class="visually-hidden" id="pantry-product-image" type="file" name="image"
+                           accept="image/jpeg,image/png,image/webp" capture="environment">
+
                     <div class="form-floating mt-3">
                         <textarea class="form-control" id="notes" name="notes" placeholder="Notatki" style="height: 110px;">{{ form_values.notes|default:'' }}</textarea>
                         <label for="notes">Notatki</label>
                     </div>
-
-                    <p class="small text-muted mt-3 mb-0">
-                        Jednostka ({{ product.display_unit }}), wielkość opakowania i stan zmieniają się przez ruchy w spiżarni,
-                        bo od nich zależy historia i prognoza zużycia.
-                    </p>
 
                     <div class="d-grid gap-2 mt-4">
                         <button type="submit" class="btn btn-success btn-lg rounded-pill shadow-sm fw-bold">
@@ -88,6 +180,181 @@
                 </form>
             </div>
         </div>
+
+        <div class="card border border-danger-subtle shadow-sm mt-4 mb-5" data-pantry-delete-card>
+            <div class="card-body p-4">
+                <h3 class="h5 fw-bold text-danger mb-2">
+                    <i class="bi bi-trash3 me-2" aria-hidden="true"></i>Usuń produkt
+                </h3>
+                <p class="small text-muted mb-3">
+                    Usunięcie jest trwałe i dotyczy całego domu: znika produkt, jego zdjęcie i historia
+                    ({{ movement_count_label }}),
+                    a prognoza zużycia zaczyna się od zera.
+                    {% if open_shopping_item_count %}
+                        Pozycje na otwartych listach zakupów ({{ open_shopping_item_count }}) zostaną &ndash; po zakupie
+                        produkt utworzy się od nowa.
+                    {% endif %}
+                </p>
+                <form method="post" action="{% url 'cooking:delete-pantry-product' product.id %}">
+                    {% csrf_token %}
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" value="1" id="confirm-delete" name="confirm" required>
+                        <label class="form-check-label" for="confirm-delete">
+                            Tak, usuń &bdquo;{{ product.name }}&rdquo; ze spiżarni
+                        </label>
+                    </div>
+                    {% if product.barcode %}
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" value="1" id="forget-barcode" name="forget_barcode">
+                            <label class="form-check-label" for="forget-barcode">
+                                Zapomnij też kod {{ product.barcode }}
+                                <span class="d-block small text-muted">
+                                    Bez tego następny skan tego kodu podpowie zapamiętaną nazwę i kategorię.
+                                </span>
+                            </label>
+                        </div>
+                    {% endif %}
+                    <button type="submit" class="btn btn-outline-danger rounded-pill fw-bold">
+                        <i class="bi bi-trash3 me-2" aria-hidden="true"></i>Usuń produkt
+                    </button>
+                </form>
+            </div>
+        </div>
     </div>
 </div>
+{{ unit_meta|json_script:"pantry-unit-meta" }}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const form = document.querySelector('[data-pantry-edit-form]');
+        const metaElement = document.getElementById('pantry-unit-meta');
+        if (!form || !metaElement) {
+            return;
+        }
+        const unitMeta = JSON.parse(metaElement.textContent);
+        const unitSelect = form.querySelector('[data-pantry-unit-select]');
+        const unitLabels = form.querySelectorAll('[data-pantry-unit-label]');
+        const unitNote = form.querySelector('[data-pantry-unit-note]');
+        const quantityInputs = form.querySelectorAll('[data-pantry-quantity-input]');
+        const sizeInput = form.querySelector('[data-pantry-package-size]');
+        const countInput = form.querySelector('[data-pantry-package-count]');
+        const totalInput = form.querySelector('[data-pantry-total-quantity]');
+        const barcodeInput = form.querySelector('[data-pantry-barcode]');
+        const imageInput = form.querySelector('#pantry-product-image');
+        const imagePicker = form.querySelector('label[for="pantry-product-image"]');
+        const removeImage = form.querySelector('[data-pantry-remove-image]');
+        const originalUnit = form.dataset.originalUnit;
+        // Punkt odniesienia do przeliczeń: jednostka i liczby, które użytkownik
+        // ostatnio widział w przeliczalnej mierze. Przejście na miarę nieprzeliczalną
+        // (np. ml -> opak.) zostawia liczby, ale nie zmienia punktu odniesienia,
+        // więc powrót do ml odtwarza 750 zamiast zostawić 0.75.
+        let baseline = null;
+
+        const round2 = (value) => Math.round(value * 100) / 100;
+        const numberOf = (input) => Number(String(input.value).replace(',', '.'));
+
+        function tracksPackages() {
+            return Boolean(barcodeInput.value.trim())
+                || ['szt', 'opak'].includes(unitSelect.value)
+                || numberOf(countInput) > 0;
+        }
+
+        function syncStep() {
+            const integerOnly = unitSelect.value === 'szt';
+            quantityInputs.forEach((input) => {
+                input.step = integerOnly ? '1' : '0.01';
+            });
+            sizeInput.min = integerOnly ? '1' : '0.01';
+            unitLabels.forEach((label) => {
+                label.textContent = unitMeta[unitSelect.value]?.label || unitSelect.value;
+            });
+        }
+
+        function describeUnitChange() {
+            const from = unitMeta[originalUnit];
+            const to = unitMeta[unitSelect.value];
+            if (!from || !to || originalUnit === unitSelect.value) {
+                unitNote.hidden = true;
+                return;
+            }
+            unitNote.hidden = false;
+            if (from.group === to.group) {
+                unitNote.className = 'alert alert-info small py-2 mt-3 mb-0';
+                unitNote.textContent = `Ilości przeliczone z ${from.label} na ${to.label}. `
+                    + 'Po zapisaniu przeliczę też historię ruchów, więc prognoza zostanie poprawna.';
+            } else {
+                unitNote.className = 'alert alert-warning small py-2 mt-3 mb-0';
+                unitNote.textContent = `${from.label} i ${to.label} to różne miary, więc liczby zostają bez zmian `
+                    + '– popraw je, jeśli trzeba. Historia ruchów zostanie w dotychczasowych liczbach, '
+                    + 'a prognoza może przez jakiś czas być mniej dokładna.';
+            }
+        }
+
+        function rememberBaseline() {
+            baseline = {
+                unit: unitSelect.value,
+                values: Array.from(quantityInputs, (input) => input.value),
+            };
+        }
+
+        unitSelect.addEventListener('change', () => {
+            const from = unitMeta[baseline.unit];
+            const to = unitMeta[unitSelect.value];
+            if (from && to && from.group === to.group) {
+                const factor = Number(from.factor) / Number(to.factor);
+                quantityInputs.forEach((input, index) => {
+                    const value = Number(String(baseline.values[index]).replace(',', '.'));
+                    if (baseline.values[index] !== '' && Number.isFinite(value)) {
+                        input.value = String(round2(value * factor));
+                    }
+                });
+            }
+            syncStep();
+            describeUnitChange();
+        });
+        quantityInputs.forEach((input) => input.addEventListener('input', rememberBaseline));
+
+        function totalFromCount() {
+            const count = numberOf(countInput);
+            const size = numberOf(sizeInput);
+            if (Number.isFinite(count) && Number.isFinite(size) && size > 0 && tracksPackages()) {
+                totalInput.value = String(round2(count * size));
+            }
+        }
+
+        countInput.addEventListener('input', () => {
+            totalFromCount();
+            rememberBaseline();
+        });
+        sizeInput.addEventListener('input', () => {
+            totalFromCount();
+            rememberBaseline();
+        });
+        totalInput.addEventListener('input', () => {
+            const total = numberOf(totalInput);
+            const size = numberOf(sizeInput);
+            if (Number.isFinite(total) && Number.isFinite(size) && size > 0 && tracksPackages()) {
+                countInput.value = String(Math.max(0, Math.ceil(total / size - 1e-9)));
+            }
+        });
+
+        imageInput?.addEventListener('change', () => {
+            const [file] = imageInput.files;
+            if (file && imagePicker) {
+                imagePicker.querySelector('strong').textContent = 'Nowe zdjęcie gotowe';
+                imagePicker.querySelector('small').textContent = file.name;
+                imagePicker.classList.add('has-file');
+                if (removeImage) {
+                    removeImage.checked = false;
+                }
+            }
+        });
+
+        rememberBaseline();
+        syncStep();
+        describeUnitChange();
+    });
+</script>
 {% endblock %}

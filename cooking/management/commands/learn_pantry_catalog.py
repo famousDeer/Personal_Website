@@ -13,8 +13,7 @@ Kroki:
    reguły ją znajdują (z danych katalogu dla produktów z kodem, z nazwy dla
    pozostałych). Kategorii wybranych świadomie nie rusza.
 3. Zapamiętuje dla całego domu nazwę, kategorię i opakowanie każdego
-   produktu z kodem kreskowym, którego pamięć domu jeszcze nie zna. Jeśli
-   kilku domowników ma ten sam kod, wygrywa ostatnio zmieniany produkt.
+   produktu z kodem kreskowym, którego pamięć domu jeszcze nie zna.
    Istniejących wpisów pamięci nie nadpisuje.
 """
 from django.core.management.base import BaseCommand
@@ -91,7 +90,7 @@ class Command(BaseCommand):
         changed = 0
         products = PantryProduct.objects.filter(
             category__in=['', PANTRY_CATEGORY_OTHER],
-        ).select_related('user').order_by('user__username', 'name')
+        ).select_related('created_by').order_by('name')
         for product in products:
             suggestion = ''
             entry = catalog.get(product.barcode) if product.barcode else None
@@ -102,8 +101,7 @@ class Command(BaseCommand):
             if not suggestion or suggestion == PANTRY_CATEGORY_OTHER:
                 continue
             self.stdout.write(
-                f'  {product.user.username}: "{product.name}"  '
-                f'{product.category or "bez kategorii"} -> {suggestion}'
+                f'  "{product.name}"  {product.category or "bez kategorii"} -> {suggestion}'
             )
             PantryProduct.objects.filter(pk=product.pk).update(category=suggestion)
             changed += 1
@@ -115,16 +113,13 @@ class Command(BaseCommand):
                 source=ProductCatalogEntry.SOURCE_HOUSEHOLD,
             ).values_list('lookup_barcode', flat=True)
         )
-        latest_by_barcode = {}
-        products = PantryProduct.objects.exclude(barcode='').order_by('updated_at', 'pk')
-        for product in products:
-            latest_by_barcode[product.barcode] = product  # późniejszy nadpisuje
         remembered = 0
-        for barcode, product in sorted(latest_by_barcode.items()):
-            if barcode in known:
+        # Kod kreskowy jest unikalny w całej (wspólnej) spiżarni.
+        for product in PantryProduct.objects.exclude(barcode='').order_by('barcode'):
+            if product.barcode in known:
                 continue
             remember_household_product(
-                barcode,
+                product.barcode,
                 name=product.name,
                 category=product.category,
                 unit=product.unit,

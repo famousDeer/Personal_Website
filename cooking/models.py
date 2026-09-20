@@ -2,6 +2,7 @@
 from decimal import Decimal
 
 from django.db import models
+from django.db.models.functions import Lower
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
@@ -93,7 +94,20 @@ class PantryProduct(models.Model):
     UNIT_PACKAGE = UNIT_PACKAGE
     UNIT_CHOICES = PANTRY_UNIT_CHOICES
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='pantry_products')
+    # Spiżarnia jest wspólna dla całego domu: każdy zalogowany użytkownik widzi
+    # i edytuje wszystkie produkty. Pole mówi tylko, kto dodał produkt.
+    # Kolumna zostaje "user_id", więc kod i baza sprzed zmiany dalej do siebie
+    # pasują (to pozwala uruchomić podgląd łączenia duplikatów przed migracją).
+    # SET_NULL: usunięcie konta domownika nie kasuje wspólnych zapasów.
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='pantry_products',
+        db_column='user_id',
+        verbose_name='Dodane przez',
+    )
     name = models.CharField(max_length=160)
     barcode = models.CharField(max_length=64, blank=True)
     quantity_per_scan = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('1.00'))
@@ -116,11 +130,13 @@ class PantryProduct(models.Model):
         db_table = 'pantry_products'
         ordering = ['name']
         constraints = [
-            models.UniqueConstraint(fields=['user', 'name'], name='unique_user_pantry_product_name'),
+            # Jedna spiżarnia = jedna pozycja na nazwę (bez względu na wielkość
+            # liter) i jedna na kod kreskowy.
+            models.UniqueConstraint(Lower('name'), name='unique_pantry_product_name_ci'),
             models.UniqueConstraint(
-                fields=['user', 'barcode'],
+                fields=['barcode'],
                 condition=~models.Q(barcode=''),
-                name='unique_user_pantry_product_barcode',
+                name='unique_pantry_product_barcode',
             ),
             models.CheckConstraint(
                 condition=models.Q(quantity_per_scan__gt=0),
@@ -305,7 +321,16 @@ class ShoppingList(models.Model):
         (COMPLETED, 'Zakończona'),
     ]
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='shopping_lists')
+    # Listy zakupów są wspólne, tak jak spiżarnia, z której powstają.
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='shopping_lists',
+        db_column='user_id',
+        verbose_name='Utworzona przez',
+    )
     title = models.CharField(max_length=180)
     source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default=MANUAL)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=ACTIVE)

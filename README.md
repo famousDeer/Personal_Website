@@ -31,6 +31,11 @@ Demo image:
 - Pantry with barcode scanning, product metadata cached from the Open Food Facts
   family (food, beauty, household products, pet food), and stock tracked both as
   exact quantity and as a number of packages
+- One pantry for the whole household: every logged-in user sees and edits all
+  products, stock, forecasts and shopping lists (see [Shared pantry](#shared-pantry))
+- Full product edit (name, barcode, category, unit, package size, stock, threshold,
+  photo, notes) and permanent delete; a unit change converts the movement history,
+  a stock change is recorded as a correction
 - Household memory for barcodes: the name and category someone confirms when adding
   or editing a product become the suggestion for every later scan of that code, for
   every user, even after the product is deleted (see [Pantry catalog](#pantry-catalog))
@@ -293,6 +298,50 @@ products out of `Inne` (or no category) when a better category is found, and
 remembers every existing barcoded product for the whole household. Categories that
 were chosen deliberately, and existing household entries, are never overwritten.
 
+## Shared pantry
+
+Since September 2026 the pantry and shopping lists belong to the household, not to a
+user. `PantryProduct.created_by` and `ShoppingList.created_by` only record who added
+the entry (the database column is still `user_id`). One product per name (case
+insensitive) and per barcode is enforced by database constraints.
+
+**Upgrading an installation that still has per-user pantries.** Migration `0011`
+merges duplicates between users, and the web container runs migrations on start, so
+look at the plan and take a backup first:
+
+```bash
+docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > backup-before-shared-pantry.sql
+git pull
+docker compose build web
+docker compose run --rm web python manage.py preview_shared_pantry   # read-only
+docker compose up -d web caddy                                       # migrates on start
+```
+
+`preview_shared_pantry` works before the migration and changes nothing. Merge rules
+(`cooking/services/pantry_sharing.py`): the same barcode, or the same name with at most
+one barcode, is one product. The oldest product is kept; stock and package counts are
+summed after unit conversion (g/kg, ml/l), movement history and shopping-list items
+are moved over. Products that cannot be merged (two different barcodes under one
+name, or units such as pieces and grams) keep both entries and the newer one gets the
+author's username in its name, e.g. `Cukier (ania)`.
+
+**Editing** (`EditPantryProductView`, side effects in
+`cooking/services/pantry_editing.py`):
+- g↔kg and ml↔l unit changes convert stock, threshold, package size and every movement
+  in the history, so the forecast stays correct. Other unit changes keep the numbers,
+  which is what fixing a wrongly chosen unit needs.
+- A stock change is saved as an `adjust` movement ("Korekta") with the signed
+  difference. The forecast uses it to reconstruct past stock but never counts it as
+  consumption or purchase.
+- Items on shopping lists that are not completed follow the new name, category and
+  (when it cannot be converted) unit. Completed lists stay as history.
+- A new barcode is remembered for the household like any other edit.
+
+**Deleting** (`DeletePantryProductView`) needs a ticked confirmation and removes the
+product, its photo and its movement history. Shopping-list items stay and lose only
+the link; completing such a list creates the product again. The household memory of
+the barcode stays unless "forget the barcode" is ticked.
+
 ## Scheduled tasks (cron)
 Market data refresh and price history synchronisation are also available as
 management commands, so they do not have to run inside a web request:
@@ -336,9 +385,11 @@ Website-Finance/
 │  └─ static/                 # css/style.css, js/
 ├─ cooking/                   # Recipes, pantry, shopping lists
 │  ├─ constants.py            # Pantry category list and groups
-│  ├─ management/commands/    # learn_pantry_catalog
+│  ├─ management/commands/    # learn_pantry_catalog, preview_shared_pantry
 │  ├─ services/
+│  │  ├─ pantry_editing.py    # Full edit side effects: unit conversion, corrections, list items
 │  │  ├─ pantry_forecast.py   # Consumption forecasting
+│  │  ├─ pantry_sharing.py    # Merging per-user pantries into one (migration 0011)
 │  │  └─ product_catalog.py   # Household memory, Open Food Facts cache, category mapping
 │  └─ storage.py              # Private media storage for user photos
 ├─ cars/                      # Fuel, services, tyres

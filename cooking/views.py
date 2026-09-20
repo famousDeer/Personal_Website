@@ -45,6 +45,15 @@ from .services.pantry_forecast import (
     forecast_pantry_products,
     infer_typical_shopping_weekday,
 )
+from .services.pantry_editing import (
+    ADJUST_NOTE,
+    convert_movement_history,
+    convert_to_unit,
+    delete_file_after_commit,
+    sync_open_shopping_items,
+    units_are_convertible,
+)
+from .services.pantry_sharing import UNIT_BASE
 
 # Stałe (Warto przenieść je do osobnego pliku constants.py w przyszłości)
 KITCHEN_REGIONS = [
@@ -60,6 +69,20 @@ ALLOWED_RECIPE_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 MAX_RECIPE_IMAGE_SIZE = 5 * 1024 * 1024
 PANTRY_BARCODE_PATTERN = re.compile(r'^[0-9A-Za-z._-]+$')
 PANTRY_MAX_QUANTITY = Decimal('99999999.99')
+
+
+def polish_number(value):
+    """Decimal bez zbędnych zer i z polskim przecinkiem: 1.50 -> '1,5'."""
+    return f'{value.normalize():f}'.replace('.', ',')
+
+
+def polish_count(count, one, few, many):
+    """'1 ruch', '3 ruchy', '5 ruchów' - odmiana rzeczownika po liczebniku."""
+    if count == 1:
+        return f'{count} {one}'
+    if count % 10 in (2, 3, 4) and count % 100 not in (12, 13, 14):
+        return f'{count} {few}'
+    return f'{count} {many}'
 
 
 def parse_pantry_decimal(value, default='0'):
@@ -277,9 +300,8 @@ def normalize_shopping_quantity(quantity, unit):
     return quantity
 
 
-def get_user_typical_shopping_weekday(user):
+def get_household_typical_shopping_weekday():
     purchase_dates = PantryMovement.objects.filter(
-        product__user=user,
         movement_type=PantryMovement.PURCHASE,
         occurred_on__gte=timezone.localdate() - timedelta(days=180),
     ).values_list('occurred_on', flat=True).distinct()
@@ -296,16 +318,16 @@ def pantry_forecast_movements_prefetch(today):
     )
 
 
-def find_user_pantry_product(user, name):
-    return PantryProduct.objects.filter(user=user, name__iexact=name).first()
+def find_pantry_product(name):
+    return PantryProduct.objects.filter(name__iexact=name).first()
 
 
-def build_shopping_suggestions(user):
+def build_shopping_suggestions():
     today = timezone.localdate()
     suggestions = []
-    shopping_weekday = get_user_typical_shopping_weekday(user)
+    shopping_weekday = get_household_typical_shopping_weekday()
 
-    products = list(PantryProduct.objects.filter(user=user).prefetch_related(
+    products = list(PantryProduct.objects.prefetch_related(
         pantry_forecast_movements_prefetch(today),
     ))
     forecasts = forecast_pantry_products(
@@ -377,7 +399,7 @@ def parse_shopping_items_from_request(request):
             errors.append(f'{name}: {exc}')
             continue
 
-        product = find_user_pantry_product(request.user, name)
+        product = find_pantry_product(name)
         category = raw_category or (product.category if product else '')
         rows.append({
             'name': name,
@@ -405,7 +427,7 @@ def get_shopping_form_context(request, **extra_context):
     context = {
         'categories': PANTRY_CATEGORIES,
         'units': PantryProduct.UNIT_CHOICES,
-        'pantry_products': PantryProduct.objects.filter(user=request.user),
+        'pantry_products': PantryProduct.objects.all(),
     }
     context.update(extra_context)
     return context
@@ -708,7 +730,7 @@ class DeleteRecipeView(LoginRequiredMixin, View):
 class PantryListView(LoginRequiredMixin, View):
     def get(self, request):
         today = timezone.localdate()
-        all_products = list(PantryProduct.objects.filter(user=request.user).prefetch_related(
+        all_products = list(PantryProduct.objects.prefetch_related(
             pantry_forecast_movements_prefetch(today),
         ))
         search_query = request.GET.get('q', '').strip()
@@ -738,7 +760,7 @@ class PantryListView(LoginRequiredMixin, View):
         }
 
         product_cards = []
-        shopping_weekday = get_user_typical_shopping_weekday(request.user)
+        shopping_weekday = get_household_typical_shopping_weekday()
         forecasts = forecast_pantry_products(
             all_products,
             today=today,
@@ -799,7 +821,7 @@ class PantryListView(LoginRequiredMixin, View):
             for category in ordered_categories
         ]
 
-        movement_stats = PantryMovement.objects.filter(product__user=request.user).aggregate(
+        movement_stats = PantryMovement.objects.aggregate(
             total_consumed=Sum('quantity', filter=Q(movement_type=PantryMovement.CONSUME)),
             total_restocked=Sum('quantity', filter=Q(movement_type=PantryMovement.PURCHASE)),
             movement_count=Count('id'),
@@ -847,7 +869,7 @@ class PantryBarcodeLookupView(LoginRequiredMixin, View):
         except ValueError as exc:
             return JsonResponse({'ok': False, 'error': str(exc)}, status=400)
 
-        product = PantryProduct.objects.filter(user=request.user, barcode=barcode).first()
+        product = PantryProduct.objects.filter(barcode=barcode).first()
         catalog = lookup_product_catalog(barcode)
         suggested_category = suggested_category_for_catalog_entry(catalog.entry)
         # Produkt bez kategorii albo w "Inne" dostaje lepszą podpowiedź, gdy
@@ -861,7 +883,6 @@ class PantryBarcodeLookupView(LoginRequiredMixin, View):
             previous_category = product.category
             updated = PantryProduct.objects.filter(
                 pk=product.pk,
-                user=request.user,
                 category=previous_category,
             ).update(
                 category=suggested_category,
@@ -872,7 +893,6 @@ class PantryBarcodeLookupView(LoginRequiredMixin, View):
             else:
                 product = PantryProduct.objects.filter(
                     pk=product.pk,
-                    user=request.user,
                 ).first()
         response = JsonResponse({
             'ok': True,
@@ -913,7 +933,7 @@ class PantryCatalogImageView(LoginRequiredMixin, View):
 
 class PantryProductImageView(LoginRequiredMixin, View):
     def get(self, request, product_id):
-        product = PantryProduct.objects.filter(id=product_id, user=request.user).first()
+        product = PantryProduct.objects.filter(id=product_id).first()
         if not product or not product.image:
             raise Http404
         try:
@@ -934,7 +954,6 @@ class PantryProductImageUploadView(LoginRequiredMixin, View):
             product = get_object_or_404(
                 PantryProduct.objects.select_for_update(),
                 id=product_id,
-                user=request.user,
             )
             if product.image:
                 return JsonResponse(
@@ -973,8 +992,7 @@ class PantryBarcodeActionView(LoginRequiredMixin, View):
                     else replay.package_count
                 )
                 if (
-                    replay.product.user_id != request.user.id
-                    or replay.product.barcode != barcode
+                    replay.product.barcode != barcode
                     or replay.movement_type != action
                     or replay_requested_quantity != replay_quantity
                     or replay_requested_count != count
@@ -996,7 +1014,6 @@ class PantryBarcodeActionView(LoginRequiredMixin, View):
                 })
 
             product = PantryProduct.objects.select_for_update().filter(
-                user=request.user,
                 barcode=barcode,
             ).first()
             if not product:
@@ -1109,8 +1126,7 @@ class PantryBarcodeRegisterView(LoginRequiredMixin, View):
                 )
                 replay_quantity = (replay_quantity_per_scan * Decimal(count)).quantize(Decimal('0.01'))
                 if (
-                    replay.product.user_id != request.user.id
-                    or replay.product.barcode != barcode
+                    replay.product.barcode != barcode
                     or replay.movement_type != PantryMovement.PURCHASE
                     or replay.product.name.casefold() != name.casefold()
                     or replay.quantity != replay_quantity
@@ -1131,7 +1147,6 @@ class PantryBarcodeRegisterView(LoginRequiredMixin, View):
                 })
 
             product_with_barcode = PantryProduct.objects.select_for_update().filter(
-                user=request.user,
                 barcode=barcode,
             ).first()
             if product_with_barcode:
@@ -1141,7 +1156,6 @@ class PantryBarcodeRegisterView(LoginRequiredMixin, View):
                 )
 
             product = PantryProduct.objects.select_for_update().filter(
-                user=request.user,
                 name__iexact=name,
             ).first()
             created = product is None
@@ -1162,7 +1176,7 @@ class PantryBarcodeRegisterView(LoginRequiredMixin, View):
                     sync_package_count_from_quantity(product)
             else:
                 product = PantryProduct(
-                    user=request.user,
+                    created_by=request.user,
                     name=name,
                     barcode=barcode,
                     quantity_per_scan=quantity_per_scan,
@@ -1274,7 +1288,7 @@ class AddPantryProductView(LoginRequiredMixin, View):
 
             with transaction.atomic():
                 product = PantryProduct.objects.create(
-                    user=request.user,
+                    created_by=request.user,
                     name=name,
                     barcode=barcode,
                     quantity_per_scan=quantity_per_scan,
@@ -1316,99 +1330,310 @@ class AddPantryProductView(LoginRequiredMixin, View):
 
 
 class EditPantryProductView(LoginRequiredMixin, View):
-    """Poprawa nazwy i kategorii istniejącego produktu.
+    """Pełna edycja produktu ze wspólnej spiżarni.
 
-    Wcześniej nazwę dało się zmienić wyłącznie w panelu admina, więc produkt
-    dodany z obcą nazwą z katalogu zostawał z nią na zawsze. Jednostka,
-    wielkość opakowania i stan są tu celowo nieedytowalne - od nich zależy
-    historia ruchów i prognoza zużycia.
+    Każdy domownik może zmienić każde pole zapisane w bazie. Skutki uboczne
+    (przeliczenie historii przy zmianie jednostki, ruch "Korekta" przy zmianie
+    stanu, pozycje na otwartych listach zakupów) obsługuje
+    services/pantry_editing.py. Pole, którego nie ma w formularzu, zostaje
+    bez zmian. Usuwanie produktu: DeletePantryProductView.
     """
 
     template_name = 'cooking/pantry_edit.html'
+    editable_fields = [
+        'name', 'barcode', 'category', 'unit', 'quantity_per_scan', 'current_quantity',
+        'current_package_count', 'minimum_quantity', 'restock_lead_days', 'notes',
+    ]
 
-    def _context(self, product, form_values=None):
-        values = form_values or {
-            'name': product.name,
-            'category': product.category,
-            'minimum_quantity': product.minimum_quantity,
-            'restock_lead_days': product.restock_lead_days,
-            'notes': product.notes,
-        }
+    def _initial_values(self, product):
+        return {field: getattr(product, field) for field in self.editable_fields}
+
+    def _context(self, product, form_values=None, status_note=''):
+        values = self._initial_values(product)
+        if form_values is not None:
+            values.update({
+                field: form_values.get(field)
+                for field in self.editable_fields
+                if field in form_values
+            })
         remembered = household_catalog_entry(product.barcode) if product.barcode else None
         return get_pantry_form_context(
             product=product,
             form_values=values,
             remembered_entry=remembered,
+            movement_count_label=polish_count(product.movements.count(), 'ruch', 'ruchy', 'ruchów'),
+            open_shopping_item_count=product.shopping_items.filter(
+                is_purchased=False,
+            ).exclude(shopping_list__status=ShoppingList.COMPLETED).count(),
+            # Dla JS formularza: które jednostki da się przeliczyć i jak.
+            unit_meta={
+                unit: {
+                    'group': UNIT_BASE.get(unit, (unit, 1))[0],
+                    'factor': str(UNIT_BASE.get(unit, (unit, 1))[1]),
+                    'label': label,
+                }
+                for unit, label in PantryProduct.UNIT_CHOICES
+            },
         )
 
     def get(self, request, product_id):
-        product = get_object_or_404(PantryProduct, pk=product_id, user=request.user)
+        product = get_object_or_404(
+            PantryProduct.objects.select_related('created_by'),
+            pk=product_id,
+        )
         return render(request, self.template_name, self._context(product))
 
     def post(self, request, product_id):
-        product = get_object_or_404(PantryProduct, pk=product_id, user=request.user)
+        product = get_object_or_404(PantryProduct, pk=product_id)
         try:
-            name = request.POST.get('name', '').strip()
-            if not name:
-                raise ValueError('Nazwa produktu jest wymagana.')
-            if len(name) > 160:
-                raise ValueError('Nazwa produktu może mieć maksymalnie 160 znaków.')
-            if PantryProduct.objects.filter(
-                user=request.user,
-                name__iexact=name,
-            ).exclude(pk=product.pk).exists():
-                raise ValueError('Masz już produkt o tej nazwie.')
-            category = parse_pantry_category(request.POST.get('category'))
-            minimum_quantity = parse_pantry_decimal(request.POST.get('minimum_quantity'))
-            validate_pantry_quantity_for_unit(minimum_quantity, product.unit)
-            try:
-                restock_lead_days = int(request.POST.get('restock_lead_days') or 3)
-            except ValueError:
-                raise ValueError('Wyprzedzenie zakupu musi być liczbą dni.') from None
-            if restock_lead_days < 0:
-                raise ValueError('Wyprzedzenie zakupu nie może być ujemne.')
-
             with transaction.atomic():
-                product.name = name
-                product.category = category
-                product.minimum_quantity = minimum_quantity
-                product.restock_lead_days = restock_lead_days
-                product.notes = request.POST.get('notes', '').strip()
-                product.save(update_fields=[
-                    'name', 'category', 'minimum_quantity', 'restock_lead_days',
-                    'notes', 'updated_at',
-                ])
-                if product.barcode:
-                    remember_household_product(
-                        product.barcode,
-                        name=product.name,
-                        category=product.category,
-                        unit=product.unit,
-                        quantity_per_scan=product.quantity_per_scan,
-                    )
+                locked = PantryProduct.objects.select_for_update().get(pk=product.pk)
+                summary = self._save(request, locked)
         except ValueError as exc:
-            messages.error(request, f'Nie udało się zapisać zmian: {exc}')
-            return render(
-                request,
-                self.template_name,
-                self._context(product, form_values=request.POST),
-                status=400,
-            )
+            return self._render_error(request, product_id, f'Nie udało się zapisać zmian: {exc}', 400)
         except IntegrityError:
-            messages.error(request, 'Nie udało się zapisać zmian: masz już produkt o tej nazwie.')
-            return render(
+            return self._render_error(
                 request,
-                self.template_name,
-                self._context(product, form_values=request.POST),
-                status=409,
+                product_id,
+                'Nie udało się zapisać zmian: nazwa albo kod kreskowy należy już do innego produktu.',
+                409,
             )
-        if product.barcode:
-            messages.success(
-                request,
-                f'Zapisano: {product.name}. Następny skan tego kodu podpowie te dane całemu domowi.',
+        messages.success(request, summary)
+        return redirect('cooking:pantry')
+
+    def _render_error(self, request, product_id, message, status):
+        messages.error(request, message)
+        product = get_object_or_404(
+            PantryProduct.objects.select_related('created_by'),
+            pk=product_id,
+        )
+        return render(
+            request,
+            self.template_name,
+            self._context(product, form_values=request.POST),
+            status=status,
+        )
+
+    def _save(self, request, product):
+        post = request.POST
+        old_name = product.name
+        old_barcode = product.barcode
+        old_category = product.category
+        old_unit = product.unit
+        old_quantity = product.current_quantity
+        old_package_count = product.current_package_count
+        old_image = product.image
+
+        name = post.get('name', product.name).strip()
+        if not name:
+            raise ValueError('Nazwa produktu jest wymagana.')
+        if len(name) > 160:
+            raise ValueError('Nazwa produktu może mieć maksymalnie 160 znaków.')
+        if PantryProduct.objects.filter(name__iexact=name).exclude(pk=product.pk).exists():
+            raise ValueError('W spiżarni jest już produkt o tej nazwie.')
+
+        barcode = (
+            normalize_pantry_barcode(post.get('barcode'), required=False)
+            if 'barcode' in post
+            else product.barcode
+        )
+        if barcode:
+            clash = PantryProduct.objects.filter(barcode=barcode).exclude(pk=product.pk).first()
+            if clash:
+                raise ValueError(f'Kod {barcode} jest już przypisany do produktu „{clash.name}”.')
+
+        category = (
+            parse_pantry_category(post.get('category'))
+            if 'category' in post
+            else product.category
+        )
+
+        unit = post.get('unit') or product.unit
+        if unit not in dict(PantryProduct.UNIT_CHOICES):
+            raise ValueError('Wybierz poprawną jednostkę.')
+        unit_changed = unit != old_unit
+        unit_convertible = units_are_convertible(old_unit, unit)
+
+        def posted_quantity(field, current, label):
+            if field not in post:
+                return convert_to_unit(current, old_unit, unit)
+            try:
+                return parse_pantry_decimal(post.get(field))
+            except ValueError as exc:
+                raise ValueError(f'{label}: {exc}') from None
+
+        quantity_per_scan = posted_quantity(
+            'quantity_per_scan', product.quantity_per_scan, 'Wielkość opakowania',
+        )
+        if quantity_per_scan <= 0:
+            raise ValueError('Wielkość opakowania musi być większa od zera.')
+        current_quantity = posted_quantity('current_quantity', old_quantity, 'Stan')
+        validate_pantry_storage_quantity(current_quantity)
+        minimum_quantity = posted_quantity('minimum_quantity', product.minimum_quantity, 'Próg minimalny')
+        for value in [quantity_per_scan, current_quantity, minimum_quantity]:
+            validate_pantry_quantity_for_unit(value, unit)
+
+        old_quantity_in_new_unit = convert_to_unit(old_quantity, old_unit, unit)
+        old_size_in_new_unit = convert_to_unit(product.quantity_per_scan, old_unit, unit)
+        stock_changed = current_quantity != old_quantity_in_new_unit
+        packaging_changed = (
+            stock_changed
+            or quantity_per_scan != old_size_in_new_unit
+            or unit_changed
+            or barcode != old_barcode
+        )
+        will_track_packages = bool(
+            barcode or unit in [PantryProduct.UNIT_PIECE, PantryProduct.UNIT_PACKAGE]
+        )
+        raw_package_count = post.get('current_package_count')
+        if raw_package_count not in [None, '']:
+            package_count = parse_package_count(raw_package_count)
+        elif packaging_changed:
+            package_count = (
+                estimated_package_count(current_quantity, quantity_per_scan)
+                if will_track_packages
+                else 0
             )
         else:
-            messages.success(request, f'Zapisano: {product.name}.')
+            package_count = old_package_count
+        if (packaging_changed or package_count != old_package_count) and (
+            will_track_packages or package_count > 0
+        ):
+            expected = estimated_package_count(current_quantity, quantity_per_scan)
+            if package_count != expected:
+                unit_label = dict(PantryProduct.UNIT_CHOICES).get(unit, unit)
+                raise ValueError(
+                    f'Liczba opakowań ({package_count}) nie pasuje do stanu '
+                    f'{polish_number(current_quantity)} {unit_label} przy opakowaniu '
+                    f'{polish_number(quantity_per_scan)} {unit_label} - powinno być {expected}.'
+                )
+
+        try:
+            restock_lead_days = int(post.get('restock_lead_days', product.restock_lead_days) or 3)
+        except (TypeError, ValueError):
+            raise ValueError('Wyprzedzenie zakupu musi być liczbą dni.') from None
+        if restock_lead_days < 0 or restock_lead_days > 365:
+            raise ValueError('Wyprzedzenie zakupu musi mieścić się w zakresie 0–365 dni.')
+
+        new_image = validate_pantry_product_image(request.FILES.get('image'))
+        remove_image = post.get('remove_image') == '1' and not new_image
+
+        product.name = name
+        product.barcode = barcode
+        product.category = category
+        product.unit = unit
+        product.quantity_per_scan = quantity_per_scan
+        product.current_quantity = current_quantity
+        product.current_package_count = package_count
+        product.minimum_quantity = minimum_quantity
+        product.restock_lead_days = restock_lead_days
+        if 'notes' in post:
+            product.notes = post.get('notes', '').strip()
+        if new_image:
+            product.image = new_image
+        elif remove_image:
+            product.image = None
+        product.save()
+
+        if (new_image or remove_image) and old_image:
+            delete_file_after_commit(old_image)
+
+        converted_movements = 0
+        if unit_changed:
+            converted_movements = convert_movement_history(
+                product, old_unit, unit, PantryMovement,
+            )
+        if stock_changed:
+            unit_label = product.display_unit
+            PantryMovement.objects.create(
+                product=product,
+                movement_type=PantryMovement.ADJUST,
+                quantity=(current_quantity - old_quantity_in_new_unit).quantize(Decimal('0.01')),
+                occurred_on=timezone.localdate(),
+                note=(
+                    f'{ADJUST_NOTE}: {polish_number(old_quantity_in_new_unit)} → '
+                    f'{polish_number(current_quantity)} {unit_label}'
+                )[:255],
+            )
+        sync_open_shopping_items(
+            product,
+            old_name=old_name,
+            old_category=old_category,
+            old_unit=old_unit,
+            shopping_item_model=ShoppingListItem,
+            shopping_list_model=ShoppingList,
+        )
+        if product.barcode:
+            remember_household_product(
+                product.barcode,
+                name=product.name,
+                category=product.category,
+                unit=product.unit,
+                quantity_per_scan=product.quantity_per_scan,
+            )
+
+        notes = []
+        if unit_changed:
+            if unit_convertible:
+                notes.append(
+                    f'historia przeliczona na {product.display_unit} '
+                    f'({polish_count(converted_movements, "ruch", "ruchy", "ruchów")})'
+                )
+            else:
+                notes.append('historia ruchów bez przeliczenia (inna jednostka)')
+        if stock_changed:
+            notes.append('zmiana stanu zapisana jako korekta')
+        if product.barcode:
+            notes.append('następny skan tego kodu podpowie te dane całemu domowi')
+        summary = f'Zapisano: {product.name}.'
+        if notes:
+            details = '; '.join(notes)
+            summary += f' {details[0].upper()}{details[1:]}.'
+        return summary
+
+
+class DeletePantryProductView(LoginRequiredMixin, View):
+    """Całkowite usunięcie produktu razem z historią ruchów.
+
+    Pozycje na listach zakupów zostają (tracą tylko powiązanie z produktem),
+    a zamknięcie listy z taką pozycją utworzy produkt od nowa. Pamięć domu dla
+    kodu kreskowego zostaje, chyba że użytkownik zaznaczy "zapomnij kod".
+    """
+
+    def post(self, request, product_id):
+        product = get_object_or_404(PantryProduct, pk=product_id)
+        if request.POST.get('confirm') != '1':
+            messages.error(request, 'Zaznacz potwierdzenie, żeby usunąć produkt.')
+            return redirect('cooking:edit-pantry-product', product_id=product.pk)
+
+        forget_barcode = request.POST.get('forget_barcode') == '1'
+        with transaction.atomic():
+            product = get_object_or_404(PantryProduct.objects.select_for_update(), pk=product_id)
+            name = product.name
+            barcode = product.barcode
+            movement_count = product.movements.count()
+            image = product.image
+            product.delete()
+            if image:
+                delete_file_after_commit(image)
+            forgotten = 0
+            if forget_barcode and barcode:
+                forgotten, _ = ProductCatalogEntry.objects.filter(
+                    source=ProductCatalogEntry.SOURCE_HOUSEHOLD,
+                    lookup_barcode=barcode,
+                ).delete()
+
+        message = (
+            f'Usunięto produkt „{name}” razem z historią '
+            f'({polish_count(movement_count, "ruch", "ruchy", "ruchów")}).'
+        )
+        if barcode:
+            message += (
+                ' Kod zapomniany - następny skan zacznie od zera.'
+                if forgotten
+                else ' Kod zostaje w pamięci domu - następny skan podpowie nazwę i kategorię.'
+            )
+        messages.success(request, message)
         return redirect('cooking:pantry')
 
 
@@ -1418,7 +1643,6 @@ class PantryMovementView(LoginRequiredMixin, View):
         product = get_object_or_404(
             PantryProduct.objects.select_for_update(),
             id=product_id,
-            user=request.user,
         )
         movement_type = request.POST.get('movement_type')
         try:
@@ -1532,7 +1756,7 @@ class PantryMovementView(LoginRequiredMixin, View):
 
 class ShoppingListView(LoginRequiredMixin, View):
     def get(self, request):
-        shopping_lists = ShoppingList.objects.filter(user=request.user).annotate(
+        shopping_lists = ShoppingList.objects.annotate(
             item_count=Count('items'),
             purchased_count=Count('items', filter=Q(items__is_purchased=True)),
         ).prefetch_related('items')
@@ -1546,7 +1770,7 @@ class ShoppingListView(LoginRequiredMixin, View):
             for shopping_list in shopping_lists
             if shopping_list.status == ShoppingList.COMPLETED
         ][:6]
-        suggestions = build_shopping_suggestions(request.user)
+        suggestions = build_shopping_suggestions()
 
         context = {
             'active_lists': active_lists,
@@ -1586,7 +1810,7 @@ class CreateShoppingListView(LoginRequiredMixin, View):
             )
 
         shopping_list = ShoppingList.objects.create(
-            user=request.user,
+            created_by=request.user,
             title=title,
             source=ShoppingList.MANUAL,
         )
@@ -1604,13 +1828,13 @@ class CreateShoppingListView(LoginRequiredMixin, View):
 class GenerateShoppingListView(LoginRequiredMixin, View):
     @transaction.atomic
     def post(self, request):
-        suggestions = build_shopping_suggestions(request.user)
+        suggestions = build_shopping_suggestions()
         if not suggestions:
             messages.info(request, 'Nie znaleziono produktów wymagających uzupełnienia.')
             return redirect('cooking:shopping-list')
 
         shopping_list = ShoppingList.objects.create(
-            user=request.user,
+            created_by=request.user,
             title=f'Automatyczna lista {timezone.localdate():%d.%m.%Y}',
             source=ShoppingList.AUTOMATIC,
         )
@@ -1635,7 +1859,6 @@ class ShoppingListDetailView(LoginRequiredMixin, View):
         shopping_list = get_object_or_404(
             ShoppingList.objects.prefetch_related('items__pantry_product'),
             id=list_id,
-            user=request.user,
         )
         items = list(shopping_list.items.all())
         item_count = len(items)
@@ -1656,13 +1879,13 @@ class ShoppingListDetailView(LoginRequiredMixin, View):
 
 class EditShoppingListView(LoginRequiredMixin, View):
     def get(self, request, list_id):
-        shopping_list = get_object_or_404(ShoppingList, id=list_id, user=request.user)
+        shopping_list = get_object_or_404(ShoppingList, id=list_id)
         return render(request, 'cooking/shopping_edit.html', {
             'shopping_list': shopping_list,
         })
 
     def post(self, request, list_id):
-        shopping_list = get_object_or_404(ShoppingList, id=list_id, user=request.user)
+        shopping_list = get_object_or_404(ShoppingList, id=list_id)
         title = request.POST.get('title', '').strip()
         if not title:
             messages.error(request, 'Nazwa listy jest wymagana.')
@@ -1679,7 +1902,7 @@ class EditShoppingListView(LoginRequiredMixin, View):
 
 class DeleteShoppingListView(LoginRequiredMixin, View):
     def post(self, request, list_id):
-        shopping_list = get_object_or_404(ShoppingList, id=list_id, user=request.user)
+        shopping_list = get_object_or_404(ShoppingList, id=list_id)
         title = shopping_list.title
         shopping_list.delete()
         messages.success(request, f'Usunięto listę: {title}.')
@@ -1688,7 +1911,7 @@ class DeleteShoppingListView(LoginRequiredMixin, View):
 
 class AddShoppingListItemView(LoginRequiredMixin, View):
     def post(self, request, list_id):
-        shopping_list = get_object_or_404(ShoppingList, id=list_id, user=request.user)
+        shopping_list = get_object_or_404(ShoppingList, id=list_id)
         if shopping_list.status == ShoppingList.COMPLETED:
             messages.info(request, 'Ta lista została już zakończona.')
             return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
@@ -1702,7 +1925,7 @@ class AddShoppingListItemView(LoginRequiredMixin, View):
             if quantity <= 0:
                 raise ValueError('Ilość musi być większa od zera.')
             validate_pantry_quantity_for_unit(quantity, unit)
-            product = find_user_pantry_product(request.user, name)
+            product = find_pantry_product(name)
             ShoppingListItem.objects.create(
                 shopping_list=shopping_list,
                 pantry_product=product,
@@ -1722,7 +1945,7 @@ class AddShoppingListItemView(LoginRequiredMixin, View):
 
 class UpdateShoppingListItemView(LoginRequiredMixin, View):
     def post(self, request, item_id):
-        item = get_object_or_404(ShoppingListItem, id=item_id, shopping_list__user=request.user)
+        item = get_object_or_404(ShoppingListItem, id=item_id)
         shopping_list = item.shopping_list
         if shopping_list.status == ShoppingList.COMPLETED:
             messages.info(request, 'Ta lista została już zakończona.')
@@ -1737,7 +1960,7 @@ class UpdateShoppingListItemView(LoginRequiredMixin, View):
             if quantity <= 0:
                 raise ValueError('Ilość musi być większa od zera.')
             validate_pantry_quantity_for_unit(quantity, unit)
-            product = find_user_pantry_product(request.user, name)
+            product = find_pantry_product(name)
 
             item.name = name
             item.quantity = quantity
@@ -1764,7 +1987,7 @@ class UpdateShoppingListItemView(LoginRequiredMixin, View):
 
 class ToggleShoppingListItemView(LoginRequiredMixin, View):
     def post(self, request, item_id):
-        item = get_object_or_404(ShoppingListItem, id=item_id, shopping_list__user=request.user)
+        item = get_object_or_404(ShoppingListItem, id=item_id)
         if item.shopping_list.status == ShoppingList.COMPLETED:
             messages.info(request, 'Ta lista została już zakończona.')
             return redirect('cooking:shopping-list-detail', list_id=item.shopping_list.id)
@@ -1777,7 +2000,7 @@ class ToggleShoppingListItemView(LoginRequiredMixin, View):
 
 class DeleteShoppingListItemView(LoginRequiredMixin, View):
     def post(self, request, item_id):
-        item = get_object_or_404(ShoppingListItem, id=item_id, shopping_list__user=request.user)
+        item = get_object_or_404(ShoppingListItem, id=item_id)
         shopping_list = item.shopping_list
         if shopping_list.status == ShoppingList.COMPLETED:
             messages.info(request, 'Ta lista została już zakończona.')
@@ -1796,7 +2019,6 @@ class CompleteShoppingListView(LoginRequiredMixin, View):
         shopping_list = get_object_or_404(
             ShoppingList.objects.prefetch_related('items__pantry_product'),
             id=list_id,
-            user=request.user,
         )
         if shopping_list.status == ShoppingList.COMPLETED:
             messages.info(request, 'Ta lista została już zakończona.')
@@ -1811,10 +2033,8 @@ class CompleteShoppingListView(LoginRequiredMixin, View):
         errors = []
         for item in purchased_items:
             product = item.pantry_product
-            if product and product.user_id != request.user.id:
-                product = None
             if product is None:
-                product = find_user_pantry_product(request.user, item.name)
+                product = find_pantry_product(item.name)
 
             try:
                 if product is None:
@@ -1837,7 +2057,7 @@ class CompleteShoppingListView(LoginRequiredMixin, View):
         for item, product, movement_quantity in prepared_updates:
             if product is None:
                 product = PantryProduct.objects.create(
-                    user=request.user,
+                    created_by=request.user,
                     name=item.name,
                     category=item.category or 'Inne',
                     unit=item.unit,
@@ -1888,7 +2108,7 @@ class CookView(LoginRequiredMixin, View):
         return render(request, 'cooking/cook.html', {
             'recipes': Recipe.objects.all(),
             'selected_recipe': selected_recipe,
-            'pantry_products': PantryProduct.objects.filter(user=request.user),
+            'pantry_products': PantryProduct.objects.all(),
             'units': PantryProduct.UNIT_CHOICES,
             'categories': PANTRY_CATEGORIES,
         })
@@ -1925,13 +2145,13 @@ class CookView(LoginRequiredMixin, View):
                 if quantity <= 0:
                     raise ValueError('Ilość musi być większa od zera.')
 
-                product = PantryProduct.objects.filter(user=request.user, name__iexact=name).first()
+                product = PantryProduct.objects.filter(name__iexact=name).first()
                 fulfilled_quantity = Decimal('0.00')
                 before_package_count = 0
                 if product is None:
                     validate_pantry_quantity_for_unit(quantity, source_unit)
                     product = PantryProduct.objects.create(
-                        user=request.user,
+                        created_by=request.user,
                         name=name,
                         category=category or 'Inne',
                         unit=source_unit,
@@ -1999,7 +2219,7 @@ class CookView(LoginRequiredMixin, View):
                 return render(request, 'cooking/cook.html', {
                     'recipes': Recipe.objects.all(),
                     'selected_recipe': recipe,
-                    'pantry_products': PantryProduct.objects.filter(user=request.user),
+                    'pantry_products': PantryProduct.objects.all(),
                     'units': PantryProduct.UNIT_CHOICES,
                     'categories': PANTRY_CATEGORIES,
                     'form_rows': zip(product_names, quantities, units, categories),

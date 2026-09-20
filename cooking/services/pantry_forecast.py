@@ -325,6 +325,7 @@ def forecast_pantry_product(
 
     daily_consumed = defaultdict(float)
     daily_purchased = defaultdict(float)
+    daily_adjusted = defaultdict(float)
     consume_events = []
     for movement in all_movements:
         if movement.occurred_on < start or movement.occurred_on > today:
@@ -336,6 +337,10 @@ def forecast_pantry_product(
                 consume_events.append(movement)
         elif movement.movement_type == 'purchase':
             daily_purchased[movement.occurred_on] += quantity
+        elif movement.movement_type == 'adjust':
+            # Korekta stanu (np. w edycji produktu) ma znak i nie jest ani
+            # zużyciem, ani zakupem - liczy się tylko przy odtwarzaniu zapasu.
+            daily_adjusted[movement.occurred_on] += quantity
 
     calendar_days = _date_range(start, today)
     observed_dates = []
@@ -343,7 +348,8 @@ def forecast_pantry_product(
     for day in reversed(calendar_days):
         consumed = daily_consumed.get(day, 0.0)
         purchased = daily_purchased.get(day, 0.0)
-        inferred_start_stock = max(inferred_end_stock - purchased + consumed, 0.0)
+        adjusted = daily_adjusted.get(day, 0.0)
+        inferred_start_stock = max(inferred_end_stock - purchased - adjusted + consumed, 0.0)
         if inferred_end_stock > 0 or inferred_start_stock > 0 or consumed > 0 or purchased > 0:
             observed_dates.append(day)
         inferred_end_stock = inferred_start_stock

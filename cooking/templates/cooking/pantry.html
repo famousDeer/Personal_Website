@@ -134,7 +134,7 @@
 
     <div class="pantry-section-heading">
         <div>
-            <div class="small text-uppercase fw-bold text-muted">Twoje zapasy</div>
+            <div class="small text-uppercase fw-bold text-muted">Wspólne zapasy domu</div>
             <h3>Produkty w spiżarni</h3>
             <p>Termin zakupu jest aktualizowany wraz z każdym zeskanowanym zużyciem.</p>
         </div>
@@ -189,7 +189,7 @@
                                                 <div class="pantry-product-title-row">
                                                     <h4>{{ product.name }}</h4>
                                                     <a class="pantry-product-edit" href="{% url 'cooking:edit-pantry-product' product.id %}"
-                                                       title="Edytuj nazwę i kategorię" aria-label="Edytuj {{ product.name }}">
+                                                       title="Edytuj lub usuń produkt" aria-label="Edytuj lub usuń {{ product.name }}">
                                                         <i class="bi bi-pencil" aria-hidden="true"></i>
                                                     </a>
                                                     {% if product.stock_status == 'empty' %}

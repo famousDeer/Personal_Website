@@ -20,6 +20,7 @@ urlpatterns = [
     path('pantry/<int:product_id>/image/', views.PantryProductImageView.as_view(), name='pantry-product-image'),
     path('pantry/<int:product_id>/image/upload/', views.PantryProductImageUploadView.as_view(), name='pantry-product-image-upload'),
     path('pantry/<int:product_id>/edit/', views.EditPantryProductView.as_view(), name='edit-pantry-product'),
+    path('pantry/<int:product_id>/delete/', views.DeletePantryProductView.as_view(), name='delete-pantry-product'),
     path('pantry/<int:product_id>/movement/', views.PantryMovementView.as_view(), name='pantry-movement'),
     path('shopping/', views.ShoppingListView.as_view(), name='shopping-list'),
     path('shopping/create/', views.CreateShoppingListView.as_view(), name='create-shopping-list'),
