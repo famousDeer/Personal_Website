@@ -9,7 +9,8 @@ Co wysyła:
 * "spiżarnia" - produkty, których brakuje albo kończą się według prognozy;
   to samo, co proponuje automatyczna lista zakupów. Powtórzy się dopiero,
   gdy zmieni się zestaw produktów, więc nie przychodzi codziennie to samo;
-* "lista" - w dzień typowych zakupów przypomnienie o aktywnej liście.
+* "lista" - przypomnienie o aktywnej liście: ile pozycji zostało. Idzie codziennie
+  (raz dziennie na listę), a w dzień typowych zakupów ma tylko inny tytuł.
 
 Bez kluczy VAPID komenda tylko mówi, że powiadomienia są wyłączone.
 """
@@ -89,10 +90,6 @@ class Command(BaseCommand):
         from cooking.views import get_household_typical_shopping_weekday
 
         today = timezone.localdate()
-        weekday = get_household_typical_shopping_weekday()
-        if weekday is None or weekday != today.weekday():
-            self.stdout.write('Lista: dziś nie jest Waszym zwykłym dniem zakupów.')
-            return 0
         shopping_list = ShoppingList.objects.filter(status=ShoppingList.ACTIVE).order_by('-updated_at').first()
         if shopping_list is None:
             self.stdout.write('Lista: nie ma aktywnej listy.')
@@ -101,7 +98,10 @@ class Command(BaseCommand):
         if not left:
             self.stdout.write('Lista: wszystko już odhaczone.')
             return 0
-        title = f'Zakupy dziś: {shopping_list.title}'
+        # Przypomnienie idzie codziennie; dzień typowych zakupów zmienia tylko tytuł.
+        weekday = get_household_typical_shopping_weekday()
+        shopping_day = weekday is not None and weekday == today.weekday()
+        title = f'{"Zakupy dziś" if shopping_day else "Lista zakupów"}: {shopping_list.title}'
         body = f'Zostało {polish_count(left, "produkt", "produkty", "produktów")} na liście.'
         self.stdout.write(f'Lista: {title} - {body}')
         if dry_run:

@@ -3839,35 +3839,56 @@ class SendRemindersCommandTests(TestCase):
         self.assertIn('nic nie wymaga uzupełnienia', output)
         self.assertEqual(calls, [])
 
-    def test_shopping_list_reminder_on_the_usual_day(self):
-        shopping_list = ShoppingList.objects.create(created_by=self.user, title='Sobota')
+    def add_active_list(self, title='Sobota', purchased=False):
+        shopping_list = ShoppingList.objects.create(created_by=self.user, title=title)
         ShoppingListItem.objects.create(
             shopping_list=shopping_list, name='Mleko', quantity=Decimal('1.00'),
-            unit=PantryProduct.UNIT_PIECE, category='Nabiał',
+            unit=PantryProduct.UNIT_PIECE, category='Nabiał', is_purchased=purchased,
         )
+        return shopping_list
+
+    def test_shopping_list_reminder_on_the_usual_day(self):
+        self.add_active_list()
+
         with patch('cooking.views.get_household_typical_shopping_weekday', return_value=timezone.localdate().weekday()):
             output, calls = self.send('--kind', 'lista')
 
         self.assertIn('Sobota', output)
         self.assertEqual(len(calls), 1)
         payload = json.loads(calls[0]['data'])
-        self.assertIn('Sobota', payload['title'])
+        self.assertEqual(payload['title'], 'Zakupy dziś: Sobota')
         self.assertIn('1 produkt', payload['body'])
 
-    def test_no_reminder_on_other_days(self):
-        ShoppingList.objects.create(created_by=self.user, title='Sobota')
+    def test_reminder_comes_on_other_days_too(self):
+        self.add_active_list()
+
         with patch('cooking.views.get_household_typical_shopping_weekday', return_value=None):
             output, calls = self.send('--kind', 'lista')
 
-        self.assertIn('nie jest Waszym zwykłym dniem zakupów', output)
+        self.assertEqual(len(calls), 1)
+        payload = json.loads(calls[0]['data'])
+        self.assertEqual(payload['title'], 'Lista zakupów: Sobota')
+        self.assertIn('1 produkt', payload['body'])
+
+    def test_reminder_comes_once_a_day(self):
+        self.add_active_list()
+
+        with patch('cooking.views.get_household_typical_shopping_weekday', return_value=None):
+            self.send('--kind', 'lista')
+            _, calls = self.send('--kind', 'lista')
+
+        self.assertEqual(calls, [])
+
+    def test_no_active_list_means_no_reminder(self):
+        with patch('cooking.views.get_household_typical_shopping_weekday', return_value=None):
+            output, calls = self.send('--kind', 'lista')
+
+        self.assertIn('nie ma aktywnej listy', output)
         self.assertEqual(calls, [])
 
     def test_everything_ticked_off_means_no_reminder(self):
-        shopping_list = ShoppingList.objects.create(created_by=self.user, title='Sobota')
-        ShoppingListItem.objects.create(
-            shopping_list=shopping_list, name='Mleko', quantity=Decimal('1.00'),
-            unit=PantryProduct.UNIT_PIECE, category='Nabiał', is_purchased=True,
-        )
+        self.add_active_list(purchased=True)
+
         with patch('cooking.views.get_household_typical_shopping_weekday', return_value=timezone.localdate().weekday()):
             output, calls = self.send('--kind', 'lista')
 

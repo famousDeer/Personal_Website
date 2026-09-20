@@ -453,8 +453,9 @@ docker compose exec -T web python manage.py send_reminders --kind spizarnia
 - `spizarnia` — the products the automatic shopping list would suggest. The same set of
   products is not sent twice (`SentNotification`, migration `0016`), so it does not
   arrive every morning; a new shortage does.
-- `lista` — on the household's usual shopping weekday, how much is left on the active
-  list; once per list per day.
+- `lista` — how much is left on the active list. It goes out every day the command runs,
+  once per list per day; on the household's usual shopping weekday the title says
+  "Zakupy dziś" instead of "Lista zakupów".
 - Tapping a notification opens the shopping app on the list (handled in the service
   worker). The log of sent notifications is pruned after 90 days.
 
