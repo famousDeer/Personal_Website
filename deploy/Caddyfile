@@ -19,6 +19,13 @@
 	# stronę z certyfikatem, a 308 jest "stałe" i przeglądarki je zapamiętują.
 	# Przekierowania robi więc blok http:// poniżej.
 	auto_https disable_redirects
+	# Przeglądarka otwierająca adres IP (https://192.168.1.115) nie wysyła
+	# nazwy serwera (SNI) - tak każe standard TLS. Caddy wybiera wtedy
+	# certyfikat według adresu, pod który przyszło połączenie, a w Dockerze
+	# jest to wewnętrzny adres kontenera (172.x.x.x), nie adres Pi. Nie ma
+	# dla niego certyfikatu, więc połączenie się zrywa i przeglądarka pokazuje
+	# ERR_SSL_PROTOCOL_ERROR. default_sni mówi, którego certyfikatu użyć.
+	default_sni {$HTTPS_IP:localhost}
 }
 
 # Adresy, pod którymi domownicy otwierają stronę (zmienna HTTPS_SITES w .env).

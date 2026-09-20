@@ -56,6 +56,9 @@ services:
     environment:
       # Adresy, pod którymi otwieracie stronę; certyfikat obejmie każdy z nich.
       HTTPS_SITES: ${HTTPS_SITES:-raspberrypi.local, 192.168.1.115}
+      # Adres IP Pi (ten sam co w HTTPS_SITES) - dla przeglądarek łączących
+      # się po IP, które nie podają nazwy serwera. Patrz deploy/Caddyfile.
+      HTTPS_IP: ${HTTPS_IP:-192.168.1.115}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./deploy/https-setup:/srv/https-setup:ro

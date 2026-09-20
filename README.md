@@ -92,6 +92,8 @@ STOOQ_API_KEY=
 
 # HTTPS in front of the app (caddy service); comma-separated, each also in ALLOWED_HOSTS
 HTTPS_SITES=raspberrypi.local, 192.168.1.115
+# The Pi's IP from the list above (see "HTTPS and the camera" for why it is separate)
+HTTPS_IP=192.168.1.115
 
 # Pantry catalog (optional; defaults work without these entries)
 OPEN_FOOD_FACTS_ENABLED=1
@@ -228,6 +230,12 @@ docker compose up -d --build web caddy
 - `https://raspberrypi.local` and `https://192.168.1.115` serve the app. Change the list
   with `HTTPS_SITES` in `.env` (comma-separated); every name must also be in
   `ALLOWED_HOSTS`.
+- `HTTPS_IP` must be the Pi's IP from that list. A browser opening an IP address sends
+  no server name (SNI), so Caddy picks the certificate by the address the connection
+  arrived on — inside Docker that is the container's own 172.x address, which has no
+  certificate, and the browser shows `ERR_SSL_PROTOCOL_ERROR`. `HTTPS_IP` becomes
+  Caddy's `default_sni` and fixes that. Names such as `raspberrypi.local` do send SNI
+  and are unaffected.
 - `http://<address>/certyfikat` is a page for phones with the certificate download and
   step-by-step instructions for iPhone and Android. Each phone trusts the certificate
   once; after that the scanner opens the camera immediately.
