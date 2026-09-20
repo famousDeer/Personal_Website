@@ -354,10 +354,15 @@ whenever the server answers.
 
 **On the phone** (needs the HTTPS setup above, always the same address, e.g.
 `https://192.168.1.115/cooking/shopping/app/`; offline data is stored per address):
-- iPhone: open it in Safari, tap Share → "Add to Home Screen", start it from the icon
-  and log in once. Only the home-screen app keeps data permanently; a Safari tab can
-  lose it after a week without visiting the site.
+- iPhone: open it in Safari, tap Share → "Add to Home Screen", then **start it from the
+  icon once while at home and log in there**. iOS treats the home-screen app as a
+  separate app with its own storage, service worker and cookies, so a sync done in a
+  Safari tab does not help the icon. Only the home-screen app keeps data permanently.
 - Android: open it in Chrome and use "Install" (the app offers it too).
+- The header shows whether the phone is ready to leave home: **"Gotowe offline"** means
+  the app and the list are saved on the phone. Tapping the badge opens a panel with the
+  address, what is cached, the last sync and a "Przygotuj tryb offline" button that
+  forces it (only works on the home network).
 
 **How it works**
 - `cooking/shopping_app_views.py`: the shell page (no data, no login needed, so it can
@@ -366,8 +371,13 @@ whenever the server answers.
   401 instead of redirecting to the login page, and extends the session at most once a
   day, so a phone used at home at least every two weeks stays logged in.
 - The service worker's version is a hash of the app's files, so a deployment that
-  changes any of them replaces the cached app on the next start at home. Its scope is
-  `/cooking/shopping/app/` only; the rest of the site is not affected.
+  changes any of them replaces the cached app on the next start at home. Only the page,
+  the CSS and the JS have to be cached for the install to succeed; icons and the icon
+  font are best-effort and are filled in later from ordinary requests, so one failed
+  download cannot leave the phone without a working app. Its scope is `/cooking/shopping/`
+  (served with `Service-Worker-Allowed`), so an icon added to the home screen from any
+  shopping page opens the saved app instead of a browser error when the server is out of
+  reach; with a connection those pages load normally.
 - `cooking/services/shopping_sync.py`: each queued operation (`item.add`,
   `item.set_purchased`, `item.set_quantity`, `item.delete`) has a UUID, and the server
   stores the result (`ShoppingSyncOperation`), so a batch resent after a dropped

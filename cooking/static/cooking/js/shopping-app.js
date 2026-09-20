@@ -38,6 +38,26 @@
         const memory = { kv: new Map(), outbox: new Map(), seq: 0 };
         let dbPromise = null;
 
+        // Zapas na wypadek, gdyby IndexedDB nie zadziałało (iPhone potrafi
+        // odmówić zapisu w karcie prywatnej albo po wyczyszczeniu danych).
+        const backup = {
+            read(key) {
+                try {
+                    const raw = localStorage.getItem('zakupy-' + key);
+                    return raw ? JSON.parse(raw) : undefined;
+                } catch (error) {
+                    return undefined;
+                }
+            },
+            write(key, value) {
+                try {
+                    localStorage.setItem('zakupy-' + key, JSON.stringify(value));
+                } catch (error) {
+                    /* brak miejsca albo tryb prywatny */
+                }
+            },
+        };
+
         function open() {
             if (dbPromise) {
                 return dbPromise;
@@ -94,14 +114,19 @@
             async get(key) {
                 const db = await open();
                 if (!db) {
-                    return memory.kv.get(key);
+                    return memory.kv.get(key) ?? backup.read(key);
                 }
-                return tx(db, 'kv', 'readonly', (os) => requestValue(os.get(key)));
+                try {
+                    return (await tx(db, 'kv', 'readonly', (os) => requestValue(os.get(key)))) ?? backup.read(key);
+                } catch (error) {
+                    return backup.read(key);
+                }
             },
             async set(key, value) {
+                memory.kv.set(key, value);
+                backup.write(key, value);
                 const db = await open();
                 if (!db) {
-                    memory.kv.set(key, value);
                     return;
                 }
                 await tx(db, 'kv', 'readwrite', (os) => { os.put(value, key); });
@@ -153,6 +178,10 @@
         confirmComplete: false,
         renderDeferred: false,
         storageOk: true,
+        showDetails: false,
+        preparing: false,
+        // Co jest zapisane w telefonie na wyjście z domu.
+        offline: { checked: false, shell: false, files: 0, total: 0, sw: 'sprawdzam', error: '' },
     };
 
     const newId = () => (window.crypto && crypto.randomUUID)
@@ -390,6 +419,7 @@
         if (data.app_version && data.app_version !== config.version) {
             checkForUpdate();
         }
+        checkOfflineReady();
     }
 
     async function sync() {
@@ -621,8 +651,75 @@
             </li>`;
     }
 
+    function renderOfflineChip() {
+        const chip = el('[data-offline-chip]');
+        const text = el('[data-offline-text]');
+        const ready = offlineReady();
+        chip.dataset.state = state.preparing ? 'praca' : (!state.offline.checked ? 'sprawdzam' : (ready ? 'gotowe' : 'brak'));
+        text.textContent = state.preparing ? 'Przygotowuję…'
+            : (!state.offline.checked ? 'Sprawdzam…' : (ready ? 'Gotowe offline' : 'Tryb offline'));
+        chip.title = ready
+            ? 'Lista i aplikacja są zapisane w telefonie - możesz wyjść z domu'
+            : 'Aplikacja nie jest jeszcze zapisana w telefonie. Dotknij, żeby zobaczyć szczegóły.';
+        chip.setAttribute('aria-expanded', String(state.showDetails));
+    }
+
+    function renderDetails() {
+        const container = el('[data-details]');
+        if (!state.showDetails) {
+            container.innerHTML = '';
+            return;
+        }
+        const view = currentView();
+        const items = view.lists.reduce((sum, list) => sum + list.items.length, 0);
+        const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+        const rows = [
+            ['Adres', window.location.origin],
+            ['Uruchomiona', standalone ? 'z ikony na ekranie telefonu' : 'w przeglądarce'],
+            ['Aplikacja zapisana w telefonie', state.offline.shell
+                ? `tak (${state.offline.files} z ${state.offline.total} plików)`
+                : 'nie - poza domem się nie otworzy'],
+            ['Mechanizm offline', state.offline.error ? `błąd: ${state.offline.error}` : state.offline.sw],
+            ['Lista zapisana w telefonie', state.snapshot
+                ? `${items} pozycji z ${view.lists.length} list, zapis ${relativeSyncTime() || 'nieznany'}`
+                : 'nie'],
+            ['Zalogowany', state.meta.user || 'nie'],
+            ['Zmiany czekające na wysłanie', String(state.outbox.length)],
+            ['Zapis danych', state.storageOk ? 'pamięć telefonu (IndexedDB)' : 'tylko do zamknięcia karty'],
+            ['Wersja aplikacji', config.version],
+        ];
+        container.innerHTML = `
+            <section class="sa-details">
+                <div class="sa-details-head">
+                    <strong>Stan aplikacji</strong>
+                    <button type="button" class="sa-icon-button" data-details-close aria-label="Zamknij szczegóły">
+                        <i class="bi bi-x-lg" aria-hidden="true"></i>
+                    </button>
+                </div>
+                <dl>${rows.map(([label, value]) => `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl>
+                <button type="button" class="sa-secondary" data-prepare ${state.preparing ? 'disabled' : ''}>
+                    <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+                    ${state.preparing ? 'Przygotowuję…' : 'Przygotuj tryb offline'}
+                </button>
+                <p class="sa-details-hint">Przygotowanie działa tylko w domowej sieci: pobiera listę i zapisuje aplikację w telefonie.</p>
+            </section>`;
+    }
+
     function renderBanners(view) {
         const banners = [];
+        if (state.offline.checked && !state.offline.shell && state.status !== 'offline') {
+            banners.push(`
+                <div class="sa-banner is-warning">
+                    <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
+                    <div>
+                        <strong>Aplikacja nie jest jeszcze zapisana w telefonie.</strong>
+                        Poza domem nie uda się jej otworzyć.${state.offline.error ? ` Powód: ${escapeHtml(state.offline.error)}` : ''}
+                    </div>
+                    <button type="button" class="sa-banner-action" data-prepare ${state.preparing ? 'disabled' : ''}>
+                        ${state.preparing ? 'Chwila…' : 'Przygotuj'}
+                    </button>
+                </div>`);
+        }
         if (state.status === 'auth') {
             banners.push(`
                 <div class="sa-banner is-warning">
@@ -670,6 +767,8 @@
         const view = currentView();
         const list = selectedList(view);
         renderStatus();
+        renderOfflineChip();
+        renderDetails();
         renderBanners(view);
 
         const select = el('[data-list-select]');
@@ -974,6 +1073,23 @@
         render();
     });
 
+    el('[data-offline-chip]').addEventListener('click', () => {
+        state.showDetails = !state.showDetails;
+        if (state.showDetails) {
+            checkOfflineReady();
+        }
+        render();
+    });
+
+    app.addEventListener('click', (event) => {
+        if (event.target.closest('[data-details-close]')) {
+            state.showDetails = false;
+            render();
+        } else if (event.target.closest('[data-prepare]')) {
+            prepareOffline();
+        }
+    });
+
     el('[data-sync-button]').addEventListener('click', () => {
         if (state.status === 'auth') {
             window.location.href = config.loginUrl;
@@ -1035,7 +1151,8 @@
             installHint.visible = true;
             installHint.html = '<strong>Dodaj do ekranu początkowego</strong>, żeby lista zawsze była pod ręką: '
                 + 'w Safari dotknij <i class="bi bi-box-arrow-up" aria-label="Udostępnij"></i> i wybierz „Do ekranu początkowego”. '
-                + 'Tylko wtedy iPhone trwale przechowuje listę offline.';
+                + 'Potem <strong>uruchom aplikację z ikony jeszcze raz w domu</strong> - iPhone traktuje ją jak osobną '
+                + 'aplikację z własną pamięcią i dopiero wtedy zapisze listę na wyjście do sklepu.';
             render();
         }
     }
@@ -1064,7 +1181,7 @@
     });
 
     // ------------------------------------------------------------------
-    // Service worker i aktualizacje
+    // Service worker, aktualizacje i gotowość na wyjście z domu
     // ------------------------------------------------------------------
     let registration = null;
     function checkForUpdate() {
@@ -1073,8 +1190,88 @@
         }
     }
 
+    async function readCacheState() {
+        const result = { shell: false, files: 0, total: 0 };
+        if (!('caches' in window)) {
+            return result;
+        }
+        try {
+            const names = (await caches.keys()).filter((name) => name.startsWith('zakupy-'));
+            for (const name of names) {
+                const cache = await caches.open(name);
+                const keys = await cache.keys();
+                result.files = Math.max(result.files, keys.length);
+                if (keys.some((request) => new URL(request.url).pathname === config.scope)) {
+                    result.shell = true;
+                }
+            }
+        } catch (error) {
+            result.error = String(error && error.message);
+        }
+        return result;
+    }
+
+    async function checkOfflineReady() {
+        const cacheState = await readCacheState();
+        let sw = 'brak obsługi';
+        if ('serviceWorker' in navigator) {
+            if (state.offline.error) {
+                sw = 'błąd';
+            } else if (navigator.serviceWorker.controller) {
+                sw = 'działa';
+            } else if (registration && (registration.installing || registration.waiting)) {
+                sw = 'instaluję';
+            } else {
+                sw = 'nieaktywny';
+            }
+        }
+        state.offline = {
+            ...state.offline,
+            checked: true,
+            shell: cacheState.shell,
+            files: cacheState.files,
+            total: config.assetCount || cacheState.files,
+            sw,
+        };
+        render();
+    }
+
+    function offlineReady() {
+        return state.offline.checked && state.offline.shell && Boolean(state.snapshot);
+    }
+
+    async function prepareOffline() {
+        state.preparing = true;
+        render();
+        try {
+            if ('serviceWorker' in navigator) {
+                const existing = await navigator.serviceWorker.getRegistration(config.swScope || config.scope);
+                if (existing) {
+                    await existing.update().catch(() => null);
+                } else {
+                    registration = await navigator.serviceWorker.register(config.serviceWorkerUrl, { scope: config.swScope || config.scope });
+                }
+                await navigator.serviceWorker.ready;
+            }
+            await sync();
+            await checkOfflineReady();
+            toast(offlineReady()
+                ? 'Gotowe. Lista i aplikacja są zapisane w telefonie.'
+                : 'Nie udało się jeszcze zapisać wszystkiego. Spróbuj odświeżyć stronę w domowej sieci.',
+            offlineReady() ? 'success' : 'warning');
+        } catch (error) {
+            state.offline.error = String(error && error.message);
+            toast('Nie udało się przygotować trybu offline: ' + (error && error.message), 'warning');
+        } finally {
+            state.preparing = false;
+            render();
+        }
+    }
+
     function setupServiceWorker() {
         if (!('serviceWorker' in navigator)) {
+            state.offline.error = 'Ta przeglądarka nie obsługuje trybu offline.';
+            checkOfflineReady();
             return;
         }
         const hadController = Boolean(navigator.serviceWorker.controller);
@@ -1087,9 +1284,18 @@
                 window.location.reload();
             }
         });
-        navigator.serviceWorker.register(config.serviceWorkerUrl, { scope: config.scope })
-            .then((reg) => { registration = reg; })
-            .catch(() => null);
+        navigator.serviceWorker.register(config.serviceWorkerUrl, { scope: config.swScope || config.scope })
+            .then((reg) => {
+                registration = reg;
+                return navigator.serviceWorker.ready;
+            })
+            .then(() => checkOfflineReady())
+            .catch((error) => {
+                // Bez service workera aplikacja nie otworzy się poza domem -
+                // pokazujemy to wprost, zamiast udawać, że wszystko gra.
+                state.offline.error = String(error && error.message);
+                checkOfflineReady();
+            });
     }
 
     // ------------------------------------------------------------------

@@ -31,6 +31,13 @@ from .services.shopping_sync import (
     shopping_snapshot,
 )
 
+# Bez tych plików aplikacja nie otworzy się poza domem - ich zapis jest
+# warunkiem udanej instalacji service workera.
+APP_REQUIRED_STATIC_FILES = [
+    'css/tokens.css',
+    'cooking/css/shopping-app.css',
+    'cooking/js/shopping-app.js',
+]
 APP_STATIC_FILES = [
     'css/tokens.css',
     'vendor/bootstrap-icons/bootstrap-icons.css',
@@ -84,8 +91,10 @@ class ShoppingAppView(View):
                 'completeUrl': reverse('cooking:shopping-api-complete', args=[0]),
                 'serviceWorkerUrl': reverse('cooking:shopping-app-sw'),
                 'scope': reverse('cooking:shopping-app'),
+                'swScope': reverse('cooking:shopping-list'),
                 'loginUrl': f"{reverse('login')}?next={reverse('cooking:shopping-app')}",
                 'listsUrl': reverse('cooking:shopping-list'),
+                'assetCount': len(APP_STATIC_FILES) + 2,  # + powłoka i manifest
                 'units': [{'value': value, 'label': label} for value, label in PANTRY_UNIT_CHOICES],
                 'categoryGroups': [
                     {'label': label, 'categories': list(categories)}
@@ -102,13 +111,19 @@ class ShoppingAppServiceWorkerView(View):
         version = app_version()
         precache = [reverse('cooking:shopping-app'), reverse('cooking:shopping-app-manifest')]
         precache += [static(name) for name in APP_STATIC_FILES]
+        required = [reverse('cooking:shopping-app')] + [static(name) for name in APP_REQUIRED_STATIC_FILES]
         body = render_to_string('cooking/shopping_app_sw.js', {
             'version': version,
             'precache_json': json.dumps(precache),
+            'required_json': json.dumps(required),
             'shell_url_json': json.dumps(reverse('cooking:shopping-app')),
+            'scope_prefix_json': json.dumps(reverse('cooking:shopping-list')),
             'api_prefix_json': json.dumps(reverse('cooking:shopping-app') + 'api/'),
         })
         response = HttpResponse(body, content_type='application/javascript; charset=utf-8')
+        # Zasięg szerszy niż katalog pliku: ikona dodana do ekranu telefonu
+        # z dowolnej strony zakupów ma otwierać zapisany tryb zakupów.
+        response['Service-Worker-Allowed'] = reverse('cooking:shopping-list')
         # Przeglądarka i tak sprawdza service workera co najwyżej co 24 h;
         # no-cache sprawia, że po wdrożeniu nowa wersja przychodzi od razu.
         response['Cache-Control'] = 'no-cache'

@@ -2971,6 +2971,25 @@ class ShoppingOfflineSyncTests(TestCase):
         self.assertIn('cooking/js/shopping-app.js', body)
         self.assertIn('bootstrap-icons.woff2', body)
         self.assertIn('const API_PREFIX = "/cooking/shopping/app/api/";', body)
+        self.assertIn('const SCOPE_PREFIX = "/cooking/shopping/";', body)
+        # Bez tych plików aplikacja nie otworzy się poza domem, więc instalacja
+        # service workera musi ich wymagać; reszta jest dobierana bez przerywania.
+        required = body.split('const REQUIRED = ')[1].split(';')[0]
+        for name in ['/cooking/shopping/app/', 'shopping-app.js', 'shopping-app.css', 'tokens.css']:
+            self.assertIn(name, required)
+        self.assertNotIn('icons/shopping-192', required)
+        self.assertEqual(response['Service-Worker-Allowed'], '/cooking/shopping/')
+
+    def test_shell_config_describes_scope_and_assets(self):
+        response = self.client.get(reverse('cooking:shopping-app'))
+
+        config = json.loads(
+            response.content.decode().split('id="shopping-app-config"', 1)[1].split('>', 1)[1].split('</script>', 1)[0]
+        )
+        self.assertEqual(config['scope'], '/cooking/shopping/app/')
+        self.assertEqual(config['swScope'], '/cooking/shopping/')
+        self.assertEqual(config['snapshotUrl'], reverse('cooking:shopping-api-snapshot'))
+        self.assertGreaterEqual(config['assetCount'], 10)
 
     def test_manifest_is_installable(self):
         from django.contrib.staticfiles import finders

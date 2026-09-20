@@ -6,26 +6,53 @@
  * Plik jest generowany przez Django: lista plików ma adresy z hashami,
  * a wersja jest skrótem ich zawartości, więc każde wdrożenie z nowym
  * kodem aplikacji podmienia cache.
+ *
+ * Zasada: instalacja nie może polec przez jeden poboczny plik (iPhone potrafi
+ * uciąć pojedyncze pobranie), bo wtedy nic by się nie zapisało i aplikacja nie
+ * otworzyłaby się poza domem. Dlatego wymagamy tylko plików koniecznych,
+ * resztę dobieramy w tle, a każda udana odpowiedź z sieci dopisuje się do
+ * pamięci - aplikacja sama się uzupełnia przy każdym użyciu w domu.
  */
 const VERSION = '{{ version }}';
 const CACHE_PREFIX = 'zakupy-';
 const CACHE_NAME = CACHE_PREFIX + VERSION;
 const PRECACHE = {{ precache_json|safe }};
+const REQUIRED = {{ required_json|safe }};
 const SHELL_URL = {{ shell_url_json|safe }};
+const SCOPE_PREFIX = {{ scope_prefix_json|safe }};
 const API_PREFIX = {{ api_prefix_json|safe }};
+
+async function cacheUrl(cache, url) {
+    let response;
+    try {
+        response = await fetch(url, { cache: 'reload', credentials: 'same-origin' });
+    } catch (error) {
+        // Niektóre przeglądarki potrafią odmówić pobrania z pominięciem cache.
+        response = await fetch(url, { credentials: 'same-origin' });
+    }
+    if (!response.ok || response.redirected) {
+        throw new Error('Nie udało się pobrać ' + url + ' (' + response.status + ')');
+    }
+    await cache.put(url, response);
+}
+
+async function cacheRequired(cache, url) {
+    try {
+        await cacheUrl(cache, url);
+    } catch (error) {
+        await cacheUrl(cache, url);   // druga próba: chwilowy błąd sieci nie psuje instalacji
+    }
+}
 
 self.addEventListener('install', (event) => {
     event.waitUntil((async () => {
         const cache = await caches.open(CACHE_NAME);
-        // Każdy plik osobno i tylko poprawne odpowiedzi bez przekierowań -
-        // nigdy strona logowania zapisana zamiast aplikacji.
-        await Promise.all(PRECACHE.map(async (url) => {
-            const response = await fetch(url, { cache: 'reload', credentials: 'same-origin' });
-            if (!response.ok || response.redirected) {
-                throw new Error('Nie udało się pobrać ' + url + ' (' + response.status + ')');
-            }
-            await cache.put(url, response);
-        }));
+        // Konieczne: bez nich nie ma czego pokazać w sklepie.
+        await Promise.all(REQUIRED.map((url) => cacheRequired(cache, url)));
+        // Reszta (ikony, czcionka ikon, manifest) - bez przerywania instalacji.
+        await Promise.all(PRECACHE
+            .filter((url) => !REQUIRED.includes(url))
+            .map((url) => cacheUrl(cache, url).catch(() => null)));
         await self.skipWaiting();
     })());
 });
@@ -40,6 +67,10 @@ self.addEventListener('activate', (event) => {
     })());
 });
 
+function isAppAsset(url) {
+    return PRECACHE.includes(url.pathname) || url.pathname.startsWith('/static/');
+}
+
 self.addEventListener('fetch', (event) => {
     const request = event.request;
     if (request.method !== 'GET') {
@@ -49,26 +80,87 @@ self.addEventListener('fetch', (event) => {
     if (url.origin !== self.location.origin || url.pathname.startsWith(API_PREFIX)) {
         return;
     }
-    if (request.mode === 'navigate' && url.pathname === SHELL_URL) {
-        // Powłoka zawsze z pamięci: otwiera się od razu, także w sklepie.
-        // Nowa wersja przychodzi razem z nowym service workerem.
+
+    // Wejście do aplikacji: najpierw pamięć (otwiera się od razu, także w
+    // sklepie), a w tle odświeżamy zapis na później.
+    const isShellNavigation = request.mode === 'navigate'
+        && (url.pathname === SHELL_URL || url.pathname === SHELL_URL.replace(/\/$/, ''));
+    if (request.mode === 'navigate' && !isShellNavigation && url.pathname.startsWith(SCOPE_PREFIX)) {
+        // Inna strona zakupów (np. ikona dodana do ekranu z listy zakupów):
+        // z połączeniem zwykła strona, bez połączenia - zapisany tryb zakupów,
+        // zamiast ekranu błędu przeglądarki.
         event.respondWith((async () => {
-            const cache = await caches.open(CACHE_NAME);
-            const cached = await cache.match(SHELL_URL);
-            return cached || fetch(request);
+            try {
+                // Bez pamięci przeglądarki: inaczej poza domem dostalibyśmy
+                // starą kopię strony, której obrazki i style i tak się nie wczytają.
+                return await fetch(request.url, { cache: 'no-store', credentials: 'same-origin' });
+            } catch (error) {
+                const cache = await caches.open(CACHE_NAME);
+                const shell = await cache.match(SHELL_URL);
+                if (shell) {
+                    return shell;
+                }
+                throw error;
+            }
         })());
         return;
     }
-    if (PRECACHE.includes(url.pathname)) {
+    if (isShellNavigation) {
         event.respondWith((async () => {
             const cache = await caches.open(CACHE_NAME);
-            return (await cache.match(url.pathname)) || fetch(request);
+            const cached = await cache.match(SHELL_URL);
+            const network = fetch(SHELL_URL, { cache: 'reload', credentials: 'same-origin' })
+                .then(async (response) => {
+                    if (response.ok && !response.redirected) {
+                        await cache.put(SHELL_URL, response.clone());
+                    }
+                    return response;
+                });
+            if (cached) {
+                event.waitUntil(network.catch(() => null));
+                return cached;
+            }
+            return network;
+        })());
+        return;
+    }
+
+    if (isAppAsset(url)) {
+        event.respondWith((async () => {
+            const cache = await caches.open(CACHE_NAME);
+            const cached = await cache.match(url.pathname);
+            if (cached) {
+                return cached;
+            }
+            // Pierwsze udane pobranie zapisuje plik na później - dzięki temu
+            // brak pliku po nieudanej instalacji naprawia się sam.
+            const response = await fetch(request);
+            if (response.ok && !response.redirected && request.mode !== 'no-cors') {
+                cache.put(url.pathname, response.clone()).catch(() => null);
+            }
+            return response;
         })());
     }
 });
 
 self.addEventListener('message', (event) => {
-    if (event.data === 'skip-waiting') {
+    const data = event.data;
+    if (data === 'skip-waiting') {
         self.skipWaiting();
+        return;
+    }
+    if (data && data.type === 'gotowosc' && event.ports && event.ports[0]) {
+        const port = event.ports[0];
+        (async () => {
+            const cache = await caches.open(CACHE_NAME);
+            const keys = await cache.keys();
+            const cached = keys.map((request) => new URL(request.url).pathname);
+            port.postMessage({
+                version: VERSION,
+                cached: cached.length,
+                total: PRECACHE.length,
+                missingRequired: REQUIRED.filter((url) => !cached.includes(url)),
+            });
+        })().catch(() => port.postMessage({ version: VERSION, cached: 0, total: PRECACHE.length, missingRequired: REQUIRED }));
     }
 });
