@@ -10,6 +10,10 @@
         <p class="text-muted mb-0">Ręczne listy i automatyczne uzupełnienia ze stanu spiżarni.</p>
     </div>
     <div class="d-flex flex-wrap gap-2">
+        <a href="{% url 'cooking:shopping-app' %}" class="btn btn-outline-success rounded-pill px-4 fw-bold"
+           title="Lista na telefon, działa także bez połączenia z domową siecią">
+            <i class="bi bi-phone me-1"></i> Tryb zakupów
+        </a>
         <form method="post" action="{% url 'cooking:generate-shopping-list' %}">
             {% csrf_token %}
             <button type="submit" class="btn btn-primary rounded-pill px-4 fw-bold" {% if not suggestions %}disabled{% endif %}>

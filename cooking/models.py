@@ -1,4 +1,5 @@
 # cooking/models.py
+import uuid
 from decimal import Decimal
 
 from django.db import models
@@ -360,6 +361,32 @@ class ShoppingListItem(models.Model):
     category = models.CharField(max_length=120, blank=True)
     note = models.CharField(max_length=255, blank=True)
     is_purchased = models.BooleanField(default=False)
+    # Stały identyfikator pozycji, także dla telefonu. Pozycja dopisana offline
+    # dostaje go od razu na telefonie, więc ponowna synchronizacja nie tworzy
+    # duplikatu, a kolejne zmiany (ilość, odhaczenie) trafiają we właściwą pozycję.
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    purchased_at = models.DateTimeField(blank=True, null=True)
+    purchased_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+        verbose_name='Kupione przez',
+    )
+    # Ruch w spiżarni, którym odhaczenie uzupełniło zapas. Cofnięcie odhaczenia
+    # usuwa ruch i zdejmuje ilość ze stanu; zakończenie listy go pomija.
+    pantry_movement = models.OneToOneField(
+        'PantryMovement',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='shopping_item',
+    )
+    # Czas zmiany zapisany przez urządzenie ("ostatnia zmiana wygrywa"), osobno
+    # dla odhaczenia i dla ilości, żeby jedna zmiana nie unieważniała drugiej.
+    purchased_changed_at = models.DateTimeField(blank=True, null=True)
+    quantity_changed_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -373,3 +400,26 @@ class ShoppingListItem(models.Model):
     @property
     def display_unit(self):
         return dict(PANTRY_UNIT_CHOICES).get(self.unit, self.unit)
+
+
+class ShoppingSyncOperation(models.Model):
+    """Operacja z kolejki telefonu, już przetworzona przez serwer.
+
+    Telefon może wysłać tę samą paczkę dwa razy (zerwane połączenie w trakcie
+    odpowiedzi). Serwer zapamiętuje wynik każdej operacji po jej identyfikatorze
+    i przy powtórce zwraca go zamiast wykonywać operację drugi raz.
+    """
+
+    op_id = models.UUIDField(primary_key=True)
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    op_type = models.CharField(max_length=40)
+    status = models.CharField(max_length=20)
+    message = models.CharField(max_length=255, blank=True)
+    received_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'shopping_sync_operations'
+        ordering = ['-received_at']
+
+    def __str__(self):
+        return f'{self.op_type} {self.op_id} ({self.status})'

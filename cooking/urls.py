@@ -1,6 +1,6 @@
 # cooking/urls.py
 from django.urls import path
-from . import views
+from . import shopping_app_views, views
 
 app_name = 'cooking'
 
@@ -23,6 +23,22 @@ urlpatterns = [
     path('pantry/<int:product_id>/delete/', views.DeletePantryProductView.as_view(), name='delete-pantry-product'),
     path('pantry/<int:product_id>/movement/', views.PantryMovementView.as_view(), name='pantry-movement'),
     path('shopping/', views.ShoppingListView.as_view(), name='shopping-list'),
+    # Tryb zakupów offline (PWA). Service worker leży pod /shopping/app/,
+    # więc kontroluje tylko tę część strony.
+    path('shopping/app/', shopping_app_views.ShoppingAppView.as_view(), name='shopping-app'),
+    path('shopping/app/sw.js', shopping_app_views.ShoppingAppServiceWorkerView.as_view(), name='shopping-app-sw'),
+    path(
+        'shopping/app/manifest.webmanifest',
+        shopping_app_views.ShoppingAppManifestView.as_view(),
+        name='shopping-app-manifest',
+    ),
+    path('shopping/app/api/snapshot/', shopping_app_views.ShoppingSnapshotApiView.as_view(), name='shopping-api-snapshot'),
+    path('shopping/app/api/sync/', shopping_app_views.ShoppingSyncApiView.as_view(), name='shopping-api-sync'),
+    path(
+        'shopping/app/api/lists/<int:list_id>/complete/',
+        shopping_app_views.ShoppingCompleteApiView.as_view(),
+        name='shopping-api-complete',
+    ),
     path('shopping/create/', views.CreateShoppingListView.as_view(), name='create-shopping-list'),
     path('shopping/auto/', views.GenerateShoppingListView.as_view(), name='generate-shopping-list'),
     path('shopping/<int:list_id>/', views.ShoppingListDetailView.as_view(), name='shopping-list-detail'),

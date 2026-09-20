@@ -3,7 +3,7 @@ import mimetypes
 import re
 from datetime import timedelta
 from uuid import UUID, uuid4
-from decimal import Decimal, InvalidOperation, ROUND_CEILING
+from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.db import IntegrityError, transaction
@@ -54,6 +54,25 @@ from .services.pantry_editing import (
     units_are_convertible,
 )
 from .services.pantry_sharing import UNIT_BASE
+from .services.polish import completion_message, polish_count, polish_number
+from .services.shopping_sync import (
+    complete_shopping_list,
+    refresh_pantry_purchase,
+    set_item_purchased,
+)
+from .services.pantry_quantities import (
+    PANTRY_MAX_QUANTITY,
+    convert_pantry_quantity,
+    estimated_package_count,
+    find_pantry_product,
+    normalize_shopping_quantity,
+    parse_package_count,
+    parse_pantry_decimal,
+    sync_package_count_from_quantity,
+    tracks_packages,
+    validate_pantry_quantity_for_unit,
+    validate_pantry_storage_quantity,
+)
 
 # Stałe (Warto przenieść je do osobnego pliku constants.py w przyszłości)
 KITCHEN_REGIONS = [
@@ -68,38 +87,6 @@ ALLOWED_RECIPE_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
 ALLOWED_RECIPE_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 MAX_RECIPE_IMAGE_SIZE = 5 * 1024 * 1024
 PANTRY_BARCODE_PATTERN = re.compile(r'^[0-9A-Za-z._-]+$')
-PANTRY_MAX_QUANTITY = Decimal('99999999.99')
-
-
-def polish_number(value):
-    """Decimal bez zbędnych zer i z polskim przecinkiem: 1.50 -> '1,5'."""
-    return f'{value.normalize():f}'.replace('.', ',')
-
-
-def polish_count(count, one, few, many):
-    """'1 ruch', '3 ruchy', '5 ruchów' - odmiana rzeczownika po liczebniku."""
-    if count == 1:
-        return f'{count} {one}'
-    if count % 10 in (2, 3, 4) and count % 100 not in (12, 13, 14):
-        return f'{count} {few}'
-    return f'{count} {many}'
-
-
-def parse_pantry_decimal(value, default='0'):
-    if value in [None, '']:
-        value = default
-    try:
-        parsed = Decimal(str(value).replace(',', '.'))
-        if not parsed.is_finite():
-            raise InvalidOperation
-        parsed = parsed.quantize(Decimal('0.01'))
-    except (InvalidOperation, ValueError):
-        raise ValueError('Podaj poprawną liczbę.')
-    if parsed < 0:
-        raise ValueError('Ilość nie może być ujemna.')
-    if parsed > PANTRY_MAX_QUANTITY:
-        raise ValueError('Ilość jest zbyt duża.')
-    return parsed
 
 
 def normalize_pantry_barcode(value, required=True):
@@ -233,73 +220,6 @@ def parse_scan_count(value, default=1):
     return count
 
 
-def parse_package_count(value, default=0):
-    try:
-        parsed = Decimal(str(value if value not in [None, ''] else default))
-        if not parsed.is_finite() or parsed != parsed.to_integral_value():
-            raise InvalidOperation
-        count = int(parsed)
-    except (InvalidOperation, TypeError, ValueError) as exc:
-        raise ValueError('Podaj poprawną liczbę sztuk.') from exc
-    if count < 0 or count > 2147483647:
-        raise ValueError('Liczba sztuk jest poza dozwolonym zakresem.')
-    return count
-
-
-def estimated_package_count(quantity, quantity_per_scan):
-    if quantity <= 0 or quantity_per_scan <= 0:
-        return 0
-    return int((quantity / quantity_per_scan).to_integral_value(rounding=ROUND_CEILING))
-
-
-def tracks_packages(product):
-    return product.tracks_packages
-
-
-def sync_package_count_from_quantity(product):
-    if not tracks_packages(product):
-        return False
-    product.current_package_count = estimated_package_count(
-        product.current_quantity,
-        product.quantity_per_scan,
-    )
-    return True
-
-
-def validate_pantry_storage_quantity(quantity):
-    if quantity < 0:
-        raise ValueError('Ilość nie może być ujemna.')
-    if quantity > PANTRY_MAX_QUANTITY:
-        raise ValueError('Ilość jest zbyt duża.')
-
-
-def validate_pantry_quantity_for_unit(quantity, unit):
-    if unit == PantryProduct.UNIT_PIECE and quantity != quantity.to_integral_value():
-        raise ValueError('Dla jednostki "szt." podaj liczbę całkowitą.')
-
-
-def convert_pantry_quantity(quantity, source_unit, target_unit):
-    if source_unit == target_unit:
-        return quantity
-    conversions = {
-        (PantryProduct.UNIT_GRAM, PantryProduct.UNIT_KILOGRAM): Decimal('0.001'),
-        (PantryProduct.UNIT_KILOGRAM, PantryProduct.UNIT_GRAM): Decimal('1000'),
-        (PantryProduct.UNIT_MILLILITER, PantryProduct.UNIT_LITER): Decimal('0.001'),
-        (PantryProduct.UNIT_LITER, PantryProduct.UNIT_MILLILITER): Decimal('1000'),
-    }
-    factor = conversions.get((source_unit, target_unit))
-    if factor is None:
-        raise ValueError('Jednostka ważenia nie pasuje do jednostki produktu w spiżarni.')
-    return (quantity * factor).quantize(Decimal('0.01'))
-
-
-def normalize_shopping_quantity(quantity, unit):
-    quantity = quantity.quantize(Decimal('0.01'))
-    if unit == PantryProduct.UNIT_PIECE:
-        quantity = quantity.to_integral_value(rounding=ROUND_CEILING)
-    return quantity
-
-
 def get_household_typical_shopping_weekday():
     purchase_dates = PantryMovement.objects.filter(
         movement_type=PantryMovement.PURCHASE,
@@ -316,10 +236,6 @@ def pantry_forecast_movements_prefetch(today):
         ).order_by('occurred_on', 'created_at'),
         to_attr='forecast_movements',
     )
-
-
-def find_pantry_product(name):
-    return PantryProduct.objects.filter(name__iexact=name).first()
 
 
 def build_shopping_suggestions():
@@ -1962,23 +1878,33 @@ class UpdateShoppingListItemView(LoginRequiredMixin, View):
             validate_pantry_quantity_for_unit(quantity, unit)
             product = find_pantry_product(name)
 
-            item.name = name
-            item.quantity = quantity
-            item.unit = unit
-            item.category = request.POST.get('category', '').strip() or (product.category if product else '')
-            item.note = request.POST.get('note', '').strip()
-            item.pantry_product = product
-            item.save(update_fields=[
-                'name',
-                'quantity',
-                'unit',
-                'category',
-                'note',
-                'pantry_product',
-                'updated_at',
-            ])
-            shopping_list.save(update_fields=['updated_at'])
+            with transaction.atomic():
+                quantity_changed = quantity != item.quantity or unit != item.unit
+                item.name = name
+                item.quantity = quantity
+                item.unit = unit
+                item.category = request.POST.get('category', '').strip() or (product.category if product else '')
+                item.note = request.POST.get('note', '').strip()
+                item.pantry_product = product
+                if quantity_changed:
+                    item.quantity_changed_at = timezone.now()
+                # Odhaczona pozycja już uzupełniła spiżarnię - poprawiamy ten zakup.
+                warning = refresh_pantry_purchase(item, user=request.user)
+                item.save(update_fields=[
+                    'name',
+                    'quantity',
+                    'unit',
+                    'category',
+                    'note',
+                    'pantry_product',
+                    'pantry_movement',
+                    'quantity_changed_at',
+                    'updated_at',
+                ])
+                shopping_list.save(update_fields=['updated_at'])
             messages.success(request, f'Zapisano pozycję: {item.name}.')
+            if warning:
+                messages.warning(request, warning)
         except Exception as exc:
             messages.error(request, f'Nie udało się zapisać pozycji: {exc}')
 
@@ -1992,9 +1918,15 @@ class ToggleShoppingListItemView(LoginRequiredMixin, View):
             messages.info(request, 'Ta lista została już zakończona.')
             return redirect('cooking:shopping-list-detail', list_id=item.shopping_list.id)
 
-        item.is_purchased = not item.is_purchased
-        item.save(update_fields=['is_purchased', 'updated_at'])
-        item.shopping_list.save(update_fields=['updated_at'])
+        with transaction.atomic():
+            item = ShoppingListItem.objects.select_for_update(of=('self',)).select_related(
+                'shopping_list', 'pantry_movement',
+            ).get(pk=item.pk)
+            # Produkt ze spiżarni uzupełnia się od razu po odhaczeniu.
+            warning = set_item_purchased(item, not item.is_purchased, user=request.user)
+            item.shopping_list.save(update_fields=['updated_at'])
+        if warning:
+            messages.warning(request, warning)
         return redirect('cooking:shopping-list-detail', list_id=item.shopping_list.id)
 
 
@@ -2014,38 +1946,13 @@ class DeleteShoppingListItemView(LoginRequiredMixin, View):
 
 
 class CompleteShoppingListView(LoginRequiredMixin, View):
-    @transaction.atomic
     def post(self, request, list_id):
-        shopping_list = get_object_or_404(
-            ShoppingList.objects.prefetch_related('items__pantry_product'),
-            id=list_id,
-        )
-        if shopping_list.status == ShoppingList.COMPLETED:
-            messages.info(request, 'Ta lista została już zakończona.')
-            return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
-
-        purchased_items = [item for item in shopping_list.items.all() if item.is_purchased]
-        if not purchased_items:
-            messages.error(request, 'Zaznacz przynajmniej jedną kupioną pozycję.')
-            return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
-
-        prepared_updates = []
-        errors = []
-        for item in purchased_items:
-            product = item.pantry_product
-            if product is None:
-                product = find_pantry_product(item.name)
-
-            try:
-                if product is None:
-                    validate_pantry_quantity_for_unit(item.quantity, item.unit)
-                    prepared_updates.append((item, None, item.quantity))
-                else:
-                    movement_quantity = convert_pantry_quantity(item.quantity, item.unit, product.unit)
-                    validate_pantry_quantity_for_unit(movement_quantity, product.unit)
-                    prepared_updates.append((item, product, movement_quantity))
-            except ValueError as exc:
-                errors.append(f'{item.name}: {exc}')
+        with transaction.atomic():
+            shopping_list = get_object_or_404(ShoppingList.objects.select_for_update(), id=list_id)
+            if shopping_list.status == ShoppingList.COMPLETED:
+                messages.info(request, 'Ta lista została już zakończona.')
+                return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+            added, already, errors = complete_shopping_list(shopping_list, user=request.user)
 
         if errors:
             for error in errors[:5]:
@@ -2053,48 +1960,7 @@ class CompleteShoppingListView(LoginRequiredMixin, View):
             if len(errors) > 5:
                 messages.error(request, f'Pozostałe błędy: {len(errors) - 5}.')
             return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
-
-        for item, product, movement_quantity in prepared_updates:
-            if product is None:
-                product = PantryProduct.objects.create(
-                    created_by=request.user,
-                    name=item.name,
-                    category=item.category or 'Inne',
-                    unit=item.unit,
-                    current_quantity=Decimal('0.00'),
-                    minimum_quantity=Decimal('0.00'),
-                )
-            if item.category and not product.category:
-                product.category = item.category
-            if product.current_package_count == 0 and product.current_quantity > 0:
-                sync_package_count_from_quantity(product)
-            package_tracking = tracks_packages(product)
-            movement_package_count = (
-                estimated_package_count(movement_quantity, product.quantity_per_scan)
-                if package_tracking
-                else None
-            )
-            product.current_quantity += movement_quantity
-            if package_tracking:
-                sync_package_count_from_quantity(product)
-            product.save(update_fields=[
-                'current_quantity', 'current_package_count', 'category', 'updated_at',
-            ])
-            PantryMovement.objects.create(
-                product=product,
-                movement_type=PantryMovement.PURCHASE,
-                quantity=movement_quantity,
-                occurred_on=timezone.localdate(),
-                note=f'Lista zakupów: {shopping_list.title}',
-                package_count=movement_package_count,
-            )
-            if item.pantry_product_id != product.id:
-                item.pantry_product = product
-                item.save(update_fields=['pantry_product', 'updated_at'])
-
-        shopping_list.status = ShoppingList.COMPLETED
-        shopping_list.save(update_fields=['status', 'updated_at'])
-        messages.success(request, f'Dodano do spiżarni {len(prepared_updates)} kupionych pozycji.')
+        messages.success(request, completion_message(added, already))
         return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
 
 

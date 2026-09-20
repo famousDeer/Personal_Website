@@ -44,8 +44,11 @@ Demo image:
 - Consumption forecasting per product: regular and intermittent demand models,
   outlier capping, weekday factors, confidence scoring and a suggested buy date
   aligned to your usual shopping day
-- Shopping lists generated from the forecast or entered by hand; completing a list
-  feeds the purchases back into the pantry
+- Shopping lists generated from the forecast or entered by hand; checking off a
+  product that is in the pantry restocks it immediately, completing a list adds the rest
+- Offline shopping mode for phones (installable web app): check off, add, change
+  quantities and delete items without a connection to the home server; changes sync
+  when the phone is back on the home network (see [Offline shopping mode](#offline-shopping-mode))
 
 **Car** (`cars`)
 - Fuel log with computed consumption, service history with itemised parts
@@ -342,6 +345,45 @@ product, its photo and its movement history. Shopping-list items stay and lose o
 the link; completing such a list creates the product again. The household memory of
 the barcode stays unless "forget the barcode" is ticked.
 
+## Offline shopping mode
+
+`/cooking/shopping/app/` is a small installable web app (PWA) for the phone. The
+server is only reachable on the home network, so in a shop the phone is effectively
+offline. The app keeps the active lists and a queue of changes in IndexedDB and syncs
+whenever the server answers.
+
+**On the phone** (needs the HTTPS setup above, always the same address, e.g.
+`https://192.168.1.115/cooking/shopping/app/`; offline data is stored per address):
+- iPhone: open it in Safari, tap Share → "Add to Home Screen", start it from the icon
+  and log in once. Only the home-screen app keeps data permanently; a Safari tab can
+  lose it after a week without visiting the site.
+- Android: open it in Chrome and use "Install" (the app offers it too).
+
+**How it works**
+- `cooking/shopping_app_views.py`: the shell page (no data, no login needed, so it can
+  be cached), `sw.js` rendered by Django with hashed static URLs, the manifest and the
+  JSON API (`api/snapshot/`, `api/sync/`, `api/lists/<id>/complete/`). The API answers
+  401 instead of redirecting to the login page, and extends the session at most once a
+  day, so a phone used at home at least every two weeks stays logged in.
+- The service worker's version is a hash of the app's files, so a deployment that
+  changes any of them replaces the cached app on the next start at home. Its scope is
+  `/cooking/shopping/app/` only; the rest of the site is not affected.
+- `cooking/services/shopping_sync.py`: each queued operation (`item.add`,
+  `item.set_purchased`, `item.set_quantity`, `item.delete`) has a UUID, and the server
+  stores the result (`ShoppingSyncOperation`), so a batch resent after a dropped
+  connection changes nothing twice. Check-offs carry the state, not a toggle. The later
+  change wins by device time, separately for "purchased" and for quantity. Changes to
+  lists completed or deleted in the meantime are skipped and the phone shows why.
+- Checking off an item whose product is in the pantry restocks it at once (a purchase
+  movement linked to the item); unchecking removes that movement, and a quantity change
+  corrects it. Completing a list only adds items that did not restock the pantry yet,
+  and creates missing products as before. Completing needs a connection.
+- Items get a stable `uuid`, generated on the phone for items added offline
+  (migrations `0013` and `0014`).
+
+iOS has no background sync, so the app syncs when opened, when brought back to the
+foreground, after each change and every 30 s while open.
+
 ## Scheduled tasks (cron)
 Market data refresh and price history synchronisation are also available as
 management commands, so they do not have to run inside a web request:
@@ -389,8 +431,12 @@ Website-Finance/
 │  ├─ services/
 │  │  ├─ pantry_editing.py    # Full edit side effects: unit conversion, corrections, list items
 │  │  ├─ pantry_forecast.py   # Consumption forecasting
+│  │  ├─ pantry_quantities.py # Quantity, unit and package helpers shared by views and sync
 │  │  ├─ pantry_sharing.py    # Merging per-user pantries into one (migration 0011)
+│  │  ├─ shopping_sync.py     # Offline shopping: operations from the phone, pantry restocking
+│  │  ├─ polish.py            # Polish plural forms in messages
 │  │  └─ product_catalog.py   # Household memory, Open Food Facts cache, category mapping
+│  ├─ shopping_app_views.py   # Offline shopping mode: shell, service worker, manifest, API
 │  └─ storage.py              # Private media storage for user photos
 ├─ cars/                      # Fuel, services, tyres
 │  └─ pdf_utils.py            # Service history PDF

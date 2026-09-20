@@ -1,0 +1,115 @@
+{% load static %}<!doctype html>
+<html lang="pl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Lista zakupów</title>
+    <meta name="app-version" content="{{ app_version }}">
+    <meta name="theme-color" content="#f4f6f8" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
+    <link rel="manifest" href="{% url 'cooking:shopping-app-manifest' %}">
+    <link rel="icon" type="image/png" href="{% static 'cooking/icons/shopping-192.png' %}">
+    <link rel="apple-touch-icon" href="{% static 'cooking/icons/apple-touch-icon.png' %}">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Zakupy">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    {% comment %} Ten sam mechanizm motywu co w base.html: zapisany wybór albo motyw systemu,
+       ustawiony przed pierwszym malowaniem, żeby ekran nie mignął na jasno. {% endcomment %}
+    <script>
+        (function () {
+            var theme = 'light';
+            try {
+                var saved = localStorage.getItem('theme');
+                theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            } catch (e) { /* tryb prywatny */ }
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+    <link rel="stylesheet" href="{% static 'css/tokens.css' %}">
+    <link rel="stylesheet" href="{% static 'vendor/bootstrap-icons/bootstrap-icons.css' %}">
+    <link rel="stylesheet" href="{% static 'cooking/css/shopping-app.css' %}">
+</head>
+<body>
+<div class="sa-app" data-app>
+    <header class="sa-header">
+        <div class="sa-header-row">
+            <a class="sa-icon-link" href="{{ app_config.listsUrl }}" data-online-link aria-label="Wróć do list zakupów">
+                <i class="bi bi-chevron-left" aria-hidden="true"></i>
+            </a>
+            <div class="sa-title-wrap">
+                <span class="sa-eyebrow" data-list-eyebrow>Lista zakupów</span>
+                {% comment %} Przy kilku listach cały tytuł jest przełącznikiem: przezroczysty
+                   <select> leży na nazwie listy i otwiera systemowy wybór. {% endcomment %}
+                <div class="sa-title-line" data-title-line>
+                    <h1 class="sa-title" data-list-title>Ładuję listę…</h1>
+                    <i class="bi bi-chevron-down sa-title-chevron" aria-hidden="true"></i>
+                    <select class="sa-title-select" data-list-select aria-label="Wybierz listę zakupów" hidden></select>
+                </div>
+            </div>
+        </div>
+        <div class="sa-status-row">
+            <button type="button" class="sa-sync" data-sync-button aria-live="polite">
+                <span class="sa-sync-dot" aria-hidden="true"></span>
+                <span class="sa-sync-text" data-sync-text>Uruchamiam…</span>
+            </button>
+            <span class="sa-progress-text" data-progress-text></span>
+        </div>
+        <div class="sa-progress-bar" data-progress hidden><span data-progress-bar></span></div>
+    </header>
+
+    <div class="sa-banners" data-banners></div>
+
+    <main class="sa-main" data-list aria-live="off"></main>
+
+    <section class="sa-add" data-add-panel hidden aria-label="Dodaj produkt">
+        <form class="sa-add-form" data-add-form autocomplete="off" novalidate>
+            <div class="sa-add-head">
+                <strong>Dodaj produkt</strong>
+                <button type="button" class="sa-icon-button" data-add-close aria-label="Zamknij">
+                    <i class="bi bi-x-lg" aria-hidden="true"></i>
+                </button>
+            </div>
+            <label class="sa-field sa-field-name">
+                <span>Produkt</span>
+                <input type="text" name="name" list="sa-product-suggestions" maxlength="160"
+                       placeholder="np. mleko, płyn do naczyń" required data-add-name>
+            </label>
+            <datalist id="sa-product-suggestions" data-product-suggestions></datalist>
+            <p class="sa-add-hint" data-add-hint hidden></p>
+            <div class="sa-add-row">
+                <label class="sa-field">
+                    <span>Ilość</span>
+                    <input type="number" name="quantity" value="1" min="0.01" step="1" inputmode="decimal" required data-add-quantity>
+                </label>
+                <label class="sa-field">
+                    <span>Jednostka</span>
+                    <select name="unit" data-add-unit></select>
+                </label>
+            </div>
+            <label class="sa-field">
+                <span>Kategoria</span>
+                <select name="category" data-add-category></select>
+            </label>
+            <p class="sa-form-error" data-add-error role="alert" hidden></p>
+            <button type="submit" class="sa-primary">
+                <i class="bi bi-plus-lg" aria-hidden="true"></i> Dodaj do listy
+            </button>
+        </form>
+    </section>
+
+    <footer class="sa-footer" data-footer hidden>
+        <button type="button" class="sa-primary sa-add-open" data-add-open>
+            <i class="bi bi-plus-lg" aria-hidden="true"></i> Dodaj produkt
+        </button>
+        <button type="button" class="sa-secondary" data-complete-button>
+            <i class="bi bi-bag-check" aria-hidden="true"></i> <span data-complete-label>Zakończ listę</span>
+        </button>
+    </footer>
+
+    <div class="sa-toasts" data-toasts aria-live="polite"></div>
+</div>
+{{ app_config|json_script:"shopping-app-config" }}
+<script src="{% static 'cooking/js/shopping-app.js' %}" defer></script>
+</body>
+</html>

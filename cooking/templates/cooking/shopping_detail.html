@@ -24,6 +24,11 @@
             <a href="{% url 'cooking:shopping-list' %}" class="btn btn-soft-neutral" title="Wróć do list">
                 <i class="bi bi-arrow-left"></i>
             </a>
+            {% if shopping_list.status == 'active' %}
+                <a href="{% url 'cooking:shopping-app' %}" class="btn btn-outline-success" title="Tryb zakupów – działa także bez połączenia">
+                    <i class="bi bi-phone"></i>
+                </a>
+            {% endif %}
             <a href="{% url 'cooking:edit-shopping-list' shopping_list.id %}" class="btn btn-soft-neutral" title="Edytuj nazwę listy">
                 <i class="bi bi-pencil"></i>
             </a>
@@ -144,7 +149,7 @@
                         {% if shopping_list.status == 'active' %}
                             <form method="post" action="{% url 'cooking:toggle-shopping-item' item.id %}" class="shopping-toggle-form">
                                 {% csrf_token %}
-                                <button type="submit" class="shopping-check-button {% if item.is_purchased %}is-checked{% endif %}" title="{% if item.is_purchased %}Oznacz jako niekupione{% else %}Oznacz jako kupione{% endif %}">
+                                <button type="submit" class="shopping-check-button {% if item.is_purchased %}is-checked{% endif %}" title="{% if item.is_purchased %}Oznacz jako niekupione{% elif item.pantry_product_id %}Oznacz jako kupione – zapas w spiżarni uzupełni się od razu{% else %}Oznacz jako kupione{% endif %}">
                                     <i class="bi {% if item.is_purchased %}bi-check-lg{% else %}bi-circle{% endif %}"></i>
                                 </button>
                             </form>

@@ -27,7 +27,9 @@ from .models import (
     RecipeStepIngredient,
     ShoppingList,
     ShoppingListItem,
+    ShoppingSyncOperation,
 )
+from django.conf import settings
 from django.core.management import call_command
 from django.template import Context, Template
 from django.test import SimpleTestCase
@@ -2891,3 +2893,412 @@ class SharedPantryMigrationTests(TransactionTestCase):
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 Product.objects.create(name='Inne mleko', unit='l', barcode='5900000000100')
+
+
+class ShoppingOfflineSyncTests(TestCase):
+    """Tryb zakupów offline: API synchronizacji i uzupełnianie spiżarni przy odhaczaniu."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='dawid-sklep', password='pass12345')
+        self.other = User.objects.create_user(username='ania-sklep', password='pass12345')
+        self.client.login(username='dawid-sklep', password='pass12345')
+        self.milk = PantryProduct.objects.create(
+            created_by=self.user, name='Mleko', category='Nabiał',
+            unit=PantryProduct.UNIT_LITER, current_quantity=Decimal('1.00'),
+        )
+        self.coffee = PantryProduct.objects.create(
+            created_by=self.user, name='Kawa', category='Napoje', barcode='5900000001111',
+            unit=PantryProduct.UNIT_GRAM, quantity_per_scan=Decimal('250.00'),
+            current_quantity=Decimal('250.00'), current_package_count=1,
+        )
+        self.list = ShoppingList.objects.create(created_by=self.other, title='Sobota')
+        self.milk_item = ShoppingListItem.objects.create(
+            shopping_list=self.list, pantry_product=self.milk, name='Mleko',
+            quantity=Decimal('2.00'), unit=PantryProduct.UNIT_LITER, category='Nabiał',
+        )
+        self.bread_item = ShoppingListItem.objects.create(
+            shopping_list=self.list, name='Chleb', quantity=Decimal('1.00'),
+            unit=PantryProduct.UNIT_PIECE, category='Pieczywo',
+        )
+        self.coffee_item = ShoppingListItem.objects.create(
+            shopping_list=self.list, pantry_product=self.coffee, name='Kawa',
+            quantity=Decimal('500.00'), unit=PantryProduct.UNIT_GRAM, category='Napoje',
+        )
+
+    def op(self, op_type, at=None, **fields):
+        return {
+            'op_id': str(uuid4()),
+            'type': op_type,
+            'at': (at or timezone.now()).isoformat(),
+            **fields,
+        }
+
+    def check(self, item, purchased=True, **extra):
+        return self.op('item.set_purchased', item=str(item.uuid), purchased=purchased, **extra)
+
+    def sync(self, *ops, client=None):
+        response = (client or self.client).post(
+            reverse('cooking:shopping-api-sync'),
+            data=json.dumps({'ops': list(ops)}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200, response.content[:300])
+        return response.json()
+
+    # --- powłoka, service worker, manifest ---------------------------------
+
+    def test_shell_is_public_and_contains_no_list_data(self):
+        self.client.logout()
+
+        response = self.client.get(reverse('cooking:shopping-app'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="shopping-app-config"')
+        self.assertContains(response, reverse('cooking:shopping-app-manifest'))
+        self.assertNotContains(response, 'Sobota')
+        self.assertEqual(response['Cache-Control'], 'no-cache')
+
+    def test_service_worker_precaches_shell_and_assets_with_content_version(self):
+        from .shopping_app_views import app_version
+
+        response = self.client.get(reverse('cooking:shopping-app-sw'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response['Content-Type'].startswith('application/javascript'))
+        body = response.content.decode()
+        self.assertIn(f"const VERSION = '{app_version()}';", body)
+        self.assertIn('"/cooking/shopping/app/"', body)
+        self.assertIn('cooking/js/shopping-app.js', body)
+        self.assertIn('bootstrap-icons.woff2', body)
+        self.assertIn('const API_PREFIX = "/cooking/shopping/app/api/";', body)
+
+    def test_manifest_is_installable(self):
+        from django.contrib.staticfiles import finders
+
+        response = self.client.get(reverse('cooking:shopping-app-manifest'))
+
+        manifest = response.json()
+        self.assertEqual(manifest['start_url'], '/cooking/shopping/app/')
+        self.assertEqual(manifest['scope'], '/')
+        self.assertEqual(manifest['display'], 'standalone')
+        sizes = {icon['sizes'] for icon in manifest['icons']}
+        self.assertTrue({'192x192', '512x512'} <= sizes)
+        for icon in manifest['icons']:
+            self.assertIsNotNone(finders.find(icon['src'].replace('/static/', '', 1)))
+
+    # --- API ---------------------------------------------------------------
+
+    def test_api_answers_401_json_instead_of_redirecting_to_login(self):
+        self.client.logout()
+
+        snapshot = self.client.get(reverse('cooking:shopping-api-snapshot'))
+        sync = self.client.post(reverse('cooking:shopping-api-sync'), data='{}', content_type='application/json')
+
+        self.assertEqual(snapshot.status_code, 401)
+        self.assertEqual(snapshot.json()['error'], 'auth')
+        self.assertEqual(sync.status_code, 401)
+
+    def test_snapshot_has_active_lists_items_and_pantry_products(self):
+        ShoppingList.objects.create(created_by=self.user, title='Stara', status=ShoppingList.COMPLETED)
+
+        data = self.client.get(reverse('cooking:shopping-api-snapshot')).json()
+
+        self.assertTrue(data['csrf_token'])
+        self.assertEqual(data['user'], 'dawid-sklep')
+        lists = data['snapshot']['lists']
+        self.assertEqual([entry['title'] for entry in lists], ['Sobota'])
+        items = {item['name']: item for item in lists[0]['items']}
+        self.assertEqual(items['Mleko']['uuid'], str(self.milk_item.uuid))
+        self.assertEqual(items['Mleko']['quantity'], '2.00')
+        self.assertEqual(items['Mleko']['unit_label'], 'l')
+        self.assertTrue(items['Mleko']['in_pantry'])
+        self.assertFalse(items['Chleb']['in_pantry'])
+        self.assertIn(
+            {'name': 'Kawa', 'unit': 'g', 'category': 'Napoje', 'package': '250.00'},
+            data['snapshot']['products'],
+        )
+
+    def test_snapshot_extends_the_session_once_a_day(self):
+        response = self.client.get(reverse('cooking:shopping-api-snapshot'))
+
+        self.assertIn(settings.SESSION_COOKIE_NAME, response.cookies)
+        self.assertEqual(self.client.session['shopping_app_seen'], timezone.localdate().isoformat())
+        again = self.client.get(reverse('cooking:shopping-api-snapshot'))
+        self.assertNotIn(settings.SESSION_COOKIE_NAME, again.cookies)
+
+    def test_sync_requires_csrf_token_from_snapshot(self):
+        client = Client(enforce_csrf_checks=True, HTTP_HOST='localhost')
+        client.login(username='dawid-sklep', password='pass12345')
+        payload = json.dumps({'ops': [self.check(self.bread_item)]})
+
+        forbidden = client.post(reverse('cooking:shopping-api-sync'), data=payload, content_type='application/json')
+        token = client.get(reverse('cooking:shopping-api-snapshot')).json()['csrf_token']
+        allowed = client.post(
+            reverse('cooking:shopping-api-sync'), data=payload, content_type='application/json',
+            HTTP_X_CSRFTOKEN=token,
+        )
+
+        self.assertEqual(forbidden.status_code, 403)
+        self.assertEqual(allowed.status_code, 200)
+        self.assertEqual(allowed.json()['results'][0]['status'], 'applied')
+
+    # --- odhaczanie i spiżarnia ---------------------------------------------
+
+    def test_checking_a_pantry_item_replenishes_right_away_and_unchecking_reverts(self):
+        data = self.sync(self.check(self.milk_item))
+
+        self.assertEqual(data['results'][0]['status'], 'applied')
+        self.milk.refresh_from_db()
+        self.milk_item.refresh_from_db()
+        self.assertEqual(self.milk.current_quantity, Decimal('3.00'))
+        movement = self.milk.movements.get()
+        self.assertEqual(movement.movement_type, PantryMovement.PURCHASE)
+        self.assertEqual(movement.quantity, Decimal('2.00'))
+        self.assertEqual(movement.note, 'Lista zakupów: Sobota')
+        self.assertEqual(self.milk_item.pantry_movement, movement)
+        self.assertEqual(self.milk_item.purchased_by, self.user)
+        item_json = next(i for i in data['snapshot']['lists'][0]['items'] if i['name'] == 'Mleko')
+        self.assertTrue(item_json['is_purchased'])
+        self.assertTrue(item_json['added_to_pantry'])
+
+        self.sync(self.check(self.milk_item, purchased=False))
+
+        self.milk.refresh_from_db()
+        self.milk_item.refresh_from_db()
+        self.assertEqual(self.milk.current_quantity, Decimal('1.00'))
+        self.assertFalse(self.milk.movements.exists())
+        self.assertIsNone(self.milk_item.pantry_movement)
+        self.assertIsNone(self.milk_item.purchased_by)
+
+    def test_packages_follow_checked_quantity(self):
+        self.sync(self.check(self.coffee_item))
+        self.coffee.refresh_from_db()
+        self.assertEqual(self.coffee.current_quantity, Decimal('750.00'))
+        self.assertEqual(self.coffee.current_package_count, 3)
+        self.assertEqual(self.coffee.movements.get().package_count, 2)
+
+        self.sync(self.op('item.set_quantity', item=str(self.coffee_item.uuid), quantity='250.00'))
+
+        self.coffee.refresh_from_db()
+        self.coffee_item.refresh_from_db()
+        self.assertEqual(self.coffee_item.quantity, Decimal('250.00'))
+        self.assertEqual(self.coffee.current_quantity, Decimal('500.00'))
+        self.assertEqual(self.coffee.current_package_count, 2)
+        self.assertEqual(self.coffee.movements.get().quantity, Decimal('250.00'))
+
+    def test_item_outside_pantry_is_added_when_the_list_is_completed(self):
+        self.sync(self.check(self.milk_item), self.check(self.bread_item))
+        self.assertFalse(PantryProduct.objects.filter(name='Chleb').exists())
+
+        response = self.client.post(reverse('cooking:shopping-api-complete', args=[self.list.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['snapshot']['lists'], [])
+        self.assertIn('1 trafiła tam już przy odhaczaniu', response.json()['message'])
+        self.list.refresh_from_db()
+        self.milk.refresh_from_db()
+        self.assertEqual(self.list.status, ShoppingList.COMPLETED)
+        self.assertEqual(self.milk.current_quantity, Decimal('3.00'))  # bez podwójnego dodania
+        self.assertEqual(self.milk.movements.count(), 1)
+        bread = PantryProduct.objects.get(name='Chleb')
+        self.assertEqual(bread.current_quantity, Decimal('1.00'))
+        self.assertEqual(bread.created_by, self.user)
+
+    def test_deleting_a_checked_item_keeps_the_purchase_in_the_pantry(self):
+        self.sync(self.check(self.milk_item))
+
+        data = self.sync(self.op('item.delete', item=str(self.milk_item.uuid)))
+
+        self.assertEqual(data['results'][0]['status'], 'applied')
+        self.assertFalse(ShoppingListItem.objects.filter(pk=self.milk_item.pk).exists())
+        self.milk.refresh_from_db()
+        self.assertEqual(self.milk.current_quantity, Decimal('3.00'))
+        self.assertEqual(self.milk.movements.count(), 1)
+
+    def test_unit_that_cannot_be_converted_is_reported_and_leaves_pantry_alone(self):
+        self.milk_item.unit = PantryProduct.UNIT_PIECE
+        self.milk_item.save()
+
+        data = self.sync(self.check(self.milk_item))
+
+        self.assertEqual(data['results'][0]['status'], 'applied')
+        self.assertIn('nie dodano do spiżarni', data['results'][0]['message'])
+        self.milk.refresh_from_db()
+        self.assertEqual(self.milk.current_quantity, Decimal('1.00'))
+        self.milk_item.refresh_from_db()
+        self.assertTrue(self.milk_item.is_purchased)
+
+    # --- kolejka z telefonu -------------------------------------------------
+
+    def test_replayed_batch_changes_nothing_the_second_time(self):
+        operation = self.check(self.milk_item)
+
+        first = self.sync(operation)
+        second = self.sync(operation)
+
+        self.assertEqual(first['results'][0]['status'], 'applied')
+        self.assertTrue(second['results'][0]['duplicate'])
+        self.milk.refresh_from_db()
+        self.assertEqual(self.milk.current_quantity, Decimal('3.00'))
+        self.assertEqual(ShoppingSyncOperation.objects.count(), 1)
+
+    def test_item_added_offline_keeps_the_phone_uuid_and_is_not_duplicated(self):
+        item_uuid = str(uuid4())
+        add = self.op('item.add', list=self.list.id, data={
+            'uuid': item_uuid, 'name': 'kawa', 'quantity': '250', 'unit': 'g', 'category': '', 'note': 'ziarnista',
+        })
+
+        self.sync(add)
+        self.sync(add)
+        again = self.sync(self.op('item.add', list=self.list.id, data={
+            'uuid': item_uuid, 'name': 'kawa', 'quantity': '250', 'unit': 'g',
+        }))
+        checked = self.sync(self.op('item.set_purchased', item=item_uuid, purchased=True))
+
+        item = ShoppingListItem.objects.get(uuid=item_uuid)
+        self.assertEqual(ShoppingListItem.objects.filter(name__iexact='kawa').count(), 2)  # + pozycja z setUp
+        self.assertEqual(item.pantry_product, self.coffee)
+        self.assertEqual(item.category, 'Napoje')
+        self.assertEqual(item.note, 'ziarnista')
+        self.assertEqual(again['results'][0]['message'], 'Pozycja już jest na liście.')
+        self.assertEqual(checked['results'][0]['status'], 'applied')
+        self.coffee.refresh_from_db()
+        self.assertEqual(self.coffee.current_quantity, Decimal('500.00'))
+
+    def test_later_change_on_another_device_wins(self):
+        now = timezone.now()
+        # Ania w domu odznaczyła mleko 5 minut temu...
+        self.sync(self.check(self.milk_item, purchased=False, at=now - timedelta(minutes=5)))
+        # ...a telefon Dawida wysyła dopiero teraz odhaczenie sprzed 10 minut
+        # i zmianę ilości z tego samego czasu (inne pole, więc przechodzi).
+        data = self.sync(
+            self.check(self.milk_item, at=now - timedelta(minutes=10)),
+            self.op('item.set_quantity', item=str(self.milk_item.uuid), quantity='3', at=now - timedelta(minutes=10)),
+        )
+
+        self.assertEqual(data['results'][0]['status'], 'skipped')
+        self.assertIn('ktoś zmienił odhaczenie później', data['results'][0]['message'])
+        self.assertEqual(data['results'][1]['status'], 'applied')
+        self.milk_item.refresh_from_db()
+        self.assertFalse(self.milk_item.is_purchased)
+        self.assertEqual(self.milk_item.quantity, Decimal('3.00'))
+
+    def test_time_from_the_future_is_clamped_to_server_time(self):
+        self.sync(self.check(self.bread_item, at=timezone.now() + timedelta(days=1)))
+
+        self.bread_item.refresh_from_db()
+        self.assertLessEqual(self.bread_item.purchased_changed_at, timezone.now())
+        later = self.sync(self.check(self.bread_item, purchased=False))
+        self.assertEqual(later['results'][0]['status'], 'applied')
+
+    def test_changes_to_completed_or_deleted_lists_are_skipped_with_a_reason(self):
+        other_list = ShoppingList.objects.create(created_by=self.user, title='Drogeria')
+        other_list_id = other_list.id
+        other_list.delete()
+        self.list.status = ShoppingList.COMPLETED
+        self.list.save()
+
+        data = self.sync(
+            self.check(self.milk_item),
+            self.op('item.add', list=other_list_id, data={'uuid': str(uuid4()), 'name': 'Szampon'}),
+            self.op('item.set_quantity', item=str(uuid4()), quantity='2'),
+            self.op('item.delete', item=str(uuid4())),
+        )
+
+        statuses = [result['status'] for result in data['results']]
+        self.assertEqual(statuses, ['skipped', 'skipped', 'skipped', 'applied'])
+        self.assertIn('jest już zakończona', data['results'][0]['message'])
+        self.assertIn('Lista została usunięta', data['results'][1]['message'])
+        self.assertIn('Pozycja została usunięta', data['results'][2]['message'])
+        self.assertEqual(data['results'][3]['message'], 'Pozycja była już usunięta.')
+        self.milk.refresh_from_db()
+        self.assertEqual(self.milk.current_quantity, Decimal('1.00'))
+
+    def test_bad_operations_are_rejected_one_by_one(self):
+        data = self.sync(
+            self.op('item.set_quantity', item=str(self.bread_item.uuid), quantity='1.5'),
+            self.op('item.fly_to_moon', item=str(self.bread_item.uuid)),
+            {'type': 'item.delete', 'item': str(self.bread_item.uuid)},
+            self.op('item.set_purchased', item=str(self.bread_item.uuid), purchased='tak'),
+            self.op('item.add', list=self.list.id, data={'uuid': str(uuid4()), 'name': ''}),
+            self.check(self.milk_item),
+        )
+
+        statuses = [result['status'] for result in data['results']]
+        self.assertEqual(statuses, ['rejected'] * 5 + ['applied'])
+        self.assertIn('liczbę całkowitą', data['results'][0]['message'])
+        self.bread_item.refresh_from_db()
+        self.assertEqual(self.bread_item.quantity, Decimal('1.00'))
+        self.milk.refresh_from_db()
+        self.assertEqual(self.milk.current_quantity, Decimal('3.00'))
+
+    def test_too_many_operations_are_refused(self):
+        from .services.shopping_sync import MAX_OPERATIONS_PER_SYNC
+
+        ops = [self.check(self.bread_item) for _ in range(MAX_OPERATIONS_PER_SYNC + 1)]
+        response = self.client.post(
+            reverse('cooking:shopping-api-sync'), data=json.dumps({'ops': ops}), content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    # --- obecne strony list używają tego samego mechanizmu ------------------
+
+    def test_web_toggle_replenishes_and_completion_does_not_double_count(self):
+        self.client.post(reverse('cooking:toggle-shopping-item', args=[self.milk_item.id]))
+        self.milk.refresh_from_db()
+        self.assertEqual(self.milk.current_quantity, Decimal('3.00'))
+
+        response = self.client.post(reverse('cooking:complete-shopping-list', args=[self.list.id]), follow=True)
+
+        self.assertContains(response, 'Lista zakończona. Kupione produkty trafiły do spiżarni już przy odhaczaniu.')
+        self.milk.refresh_from_db()
+        self.assertEqual(self.milk.current_quantity, Decimal('3.00'))
+
+    def test_web_edit_of_a_checked_item_corrects_the_purchase(self):
+        self.client.post(reverse('cooking:toggle-shopping-item', args=[self.milk_item.id]))
+
+        self.client.post(reverse('cooking:update-shopping-item', args=[self.milk_item.id]), {
+            'name': 'Mleko', 'quantity': '4', 'unit': PantryProduct.UNIT_LITER, 'category': 'Nabiał', 'note': '',
+        })
+
+        self.milk.refresh_from_db()
+        self.assertEqual(self.milk.current_quantity, Decimal('5.00'))
+        self.assertEqual(self.milk.movements.get().quantity, Decimal('4.00'))
+
+    def test_shopping_pages_link_to_the_shopping_mode(self):
+        self.assertContains(self.client.get(reverse('cooking:shopping-list')), reverse('cooking:shopping-app'))
+        self.assertContains(
+            self.client.get(reverse('cooking:shopping-list-detail', args=[self.list.id])),
+            reverse('cooking:shopping-app'),
+        )
+
+
+class ShoppingItemUuidMigrationTests(TransactionTestCase):
+    migrate_from = [('cooking', '0012_shared_pantry_constraints')]
+    migrate_to = [('cooking', '0014_shopping_item_uuid_unique')]
+
+    def test_existing_items_get_distinct_uuids(self):
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.migrate_from)
+        old = executor.loader.project_state(self.migrate_from).apps
+        ShoppingListOld = old.get_model('cooking', 'ShoppingList')
+        ItemOld = old.get_model('cooking', 'ShoppingListItem')
+        shopping_list = ShoppingListOld.objects.create(title='Stara lista')
+        for name in ['Mleko', 'Chleb', 'Masło']:
+            ItemOld.objects.create(shopping_list=shopping_list, name=name)
+
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(self.migrate_to)
+        new = executor.loader.project_state(self.migrate_to).apps
+        ItemNew = new.get_model('cooking', 'ShoppingListItem')
+
+        uuids = list(ItemNew.objects.values_list('uuid', flat=True))
+        self.assertEqual(len(uuids), 3)
+        self.assertEqual(len(set(uuids)), 3)
+        self.assertNotIn(None, uuids)
+
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(executor.loader.graph.leaf_nodes())
