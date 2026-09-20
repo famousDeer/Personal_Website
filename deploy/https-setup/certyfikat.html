@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Certyfikat domowy</title>
+<style>
+  :root { --bg:#f4f6f8; --card:#fff; --ink:#0f172a; --ink2:#475569; --line:#e2e8f0; --brand:#087443; --brand-ink:#fff; --note:#fff7e6; --note-ink:#7a4b00; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0d1117; --card:#161b22; --ink:#f0f4f8; --ink2:#a8b3c2; --line:#2a3340; --brand:#1eaa6b; --brand-ink:#04150c; --note:#2b2310; --note-ink:#f5c46a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width:560px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { font-size:1.45rem; line-height:1.25; margin:0 0 8px; }
+  p { margin:0 0 12px; color:var(--ink2); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; margin:16px 0; }
+  .btn { display:block; text-align:center; padding:14px 16px; border-radius:12px; background:var(--brand); color:var(--brand-ink); font-weight:700; text-decoration:none; }
+  .btn.secondary { background:transparent; color:var(--ink); border:1px solid var(--line); }
+  details { border-top:1px solid var(--line); padding:12px 0 4px; }
+  details:first-of-type { border-top:0; padding-top:0; }
+  summary { font-weight:700; cursor:pointer; padding:4px 0; }
+  ol { margin:10px 0 4px; padding-left:22px; }
+  li { margin:0 0 10px; }
+  b { color:var(--ink); }
+  .path { font-weight:600; color:var(--ink); }
+  .note { background:var(--note); color:var(--note-ink); border-radius:10px; padding:10px 12px; font-size:.92rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Bezpieczne połączenie ze stroną domową</h1>
+  <p>Skaner w spiżarni może używać aparatu tylko przez połączenie HTTPS. Żeby telefon je zaakceptował,
+     trzeba raz zaufać certyfikatowi domowego serwera. Zajmuje to około dwóch minut na każdym telefonie.</p>
+
+  <a class="btn" href="/certyfikat.crt">Pobierz certyfikat</a>
+
+  <div class="card">
+    <details id="ios">
+      <summary>iPhone</summary>
+      <ol>
+        <li>Otwórz tę stronę w <b>Safari</b> &ndash; tylko Safari potrafi zainstalować certyfikat na iPhonie.</li>
+        <li>Stuknij <b>Pobierz certyfikat</b> i potwierdź <b>Zezwól</b>.</li>
+        <li>Otwórz <b>Ustawienia</b>. Na górze pojawi się pozycja o pobranym profilu &ndash; stuknij ją
+            (jeśli jej nie widać, wpisz w wyszukiwarce Ustawień <b>profil</b>). Wybierz <b>Zainstaluj</b>,
+            podaj kod telefonu i jeszcze raz <b>Zainstaluj</b>.</li>
+        <li>Przejdź do <span class="path">Ustawienia &rsaquo; Ogólne &rsaquo; Informacje &rsaquo; Ustawienie zaufania certyfikatu</span>
+            i w sekcji <b>Włącz pełne zaufanie do certyfikatów głównych</b> włącz przełącznik przy
+            <b>Caddy Local Authority</b>.</li>
+      </ol>
+    </details>
+    <details id="android">
+      <summary>Android</summary>
+      <ol>
+        <li>Stuknij <b>Pobierz certyfikat</b> &ndash; plik <b>certyfikat-domowy.crt</b> trafi do Pobranych.</li>
+        <li>Otwórz <b>Ustawienia</b> i wpisz w wyszukiwarce <b>certyfikat</b>. Wybierz
+            <b>Certyfikat CA</b> (zwykle w <span class="path">Bezpieczeństwo i prywatność &rsaquo; Więcej ustawień zabezpieczeń</span>;
+            nazwy różnią się między producentami).</li>
+        <li>Potwierdź <b>Zainstaluj mimo to</b>, odblokuj telefon i wybierz pobrany plik.</li>
+        <li>Otwieraj stronę przez <b>adres IP</b> serwera &ndash; Android nie zawsze rozpoznaje nazwy kończące się na .local.</li>
+      </ol>
+      <p class="note">Android może potem pokazywać powiadomienie „Sieć może być monitorowana”. To standardowy komunikat
+         przy każdym ręcznie dodanym certyfikacie.</p>
+    </details>
+  </div>
+
+  <a class="btn secondary" id="open-https" href="/">Gotowe &ndash; otwórz stronę przez HTTPS</a>
+</main>
+<script>
+  // Link do wersji HTTPS pod tym samym adresem, pod którym otwarto tę stronę.
+  document.getElementById('open-https').href = 'https://' + location.hostname + '/cooking/pantry/';
+  // Rozwiń instrukcję dla systemu, na którym otwarto stronę.
+  var ua = navigator.userAgent;
+  var isIOS = /iPhone|iPad|iPod/.test(ua) || (ua.indexOf('Macintosh') !== -1 && 'ontouchend' in document);
+  var target = isIOS ? 'ios' : (/Android/.test(ua) ? 'android' : null);
+  if (target) { document.getElementById(target).open = true; }
+  else { document.getElementById('ios').open = true; document.getElementById('android').open = true; }
+</script>
+</body>
+</html>

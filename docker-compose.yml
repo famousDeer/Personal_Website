@@ -33,9 +33,36 @@ services:
     environment:
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"
+      # Ruch przez Caddy przychodzi jako HTTP z nagłówkiem X-Forwarded-Proto.
+      # Bez tego Django uznałby połączenie HTTPS za zwykłe i odrzucał
+      # formularze (Origin https://... nie pasowałby do http://...).
+      BEHIND_HTTPS_PROXY: "1"
     depends_on:
       db:
         condition: service_healthy
+    restart: unless-stopped
+
+  # HTTPS przed aplikacją - bez niego przeglądarka nie udostępni aparatu
+  # skanerowi spiżarni. Konfiguracja i opis: deploy/Caddyfile, README
+  # ("HTTPS i aparat w skanerze"). Uruchomienie na Raspberry Pi:
+  #   docker compose up -d --build web caddy
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Adresy, pod którymi otwieracie stronę; certyfikat obejmie każdy z nich.
+      HTTPS_SITES: ${HTTPS_SITES:-raspberrypi.local, 192.168.1.115}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./deploy/https-setup:/srv/https-setup:ro
+      # Lokalny urząd certyfikacji. Nie usuwaj tego wolumenu - nowy urząd
+      # oznacza ponowną instalację certyfikatu na każdym telefonie.
+      - caddy_data:/data
+      - caddy_config:/config
     restart: unless-stopped
 
   web-dev:
@@ -84,3 +111,5 @@ services:
         
 volumes:
   postgres_data:
+  caddy_data:
+  caddy_config:

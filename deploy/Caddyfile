@@ -1,0 +1,56 @@
+# HTTPS dla aplikacji w sieci domowej.
+#
+# Przeglądarki udostępniają aparat na żywo (getUserMedia) wyłącznie stronom
+# w "bezpiecznym kontekście": HTTPS albo localhost. Pod http://192.168.x.x
+# API aparatu po prostu nie istnieje, więc skaner mógł co najwyżej poprosić
+# o zdjęcie kodu. Caddy stoi przed aplikacją, szyfruje połączenie i przekazuje
+# ruch do gunicorna (usługa "web").
+#
+# Certyfikat wystawia lokalny urząd certyfikacji Caddy'ego ("tls internal").
+# Nie potrzeba internetu ani żadnego konta, ale każdy telefon musi raz zaufać
+# jego certyfikatowi głównemu - instrukcja jest pod http://<adres-pi>/certyfikat.
+# Urząd żyje w wolumenie caddy_data. Usunięcie wolumenu wygeneruje nowy urząd
+# i telefony trzeba będzie skonfigurować od nowa.
+{
+	# W kontenerze nie ma systemowego magazynu zaufania do zmieniania.
+	skip_install_trust
+	# Caddy sam dokłada dla każdego adresu HTTPS przekierowanie 308 na porcie
+	# 80. Ma ono pierwszeństwo przed blokiem http:// niżej, więc zasłaniałoby
+	# stronę z certyfikatem, a 308 jest "stałe" i przeglądarki je zapamiętują.
+	# Przekierowania robi więc blok http:// poniżej.
+	auto_https disable_redirects
+}
+
+# Adresy, pod którymi domownicy otwierają stronę (zmienna HTTPS_SITES w .env).
+# Certyfikat obejmuje każdy z nich. Warto mieć też adres IP: Android nie zawsze
+# rozwiązuje nazwy .local.
+{$HTTPS_SITES:localhost} {
+	tls internal
+	encode gzip
+	# Caddy dopisuje X-Forwarded-Proto: https, a Django z BEHIND_HTTPS_PROXY=1
+	# na tej podstawie wie, że połączenie było szyfrowane (CSRF, is_secure).
+	reverse_proxy {$UPSTREAM:web:8000}
+}
+
+# Zwykłe HTTP. Instrukcja i certyfikat główny muszą być dostępne bez HTTPS -
+# dopóki telefon nie ufa certyfikatowi, strona HTTPS pokazuje ostrzeżenie.
+# Cała reszta jest przekierowywana na HTTPS (302, nie 301: przeglądarki
+# zapamiętują stałe przekierowania, co utrudniłoby ewentualny powrót).
+http:// {
+	handle /certyfikat {
+		root * /srv/https-setup
+		rewrite * /certyfikat.html
+		file_server
+	}
+	handle /certyfikat.crt {
+		root * {$CADDY_PKI_DIR:/data/caddy/pki/authorities/local}
+		rewrite * /root.crt
+		# iOS rozpoznaje certyfikat do instalacji po tym typie.
+		header Content-Type application/x-x509-ca-cert
+		header Content-Disposition "attachment; filename=\"certyfikat-domowy.crt\""
+		file_server
+	}
+	handle {
+		redir https://{host}{uri}
+	}
+}

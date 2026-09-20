@@ -171,6 +171,39 @@
         elements.cameraAlert.classList.toggle('d-none', !message);
     }
 
+    // Adres tej samej strony przez HTTPS (Caddy na porcie 443), albo pusty,
+    // gdy przejście na HTTPS nic nie da (już jest HTTPS albo to localhost,
+    // który przeglądarki i tak traktują jako bezpieczny).
+    function secureVersionUrl() {
+        if (window.location.protocol !== 'http:' || ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)) {
+            return '';
+        }
+        return `https://${window.location.hostname}${window.location.pathname}${window.location.search}`;
+    }
+
+    // Na http://192.168.x.x przeglądarka w ogóle nie udostępnia API aparatu.
+    // Zamiast samego komunikatu dajemy link do tej samej strony przez HTTPS
+    // i do instrukcji zaufania certyfikatowi.
+    function showInsecureContextAlert() {
+        const secureUrl = secureVersionUrl();
+        showCameraAlert(cameraErrorMessage());
+        if (!secureUrl) {
+            return;
+        }
+        const links = document.createElement('div');
+        links.className = 'd-flex flex-wrap gap-2 mt-2';
+        const open = document.createElement('a');
+        open.className = 'btn btn-sm btn-success';
+        open.href = secureUrl;
+        open.textContent = 'Otwórz przez HTTPS';
+        const setup = document.createElement('a');
+        setup.className = 'btn btn-sm btn-outline-secondary';
+        setup.href = `http://${window.location.hostname}/certyfikat`;
+        setup.textContent = 'Pierwszy raz? Zainstaluj certyfikat';
+        links.append(open, setup);
+        elements.cameraAlert.append(links);
+    }
+
     function setCameraActive(active) {
         elements.cameraStage.classList.toggle('is-active', active);
         elements.cameraPlaceholder.classList.toggle('d-none', active);
@@ -1370,7 +1403,9 @@
 
     function cameraErrorMessage(error) {
         if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-            return 'Aparat wymaga bezpiecznego połączenia HTTPS. Nadal możesz zrobić zdjęcie lub wpisać kod ręcznie.';
+            return secureVersionUrl()
+                ? 'Aparat na żywo działa tylko przez HTTPS. Otwórz spiżarnię przez bezpieczne połączenie albo zrób zdjęcie kodu.'
+                : 'Aparat wymaga bezpiecznego połączenia HTTPS. Nadal możesz zrobić zdjęcie lub wpisać kod ręcznie.';
         }
         if (error?.name === 'NotAllowedError') {
             return 'Brak dostępu do aparatu. Zezwól na użycie kamery albo wpisz kod ręcznie.';
@@ -1418,7 +1453,7 @@
 
         if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
             setCameraStatus('Tryb ręczny');
-            showCameraAlert(cameraErrorMessage());
+            showInsecureContextAlert();
             announce('Aparat jest niedostępny. Wpisz kod ręcznie lub zrób zdjęcie.');
             return;
         }

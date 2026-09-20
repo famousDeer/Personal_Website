@@ -78,6 +78,13 @@ SESSION_COOKIE_HTTPONLY = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = os.environ.get('SECURE_REFERRER_POLICY', 'same-origin')
 SECURE_SSL_REDIRECT = env_bool('SECURE_SSL_REDIRECT', False)
+# Za Caddy (usługa "caddy" w docker-compose) Django dostaje zwykłe HTTP
+# z nagłówkiem X-Forwarded-Proto. Bez tego request.is_secure() zwraca False
+# dla strony otwartej przez HTTPS, a sprawdzanie Origin w CSRF porównuje
+# "https://host" z "http://host" i odrzuca każdy formularz. Włączane tylko
+# zmienną, bo nagłówek wolno ufać wyłącznie wtedy, gdy stawia go proxy.
+if env_bool('BEHIND_HTTPS_PROXY', False):
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SECURE_HSTS_SECONDS = int(os.environ.get('SECURE_HSTS_SECONDS', '0'))
 SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool('SECURE_HSTS_INCLUDE_SUBDOMAINS', False)
 SECURE_HSTS_PRELOAD = env_bool('SECURE_HSTS_PRELOAD', False)

@@ -90,6 +90,9 @@ ALPHA_VANTAGE_API_KEY=
 OPENFIGI_API_KEY=
 STOOQ_API_KEY=
 
+# HTTPS in front of the app (caddy service); comma-separated, each also in ALLOWED_HOSTS
+HTTPS_SITES=raspberrypi.local, 192.168.1.115
+
 # Pantry catalog (optional; defaults work without these entries)
 OPEN_FOOD_FACTS_ENABLED=1
 OPEN_FOOD_FACTS_USER_AGENT=WebsiteFinance/1.0 (https://github.com/famousDeer/Personal_Website)
@@ -163,7 +166,7 @@ browser console on any page:
 | `app-build` | `templates/base.html` | the **container** is running old code → `docker compose up web-dev --build` |
 | `--ui-build` | `static/css/ui.css` | the **browser** is serving a cached stylesheet → hard reload (`Cmd+Shift+R`) |
 
-Both should read `2026-09-19-c`. If they disagree with each other, the container is
+Both should read `2026-09-19-d`. If they disagree with each other, the container is
 fresh but the browser is not.
 
 ### Live reload
@@ -200,6 +203,47 @@ python manage.py test --settings=config.test_settings
 `config/test_settings.py` switches to SQLite and disables outbound calls to Nominatim
 and Open Food Facts, so the suite never touches the network. CI additionally runs
 `python manage.py makemigrations --check --dry-run` to catch uncommitted migrations.
+
+## HTTPS and the camera in the pantry scanner
+
+Browsers expose the live camera (`getUserMedia`) only to secure contexts: HTTPS or
+`localhost`. On `http://192.168.x.x` the API does not exist at all, so the scanner can
+only fall back to taking a photo of the barcode. Measured in Chromium on the same page:
+
+| Origin | `isSecureContext` | `navigator.mediaDevices.getUserMedia` |
+|---|---|---|
+| `http://localhost` | true | function |
+| `http://<LAN IP>` | false | undefined |
+
+The `caddy` service in `docker-compose.yml` puts HTTPS in front of the app with a
+certificate from Caddy's own local certificate authority (`tls internal`). No domain,
+no account and no internet connection are needed.
+
+On the Raspberry Pi:
+
+```bash
+docker compose up -d --build web caddy
+```
+
+- `https://raspberrypi.local` and `https://192.168.1.115` serve the app. Change the list
+  with `HTTPS_SITES` in `.env` (comma-separated); every name must also be in
+  `ALLOWED_HOSTS`.
+- `http://<address>/certyfikat` is a page for phones with the certificate download and
+  step-by-step instructions for iPhone and Android. Each phone trusts the certificate
+  once; after that the scanner opens the camera immediately.
+- Everything else on port 80 redirects to HTTPS. Port 8000 keeps working over plain
+  HTTP; the scanner there shows a link to the HTTPS version.
+- `web` runs with `BEHIND_HTTPS_PROXY=1`, which sets `SECURE_PROXY_SSL_HEADER`. Without
+  it Django sees the proxied request as plain HTTP and every form fails the CSRF
+  origin check (`https://host` vs `http://host`) with a 403.
+
+> **The `caddy_data` volume holds the certificate authority.** Deleting it creates a
+> new one, and every phone has to install the certificate again. Phones that trust
+> this authority would accept any certificate it signs, so treat the Pi (and that
+> volume) as you would any device that holds a key — do not copy it elsewhere.
+
+If Caddy fails with `address already in use`, something else on the Pi (for example
+Pi-hole) already uses port 80 or 443.
 
 ## Pantry catalog
 
@@ -271,6 +315,7 @@ Example crontab on the Pi:
 ```
 Website-Finance/
 ├─ config/                    # Django project (settings, urls, wsgi, test_settings)
+├─ deploy/                    # Caddyfile (HTTPS) and the phone certificate page
 ├─ finance/                   # Budget, brokerage portfolio, travel
 │  ├─ bank_import.py          # Millennium / ING CSV import
 │  ├─ brokerage.py            # Portfolio summary, FIFO, capital gains tax
