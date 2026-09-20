@@ -184,6 +184,21 @@
         offline: { checked: false, shell: false, files: 0, total: 0, sw: 'sprawdzam', error: '' },
     };
 
+    // Ten sam wzorzec co w skanerze spiżarni: z http://192.168.x.x nie da się
+    // ani włączyć aparatu, ani zapisać aplikacji w telefonie - podpowiadamy
+    // adres HTTPS zamiast samego komunikatu o błędzie.
+    function secureVersionUrl() {
+        if (window.location.protocol !== 'http:'
+            || ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)) {
+            return '';
+        }
+        return `https://${window.location.hostname}${window.location.pathname}`;
+    }
+
+    function certificateUrl() {
+        return `http://${window.location.hostname}/certyfikat`;
+    }
+
     const newId = () => (window.crypto && crypto.randomUUID)
         ? crypto.randomUUID()
         : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -674,7 +689,10 @@
         const items = view.lists.reduce((sum, list) => sum + list.items.length, 0);
         const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
         const rows = [
-            ['Adres', window.location.origin],
+            ['Adres', window.location.origin + window.location.pathname],
+            ['Połączenie', window.isSecureContext
+                ? 'bezpieczne (https)'
+                : 'niezabezpieczone - tryb offline nie zadziała'],
             ['Uruchomiona', standalone ? 'z ikony na ekranie telefonu' : 'w przeglądarce'],
             ['Aplikacja zapisana w telefonie', state.offline.shell
                 ? `tak (${state.offline.files} z ${state.offline.total} plików)`
@@ -688,6 +706,7 @@
             ['Zapis danych', state.storageOk ? 'pamięć telefonu (IndexedDB)' : 'tylko do zamknięcia karty'],
             ['Wersja aplikacji', config.version],
         ];
+        const insecureUrl = secureVersionUrl();
         container.innerHTML = `
             <section class="sa-details">
                 <div class="sa-details-head">
@@ -697,17 +716,38 @@
                     </button>
                 </div>
                 <dl>${rows.map(([label, value]) => `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl>
-                <button type="button" class="sa-secondary" data-prepare ${state.preparing ? 'disabled' : ''}>
-                    <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
-                    ${state.preparing ? 'Przygotowuję…' : 'Przygotuj tryb offline'}
-                </button>
-                <p class="sa-details-hint">Przygotowanie działa tylko w domowej sieci: pobiera listę i zapisuje aplikację w telefonie.</p>
+                ${insecureUrl ? `
+                    <a class="sa-secondary" href="${escapeHtml(insecureUrl)}">
+                        <i class="bi bi-shield-lock" aria-hidden="true"></i> Otwórz przez HTTPS
+                    </a>
+                    <p class="sa-details-hint">
+                        Potem dodaj ten ekran do ekranu początkowego jeszcze raz - ikona zapamiętuje adres.
+                        Pierwszy raz na tym telefonie? <a href="${escapeHtml(certificateUrl())}">Zainstaluj certyfikat</a>.
+                    </p>` : `
+                    <button type="button" class="sa-secondary" data-prepare ${state.preparing ? 'disabled' : ''}>
+                        <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+                        ${state.preparing ? 'Przygotowuję…' : 'Przygotuj tryb offline'}
+                    </button>
+                    <p class="sa-details-hint">Przygotowanie działa tylko w domowej sieci: pobiera listę i zapisuje aplikację w telefonie.</p>`}
             </section>`;
     }
 
     function renderBanners(view) {
         const banners = [];
-        if (state.offline.checked && !state.offline.shell && state.status !== 'offline') {
+        const secureUrl = secureVersionUrl();
+        if (!window.isSecureContext) {
+            banners.push(`
+                <div class="sa-banner is-warning">
+                    <i class="bi bi-shield-exclamation" aria-hidden="true"></i>
+                    <div>
+                        <strong>Ten adres nie działa bez połączenia z domem.</strong>
+                        Telefon zapisuje aplikację tylko przy bezpiecznym połączeniu (https).
+                        ${secureUrl ? 'Otwórz ten sam ekran przez HTTPS i dodaj go do ekranu początkowego jeszcze raz.' : ''}
+                    </div>
+                    ${secureUrl ? `<a class="sa-banner-action" href="${escapeHtml(secureUrl)}">Otwórz przez HTTPS</a>` : ''}
+                </div>`);
+        }
+        if (window.isSecureContext && state.offline.checked && !state.offline.shell && state.status !== 'offline') {
             banners.push(`
                 <div class="sa-banner is-warning">
                     <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
@@ -1241,6 +1281,10 @@
     }
 
     async function prepareOffline() {
+        if (!window.isSecureContext) {
+            toast('Najpierw otwórz aplikację przez HTTPS - bez tego telefon nie zapisze jej na wyjście z domu.', 'warning');
+            return;
+        }
         state.preparing = true;
         render();
         try {
@@ -1269,8 +1313,10 @@
     }
 
     function setupServiceWorker() {
-        if (!('serviceWorker' in navigator)) {
-            state.offline.error = 'Ta przeglądarka nie obsługuje trybu offline.';
+        if (!window.isSecureContext || !('serviceWorker' in navigator)) {
+            state.offline.error = window.isSecureContext
+                ? 'Ta przeglądarka nie obsługuje trybu offline.'
+                : 'Ten adres nie jest bezpiecznym połączeniem (http), więc telefon nie pozwala zapisać aplikacji.';
             checkOfflineReady();
             return;
         }

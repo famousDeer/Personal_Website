@@ -3007,6 +3007,19 @@ class ShoppingOfflineSyncTests(TestCase):
 
     # --- API ---------------------------------------------------------------
 
+    @override_settings(ALLOWED_HOSTS=['192.168.1.115', 'testserver', 'localhost'])
+    def test_manifest_sends_the_icon_to_https_when_opened_over_plain_http(self):
+        # Port 8000 Django jest bez szyfrowania, a tryb offline działa tylko po
+        # HTTPS. Ikona dodana do ekranu telefonu zapamiętuje adres z manifestu.
+        insecure = self.client.get(reverse('cooking:shopping-app-manifest'), HTTP_HOST='192.168.1.115:8000').json()
+        secure = self.client.get(reverse('cooking:shopping-app-manifest'), secure=True, HTTP_HOST='192.168.1.115').json()
+        local = self.client.get(reverse('cooking:shopping-app-manifest')).json()
+
+        self.assertEqual(insecure['start_url'], 'https://192.168.1.115/cooking/shopping/app/')
+        self.assertEqual(insecure['scope'], 'https://192.168.1.115/')
+        self.assertEqual(secure['start_url'], '/cooking/shopping/app/')
+        self.assertEqual(local['start_url'], '/cooking/shopping/app/')
+
     def test_api_answers_401_json_instead_of_redirecting_to_login(self):
         self.client.logout()
 

@@ -240,6 +240,8 @@ button:disabled { cursor: not-allowed; }
     color: var(--ink-3);
 }
 
+.sa-details-hint a { color: var(--brand-600); }
+
 .sa-progress-text {
     flex: none;
     font-size: var(--fs-caption);
@@ -272,8 +274,9 @@ button:disabled { cursor: not-allowed; }
 
 .sa-banner {
     display: flex;
+    flex-wrap: wrap;
     align-items: flex-start;
-    gap: var(--sp-3);
+    gap: var(--sp-2) var(--sp-3);
     padding: var(--sp-3);
     border: 1px solid var(--line-1);
     border-radius: var(--r-md);
@@ -283,7 +286,8 @@ button:disabled { cursor: not-allowed; }
 }
 
 .sa-banner > i { font-size: 1.15rem; color: var(--invest); margin-top: 1px; }
-.sa-banner > div { flex: 1; }
+/* Tekst dostaje całą szerokość; przycisk schodzi pod spód, gdy jest ciasno. */
+.sa-banner > div { flex: 1 1 220px; }
 .sa-banner strong { color: var(--ink-1); }
 .sa-banner.is-warning { border-color: var(--expense-bg); background: color-mix(in srgb, var(--expense-bg) 45%, var(--surface-1)); }
 .sa-banner.is-warning > i { color: var(--expense); }
@@ -292,6 +296,7 @@ button:disabled { cursor: not-allowed; }
 
 .sa-banner-action {
     flex: none;
+    margin-left: auto;
     align-self: center;
     padding: 6px 12px;
     border: 0;
@@ -558,6 +563,7 @@ button:disabled { cursor: not-allowed; }
 
 .sa-primary,
 .sa-secondary {
+    text-decoration: none;
     display: inline-flex;
     align-items: center;
     justify-content: center;

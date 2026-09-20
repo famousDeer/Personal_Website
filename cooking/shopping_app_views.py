@@ -130,19 +130,37 @@ class ShoppingAppServiceWorkerView(View):
         return response
 
 
+LOCAL_HOSTS = {'localhost', '127.0.0.1', '[::1]', 'testserver'}
+
+
+def secure_base(request):
+    """Adres HTTPS tego serwera, gdy strona jest otwarta zwykłym http.
+
+    Port 8000 Django jest wystawiony bez szyfrowania, a telefon zapisuje
+    aplikację na wyjście z domu tylko przy bezpiecznym połączeniu. Ikona
+    dodana do ekranu telefonu zapamiętuje adres z manifestu, więc manifest
+    spod http kieruje ją od razu na HTTPS.
+    """
+    host = request.get_host().split(':')[0]
+    if request.is_secure() or host in LOCAL_HOSTS:
+        return ''
+    return f'https://{host}'
+
+
 class ShoppingAppManifestView(View):
     def get(self, request):
         scope_url = reverse('cooking:shopping-app')
+        base = secure_base(request)
         manifest = {
             'id': scope_url,
             'name': 'Lista zakupów',
             'short_name': 'Zakupy',
             'description': 'Domowa lista zakupów, działa także bez połączenia z domową siecią.',
             'lang': 'pl',
-            'start_url': scope_url,
+            'start_url': f'{base}{scope_url}',
             # Zakres całej strony: logowanie otwiera się w oknie aplikacji,
             # a nie w osobnej przeglądarce z innym zestawem ciasteczek.
-            'scope': '/',
+            'scope': f'{base}/',
             'display': 'standalone',
             'background_color': '#f4f6f8',
             'theme_color': '#087443',

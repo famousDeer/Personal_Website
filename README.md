@@ -359,6 +359,10 @@ whenever the server answers.
   separate app with its own storage, service worker and cookies, so a sync done in a
   Safari tab does not help the icon. Only the home-screen app keeps data permanently.
 - Android: open it in Chrome and use "Install" (the app offers it too).
+- Offline mode needs a secure connection. Django's port 8000 is plain HTTP, so an icon
+  added from `http://<pi>:8000/...` can never work offline: the app says so, offers the
+  HTTPS address, and the manifest served over HTTP points `start_url` at `https://<host>/`,
+  so an icon added there still opens the HTTPS version.
 - The header shows whether the phone is ready to leave home: **"Gotowe offline"** means
   the app and the list are saved on the phone. Tapping the badge opens a panel with the
   address, what is cached, the last sync and a "Przygotuj tryb offline" button that
