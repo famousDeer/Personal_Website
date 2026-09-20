@@ -1,6 +1,8 @@
 import json
-from io import BytesIO, StringIO
+import sys
 import tempfile
+import types
+from io import BytesIO, StringIO
 from decimal import Decimal
 from datetime import timedelta
 from unittest.mock import patch
@@ -22,6 +24,9 @@ from .models import (
     PantryProduct,
     ProductCatalogEntry,
     ProductCatalogQuota,
+    PushSubscription,
+    SentNotification,
+    ShopLayout,
     Recipe,
     RecipeStep,
     RecipeStepIngredient,
@@ -48,6 +53,7 @@ from .services.pantry_forecast import (
     forecast_pantry_products,
     infer_typical_shopping_weekday,
 )
+from .services.push import notify, prune_notification_log
 
 
 User = get_user_model()
@@ -3045,9 +3051,10 @@ class ShoppingOfflineSyncTests(TestCase):
         self.assertEqual(items['Mleko']['unit_label'], 'l')
         self.assertTrue(items['Mleko']['in_pantry'])
         self.assertFalse(items['Chleb']['in_pantry'])
-        self.assertIn(
-            {'name': 'Kawa', 'unit': 'g', 'category': 'Napoje', 'package': '250.00'},
-            data['snapshot']['products'],
+        coffee = next(entry for entry in data['snapshot']['products'] if entry['name'] == 'Kawa')
+        self.assertEqual(
+            {key: coffee[key] for key in ('unit', 'category', 'package')},
+            {'unit': 'g', 'category': 'Napoje', 'package': '250.00'},
         )
 
     def test_snapshot_extends_the_session_once_a_day(self):
@@ -3304,6 +3311,603 @@ class ShoppingOfflineSyncTests(TestCase):
             self.client.get(reverse('cooking:shopping-list-detail', args=[self.list.id])),
             reverse('cooking:shopping-app'),
         )
+
+
+class ShopLayoutTests(TestCase):
+    """Kolejność kategorii według sklepu (kolejność alejek)."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='dawid-sklepy', password='pass12345')
+        self.client.login(username='dawid-sklepy', password='pass12345')
+        self.list = ShoppingList.objects.create(created_by=self.user, title='Sobota')
+        for name, category in [
+            ('Mleko', 'Nabiał'), ('Chleb', 'Pieczywo'), ('Płyn do naczyń', 'Chemia domowa'),
+            ('Banany', 'Warzywa i owoce'),
+        ]:
+            ShoppingListItem.objects.create(
+                shopping_list=self.list, name=name, category=category, unit=PantryProduct.UNIT_PIECE,
+            )
+        self.shop_uuid = str(uuid4())
+
+    def op(self, op_type, **fields):
+        return {'op_id': str(uuid4()), 'type': op_type, 'at': timezone.now().isoformat(), **fields}
+
+    def sync(self, *ops):
+        response = self.client.post(
+            reverse('cooking:shopping-api-sync'), data=json.dumps({'ops': list(ops)}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200, response.content[:200])
+        return response.json()
+
+    def test_shop_can_be_added_and_assigned_from_the_phone(self):
+        data = self.sync(
+            self.op('shop.add', shop=self.shop_uuid, name='Lidl', order=[]),
+            self.op('list.set_shop', list=self.list.id, shop=self.shop_uuid),
+        )
+
+        self.assertEqual([result['status'] for result in data['results']], ['applied', 'applied'])
+        shop = ShopLayout.objects.get(uuid=self.shop_uuid)
+        self.list.refresh_from_db()
+        self.assertEqual(shop.name, 'Lidl')
+        self.assertEqual(self.list.shop, shop)
+        self.assertEqual(data['snapshot']['shops'], [{'uuid': self.shop_uuid, 'name': 'Lidl', 'order': []}])
+        self.assertEqual(data['snapshot']['lists'][0]['shop'], self.shop_uuid)
+
+    def test_adding_the_same_shop_twice_does_not_duplicate_it(self):
+        ShopLayout.objects.create(name='Lidl')
+
+        data = self.sync(self.op('shop.add', shop=self.shop_uuid, name='lidl'))
+
+        self.assertEqual(data['results'][0]['status'], 'skipped')
+        self.assertEqual(ShopLayout.objects.count(), 1)
+
+    def test_aisle_order_is_saved_and_unknown_categories_stay_at_the_end(self):
+        shop = ShopLayout.objects.create(
+            uuid=self.shop_uuid, name='Lidl', category_order=['Napoje', 'Nabiał', 'Pieczywo'],
+        )
+        self.list.shop = shop
+        self.list.save()
+
+        self.sync(self.op('shop.set_order', shop=self.shop_uuid, order=[
+            'Warzywa i owoce', 'Pieczywo', 'Nabiał', 'Chemia domowa',
+        ]))
+
+        shop.refresh_from_db()
+        self.assertEqual(
+            shop.category_order,
+            ['Warzywa i owoce', 'Pieczywo', 'Nabiał', 'Chemia domowa', 'Napoje'],
+        )
+        self.assertEqual(
+            shop.ordered_categories(['Nabiał', 'Pieczywo', 'Inne']),
+            ['Pieczywo', 'Nabiał', 'Inne'],
+        )
+
+    def test_list_page_follows_the_aisle_order(self):
+        shop = ShopLayout.objects.create(
+            uuid=self.shop_uuid, name='Lidl',
+            category_order=['Warzywa i owoce', 'Pieczywo', 'Nabiał', 'Chemia domowa'],
+        )
+        self.list.shop = shop
+        self.list.save()
+
+        response = self.client.get(reverse('cooking:shopping-list-detail', args=[self.list.id]))
+
+        self.assertEqual(
+            [item.name for item in response.context['items']],
+            ['Banany', 'Chleb', 'Mleko', 'Płyn do naczyń'],
+        )
+
+    def test_shop_can_be_chosen_or_created_on_the_list_edit_page(self):
+        response = self.client.post(reverse('cooking:edit-shopping-list', args=[self.list.id]), {
+            'title': 'Sobota', 'new_shop': 'Biedronka',
+        }, follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.list.refresh_from_db()
+        self.assertEqual(self.list.shop.name, 'Biedronka')
+
+        self.client.post(reverse('cooking:edit-shopping-list', args=[self.list.id]), {
+            'title': 'Sobota', 'shop': '',
+        })
+        self.list.refresh_from_db()
+        self.assertIsNone(self.list.shop)
+
+    def test_unknown_shop_or_empty_order_is_reported(self):
+        data = self.sync(
+            self.op('list.set_shop', list=self.list.id, shop=str(uuid4())),
+            self.op('shop.set_order', shop=str(uuid4()), order=['Nabiał']),
+            self.op('shop.add', shop=str(uuid4()), name=''),
+        )
+
+        self.assertEqual(
+            [result['status'] for result in data['results']],
+            ['skipped', 'skipped', 'rejected'],
+        )
+
+
+class PantryInShoppingAppTests(TestCase):
+    """Spiżarnia w telefonie: podgląd stanu i skanowanie bez połączenia."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='dawid-skan', password='pass12345')
+        self.client.login(username='dawid-skan', password='pass12345')
+        self.coffee = PantryProduct.objects.create(
+            created_by=self.user, name='Kawa ziarnista', category='Napoje', barcode='5901234123457',
+            unit=PantryProduct.UNIT_GRAM, quantity_per_scan=Decimal('1000.00'),
+            current_quantity=Decimal('250.00'), current_package_count=1,
+        )
+        self.list = ShoppingList.objects.create(created_by=self.user, title='Sobota')
+        self.item = ShoppingListItem.objects.create(
+            shopping_list=self.list, pantry_product=self.coffee, name='Kawa ziarnista',
+            quantity=Decimal('1000.00'), unit=PantryProduct.UNIT_GRAM, category='Napoje',
+        )
+
+    def op(self, op_type, **fields):
+        return {'op_id': str(uuid4()), 'type': op_type, 'at': timezone.now().isoformat(), **fields}
+
+    def sync(self, *ops):
+        response = self.client.post(
+            reverse('cooking:shopping-api-sync'), data=json.dumps({'ops': list(ops)}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200, response.content[:200])
+        return response.json()
+
+    def test_snapshot_carries_the_whole_pantry(self):
+        data = self.client.get(reverse('cooking:shopping-api-snapshot')).json()
+
+        product = data['snapshot']['products'][0]
+        self.assertEqual(product['id'], self.coffee.id)
+        self.assertEqual(product['name'], 'Kawa ziarnista')
+        self.assertEqual(product['barcode'], '5901234123457')
+        self.assertEqual(product['quantity'], '250.00')
+        self.assertEqual(product['packages'], 1)
+        self.assertEqual(product['package'], '1000.00')
+        self.assertEqual(product['unit_label'], 'g')
+        self.assertEqual(product['status'], 'ok')
+        self.assertTrue(product['tracks_packages'])
+
+    def test_scanned_purchase_and_consumption_reach_the_pantry(self):
+        self.sync(self.op('pantry.movement', product=self.coffee.id, action='purchase', count=1))
+
+        self.coffee.refresh_from_db()
+        self.assertEqual(self.coffee.current_quantity, Decimal('1250.00'))
+        self.assertEqual(self.coffee.current_package_count, 2)
+        movement = self.coffee.movements.get()
+        self.assertEqual(movement.movement_type, PantryMovement.PURCHASE)
+        self.assertEqual(movement.quantity, Decimal('1000.00'))
+        self.assertEqual(movement.note, 'Skan w trybie zakupów')
+
+        self.sync(self.op('pantry.movement', product=self.coffee.id, action='consume', count=2))
+
+        self.coffee.refresh_from_db()
+        self.assertEqual(self.coffee.current_quantity, Decimal('0.00'))
+        self.assertEqual(self.coffee.current_package_count, 0)
+
+    def test_consuming_more_than_there_is_reports_it_and_never_goes_below_zero(self):
+        data = self.sync(self.op('pantry.movement', product=self.coffee.id, action='consume', count=3))
+
+        self.coffee.refresh_from_db()
+        self.assertEqual(self.coffee.current_quantity, Decimal('0.00'))
+        self.assertEqual(data['results'][0]['status'], 'applied')
+        self.assertIn('w spiżarni było mniej', data['results'][0]['message'])
+        movement = self.coffee.movements.get()
+        self.assertTrue(movement.stock_was_insufficient)
+        self.assertEqual(movement.quantity, Decimal('250.00'))
+        self.assertEqual(movement.requested_quantity, Decimal('3000.00'))
+
+    def test_repeated_scan_operation_counts_once(self):
+        operation = self.op('pantry.movement', product=self.coffee.id, action='purchase', count=1)
+
+        self.sync(operation)
+        second = self.sync(operation)
+
+        self.coffee.refresh_from_db()
+        self.assertTrue(second['results'][0]['duplicate'])
+        self.assertEqual(self.coffee.current_quantity, Decimal('1250.00'))
+        self.assertEqual(self.coffee.movements.count(), 1)
+
+    def test_bad_scan_operations_are_reported(self):
+        data = self.sync(
+            self.op('pantry.movement', product=self.coffee.id, action='wyrzucono', count=1),
+            self.op('pantry.movement', product=self.coffee.id, action='consume', count=0),
+            self.op('pantry.movement', product=999999, action='consume', count=1),
+        )
+
+        self.assertEqual(
+            [result['status'] for result in data['results']],
+            ['rejected', 'rejected', 'skipped'],
+        )
+        self.coffee.refresh_from_db()
+        self.assertEqual(self.coffee.current_quantity, Decimal('250.00'))
+
+    def test_app_precaches_the_barcode_reader(self):
+        body = self.client.get(reverse('cooking:shopping-app-sw')).content.decode()
+        config = json.loads(
+            self.client.get(reverse('cooking:shopping-app')).content.decode()
+            .split('id="shopping-app-config"', 1)[1].split('>', 1)[1].split('</script>', 1)[0]
+        )
+
+        self.assertIn('zxing-browser', body)
+        self.assertIn('zxing-browser', config['zxingUrl'])
+        # Czytnik waży 430 KB - nie może blokować instalacji aplikacji.
+        required = body.split('const REQUIRED = ')[1].split(';')[0]
+        self.assertNotIn('zxing', required)
+
+
+
+VAPID_TEST_SETTINGS = dict(
+    VAPID_PUBLIC_KEY='BKtestpublickey',
+    VAPID_PRIVATE_KEY='testprivatekey',
+    VAPID_SUBJECT='mailto:dom@example.com',
+)
+
+
+class FakeWebPushResponse:
+    def __init__(self, status_code):
+        self.status_code = status_code
+
+
+class FakeWebPushException(Exception):
+    def __init__(self, message, status_code=None):
+        super().__init__(message)
+        self.response = FakeWebPushResponse(status_code) if status_code is not None else None
+
+
+@override_settings(**VAPID_TEST_SETTINGS)
+class PushSubscriptionApiTests(TestCase):
+    """Telefon zgłasza i cofa zgodę na powiadomienia."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='dawid-push', password='pass12345')
+        self.client.login(username='dawid-push', password='pass12345')
+
+    def subscribe(self, endpoint='https://web.push.apple.com/abc', p256dh='klucz', auth='sekret'):
+        return self.client.post(
+            reverse('cooking:shopping-api-push-subscribe'),
+            data=json.dumps({'subscription': {'endpoint': endpoint, 'keys': {'p256dh': p256dh, 'auth': auth}}}),
+            content_type='application/json',
+            HTTP_USER_AGENT='iPhone',
+        )
+
+    def test_subscribe_saves_the_phone(self):
+        response = self.subscribe()
+
+        self.assertEqual(response.status_code, 200, response.content[:200])
+        subscription = PushSubscription.objects.get()
+        self.assertEqual(subscription.user, self.user)
+        self.assertEqual(subscription.endpoint, 'https://web.push.apple.com/abc')
+        self.assertEqual(subscription.p256dh, 'klucz')
+        self.assertEqual(subscription.auth, 'sekret')
+        self.assertEqual(subscription.device, 'iPhone')
+
+    def test_second_subscribe_updates_instead_of_duplicating(self):
+        self.subscribe()
+        PushSubscription.objects.update(failures=3)
+
+        self.subscribe(p256dh='nowy-klucz')
+
+        subscription = PushSubscription.objects.get()
+        self.assertEqual(subscription.p256dh, 'nowy-klucz')
+        self.assertEqual(subscription.failures, 0)
+
+    def test_subscription_without_keys_is_rejected(self):
+        response = self.subscribe(p256dh='', auth='')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(PushSubscription.objects.exists())
+
+    def test_plain_http_endpoint_is_rejected(self):
+        response = self.subscribe(endpoint='http://web.push.apple.com/abc')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(PushSubscription.objects.exists())
+
+    def test_unsubscribe_removes_only_this_phone(self):
+        self.subscribe()
+        self.subscribe(endpoint='https://fcm.googleapis.com/xyz')
+
+        response = self.client.post(
+            reverse('cooking:shopping-api-push-unsubscribe'),
+            data=json.dumps({'endpoint': 'https://web.push.apple.com/abc'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            list(PushSubscription.objects.values_list('endpoint', flat=True)),
+            ['https://fcm.googleapis.com/xyz'],
+        )
+
+    def test_logged_out_phone_gets_401(self):
+        self.client.logout()
+
+        response = self.subscribe()
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_app_config_carries_the_public_key(self):
+        response = self.client.get(reverse('cooking:shopping-app'))
+
+        self.assertContains(response, 'BKtestpublickey')
+
+
+@override_settings(**VAPID_TEST_SETTINGS)
+class PushSendingTests(TestCase):
+    """Wysyłka powiadomień: bez powtórek i z czyszczeniem martwych telefonów."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='dawid-wysylka', password='pass12345')
+        self.phone = PushSubscription.objects.create(
+            user=self.user, endpoint='https://web.push.apple.com/abc', p256dh='klucz', auth='sekret',
+        )
+
+    def fake_pywebpush(self, webpush):
+        module = types.ModuleType('pywebpush')
+        module.webpush = webpush
+        module.WebPushException = FakeWebPushException
+        return patch.dict(sys.modules, {'pywebpush': module})
+
+    def test_notification_reaches_the_phone(self):
+        calls = []
+
+        def webpush(**kwargs):
+            calls.append(kwargs)
+
+        with self.fake_pywebpush(webpush):
+            sent = notify(kind='spizarnia', title='Do kupienia', body='Mleko', url='/cooking/shopping/app/')
+
+        self.assertEqual(sent, 1)
+        self.assertEqual(calls[0]['subscription_info']['endpoint'], 'https://web.push.apple.com/abc')
+        payload = json.loads(calls[0]['data'])
+        self.assertEqual(payload['title'], 'Do kupienia')
+        self.assertEqual(payload['body'], 'Mleko')
+        self.assertEqual(payload['url'], '/cooking/shopping/app/')
+        self.assertEqual(payload['tag'], 'spizarnia')
+        self.phone.refresh_from_db()
+        self.assertIsNotNone(self.phone.last_success_at)
+
+    def test_polish_letters_survive_the_payload(self):
+        calls = []
+
+        with self.fake_pywebpush(lambda **kwargs: calls.append(kwargs)):
+            notify(kind='spizarnia', title='Spiżarnia', body='Kończy się mąka')
+
+        payload = json.loads(calls[0]['data'])
+        self.assertEqual(payload['body'], 'Kończy się mąka')
+
+    def test_the_same_content_does_not_come_twice(self):
+        calls = []
+
+        with self.fake_pywebpush(lambda **kwargs: calls.append(kwargs)):
+            first = notify(kind='spizarnia', title='Do kupienia', body='Mleko', once_per='mleko')
+            second = notify(kind='spizarnia', title='Do kupienia', body='Mleko', once_per='mleko')
+            third = notify(kind='spizarnia', title='Do kupienia', body='Mleko i chleb', once_per='chleb|mleko')
+
+        self.assertEqual((first, second, third), (1, 0, 1))
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(SentNotification.objects.count(), 2)
+
+    def test_dead_subscription_is_removed(self):
+        def webpush(**kwargs):
+            raise FakeWebPushException('gone', status_code=410)
+
+        with self.fake_pywebpush(webpush):
+            sent = notify(kind='spizarnia', title='Do kupienia', body='Mleko')
+
+        self.assertEqual(sent, 0)
+        self.assertFalse(PushSubscription.objects.exists())
+
+    def test_temporary_error_counts_up_and_finally_drops_the_phone(self):
+        def webpush(**kwargs):
+            raise FakeWebPushException('server error', status_code=500)
+
+        with self.fake_pywebpush(webpush), self.assertLogs('cooking.services.push', 'WARNING'):
+            for _ in range(4):
+                notify(kind='spizarnia', title='Do kupienia', body='Mleko')
+            self.phone.refresh_from_db()
+            self.assertEqual(self.phone.failures, 4)
+            self.assertTrue(PushSubscription.objects.exists())
+
+            notify(kind='spizarnia', title='Do kupienia', body='Mleko')
+
+        self.assertFalse(PushSubscription.objects.exists())
+
+    def test_one_broken_phone_does_not_block_the_other(self):
+        PushSubscription.objects.create(
+            user=self.user, endpoint='https://fcm.googleapis.com/xyz', p256dh='klucz', auth='sekret',
+        )
+        reached = []
+
+        def webpush(**kwargs):
+            endpoint = kwargs['subscription_info']['endpoint']
+            if 'apple' in endpoint:
+                raise FakeWebPushException('gone', status_code=410)
+            reached.append(endpoint)
+
+        with self.fake_pywebpush(webpush):
+            sent = notify(kind='spizarnia', title='Do kupienia', body='Mleko')
+
+        self.assertEqual(sent, 1)
+        self.assertEqual(reached, ['https://fcm.googleapis.com/xyz'])
+
+    def test_no_network_on_pi_is_survived(self):
+        def webpush(**kwargs):
+            raise OSError('brak sieci')
+
+        with self.fake_pywebpush(webpush), self.assertLogs('cooking.services.push', 'WARNING'):
+            sent = notify(kind='spizarnia', title='Do kupienia', body='Mleko')
+
+        self.assertEqual(sent, 0)
+        self.assertTrue(PushSubscription.objects.exists())
+
+    @override_settings(VAPID_PUBLIC_KEY='', VAPID_PRIVATE_KEY='')
+    def test_without_keys_nothing_is_sent(self):
+        def webpush(**kwargs):
+            raise AssertionError('nie powinno dojść do wysyłki')
+
+        with self.fake_pywebpush(webpush):
+            self.assertEqual(notify(kind='spizarnia', title='Do kupienia', body='Mleko'), 0)
+        self.assertFalse(SentNotification.objects.exists())
+
+    def test_old_notification_log_is_pruned(self):
+        old = SentNotification.objects.create(kind='spizarnia', fingerprint='stary')
+        SentNotification.objects.filter(pk=old.pk).update(sent_at=timezone.now() - timedelta(days=120))
+        SentNotification.objects.create(kind='spizarnia', fingerprint='swiezy')
+
+        removed = prune_notification_log()
+
+        self.assertEqual(removed, 1)
+        self.assertEqual(list(SentNotification.objects.values_list('fingerprint', flat=True)), ['swiezy'])
+
+
+@override_settings(**VAPID_TEST_SETTINGS)
+class SendRemindersCommandTests(TestCase):
+    """Komenda z crona: co trafia na telefon rano."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='dawid-cron', password='pass12345')
+        self.phone = PushSubscription.objects.create(
+            user=self.user, endpoint='https://web.push.apple.com/abc', p256dh='klucz', auth='sekret',
+        )
+        self.flour = PantryProduct.objects.create(
+            created_by=self.user, name='Mąka', category='Produkty sypkie',
+            unit=PantryProduct.UNIT_GRAM, quantity_per_scan=Decimal('1000.00'),
+            current_quantity=Decimal('0.00'), current_package_count=0,
+        )
+
+    def run_command(self, *args):
+        out = StringIO()
+        call_command('send_reminders', *args, stdout=out)
+        return out.getvalue()
+
+    def send(self, *args):
+        calls = []
+        module = types.ModuleType('pywebpush')
+        module.webpush = lambda **kwargs: calls.append(kwargs)
+        module.WebPushException = FakeWebPushException
+        with patch.dict(sys.modules, {'pywebpush': module}):
+            output = self.run_command(*args)
+        return output, calls
+
+    def test_missing_product_lands_on_the_phone(self):
+        output, calls = self.send('--kind', 'spizarnia')
+
+        self.assertIn('Mąka', output)
+        self.assertEqual(len(calls), 1)
+        payload = json.loads(calls[0]['data'])
+        self.assertIn('Mąka', payload['body'])
+        self.assertIn('produkt', payload['title'])
+        self.assertEqual(payload['url'], reverse('cooking:shopping-app'))
+
+    def test_dry_run_sends_nothing(self):
+        output, calls = self.send('--kind', 'spizarnia', '--dry-run')
+
+        self.assertIn('[próba]', output)
+        self.assertIn('Mąka', output)
+        self.assertEqual(calls, [])
+        self.assertFalse(SentNotification.objects.exists())
+
+    def test_the_same_shortage_is_not_repeated_next_morning(self):
+        self.send('--kind', 'spizarnia')
+
+        _, calls = self.send('--kind', 'spizarnia')
+
+        self.assertEqual(calls, [])
+
+    def test_a_new_shortage_gets_its_own_notification(self):
+        self.send('--kind', 'spizarnia')
+        PantryProduct.objects.create(
+            created_by=self.user, name='Ryż', category='Produkty sypkie',
+            unit=PantryProduct.UNIT_GRAM, quantity_per_scan=Decimal('1000.00'),
+            current_quantity=Decimal('0.00'), current_package_count=0,
+        )
+
+        _, calls = self.send('--kind', 'spizarnia')
+
+        self.assertEqual(len(calls), 1)
+        self.assertIn('Ryż', json.loads(calls[0]['data'])['body'])
+
+    def test_full_pantry_means_silence(self):
+        self.flour.current_quantity = Decimal('2000.00')
+        self.flour.current_package_count = 2
+        self.flour.save(update_fields=['current_quantity', 'current_package_count'])
+
+        output, calls = self.send('--kind', 'spizarnia')
+
+        self.assertIn('nic nie wymaga uzupełnienia', output)
+        self.assertEqual(calls, [])
+
+    def test_shopping_list_reminder_on_the_usual_day(self):
+        shopping_list = ShoppingList.objects.create(created_by=self.user, title='Sobota')
+        ShoppingListItem.objects.create(
+            shopping_list=shopping_list, name='Mleko', quantity=Decimal('1.00'),
+            unit=PantryProduct.UNIT_PIECE, category='Nabiał',
+        )
+        with patch('cooking.views.get_household_typical_shopping_weekday', return_value=timezone.localdate().weekday()):
+            output, calls = self.send('--kind', 'lista')
+
+        self.assertIn('Sobota', output)
+        self.assertEqual(len(calls), 1)
+        payload = json.loads(calls[0]['data'])
+        self.assertIn('Sobota', payload['title'])
+        self.assertIn('1 produkt', payload['body'])
+
+    def test_no_reminder_on_other_days(self):
+        ShoppingList.objects.create(created_by=self.user, title='Sobota')
+        with patch('cooking.views.get_household_typical_shopping_weekday', return_value=None):
+            output, calls = self.send('--kind', 'lista')
+
+        self.assertIn('nie jest Waszym zwykłym dniem zakupów', output)
+        self.assertEqual(calls, [])
+
+    def test_everything_ticked_off_means_no_reminder(self):
+        shopping_list = ShoppingList.objects.create(created_by=self.user, title='Sobota')
+        ShoppingListItem.objects.create(
+            shopping_list=shopping_list, name='Mleko', quantity=Decimal('1.00'),
+            unit=PantryProduct.UNIT_PIECE, category='Nabiał', is_purchased=True,
+        )
+        with patch('cooking.views.get_household_typical_shopping_weekday', return_value=timezone.localdate().weekday()):
+            output, calls = self.send('--kind', 'lista')
+
+        self.assertIn('wszystko już odhaczone', output)
+        self.assertEqual(calls, [])
+
+    def test_without_a_single_phone_the_command_just_says_so(self):
+        PushSubscription.objects.all().delete()
+
+        output = self.run_command()
+
+        self.assertIn('Żaden telefon', output)
+
+    @override_settings(VAPID_PUBLIC_KEY='', VAPID_PRIVATE_KEY='')
+    def test_without_keys_the_command_explains_what_to_do(self):
+        output = self.run_command()
+
+        self.assertIn('generate_vapid_keys', output)
+
+
+class GenerateVapidKeysCommandTests(TestCase):
+    def test_command_prints_lines_for_env(self):
+        out = StringIO()
+        call_command('generate_vapid_keys', stdout=out)
+        output = out.getvalue()
+
+        self.assertIn('VAPID_PUBLIC_KEY=', output)
+        self.assertIn('VAPID_PRIVATE_KEY=', output)
+
+
+class ServiceWorkerPushHandlerTests(TestCase):
+    """Service worker musi umieć odebrać powiadomienie i otworzyć listę."""
+
+    def test_service_worker_handles_push_and_click(self):
+        body = self.client.get(reverse('cooking:shopping-app-sw')).content.decode('utf-8')
+
+        self.assertIn("addEventListener('push'", body)
+        self.assertIn("addEventListener('notificationclick'", body)
+        self.assertIn('showNotification', body)
+        self.assertIn('clients.openWindow', body)
 
 
 class ShoppingItemUuidMigrationTests(TransactionTestCase):

@@ -20,3 +20,4 @@ sqlparse==0.5.3
 typing_extensions==4.15.0
 tzdata==2025.2
 whitenoise==6.9.0
+pywebpush==2.5.0

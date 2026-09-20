@@ -53,16 +53,29 @@
                 <span class="sa-sync-dot" aria-hidden="true"></span>
                 <span class="sa-sync-text" data-sync-text>Uruchamiam…</span>
             </button>
+            <button type="button" class="sa-offline-chip sa-shop-chip" data-shop-chip hidden>
+                <i class="bi bi-shop" aria-hidden="true"></i>
+                <span data-shop-text>Sklep</span>
+            </button>
             <button type="button" class="sa-offline-chip" data-offline-chip>
                 <i class="bi bi-phone" aria-hidden="true"></i>
                 <span data-offline-text>Sprawdzam…</span>
             </button>
             <span class="sa-progress-text" data-progress-text></span>
         </div>
+        <div class="sa-screen-switch" data-screen-switch hidden role="group" aria-label="Widok">
+            <button type="button" data-screen="lista" class="is-active" aria-pressed="true">
+                <i class="bi bi-card-checklist" aria-hidden="true"></i> Lista
+            </button>
+            <button type="button" data-screen="spizarnia" aria-pressed="false">
+                <i class="bi bi-box-seam" aria-hidden="true"></i> Spiżarnia
+            </button>
+        </div>
         <div class="sa-progress-bar" data-progress hidden><span data-progress-bar></span></div>
     </header>
 
     <div class="sa-banners" data-banners></div>
+    <div class="sa-details-wrap" data-shop></div>
     <div class="sa-details-wrap" data-details></div>
 
     <main class="sa-main" data-list aria-live="off"></main>
@@ -107,10 +120,15 @@
         <button type="button" class="sa-primary sa-add-open" data-add-open>
             <i class="bi bi-plus-lg" aria-hidden="true"></i> Dodaj produkt
         </button>
+        <button type="button" class="sa-secondary" data-scan-open aria-label="Skanuj kod kreskowy">
+            <i class="bi bi-upc-scan" aria-hidden="true"></i> <span data-scan-label>Skanuj</span>
+        </button>
         <button type="button" class="sa-secondary" data-complete-button>
             <i class="bi bi-bag-check" aria-hidden="true"></i> <span data-complete-label>Zakończ listę</span>
         </button>
     </footer>
+
+    <div class="sa-scanner" data-scanner hidden></div>
 
     <div class="sa-toasts" data-toasts aria-live="polite"></div>
 </div>

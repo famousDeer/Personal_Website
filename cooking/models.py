@@ -307,6 +307,41 @@ class PantryMovement(models.Model):
         return f"{self.product.name}: {self.get_movement_type_display()} {self.quantity} {self.product.unit}"
 
 
+class ShopLayout(models.Model):
+    """Sklep i kolejność alejek: w jakiej kolejności pokazywać kategorie.
+
+    W sklepie idzie się od wejścia do kasy, a nie alfabetycznie - lista ułożona
+    po alejkach oszczędza chodzenie w tę i z powrotem. Kolejność trzymamy jako
+    listę nazw kategorii; kategorie spoza niej trafiają na koniec w zwykłej
+    kolejności. UUID pozwala dodać sklep w telefonie bez połączenia.
+    """
+
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    name = models.CharField(max_length=80)
+    category_order = models.JSONField(default=list, blank=True)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'shop_layouts'
+        ordering = ['name']
+        constraints = [
+            models.UniqueConstraint(Lower('name'), name='unique_shop_layout_name_ci'),
+        ]
+
+    def __str__(self):
+        return self.name
+
+    def ordered_categories(self, categories):
+        """Kategorie z listy zakupów w kolejności alejek tego sklepu."""
+        known = [name for name in self.category_order if name in categories]
+        rest = [name for name in categories if name not in known]
+        return known + rest
+
+
 class ShoppingList(models.Model):
     MANUAL = 'manual'
     AUTOMATIC = 'automatic'
@@ -335,6 +370,11 @@ class ShoppingList(models.Model):
     title = models.CharField(max_length=180)
     source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default=MANUAL)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=ACTIVE)
+    # Sklep decyduje o kolejności kategorii na liście (kolejność alejek).
+    shop = models.ForeignKey(
+        ShopLayout, on_delete=models.SET_NULL, null=True, blank=True, related_name='shopping_lists',
+        verbose_name='Sklep',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -423,3 +463,46 @@ class ShoppingSyncOperation(models.Model):
 
     def __str__(self):
         return f'{self.op_type} {self.op_id} ({self.status})'
+
+
+class PushSubscription(models.Model):
+    """Zgoda telefonu na powiadomienia (Web Push).
+
+    Powiadomienie idzie przez serwer Apple albo Google, więc dociera także
+    poza domem, choć sam serwer jest tylko w sieci domowej. Jeden telefon =
+    jeden wpis; adres (endpoint) jest jego identyfikatorem.
+    """
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='push_subscriptions')
+    endpoint = models.TextField(unique=True)
+    p256dh = models.CharField(max_length=255)
+    auth = models.CharField(max_length=255)
+    device = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_success_at = models.DateTimeField(blank=True, null=True)
+    failures = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        db_table = 'push_subscriptions'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.user} ({self.device[:40] or "telefon"})'
+
+
+class SentNotification(models.Model):
+    """Ślad po wysłanym powiadomieniu, żeby nie powtarzać tej samej treści."""
+
+    kind = models.CharField(max_length=40)
+    fingerprint = models.CharField(max_length=64)
+    sent_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'sent_notifications'
+        ordering = ['-sent_at']
+        constraints = [
+            models.UniqueConstraint(fields=['kind', 'fingerprint'], name='unique_sent_notification'),
+        ]
+
+    def __str__(self):
+        return f'{self.kind} {self.sent_at:%d.%m %H:%M}'

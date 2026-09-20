@@ -202,6 +202,101 @@ button:disabled { cursor: not-allowed; }
     color: var(--expense-ink);
 }
 
+.sa-shop-chip[data-state="sklep"] {
+    border-color: var(--brand-100);
+    background: var(--brand-50);
+    background: color-mix(in srgb, var(--brand-500) 14%, var(--surface-1));
+    color: var(--ink-1);
+}
+
+.sa-shop-chip[hidden] { display: none; }
+
+.sa-footer .sa-secondary.is-icon {
+    flex: none;
+    width: 50px;
+    padding: 0;
+}
+
+.sa-footer .sa-secondary.is-icon i { font-size: 1.15rem; }
+
+.sa-shop-options {
+    display: grid;
+    gap: 6px;
+    margin-bottom: var(--sp-3);
+}
+
+.sa-shop-option {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: 10px var(--sp-3);
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--ink-1);
+}
+
+.sa-shop-option.is-active { border-color: var(--brand-500); }
+.sa-shop-option input { accent-color: var(--brand-600); width: 20px; height: 20px; }
+
+.sa-shop-new {
+    display: flex;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-2);
+}
+
+.sa-shop-new input {
+    flex: 1;
+    min-width: 0;
+    height: 44px;
+    padding: 0 var(--sp-3);
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+    color: var(--ink-1);
+    font-size: 1rem;
+}
+
+.sa-shop-new .sa-secondary { flex: none; height: 44px; padding: 0 var(--sp-3); }
+
+.sa-order-list {
+    list-style: none;
+    counter-reset: alejka;
+    margin: var(--sp-2) 0 0;
+    padding: 0;
+    display: grid;
+    gap: 6px;
+}
+
+.sa-order-list li {
+    counter-increment: alejka;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-2);
+    padding: 6px 6px 6px var(--sp-3);
+    border: 1px solid var(--line-2);
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--ink-1);
+}
+
+.sa-order-list li::before {
+    content: counter(alejka) '.';
+    margin-right: var(--sp-2);
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+}
+
+.sa-order-list li > span:first-of-type { flex: 1; }
+.sa-order-buttons { display: flex; gap: 4px; }
+.sa-order-buttons .sa-step { width: 38px; height: 38px; border: 1px solid var(--line-1); border-radius: var(--r-sm); background: var(--surface-1); }
+.sa-order-buttons .sa-step:disabled { opacity: 0.35; }
+
 .sa-details-wrap:empty { display: none; }
 .sa-details-wrap { padding: var(--sp-3) var(--sp-4) 0; }
 
@@ -232,7 +327,9 @@ button:disabled { cursor: not-allowed; }
 
 .sa-details dt { color: var(--ink-3); }
 .sa-details dd { margin: 0; color: var(--ink-1); font-weight: 600; overflow-wrap: anywhere; }
-.sa-details .sa-secondary { width: 100%; }
+/* Pełna szerokość tylko dla przycisków ustawionych bezpośrednio w panelu -
+   przycisk obok pola tekstowego ma zostać wąski. */
+.sa-details > .sa-secondary { width: 100%; }
 
 .sa-details-hint {
     margin: var(--sp-2) 0 0;
@@ -267,6 +364,125 @@ button:disabled { cursor: not-allowed; }
     background: var(--brand-gradient);
     transition: width var(--dur) var(--ease);
 }
+
+/* --- Przełącznik: lista albo spiżarnia -------------------------------- */
+.sa-screen-switch {
+    display: flex;
+    gap: 4px;
+    margin-top: var(--sp-3);
+    padding: 4px;
+    border-radius: var(--r-pill);
+    background: var(--surface-3);
+}
+
+.sa-screen-switch[hidden] { display: none; }
+
+.sa-screen-switch button {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 38px;
+    border: 0;
+    border-radius: var(--r-pill);
+    background: transparent;
+    color: var(--ink-3);
+    font-size: var(--fs-sm);
+    font-weight: 700;
+}
+
+.sa-screen-switch button.is-active {
+    background: var(--surface-1);
+    color: var(--ink-1);
+    box-shadow: var(--sh-1);
+}
+
+/* --- Spiżarnia --------------------------------------------------------- */
+.sa-pantry-search {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    margin: var(--sp-3) 0;
+    padding: 0 var(--sp-3);
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-md);
+    background: var(--surface-1);
+    color: var(--ink-3);
+}
+
+.sa-pantry-search input {
+    flex: 1;
+    min-width: 0;
+    height: 46px;
+    border: 0;
+    background: transparent;
+    color: var(--ink-1);
+    font-size: 1rem;
+}
+
+.sa-pantry-item .sa-item-body { padding-left: var(--sp-4); cursor: default; }
+.sa-pantry-actions { display: flex; gap: 4px; padding-right: var(--sp-3); }
+
+.sa-pantry-actions .sa-step {
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-sm);
+    background: var(--surface-2);
+}
+
+.sa-tag.is-stock-empty { background: var(--expense-bg); color: var(--expense-ink); }
+.sa-tag.is-stock-low { background: color-mix(in srgb, var(--cat-4) 18%, transparent); color: var(--ink-2); }
+.sa-tag.is-stock-ok { background: var(--income-bg); color: var(--income-ink); }
+
+/* --- Skaner ------------------------------------------------------------ */
+.sa-scanner {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: var(--sp-4);
+    padding-bottom: calc(var(--sp-4) + env(safe-area-inset-bottom));
+    background: rgba(2, 6, 12, 0.82);
+}
+
+.sa-scanner[hidden] { display: none; }
+
+.sa-scanner-camera,
+.sa-scanner-sheet {
+    width: 100%;
+    max-width: 560px;
+    display: grid;
+    gap: var(--sp-3);
+    padding: var(--sp-4);
+    border-radius: var(--r-xl);
+    background: var(--surface-1);
+    box-shadow: var(--sh-3);
+}
+
+.sa-scanner-camera video {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    border-radius: var(--r-lg);
+    background: #000;
+    object-fit: cover;
+}
+
+.sa-scanner-hint {
+    margin: 0;
+    text-align: center;
+    font-size: var(--fs-sm);
+    color: var(--ink-3);
+}
+
+.sa-scanner-sheet strong { font-size: var(--fs-h3); color: var(--ink-1); }
+.sa-scanner-sheet p { margin: 0; font-size: var(--fs-sm); color: var(--ink-3); }
+.sa-scanner-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.sa-scanner-actions .sa-primary,
+.sa-scanner-actions .sa-secondary { flex: 1 1 140px; height: 46px; }
 
 /* --- Komunikaty u góry --------------------------------------------------- */
 .sa-banners:empty { display: none; }

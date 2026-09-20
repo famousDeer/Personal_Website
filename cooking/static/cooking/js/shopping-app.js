@@ -25,6 +25,10 @@
     const OP_SET_PURCHASED = 'item.set_purchased';
     const OP_SET_QUANTITY = 'item.set_quantity';
     const OP_DELETE = 'item.delete';
+    const OP_PANTRY_MOVEMENT = 'pantry.movement';
+    const OP_SHOP_ADD = 'shop.add';
+    const OP_SHOP_ORDER = 'shop.set_order';
+    const OP_LIST_SHOP = 'list.set_shop';
 
     const unitLabels = Object.fromEntries(config.units.map((unit) => [unit.value, unit.label]));
     const categoryOrder = config.categoryGroups.flatMap((group) => group.categories);
@@ -178,7 +182,12 @@
         confirmComplete: false,
         renderDeferred: false,
         storageOk: true,
+        screen: 'lista',        // lista | spizarnia
+        pantrySearch: '',
+        scanner: null,          // {status, barcode, product, message}
         showDetails: false,
+        showShop: false,
+        pushOn: false,
         preparing: false,
         // Co jest zapisane w telefonie na wyjście z domu.
         offline: { checked: false, shell: false, files: 0, total: 0, sw: 'sprawdzam', error: '' },
@@ -209,7 +218,8 @@
     function currentView() {
         const view = state.snapshot
             ? JSON.parse(JSON.stringify(state.snapshot))
-            : { lists: [], products: [] };
+            : { lists: [], products: [], shops: [] };
+        view.shops = view.shops || [];
         const pendingItems = new Set();
         for (const { op } of state.outbox) {
             applyOp(view, op);
@@ -240,6 +250,50 @@
     }
 
     function applyOp(view, op) {
+        if (op.type === OP_PANTRY_MOVEMENT) {
+            const product = (view.products || []).find((candidate) => candidate.id === op.product);
+            if (!product) {
+                return;
+            }
+            const step = Number(product.package) * op.count;
+            let quantity = Number(product.quantity);
+            let packages = product.packages;
+            if (op.action === 'consume') {
+                quantity = Math.max(0, quantity - step);
+                packages = Math.max(0, packages - op.count);
+                if (quantity === 0) {
+                    packages = 0;
+                }
+            } else {
+                quantity += step;
+                packages += op.count;
+            }
+            product.quantity = quantity.toFixed(2);
+            product.packages = packages;
+            const minimum = Number(product.minimum);
+            product.status = quantity <= 0 ? 'empty' : (minimum > 0 && quantity <= minimum ? 'low' : 'ok');
+            return;
+        }
+        if (op.type === OP_SHOP_ADD) {
+            if (!view.shops.some((shop) => shop.uuid === op.shop)) {
+                view.shops.push({ uuid: op.shop, name: op.name, order: op.order || [] });
+            }
+            return;
+        }
+        if (op.type === OP_SHOP_ORDER) {
+            const shop = view.shops.find((candidate) => candidate.uuid === op.shop);
+            if (shop) {
+                shop.order = op.order.concat(shop.order.filter((name) => !op.order.includes(name)));
+            }
+            return;
+        }
+        if (op.type === OP_LIST_SHOP) {
+            const list = view.lists.find((candidate) => candidate.id === op.list);
+            if (list) {
+                list.shop = op.shop || '';
+            }
+            return;
+        }
         if (op.type === OP_ADD) {
             const list = view.lists.find((candidate) => candidate.id === op.list);
             if (!list || list.items.some((item) => item.uuid === op.data.uuid)) {
@@ -292,8 +346,10 @@
         op.at = new Date().toISOString();
         // Kolejne odhaczenia albo zmiany ilości tej samej pozycji zastępują
         // poprzednie, jeszcze niewysłane - liczy się ostatni stan.
-        if (op.type === OP_SET_PURCHASED || op.type === OP_SET_QUANTITY) {
-            const superseded = state.outbox.filter((entry) => entry.op.type === op.type && entry.op.item === op.item);
+        if (op.type === OP_SET_PURCHASED || op.type === OP_SET_QUANTITY || op.type === OP_SHOP_ORDER
+            || op.type === OP_LIST_SHOP) {
+            const key = op.type === OP_SHOP_ORDER ? 'shop' : (op.type === OP_LIST_SHOP ? 'list' : 'item');
+            const superseded = state.outbox.filter((entry) => entry.op.type === op.type && entry.op[key] === op[key]);
             if (superseded.length && !state.syncing) {
                 await store.outboxDelete(superseded.map((entry) => entry.seq));
                 state.outbox = state.outbox.filter((entry) => !superseded.includes(entry));
@@ -590,7 +646,14 @@
         return view.lists[0];
     }
 
-    function groupItems(items) {
+    function currentShop(view, list) {
+        if (!list || !list.shop) {
+            return null;
+        }
+        return (view.shops || []).find((shop) => shop.uuid === list.shop) || null;
+    }
+
+    function groupItems(items, shopOrder) {
         const groups = new Map();
         for (const item of items) {
             const key = item.category || '';
@@ -599,12 +662,21 @@
             }
             groups.get(key).push(item);
         }
+        const shopRank = (shopOrder || []).reduce((acc, name, index) => {
+            acc[name] = index;
+            return acc;
+        }, {});
         const rank = (category) => {
+            // Kolejność alejek sklepu wygrywa; reszta kategorii idzie dalej
+            // w zwykłej kolejności, a produkty bez kategorii na końcu.
+            if (category && shopRank[category] !== undefined) {
+                return shopRank[category];
+            }
             if (!category) {
                 return 10000;
             }
             const index = categoryOrder.indexOf(category);
-            return index === -1 ? 5000 : index;
+            return (shopOrder && shopOrder.length ? 1000 : 0) + (index === -1 ? 500 : index);
         };
         return [...groups.entries()]
             .sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0], 'pl'))
@@ -704,6 +776,12 @@
             ['Zalogowany', state.meta.user || 'nie'],
             ['Zmiany czekające na wysłanie', String(state.outbox.length)],
             ['Zapis danych', state.storageOk ? 'pamięć telefonu (IndexedDB)' : 'tylko do zamknięcia karty'],
+            ['Powiadomienia', !pushSupported
+                ? 'niedostępne w tej przeglądarce'
+                : (state.pushOn ? 'włączone na tym telefonie' : 'wyłączone')],
+            ['Liczba na ikonie', !badgeSupported
+                ? 'niedostępna w tej przeglądarce'
+                : (badgeAllowed() ? 'włączona' : 'wyłączona')],
             ['Wersja aplikacji', config.version],
         ];
         const insecureUrl = secureVersionUrl();
@@ -716,6 +794,15 @@
                     </button>
                 </div>
                 <dl>${rows.map(([label, value]) => `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl>
+                ${pushSupported && !insecureUrl ? `
+                    <button type="button" class="sa-secondary" data-push="${state.pushOn ? 'off' : 'on'}">
+                        <i class="bi bi-bell${state.pushOn ? '-slash' : ''}" aria-hidden="true"></i>
+                        ${state.pushOn ? 'Wyłącz powiadomienia' : 'Włącz powiadomienia'}
+                    </button>` : ''}
+                ${badgeSupported && !badgeAllowed() && !insecureUrl ? `
+                    <button type="button" class="sa-secondary" data-badge>
+                        <i class="bi bi-1-circle" aria-hidden="true"></i> Pokazuj liczbę na ikonie
+                    </button>` : ''}
                 ${insecureUrl ? `
                     <a class="sa-secondary" href="${escapeHtml(insecureUrl)}">
                         <i class="bi bi-shield-lock" aria-hidden="true"></i> Otwórz przez HTTPS
@@ -730,6 +817,68 @@
                     </button>
                     <p class="sa-details-hint">Przygotowanie działa tylko w domowej sieci: pobiera listę i zapisuje aplikację w telefonie.</p>`}
             </section>`;
+    }
+
+    function renderShopPanel(view, list) {
+        const container = el('[data-shop]');
+        if (!state.showShop || !list) {
+            container.innerHTML = '';
+            return;
+        }
+        const shop = currentShop(view, list);
+        const categories = groupItems(list.items.filter((item) => !item.is_purchased), shop && shop.order)
+            .map((group) => group.category);
+        const shopOptions = [{ uuid: '', name: 'Bez sklepu (alfabetycznie)' }, ...(view.shops || [])]
+            .map((candidate) => `
+                <label class="sa-shop-option ${(list.shop || '') === candidate.uuid ? 'is-active' : ''}">
+                    <input type="radio" name="sa-shop" value="${escapeHtml(candidate.uuid)}"
+                           ${(list.shop || '') === candidate.uuid ? 'checked' : ''} data-shop-pick>
+                    <span>${escapeHtml(candidate.name)}</span>
+                </label>`).join('');
+        const orderRows = categories.map((category, index) => `
+            <li>
+                <span>${escapeHtml(category)}</span>
+                <span class="sa-order-buttons">
+                    <button type="button" class="sa-step" data-move="up" data-category="${escapeHtml(category)}"
+                            aria-label="Wyżej: ${escapeHtml(category)}" ${index === 0 ? 'disabled' : ''}>
+                        <i class="bi bi-chevron-up" aria-hidden="true"></i>
+                    </button>
+                    <button type="button" class="sa-step" data-move="down" data-category="${escapeHtml(category)}"
+                            aria-label="Niżej: ${escapeHtml(category)}" ${index === categories.length - 1 ? 'disabled' : ''}>
+                        <i class="bi bi-chevron-down" aria-hidden="true"></i>
+                    </button>
+                </span>
+            </li>`).join('');
+        container.innerHTML = `
+            <section class="sa-details">
+                <div class="sa-details-head">
+                    <strong>Sklep i kolejność alejek</strong>
+                    <button type="button" class="sa-icon-button" data-shop-close aria-label="Zamknij">
+                        <i class="bi bi-x-lg" aria-hidden="true"></i>
+                    </button>
+                </div>
+                <div class="sa-shop-options">${shopOptions}</div>
+                <form class="sa-shop-new" data-shop-form>
+                    <input type="text" maxlength="80" placeholder="Nowy sklep, np. Lidl" data-shop-name aria-label="Nazwa nowego sklepu">
+                    <button type="submit" class="sa-secondary"><i class="bi bi-plus-lg" aria-hidden="true"></i> Dodaj</button>
+                </form>
+                ${shop ? `
+                    <p class="sa-details-hint">Ustaw kategorie w kolejności alejek w sklepie „${escapeHtml(shop.name)}”. Zmiany zapisują się też bez połączenia.</p>
+                    <ol class="sa-order-list">${orderRows}</ol>
+                ` : '<p class="sa-details-hint">Wybierz sklep, żeby ustawić kolejność alejek.</p>'}
+            </section>`;
+    }
+
+    function renderShopChip(view, list) {
+        const chip = el('[data-shop-chip]');
+        const shop = currentShop(view, list);
+        chip.hidden = !list;
+        chip.dataset.state = shop ? 'sklep' : 'brak';
+        el('[data-shop-text]').textContent = shop ? shop.name : 'Sklep';
+        chip.title = shop
+            ? `Kolejność alejek według sklepu „${shop.name}” - dotknij, żeby zmienić`
+            : 'Wybierz sklep, żeby ułożyć listę w kolejności alejek';
+        chip.setAttribute('aria-expanded', String(state.showShop));
     }
 
     function renderBanners(view) {
@@ -795,9 +944,21 @@
         void view;
     }
 
+    function renderScreenSwitch(view) {
+        const hasPantry = Boolean((view.products || []).length);
+        const switcher = el('[data-screen-switch]');
+        switcher.hidden = !hasPantry;
+        switcher.querySelectorAll('[data-screen]').forEach((button) => {
+            const active = button.dataset.screen === state.screen;
+            button.classList.toggle('is-active', active);
+            button.setAttribute('aria-pressed', String(active));
+        });
+        app.classList.toggle('is-pantry', state.screen === 'spizarnia');
+    }
+
     function render() {
         const active = document.activeElement;
-        if (active && active.matches && active.matches('[data-quantity-input]') && app.contains(active)) {
+        if (active && active.matches && active.matches('[data-quantity-input], [data-pantry-search]') && app.contains(active)) {
             // Nie przerysowujemy listy pod palcem, gdy ktoś wpisuje ilość.
             state.renderDeferred = true;
             renderStatus();
@@ -808,6 +969,9 @@
         const list = selectedList(view);
         renderStatus();
         renderOfflineChip();
+        renderScreenSwitch(view);
+        renderShopChip(view, list);
+        renderShopPanel(view, list);
         renderDetails();
         renderBanners(view);
 
@@ -834,17 +998,32 @@
             footer.hidden = true;
             progress.hidden = true;
             el('[data-progress-text]').textContent = '';
+            renderScanner(view, list);
             container.innerHTML = state.snapshot ? `
                 <div class="sa-empty">
                     <i class="bi bi-cart-check" aria-hidden="true"></i>
                     <h2>Nie ma aktywnej listy</h2>
                     <p>Utwórz listę w domu: <strong>Kuchnia → Lista zakupów</strong>. Pojawi się tu przy następnej synchronizacji.</p>
                 </div>` : (state.status === 'offline' ? '' : '<div class="sa-empty"><div class="sa-spinner" aria-hidden="true"></div><p>Pobieram listę…</p></div>');
+            updateBadge(view);
             return;
         }
 
         title.textContent = list.title;
         footer.hidden = false;
+        if (state.screen === 'spizarnia') {
+            container.innerHTML = renderPantry(view, list);
+            progress.hidden = true;
+            el('[data-progress-text]').textContent = `${(view.products || []).length} produktów`;
+            // W spiżarni liczy się tylko skanowanie - reszta przycisków znika.
+            el('[data-add-open]').hidden = true;
+            el('[data-complete-button]').hidden = true;
+            el('[data-scan-open]').classList.remove('is-icon');
+            el('[data-scan-label]').textContent = 'Skanuj kod';
+            renderScanner(view, list);
+            updateBadge(view);
+            return;
+        }
         const total = list.items.length;
         const done = list.items.filter((item) => item.is_purchased).length;
         progress.hidden = total === 0;
@@ -853,7 +1032,8 @@
 
         const toBuy = list.items.filter((item) => !item.is_purchased);
         const bought = list.items.filter((item) => item.is_purchased);
-        const sections = groupItems(toBuy).map((group) => `
+        const shop = currentShop(view, list);
+        const sections = groupItems(toBuy, shop && shop.order).map((group) => `
             <section class="sa-group">
                 <h2 class="sa-group-title">${escapeHtml(group.category)} <span>${group.items.length}</span></h2>
                 <ul class="sa-items">${group.items.map((item) => itemHtml(item, view)).join('')}</ul>
@@ -882,8 +1062,15 @@
                 </section>`);
         }
         container.innerHTML = sections.join('');
+        renderScanner(view, list);
+        updateBadge(view);
 
         const completeButton = el('[data-complete-button]');
+        el('[data-add-open]').hidden = false;
+        completeButton.hidden = false;
+        // Na liście skaner jest tylko ikoną, żeby zmieściły się trzy przyciski.
+        el('[data-scan-open]').classList.add('is-icon');
+        el('[data-scan-label]').textContent = '';
         const canComplete = state.status === 'online' && !state.outbox.length && done > 0;
         completeButton.disabled = !canComplete;
         completeButton.classList.toggle('is-confirm', state.confirmComplete);
@@ -905,8 +1092,395 @@
     }
 
     // ------------------------------------------------------------------
-    // Komunikaty
+    // Spiżarnia w telefonie
     // ------------------------------------------------------------------
+    const STATUS_LABELS = { empty: 'brak', low: 'mało', ok: 'jest' };
+
+    function pantryProducts(view) {
+        const search = state.pantrySearch.trim().toLocaleLowerCase('pl');
+        return (view.products || [])
+            .filter((product) => !search || product.name.toLocaleLowerCase('pl').includes(search))
+            .sort((a, b) => a.name.localeCompare(b.name, 'pl'));
+    }
+
+    function productOnList(view, list, product) {
+        if (!list) {
+            return null;
+        }
+        return list.items.find(
+            (item) => item.name.toLocaleLowerCase('pl') === product.name.toLocaleLowerCase('pl'),
+        ) || null;
+    }
+
+    function renderPantry(view, list) {
+        const products = pantryProducts(view);
+        const rows = products.map((product) => {
+            const onList = productOnList(view, list, product);
+            return `
+                <li class="sa-item sa-pantry-item" data-product="${product.id}">
+                    <div class="sa-item-row">
+                        <div class="sa-item-body">
+                            <span class="sa-item-name">${escapeHtml(product.name)}</span>
+                            <span class="sa-item-meta">
+                                <span class="sa-qty">${escapeHtml(formatQuantity(product.quantity))} ${escapeHtml(product.unit_label)}</span>
+                                <span class="sa-tag is-stock-${escapeHtml(product.status)}">${STATUS_LABELS[product.status] || product.status}</span>
+                                ${product.tracks_packages ? `<span class="sa-note">${product.packages} opak.</span>` : ''}
+                                ${onList ? '<span class="sa-tag"><i class="bi bi-cart" aria-hidden="true"></i> na liście</span>' : ''}
+                            </span>
+                        </div>
+                        <div class="sa-pantry-actions">
+                            <button type="button" class="sa-step" data-pantry="consume" aria-label="Zużyto jedno opakowanie: ${escapeHtml(product.name)}">
+                                <i class="bi bi-dash-lg" aria-hidden="true"></i>
+                            </button>
+                            <button type="button" class="sa-step" data-pantry="purchase" aria-label="Dokupiono jedno opakowanie: ${escapeHtml(product.name)}">
+                                <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                            </button>
+                            ${onList ? '' : `<button type="button" class="sa-step" data-pantry="to-list" aria-label="Dopisz do listy: ${escapeHtml(product.name)}">
+                                <i class="bi bi-cart-plus" aria-hidden="true"></i>
+                            </button>`}
+                        </div>
+                    </div>
+                </li>`;
+        }).join('');
+        return `
+            <div class="sa-pantry-search">
+                <i class="bi bi-search" aria-hidden="true"></i>
+                <input type="search" value="${escapeHtml(state.pantrySearch)}" placeholder="Szukaj produktu"
+                       aria-label="Szukaj w spiżarni" data-pantry-search>
+            </div>
+            ${products.length ? `<ul class="sa-items">${rows}</ul>` : `
+                <div class="sa-empty">
+                    <i class="bi bi-box-seam" aria-hidden="true"></i>
+                    <h2>${state.pantrySearch ? 'Nic nie znaleziono' : 'Spiżarnia jest pusta'}</h2>
+                    <p>${state.pantrySearch ? 'Zmień wyszukiwanie.' : 'Produkty dodajesz w domu, w zakładce Spiżarnia.'}</p>
+                </div>`}`;
+    }
+
+    // ------------------------------------------------------------------
+    // Skaner kodów (ta sama biblioteka co w spiżarni, ładowana na żądanie)
+    // ------------------------------------------------------------------
+    let zxingPromise = null;
+    let scannerControls = null;
+    let scannerStream = null;
+
+    function loadZxing() {
+        if (window.ZXingBrowser) {
+            return Promise.resolve(window.ZXingBrowser);
+        }
+        if (!zxingPromise) {
+            zxingPromise = new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = config.zxingUrl;
+                script.async = true;
+                script.onload = () => (window.ZXingBrowser
+                    ? resolve(window.ZXingBrowser)
+                    : reject(new Error('Nie udało się uruchomić czytnika kodów.')));
+                script.onerror = () => reject(new Error('Nie udało się wczytać czytnika kodów.'));
+                document.head.appendChild(script);
+            });
+        }
+        return zxingPromise;
+    }
+
+    function cameraErrorMessage(error) {
+        if (error && error.name === 'NotAllowedError') {
+            return 'Brak dostępu do aparatu. Zezwól na kamerę w ustawieniach telefonu.';
+        }
+        if (error && error.name === 'NotFoundError') {
+            return 'Nie znaleziono aparatu w tym urządzeniu.';
+        }
+        if (error && error.name === 'NotReadableError') {
+            return 'Aparat jest zajęty przez inną aplikację.';
+        }
+        return (error && error.message) ? error.message : 'Nie udało się włączyć aparatu.';
+    }
+
+    function stopScannerStream() {
+        if (scannerControls) {
+            scannerControls.stop();
+            scannerControls = null;
+        }
+        if (scannerStream) {
+            scannerStream.getTracks().forEach((track) => track.stop());
+            scannerStream = null;
+        }
+    }
+
+    async function openScanner() {
+        if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            toast('Aparat wymaga bezpiecznego połączenia (https).', 'warning');
+            return;
+        }
+        stopScannerStream();
+        state.scanner = { status: 'start' };
+        render();
+        try {
+            // Obraz bierzemy sami (tak jak skaner spiżarni), a czytnik dostaje
+            // gotowy strumień: inaczej sam szuka kamery, zanim przeglądarka da
+            // do niej dostęp, i kończy się to błędem "nie znaleziono urządzenia".
+            let stream;
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    audio: false,
+                    video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+                });
+            } catch (error) {
+                // Część urządzeń odrzuca dokładne wymagania (albo aparat jest
+                // zajęty przez chwilę po odblokowaniu) - próbujemy prościej,
+                // tak samo jak skaner w spiżarni.
+                stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+            }
+            scannerStream = stream;
+            const ZXingBrowser = await loadZxing();
+            if (!state.scanner) {
+                stopScannerStream();
+                return;
+            }
+            const video = el('[data-scanner-video]');
+            video.srcObject = stream;
+            await video.play().catch(() => null);
+            const reader = new ZXingBrowser.BrowserMultiFormatReader();
+            scannerControls = await reader.decodeFromStream(stream, video, (result, error, activeControls) => {
+                if (!result || !state.scanner || state.scanner.status !== 'scan') {
+                    return;
+                }
+                const barcode = typeof result.getText === 'function' ? result.getText() : result.text;
+                activeControls.stop();
+                scannerControls = null;
+                handleBarcode(barcode);
+            });
+            if (!state.scanner) {
+                stopScannerStream();
+                return;
+            }
+            state.scanner.status = 'scan';
+            render();
+        } catch (error) {
+            stopScannerStream();
+            state.scanner = { status: 'error', message: cameraErrorMessage(error) };
+            render();
+        }
+    }
+
+    function closeScanner() {
+        stopScannerStream();
+        state.scanner = null;
+        render();
+    }
+
+    function handleBarcode(barcode) {
+        const view = currentView();
+        const product = (view.products || []).find(
+            (candidate) => candidate.barcode && candidate.barcode === barcode,
+        );
+        if (navigator.vibrate) {
+            navigator.vibrate(18);
+        }
+        state.scanner = { status: 'result', barcode, product: product || null };
+        render();
+    }
+
+    async function scannerAction(action) {
+        const product = state.scanner && state.scanner.product;
+        if (!product) {
+            return;
+        }
+        const view = currentView();
+        const list = selectedList(view);
+        if (action === 'check') {
+            const item = productOnList(view, list, product);
+            if (item) {
+                await enqueue({ type: OP_SET_PURCHASED, item: item.uuid, purchased: true });
+                toast(`Odhaczono: ${product.name}`, 'success');
+            }
+        } else {
+            await enqueue({ type: OP_PANTRY_MOVEMENT, product: product.id, action, count: 1 });
+            toast(action === 'consume' ? `Zużyto: ${product.name}` : `Dokupiono: ${product.name}`, 'success');
+        }
+        // W sklepie skanuje się kilka rzeczy z rzędu, więc wracamy do aparatu.
+        openScanner();
+    }
+
+    // Podgląd z aparatu rysujemy RAZ: każde ponowne wstawienie HTML zabrałoby
+    // elementowi wideo strumień z kamery i skanowanie stawałoby w miejscu.
+    let scannerMarkup = null;
+
+    function scannerHintText(scanner) {
+        if (scanner.status === 'error') {
+            return scanner.message;
+        }
+        return scanner.status === 'start' ? 'Włączam aparat…' : 'Skieruj aparat na kod kreskowy';
+    }
+
+    function renderScanner(view, list) {
+        const container = el('[data-scanner]');
+        if (!state.scanner) {
+            container.hidden = true;
+            container.innerHTML = '';
+            scannerMarkup = null;
+            return;
+        }
+        container.hidden = false;
+        const scanner = state.scanner;
+        if (scanner.status === 'result') {
+            const product = scanner.product;
+            const item = product ? productOnList(view, list, product) : null;
+            container.innerHTML = `
+                <div class="sa-scanner-sheet">
+                    ${product ? `
+                        <strong>${escapeHtml(product.name)}</strong>
+                        <p>W spiżarni: ${escapeHtml(formatQuantity(product.quantity))} ${escapeHtml(product.unit_label)}
+                           · opakowanie ${escapeHtml(formatQuantity(product.package))} ${escapeHtml(product.unit_label)}</p>
+                        <div class="sa-scanner-actions">
+                            ${item && !item.is_purchased ? '<button type="button" class="sa-primary" data-scan-action="check"><i class="bi bi-check-lg" aria-hidden="true"></i> Odhacz z listy</button>' : ''}
+                            <button type="button" class="sa-secondary" data-scan-action="purchase"><i class="bi bi-plus-lg" aria-hidden="true"></i> Dokupiono</button>
+                            <button type="button" class="sa-secondary" data-scan-action="consume"><i class="bi bi-dash-lg" aria-hidden="true"></i> Zużyto</button>
+                        </div>` : `
+                        <strong>Nieznany kod</strong>
+                        <p>${escapeHtml(scanner.barcode)} — tego kodu nie ma jeszcze w spiżarni. Dodasz go w domu, w zakładce Spiżarnia.</p>`}
+                    <div class="sa-scanner-actions">
+                        <button type="button" class="sa-secondary" data-scan-again><i class="bi bi-upc-scan" aria-hidden="true"></i> Skanuj dalej</button>
+                        <button type="button" class="sa-secondary" data-scan-close>Zamknij</button>
+                    </div>
+                </div>`;
+            scannerMarkup = 'result';
+            return;
+        }
+        if (scannerMarkup !== 'camera') {
+            container.innerHTML = `
+                <div class="sa-scanner-camera">
+                    <video data-scanner-video playsinline muted autoplay></video>
+                    <p class="sa-scanner-hint"></p>
+                    <button type="button" class="sa-secondary" data-scan-close>Zamknij</button>
+                </div>`;
+            scannerMarkup = 'camera';
+        }
+        const hint = container.querySelector('.sa-scanner-hint');
+        if (hint) {
+            hint.textContent = scannerHintText(scanner);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Liczba na ikonie aplikacji
+    // ------------------------------------------------------------------
+    const badgeSupported = 'setAppBadge' in navigator;
+
+    function badgeAllowed() {
+        return 'Notification' in window && Notification.permission === 'granted';
+    }
+
+    function updateBadge(view) {
+        if (!badgeSupported) {
+            return;
+        }
+        const left = view.lists.reduce(
+            (sum, list) => sum + list.items.filter((item) => !item.is_purchased).length,
+            0,
+        );
+        try {
+            if (left > 0) {
+                navigator.setAppBadge(left).catch(() => null);
+            } else if (navigator.clearAppBadge) {
+                navigator.clearAppBadge().catch(() => null);
+            }
+        } catch (error) {
+            /* iPhone pokazuje liczbę dopiero po zgodzie na powiadomienia */
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Powiadomienia push
+    // ------------------------------------------------------------------
+    const pushSupported = 'serviceWorker' in navigator && 'PushManager' in window
+        && 'Notification' in window && Boolean(config.vapidPublicKey);
+
+    function urlBase64ToUint8Array(base64) {
+        const padded = (base64 + '='.repeat((4 - (base64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/');
+        const raw = atob(padded);
+        return Uint8Array.from([...raw].map((char) => char.charCodeAt(0)));
+    }
+
+    async function currentPushSubscription() {
+        if (!pushSupported) {
+            return null;
+        }
+        try {
+            const reg = await navigator.serviceWorker.getRegistration(config.swScope || config.scope);
+            return reg ? await reg.pushManager.getSubscription() : null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    async function refreshPushState() {
+        state.pushOn = Boolean(await currentPushSubscription());
+        render();
+    }
+
+    async function enablePush() {
+        if (!pushSupported) {
+            toast('Ten telefon nie obsługuje powiadomień z aplikacji.', 'warning');
+            return;
+        }
+        // iPhone pyta o zgodę tylko w odpowiedzi na dotknięcie przycisku.
+        const permission = await Notification.requestPermission().catch(() => 'denied');
+        if (permission !== 'granted') {
+            toast('Bez zgody na powiadomienia nic nie przyjdzie.', 'warning');
+            return;
+        }
+        try {
+            const reg = await navigator.serviceWorker.ready;
+            const subscription = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(config.vapidPublicKey),
+            });
+            const data = await postJson(config.pushSubscribeUrl, { subscription: subscription.toJSON() });
+            await acceptServerData(data);
+            state.pushOn = true;
+            updateBadge(currentView());
+            toast(data.message || 'Powiadomienia włączone.', 'success');
+        } catch (error) {
+            toast('Nie udało się włączyć powiadomień: ' + ((error && error.message) || 'błąd'), 'warning');
+        }
+        render();
+    }
+
+    async function disablePush() {
+        const subscription = await currentPushSubscription();
+        if (!subscription) {
+            state.pushOn = false;
+            render();
+            return;
+        }
+        const endpoint = subscription.endpoint;
+        await subscription.unsubscribe().catch(() => null);
+        try {
+            await postJson(config.pushUnsubscribeUrl, { endpoint });
+            toast('Powiadomienia wyłączone na tym telefonie.', 'info');
+        } catch (error) {
+            toast('Wyłączone na telefonie, ale serwer jeszcze o tym nie wie.', 'warning');
+        }
+        state.pushOn = false;
+        render();
+    }
+
+    async function askForBadge() {
+        if (!('Notification' in window)) {
+            toast('Ta przeglądarka nie pokazuje liczby na ikonie.', 'warning');
+            return;
+        }
+        // iPhone pyta o zgodę tylko w odpowiedzi na dotknięcie przycisku.
+        const result = await Notification.requestPermission().catch(() => 'denied');
+        if (result === 'granted') {
+            updateBadge(currentView());
+            toast('Gotowe. Na ikonie zobaczysz, ile produktów zostało.', 'success');
+        } else {
+            toast('Bez zgody na powiadomienia iPhone nie pokaże liczby na ikonie.', 'warning');
+        }
+        render();
+    }
+
     function toast(message, kind = 'info') {
         const container = el('[data-toasts]');
         const node = document.createElement('div');
@@ -1113,7 +1687,141 @@
         render();
     });
 
+    el('[data-screen-switch]').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-screen]');
+        if (!button) {
+            return;
+        }
+        state.screen = button.dataset.screen;
+        state.openItem = null;
+        state.showShop = false;
+        render();
+    });
+
+    el('[data-list]').addEventListener('input', (event) => {
+        if (event.target.matches('[data-pantry-search]')) {
+            state.pantrySearch = event.target.value;
+            const items = el('[data-list]').querySelector('.sa-items, .sa-empty');
+            const view = currentView();
+            const fresh = document.createElement('div');
+            fresh.innerHTML = renderPantry(view, selectedList(view));
+            const replacement = fresh.querySelector('.sa-items, .sa-empty');
+            if (items && replacement) {
+                items.replaceWith(replacement);
+            }
+        }
+    });
+
+    el('[data-list]').addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-pantry]');
+        if (!button) {
+            return;
+        }
+        const row = button.closest('[data-product]');
+        const view = currentView();
+        const list = selectedList(view);
+        const product = (view.products || []).find((candidate) => candidate.id === Number(row.dataset.product));
+        if (!product) {
+            return;
+        }
+        const action = button.dataset.pantry;
+        if (action === 'to-list') {
+            if (!list) {
+                toast('Nie ma aktywnej listy.', 'warning');
+                return;
+            }
+            await enqueue({
+                type: OP_ADD,
+                list: list.id,
+                data: {
+                    uuid: newId(), name: product.name, quantity: product.package,
+                    unit: product.unit, category: product.category, note: '',
+                },
+            });
+            toast(`Dopisano do listy: ${product.name}`, 'success');
+            return;
+        }
+        await enqueue({ type: OP_PANTRY_MOVEMENT, product: product.id, action, count: 1 });
+    });
+
+    el('[data-scanner]').addEventListener('click', (event) => {
+        if (event.target.closest('[data-scan-close]')) {
+            closeScanner();
+        } else if (event.target.closest('[data-scan-again]')) {
+            openScanner();
+        } else {
+            const action = event.target.closest('[data-scan-action]');
+            if (action) {
+                scannerAction(action.dataset.scanAction);
+            }
+        }
+    });
+
+    el('[data-scan-open]').addEventListener('click', openScanner);
+
+    el('[data-shop-chip]').addEventListener('click', () => {
+        state.showShop = !state.showShop;
+        state.showDetails = false;
+        render();
+    });
+
+    el('[data-shop]').addEventListener('click', async (event) => {
+        if (event.target.closest('[data-shop-close]')) {
+            state.showShop = false;
+            render();
+            return;
+        }
+        const pick = event.target.closest('[data-shop-pick]');
+        if (pick) {
+            const list = selectedList(currentView());
+            if (list) {
+                await enqueue({ type: OP_LIST_SHOP, list: list.id, shop: pick.value });
+            }
+            return;
+        }
+        const move = event.target.closest('[data-move]');
+        if (move) {
+            const view = currentView();
+            const list = selectedList(view);
+            const shop = currentShop(view, list);
+            if (!shop) {
+                return;
+            }
+            const categories = groupItems(list.items.filter((item) => !item.is_purchased), shop.order)
+                .map((group) => group.category)
+                .filter((category) => category !== 'Bez kategorii');
+            const index = categories.indexOf(move.dataset.category);
+            const target = move.dataset.move === 'up' ? index - 1 : index + 1;
+            if (index === -1 || target < 0 || target >= categories.length) {
+                return;
+            }
+            [categories[index], categories[target]] = [categories[target], categories[index]];
+            await enqueue({ type: OP_SHOP_ORDER, shop: shop.uuid, order: categories });
+        }
+    });
+
+    el('[data-shop]').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const input = el('[data-shop-name]');
+        const name = input.value.trim();
+        const view = currentView();
+        const list = selectedList(view);
+        if (!name || !list) {
+            return;
+        }
+        if ((view.shops || []).some((shop) => shop.name.toLocaleLowerCase('pl') === name.toLocaleLowerCase('pl'))) {
+            toast('Taki sklep już jest na liście.', 'warning');
+            return;
+        }
+        const shopId = newId();
+        input.value = '';
+        await enqueue({ type: OP_SHOP_ADD, shop: shopId, name, order: [] });
+        await enqueue({ type: OP_LIST_SHOP, list: list.id, shop: shopId });
+        toast(`Dodano sklep: ${name}`, 'success');
+    });
+
     el('[data-offline-chip]').addEventListener('click', () => {
+        state.showShop = false;
         state.showDetails = !state.showDetails;
         if (state.showDetails) {
             checkOfflineReady();
@@ -1127,6 +1835,15 @@
             render();
         } else if (event.target.closest('[data-prepare]')) {
             prepareOffline();
+        } else if (event.target.closest('[data-badge]')) {
+            askForBadge();
+        } else if (event.target.closest('[data-push]')) {
+            const button = event.target.closest('[data-push]');
+            if (button.dataset.push === 'on') {
+                enablePush();
+            } else {
+                disablePush();
+            }
         }
     });
 
@@ -1362,6 +2079,7 @@
         }
         render();
         await setupInstallHint();
+        refreshPushState();
         sync();
 
         setInterval(() => {

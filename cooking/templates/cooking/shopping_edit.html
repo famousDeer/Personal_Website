@@ -6,8 +6,8 @@
 <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-4 animate-fade-in">
     <div>
         <div class="small text-uppercase fw-bold text-muted mb-1">Edycja listy</div>
-        <h2 class="fw-bold mb-1 recipe-title">Nazwa listy</h2>
-        <p class="text-muted mb-0">Zmień nazwę widoczną na liście zakupów.</p>
+        <h2 class="fw-bold mb-1 recipe-title">Nazwa i sklep</h2>
+        <p class="text-muted mb-0">Sklep ustawia kolejność kategorii na liście, czyli kolejność alejek.</p>
     </div>
     <a href="{% url 'cooking:shopping-list-detail' shopping_list.id %}" class="btn btn-soft-neutral rounded-pill px-4">
         <i class="bi bi-arrow-left me-1"></i> Wróć
@@ -24,6 +24,25 @@
                         <input type="text" class="form-control fs-5 fw-bold" id="title" name="title"
                                value="{{ form_values.title|default:shopping_list.title }}" placeholder="Nazwa listy" required>
                         <label for="title">Nazwa listy</label>
+                    </div>
+
+                    <div class="form-floating mb-3">
+                        <select class="form-select" id="shop" name="shop">
+                            <option value="">Bez sklepu (kolejność alfabetyczna)</option>
+                            {% for shop in shops %}
+                                <option value="{{ shop.id }}" {% if shopping_list.shop_id == shop.id %}selected{% endif %}>{{ shop.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <label for="shop">Sklep</label>
+                    </div>
+
+                    <div class="form-floating mb-4">
+                        <input type="text" class="form-control" id="new-shop" name="new_shop" maxlength="80"
+                               value="" placeholder="Nowy sklep">
+                        <label for="new-shop">…albo wpisz nowy sklep</label>
+                        <div class="form-text ms-1">
+                            Kolejność alejek ustawisz w trybie zakupów na telefonie, przy półce.
+                        </div>
                     </div>
 
                     <div class="d-grid gap-2">

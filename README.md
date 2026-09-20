@@ -398,6 +398,66 @@ whenever the server answers.
 iOS has no background sync, so the app syncs when opened, when brought back to the
 foreground, after each change and every 30 s while open.
 
+**In the shop**
+- **Aisle order per shop.** A list can be assigned a shop (`ShopLayout`, migration
+  `0015`); the first check-off order in that shop is remembered as
+  `category_order`, and from then on the list is sorted the way you walk the aisles.
+  Adding a shop and reordering categories work offline (`shop.add`, `shop.set_order`,
+  `list.set_shop`), so the order can be corrected mid-shop.
+- **Number on the icon.** The count of items left to buy is shown on the home-screen
+  icon (Badging API; iPhone needs the app started from the icon and notifications
+  allowed). The number is updated after every change, also offline, and cleared when the
+  list is finished.
+- **Pantry in the phone.** The app has a second screen with the whole pantry, saved
+  along with the lists, so stock, search and the barcode scanner work without the
+  server. Scanning a known product offline takes one package off the stock (the
+  `pantry.movement` operation syncs later); an unknown barcode can only be added at
+  home. "Dopisz do listy" puts a product straight onto the active list.
+
+## Push notifications
+
+The phone can be reminded about the pantry and the shopping list even outside the home
+network: the Pi does not reach the phone directly, it hands the notification to Apple's
+or Google's push service (the address stored in the subscription), and that service
+delivers it.
+
+**Setup**
+```bash
+docker compose exec -T web python manage.py generate_vapid_keys
+```
+Copy the two printed lines into `.env` and restart the app:
+```env
+VAPID_PUBLIC_KEY=...
+VAPID_PRIVATE_KEY=...
+VAPID_SUBJECT=mailto:you@example.com
+```
+```bash
+docker compose up -d --build web
+```
+Without the keys everything else works; sending is simply off and the command says so.
+
+**On the phone**
+- Open the diagnostics panel in the app and tap "Włącz" next to **Powiadomienia**.
+- iPhone: only the app started from the home-screen icon can ask for permission
+  (iOS 16.4+), and the permission dialog must follow a tap — hence the button.
+- Each phone is one `PushSubscription` row, identified by its endpoint. A phone that
+  uninstalls the app or withdraws permission answers 404/410 and is removed
+  automatically; five failures in a row also drop it.
+
+**Sending** (`cooking/management/commands/send_reminders.py`, run from cron):
+```bash
+docker compose exec -T web python manage.py send_reminders
+docker compose exec -T web python manage.py send_reminders --dry-run
+docker compose exec -T web python manage.py send_reminders --kind spizarnia
+```
+- `spizarnia` — the products the automatic shopping list would suggest. The same set of
+  products is not sent twice (`SentNotification`, migration `0016`), so it does not
+  arrive every morning; a new shortage does.
+- `lista` — on the household's usual shopping weekday, how much is left on the active
+  list; once per list per day.
+- Tapping a notification opens the shopping app on the list (handled in the service
+  worker). The log of sent notifications is pruned after 90 days.
+
 ## Scheduled tasks (cron)
 Market data refresh and price history synchronisation are also available as
 management commands, so they do not have to run inside a web request:
@@ -422,6 +482,8 @@ Example crontab on the Pi:
 30 22 * * 1-5 cd /path/to/Website-Finance && docker compose exec -T web python manage.py sync_price_history
 # Dividends once a week (Alpha Vantage has a daily quota)
 0 7 * * 6 cd /path/to/Website-Finance && docker compose exec -T web python manage.py refresh_market_data --dividends
+# Pantry and shopping-list reminders on the phone
+0 8 * * * cd /path/to/Website-Finance && docker compose exec -T web python manage.py send_reminders
 ```
 
 ## Project structure
@@ -441,12 +503,14 @@ Website-Finance/
 │  └─ static/                 # css/style.css, js/
 ├─ cooking/                   # Recipes, pantry, shopping lists
 │  ├─ constants.py            # Pantry category list and groups
-│  ├─ management/commands/    # learn_pantry_catalog, preview_shared_pantry
+│  ├─ management/commands/    # learn_pantry_catalog, preview_shared_pantry,
+│  │                          # generate_vapid_keys, send_reminders
 │  ├─ services/
 │  │  ├─ pantry_editing.py    # Full edit side effects: unit conversion, corrections, list items
 │  │  ├─ pantry_forecast.py   # Consumption forecasting
 │  │  ├─ pantry_quantities.py # Quantity, unit and package helpers shared by views and sync
 │  │  ├─ pantry_sharing.py    # Merging per-user pantries into one (migration 0011)
+│  │  ├─ push.py              # Web Push/VAPID sending, no-repeat guard, dead subscriptions
 │  │  ├─ shopping_sync.py     # Offline shopping: operations from the phone, pantry restocking
 │  │  ├─ polish.py            # Polish plural forms in messages
 │  │  └─ product_catalog.py   # Household memory, Open Food Facts cache, category mapping
@@ -510,6 +574,10 @@ Pantry product catalog:
 - Photos taken by a user for products missing a catalog image stay outside the public media tree in `private_media/pantry_product_images` and are served only to the product owner.
 - Docker mounts `private_media/` as a persistent application volume, so user photos survive container rebuilds.
 - Pantry stock keeps both the exact total quantity (for example `1000 ml`) and the number of scanned packages/items (for example `5 szt.`).
+
+Push notifications:
+- VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY: generated with `python manage.py generate_vapid_keys`; without them notifications are disabled and nothing else changes
+- VAPID_SUBJECT: contact address required by the push services, e.g. `mailto:you@example.com`
 
 ## Troubleshooting
 - Page not loading: run docker compose logs -f web and docker compose logs -f db

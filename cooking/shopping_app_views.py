@@ -22,7 +22,7 @@ from django.utils import timezone
 from django.views import View
 
 from .constants import PANTRY_CATEGORY_GROUPS, PANTRY_CATEGORY_OTHER
-from .models import PANTRY_UNIT_CHOICES, ShoppingList
+from .models import PANTRY_UNIT_CHOICES, PushSubscription, ShoppingList
 from .services.polish import completion_message
 from .services.shopping_sync import (
     apply_operations,
@@ -45,6 +45,9 @@ APP_STATIC_FILES = [
     'vendor/bootstrap-icons/fonts/bootstrap-icons.woff',
     'cooking/css/shopping-app.css',
     'cooking/js/shopping-app.js',
+    # Czytnik kodów: 430 KB, więc nie jest wymagany do instalacji, ale zapisany
+    # pozwala skanować w sklepie bez połączenia.
+    'cooking/vendor/zxing-browser-0.2.1.min.js',
     'cooking/icons/shopping-192.png',
     'cooking/icons/shopping-512.png',
     'cooking/icons/shopping-maskable-512.png',
@@ -95,6 +98,10 @@ class ShoppingAppView(View):
                 'loginUrl': f"{reverse('login')}?next={reverse('cooking:shopping-app')}",
                 'listsUrl': reverse('cooking:shopping-list'),
                 'assetCount': len(APP_STATIC_FILES) + 2,  # + powłoka i manifest
+                'zxingUrl': static('cooking/vendor/zxing-browser-0.2.1.min.js'),
+                'vapidPublicKey': settings.VAPID_PUBLIC_KEY,
+                'pushSubscribeUrl': reverse('cooking:shopping-api-push-subscribe'),
+                'pushUnsubscribeUrl': reverse('cooking:shopping-api-push-unsubscribe'),
                 'units': [{'value': value, 'label': label} for value, label in PANTRY_UNIT_CHOICES],
                 'categoryGroups': [
                     {'label': label, 'categories': list(categories)}
@@ -119,6 +126,8 @@ class ShoppingAppServiceWorkerView(View):
             'shell_url_json': json.dumps(reverse('cooking:shopping-app')),
             'scope_prefix_json': json.dumps(reverse('cooking:shopping-list')),
             'api_prefix_json': json.dumps(reverse('cooking:shopping-app') + 'api/'),
+            # Adres ikony z hashem, bo w produkcji pliki statyczne mają inne nazwy.
+            'icon_json': json.dumps(static('cooking/icons/shopping-192.png')),
         })
         response = HttpResponse(body, content_type='application/javascript; charset=utf-8')
         # Zasięg szerszy niż katalog pliku: ikona dodana do ekranu telefonu
@@ -260,3 +269,45 @@ class ShoppingCompleteApiView(ShoppingApiMixin, View):
         if errors:
             return JsonResponse({'ok': False, 'error': 'invalid', 'message': ' '.join(errors[:5])}, status=400)
         return self.payload(request, message=completion_message(added, already))
+
+
+class ShoppingPushSubscribeApiView(ShoppingApiMixin, View):
+    """Zapisuje zgodę telefonu na powiadomienia."""
+
+    def post(self, request):
+        try:
+            data = self.read_json(request)
+        except ValueError as exc:
+            return JsonResponse({'ok': False, 'error': 'invalid', 'message': str(exc)}, status=400)
+        subscription = data.get('subscription') or {}
+        endpoint = str(subscription.get('endpoint') or '').strip()
+        keys = subscription.get('keys') or {}
+        p256dh = str(keys.get('p256dh') or '').strip()
+        auth = str(keys.get('auth') or '').strip()
+        if not endpoint.startswith('https://') or not p256dh or not auth:
+            return JsonResponse(
+                {'ok': False, 'error': 'invalid', 'message': 'Nieprawidłowa subskrypcja powiadomień.'},
+                status=400,
+            )
+        PushSubscription.objects.update_or_create(
+            endpoint=endpoint,
+            defaults={
+                'user': request.user,
+                'p256dh': p256dh[:255],
+                'auth': auth[:255],
+                'device': request.META.get('HTTP_USER_AGENT', '')[:255],
+                'failures': 0,
+            },
+        )
+        return self.payload(request, message='Powiadomienia włączone na tym telefonie.')
+
+
+class ShoppingPushUnsubscribeApiView(ShoppingApiMixin, View):
+    def post(self, request):
+        try:
+            data = self.read_json(request)
+        except ValueError as exc:
+            return JsonResponse({'ok': False, 'error': 'invalid', 'message': str(exc)}, status=400)
+        endpoint = str(data.get('endpoint') or '').strip()
+        PushSubscription.objects.filter(endpoint=endpoint).delete()
+        return self.payload(request, message='Powiadomienia wyłączone na tym telefonie.')

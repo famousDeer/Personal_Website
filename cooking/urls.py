@@ -35,6 +35,16 @@ urlpatterns = [
     path('shopping/app/api/snapshot/', shopping_app_views.ShoppingSnapshotApiView.as_view(), name='shopping-api-snapshot'),
     path('shopping/app/api/sync/', shopping_app_views.ShoppingSyncApiView.as_view(), name='shopping-api-sync'),
     path(
+        'shopping/app/api/push/subscribe/',
+        shopping_app_views.ShoppingPushSubscribeApiView.as_view(),
+        name='shopping-api-push-subscribe',
+    ),
+    path(
+        'shopping/app/api/push/unsubscribe/',
+        shopping_app_views.ShoppingPushUnsubscribeApiView.as_view(),
+        name='shopping-api-push-unsubscribe',
+    ),
+    path(
         'shopping/app/api/lists/<int:list_id>/complete/',
         shopping_app_views.ShoppingCompleteApiView.as_view(),
         name='shopping-api-complete',

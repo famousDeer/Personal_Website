@@ -21,6 +21,7 @@ const REQUIRED = {{ required_json|safe }};
 const SHELL_URL = {{ shell_url_json|safe }};
 const SCOPE_PREFIX = {{ scope_prefix_json|safe }};
 const API_PREFIX = {{ api_prefix_json|safe }};
+const NOTIFICATION_ICON = {{ icon_json|safe }};
 
 async function cacheUrl(cache, url) {
     let response;
@@ -163,4 +164,41 @@ self.addEventListener('message', (event) => {
             });
         })().catch(() => port.postMessage({ version: VERSION, cached: 0, total: PRECACHE.length, missingRequired: REQUIRED }));
     }
+});
+
+// --- Powiadomienia -------------------------------------------------------
+self.addEventListener('push', (event) => {
+    let payload = {};
+    try {
+        payload = event.data ? event.data.json() : {};
+    } catch (error) {
+        payload = { title: 'Dom', body: event.data ? event.data.text() : '' };
+    }
+    const title = payload.title || 'Lista zakupów';
+    event.waitUntil(self.registration.showNotification(title, {
+        body: payload.body || '',
+        icon: payload.icon || NOTIFICATION_ICON,
+        badge: payload.badge || NOTIFICATION_ICON,
+        tag: payload.tag || 'dom',
+        renotify: false,
+        data: { url: payload.url || SHELL_URL },
+    }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+    const target = (event.notification.data && event.notification.data.url) || SHELL_URL;
+    event.waitUntil((async () => {
+        const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        for (const client of clientList) {
+            if (client.url.includes(SHELL_URL) && 'focus' in client) {
+                await client.focus();
+                if ('navigate' in client && !client.url.endsWith(target)) {
+                    await client.navigate(target).catch(() => null);
+                }
+                return;
+            }
+        }
+        await self.clients.openWindow(target);
+    })());
 });

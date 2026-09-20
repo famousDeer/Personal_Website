@@ -342,6 +342,12 @@ MESSAGE_TAGS = {
 
 LOGIN_REDIRECT_URL = 'index'
 LOGOUT_REDIRECT_URL = '/'
+# Powiadomienia push (Web Push/VAPID). Klucze generuje
+# `python manage.py generate_vapid_keys`; bez nich powiadomienia są wyłączone.
+VAPID_PUBLIC_KEY = os.environ.get('VAPID_PUBLIC_KEY', '')
+VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY', '')
+VAPID_SUBJECT = os.environ.get('VAPID_SUBJECT', 'mailto:dom@example.com')
+
 LOGIN_URL = 'login'
 
 SESSION_ENGINE = 'django.contrib.sessions.backends.db'

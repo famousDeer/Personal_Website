@@ -27,6 +27,7 @@ from .models import (
     PantryMovement,
     PantryProduct,
     ProductCatalogEntry,
+    ShopLayout,
     Recipe,
     RecipeStep,
     RecipeStepIngredient,
@@ -59,6 +60,7 @@ from .services.shopping_sync import (
     complete_shopping_list,
     refresh_pantry_purchase,
     set_item_purchased,
+    sort_items_by_shop,
 )
 from .services.pantry_quantities import (
     PANTRY_MAX_QUANTITY,
@@ -1773,10 +1775,10 @@ class GenerateShoppingListView(LoginRequiredMixin, View):
 class ShoppingListDetailView(LoginRequiredMixin, View):
     def get(self, request, list_id):
         shopping_list = get_object_or_404(
-            ShoppingList.objects.prefetch_related('items__pantry_product'),
+            ShoppingList.objects.select_related('shop').prefetch_related('items__pantry_product'),
             id=list_id,
         )
-        items = list(shopping_list.items.all())
+        items = sort_items_by_shop(shopping_list, shopping_list.items.all())
         item_count = len(items)
         purchased_count = sum(1 for item in items if item.is_purchased)
         progress_percent = int((purchased_count / item_count) * 100) if item_count else 0
@@ -1794,25 +1796,43 @@ class ShoppingListDetailView(LoginRequiredMixin, View):
 
 
 class EditShoppingListView(LoginRequiredMixin, View):
+    def context(self, shopping_list, **extra):
+        context = {'shopping_list': shopping_list, 'shops': ShopLayout.objects.all()}
+        context.update(extra)
+        return context
+
     def get(self, request, list_id):
         shopping_list = get_object_or_404(ShoppingList, id=list_id)
-        return render(request, 'cooking/shopping_edit.html', {
-            'shopping_list': shopping_list,
-        })
+        return render(request, 'cooking/shopping_edit.html', self.context(shopping_list))
 
     def post(self, request, list_id):
         shopping_list = get_object_or_404(ShoppingList, id=list_id)
         title = request.POST.get('title', '').strip()
         if not title:
             messages.error(request, 'Nazwa listy jest wymagana.')
-            return render(request, 'cooking/shopping_edit.html', {
-                'shopping_list': shopping_list,
-                'form_values': request.POST,
-            })
+            return render(
+                request,
+                'cooking/shopping_edit.html',
+                self.context(shopping_list, form_values=request.POST),
+            )
+
+        # Sklep decyduje o kolejności kategorii (kolejność alejek). Kolejność
+        # ustawia się w trybie zakupów na telefonie, tutaj wybiera się sklep.
+        new_shop = request.POST.get('new_shop', '').strip()
+        shop_id = request.POST.get('shop', '').strip()
+        if new_shop:
+            shop = ShopLayout.objects.filter(name__iexact=new_shop).first()
+            if shop is None:
+                shop = ShopLayout.objects.create(name=new_shop[:80], created_by=request.user)
+            shopping_list.shop = shop
+        elif shop_id:
+            shopping_list.shop = ShopLayout.objects.filter(pk=shop_id).first()
+        else:
+            shopping_list.shop = None
 
         shopping_list.title = title
-        shopping_list.save(update_fields=['title', 'updated_at'])
-        messages.success(request, 'Zapisano nazwę listy.')
+        shopping_list.save(update_fields=['title', 'shop', 'updated_at'])
+        messages.success(request, 'Zapisano listę.')
         return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
 
 

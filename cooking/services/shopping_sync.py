@@ -31,6 +31,7 @@ from ..models import (
     PANTRY_UNIT_CHOICES,
     PantryMovement,
     PantryProduct,
+    ShopLayout,
     ShoppingList,
     ShoppingListItem,
     ShoppingSyncOperation,
@@ -50,13 +51,21 @@ OP_ADD = 'item.add'
 OP_SET_PURCHASED = 'item.set_purchased'
 OP_SET_QUANTITY = 'item.set_quantity'
 OP_DELETE = 'item.delete'
-OP_TYPES = (OP_ADD, OP_SET_PURCHASED, OP_SET_QUANTITY, OP_DELETE)
+OP_PANTRY_MOVEMENT = 'pantry.movement'
+OP_SHOP_ADD = 'shop.add'
+OP_SHOP_ORDER = 'shop.set_order'
+OP_LIST_SHOP = 'list.set_shop'
+OP_TYPES = (
+    OP_ADD, OP_SET_PURCHASED, OP_SET_QUANTITY, OP_DELETE,
+    OP_PANTRY_MOVEMENT, OP_SHOP_ADD, OP_SHOP_ORDER, OP_LIST_SHOP,
+)
 
 STATUS_APPLIED = 'applied'
 STATUS_SKIPPED = 'skipped'
 STATUS_REJECTED = 'rejected'
 
 MAX_OPERATIONS_PER_SYNC = 500
+TWO_PLACES = Decimal('0.01')
 UNIT_LABELS = dict(PANTRY_UNIT_CHOICES)
 
 
@@ -244,9 +253,81 @@ def item_json(item):
     }
 
 
+def sort_items_by_shop(shopping_list, items):
+    """Pozycje w kolejności alejek sklepu; bez sklepu - jak dotąd (alfabetycznie)."""
+    if not shopping_list.shop_id:
+        return list(items)
+    rank = {name: index for index, name in enumerate(shopping_list.shop.category_order)}
+    return sorted(
+        items,
+        key=lambda item: (
+            item.is_purchased,
+            rank.get(item.category, len(rank) + 1),
+            item.category,
+            item.name,
+        ),
+    )
+
+
+def pantry_product_json(product):
+    return {
+        'id': product.id,
+        'name': product.name,
+        'barcode': product.barcode,
+        'unit': product.unit,
+        'unit_label': UNIT_LABELS.get(product.unit, product.unit),
+        'category': product.category,
+        'package': format(product.quantity_per_scan, '.2f'),
+        'quantity': format(product.current_quantity, '.2f'),
+        'packages': product.current_package_count,
+        'tracks_packages': product.tracks_packages,
+        'minimum': format(product.minimum_quantity, '.2f'),
+        'status': product.stock_status,
+    }
+
+
+def apply_pantry_scan(product, action, count, occurred_on, note=''):
+    """Zeskanowane zużycie albo zakup: ten sam rachunek co w skanerze spiżarni."""
+    quantity = (product.quantity_per_scan * Decimal(count)).quantize(TWO_PLACES)
+    if product.current_package_count == 0 and product.current_quantity > 0:
+        sync_package_count_from_quantity(product)
+    before_quantity = product.current_quantity
+    before_packages = product.current_package_count
+    insufficient = False
+
+    if action == PantryMovement.CONSUME:
+        insufficient = quantity > before_quantity or count > before_packages
+        fulfilled = min(quantity, before_quantity)
+        fulfilled_packages = min(count, before_packages)
+        product.current_quantity = before_quantity - fulfilled
+        product.current_package_count = max(0, before_packages - fulfilled_packages)
+        if product.current_quantity == 0:
+            product.current_package_count = 0
+    else:
+        validate_pantry_storage_quantity(before_quantity + quantity)
+        fulfilled = quantity
+        fulfilled_packages = count
+        product.current_quantity = before_quantity + quantity
+        product.current_package_count = before_packages + count
+
+    product.save(update_fields=['current_quantity', 'current_package_count', 'updated_at'])
+    PantryMovement.objects.create(
+        product=product,
+        movement_type=action,
+        quantity=fulfilled,
+        requested_quantity=quantity,
+        package_count=fulfilled_packages,
+        requested_package_count=count,
+        stock_was_insufficient=insufficient,
+        occurred_on=occurred_on,
+        note=note[:255],
+    )
+    return insufficient
+
+
 def shopping_snapshot():
     lists = ShoppingList.objects.filter(status=ShoppingList.ACTIVE).select_related(
-        'created_by',
+        'created_by', 'shop',
     ).prefetch_related('items__purchased_by')
     return {
         'server_time': timezone.now().isoformat(),
@@ -257,18 +338,18 @@ def shopping_snapshot():
                 'source': shopping_list.source,
                 'created_by': shopping_list.created_by.username if shopping_list.created_by else '',
                 'updated_at': shopping_list.updated_at.isoformat(),
+                'shop': str(shopping_list.shop.uuid) if shopping_list.shop_id else '',
                 'items': [item_json(item) for item in shopping_list.items.all()],
             }
             for shopping_list in lists
         ],
-        # Podpowiedzi przy dopisywaniu offline: jednostka, kategoria
-        # i wielkość opakowania produktów ze spiżarni.
-        'products': [
-            {'name': name, 'unit': unit, 'category': category, 'package': format(package, '.2f')}
-            for name, unit, category, package in PantryProduct.objects.order_by('name').values_list(
-                'name', 'unit', 'category', 'quantity_per_scan',
-            )
+        'shops': [
+            {'uuid': str(shop.uuid), 'name': shop.name, 'order': list(shop.category_order)}
+            for shop in ShopLayout.objects.all()
         ],
+        # Spiżarnia w telefonie: podpowiedzi przy dopisywaniu pozycji, podgląd
+        # stanu przy półce w sklepie i skanowanie kodów bez połączenia.
+        'products': [pantry_product_json(product) for product in PantryProduct.objects.order_by('name')],
     }
 
 
@@ -409,11 +490,109 @@ def _op_delete(raw, user, when):
     return ''
 
 
+def _op_pantry_movement(raw, user, when):
+    try:
+        product_id = int(raw.get('product'))
+    except (TypeError, ValueError):
+        raise OperationRejected('Nieprawidłowy produkt.') from None
+    action = raw.get('action')
+    if action not in (PantryMovement.CONSUME, PantryMovement.PURCHASE):
+        raise OperationRejected('Wybierz „zużyto” albo „dokupiono”.')
+    try:
+        count = int(raw.get('count', 1))
+    except (TypeError, ValueError):
+        raise OperationRejected('Podaj poprawną liczbę opakowań.') from None
+    if count < 1 or count > 9999:
+        raise OperationRejected('Liczba opakowań musi mieścić się w zakresie 1-9999.')
+
+    product = PantryProduct.objects.select_for_update().filter(pk=product_id).first()
+    if product is None:
+        raise OperationSkipped('Produkt został usunięty ze spiżarni.')
+    try:
+        insufficient = apply_pantry_scan(
+            product, action, count, timezone.localtime(when).date(), note='Skan w trybie zakupów',
+        )
+    except ValueError as exc:
+        raise OperationRejected(str(exc)) from None
+    if insufficient:
+        return f'{product.name}: w spiżarni było mniej, zapisano tyle, ile było.'
+    return ''
+
+
+def _op_shop_add(raw, user, when):
+    shop_uuid = _parse_uuid(raw.get('shop'), 'Sklep')
+    if ShopLayout.objects.filter(uuid=shop_uuid).exists():
+        return 'Ten sklep już jest zapisany.'
+    name = str(raw.get('name') or '').strip()
+    if not name:
+        raise OperationRejected('Nazwa sklepu jest wymagana.')
+    if len(name) > 80:
+        raise OperationRejected('Nazwa sklepu może mieć maksymalnie 80 znaków.')
+    existing = ShopLayout.objects.filter(name__iexact=name).first()
+    if existing:
+        # Ten sam sklep dodany równolegle na drugim telefonie - nie tworzymy kopii.
+        raise OperationSkipped(f'Sklep „{existing.name}” już istnieje.')
+    ShopLayout.objects.create(
+        uuid=shop_uuid, name=name, created_by=user,
+        category_order=_clean_category_order(raw.get('order')),
+    )
+    return ''
+
+
+def _clean_category_order(value):
+    if not isinstance(value, list):
+        return []
+    order = []
+    for name in value:
+        name = str(name or '').strip()
+        if name in PANTRY_CATEGORIES and name not in order:
+            order.append(name)
+    return order
+
+
+def _op_shop_order(raw, user, when):
+    shop_uuid = _parse_uuid(raw.get('shop'), 'Sklep')
+    shop = ShopLayout.objects.select_for_update().filter(uuid=shop_uuid).first()
+    if shop is None:
+        raise OperationSkipped('Sklep został usunięty na innym urządzeniu.')
+    order = _clean_category_order(raw.get('order'))
+    if not order:
+        raise OperationRejected('Pusta kolejność kategorii.')
+    # Kategorie spoza przesłanej listy zostają na końcu w dotychczasowej kolejności.
+    shop.category_order = order + [name for name in shop.category_order if name not in order]
+    shop.save(update_fields=['category_order', 'updated_at'])
+    return ''
+
+
+def _op_list_shop(raw, user, when):
+    try:
+        list_id = int(raw.get('list'))
+    except (TypeError, ValueError):
+        raise OperationRejected('Nieprawidłowa lista.') from None
+    shopping_list = ShoppingList.objects.select_for_update().filter(pk=list_id).first()
+    if shopping_list is None:
+        raise OperationSkipped('Lista została usunięta na innym urządzeniu.')
+    raw_shop = raw.get('shop')
+    if raw_shop in (None, ''):
+        shopping_list.shop = None
+    else:
+        shop = ShopLayout.objects.filter(uuid=_parse_uuid(raw_shop, 'Sklep')).first()
+        if shop is None:
+            raise OperationSkipped('Sklep został usunięty na innym urządzeniu.')
+        shopping_list.shop = shop
+    shopping_list.save(update_fields=['shop', 'updated_at'])
+    return ''
+
+
 HANDLERS = {
     OP_ADD: _op_add,
+    OP_PANTRY_MOVEMENT: _op_pantry_movement,
     OP_SET_PURCHASED: _op_set_purchased,
     OP_SET_QUANTITY: _op_set_quantity,
     OP_DELETE: _op_delete,
+    OP_SHOP_ADD: _op_shop_add,
+    OP_SHOP_ORDER: _op_shop_order,
+    OP_LIST_SHOP: _op_list_shop,
 }
 
 
