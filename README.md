@@ -345,6 +345,24 @@ product, its photo and its movement history. Shopping-list items stay and lose o
 the link; completing such a list creates the product again. The household memory of
 the barcode stays unless "forget the barcode" is ticked.
 
+## Adding pantry products to a shopping list
+
+Both the shopping list page and the shopping app have a pantry panel: the whole
+household stock with a search box and one button per product that puts it on the
+active list. A product already on the list is marked instead of offered again.
+
+Products are added **in pieces, not by weight**: in a shop you pick up one packet, not
+1000 g. `shopping_item_defaults` decides per product — a weighed or measured product
+with a known package size (one that came in through the scanner, i.e. it has a barcode
+or counted packages) goes on the list as `1 szt.`; a product already counted in pieces
+or packages stays that way; a product without a known package size keeps its own unit.
+
+`pantry_quantity_for` reads it back the same way: checking off `2 szt.` of a weighed
+product restocks two packages (2 × `quantity_per_scan`), and unchecking takes them off
+again. An item that still carries a weight (`500 g`) keeps working as before, and
+pieces of a product with no package size are refused with an explanation instead of
+being stored as a wrong number.
+
 ## Offline shopping mode
 
 `/cooking/shopping/app/` is a small installable web app (PWA) for the phone. The
@@ -412,7 +430,9 @@ foreground, after each change and every 30 s while open.
   along with the lists, so stock, search and the barcode scanner work without the
   server. Scanning a known product offline takes one package off the stock (the
   `pantry.movement` operation syncs later); an unknown barcode can only be added at
-  home. "Dopisz do listy" puts a product straight onto the active list.
+  home. "Dopisz do listy" puts a product straight onto the active list, in pieces (see
+  the section above); the snapshot carries `add_quantity`/`add_unit`, so the phone and
+  the server always agree on what one tap adds.
 
 ## Push notifications
 

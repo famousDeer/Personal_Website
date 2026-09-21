@@ -38,14 +38,18 @@ from ..models import (
 )
 from .pantry_quantities import (
     convert_pantry_quantity,
+    counts_in_packages,
     estimated_package_count,
     find_pantry_product,
+    package_quantity_to_product_unit,
     parse_pantry_decimal,
     sync_package_count_from_quantity,
     tracks_packages,
     validate_pantry_quantity_for_unit,
     validate_pantry_storage_quantity,
 )
+
+PACKAGE_UNITS = (PantryProduct.UNIT_PIECE, PantryProduct.UNIT_PACKAGE)
 
 OP_ADD = 'item.add'
 OP_SET_PURCHASED = 'item.set_purchased'
@@ -96,8 +100,15 @@ def _pantry_product_for(item, user=None, create_missing=False):
 
 
 def pantry_quantity_for(item, product):
-    """Ilość pozycji w jednostce produktu; ValueError, gdy się nie da."""
-    quantity = convert_pantry_quantity(item.quantity, item.unit, product.unit)
+    """Ilość pozycji w jednostce produktu; ValueError, gdy się nie da.
+
+    „2 szt.” produktu mierzonego wagą albo objętością znaczy dwa opakowania,
+    więc do spiżarni trafia dwa razy tyle, ile mieści jedno opakowanie.
+    """
+    if item.unit in PACKAGE_UNITS and counts_in_packages(product):
+        quantity = package_quantity_to_product_unit(item.quantity, product)
+    else:
+        quantity = convert_pantry_quantity(item.quantity, item.unit, product.unit)
     validate_pantry_quantity_for_unit(quantity, product.unit)
     return quantity
 
@@ -269,7 +280,21 @@ def sort_items_by_shop(shopping_list, items):
     )
 
 
+def shopping_item_defaults(product):
+    """Ile i w czym dopisać produkt ze spiżarni do listy zakupów.
+
+    Produkt mierzony wagą albo objętością, ale kupowany w opakowaniach
+    (np. mąka 1 kg), idzie na listę jako „1 szt.” - w sklepie bierze się paczkę.
+    Produkt bez znanego rozmiaru opakowania zostaje przy swojej jednostce.
+    """
+    if counts_in_packages(product) or product.unit in PACKAGE_UNITS:
+        return Decimal('1.00'), PantryProduct.UNIT_PIECE
+    quantity = product.quantity_per_scan if product.quantity_per_scan > 0 else Decimal('1.00')
+    return quantity.quantize(TWO_PLACES), product.unit
+
+
 def pantry_product_json(product):
+    add_quantity, add_unit = shopping_item_defaults(product)
     return {
         'id': product.id,
         'name': product.name,
@@ -283,6 +308,10 @@ def pantry_product_json(product):
         'tracks_packages': product.tracks_packages,
         'minimum': format(product.minimum_quantity, '.2f'),
         'status': product.stock_status,
+        # Ile dopisać do listy jednym przyciskiem (serwer decyduje, nie telefon).
+        'add_quantity': format(add_quantity, '.2f'),
+        'add_unit': add_unit,
+        'add_unit_label': UNIT_LABELS.get(add_unit, add_unit),
     }
 
 

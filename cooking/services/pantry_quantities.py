@@ -51,6 +51,26 @@ def tracks_packages(product):
     return product.tracks_packages
 
 
+def counts_in_packages(product):
+    """Czy „1 szt.” tego produktu znaczy jedno opakowanie.
+
+    Produkt mierzony wagą albo objętością (mąka w gramach, mleko w litrach)
+    kupuje się w opakowaniach, więc na liście zakupów wygodniej zapisać
+    „2 szt.” niż „2000 g”. Dotyczy tylko produktów, dla których znamy rozmiar
+    opakowania - czyli takich, które trafiły do spiżarni ze skanera.
+    """
+    return (
+        product.unit not in [PantryProduct.UNIT_PIECE, PantryProduct.UNIT_PACKAGE]
+        and product.quantity_per_scan > 0
+        and bool(product.barcode or product.current_package_count > 0)
+    )
+
+
+def package_quantity_to_product_unit(quantity, product):
+    """Zamienia liczbę opakowań na ilość w jednostce produktu."""
+    return (quantity * product.quantity_per_scan).quantize(Decimal('0.01'))
+
+
 def sync_package_count_from_quantity(product):
     if not tracks_packages(product):
         return False

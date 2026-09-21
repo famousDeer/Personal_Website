@@ -55,6 +55,11 @@ urlpatterns = [
     path('shopping/<int:list_id>/edit/', views.EditShoppingListView.as_view(), name='edit-shopping-list'),
     path('shopping/<int:list_id>/delete/', views.DeleteShoppingListView.as_view(), name='delete-shopping-list'),
     path('shopping/<int:list_id>/items/add/', views.AddShoppingListItemView.as_view(), name='add-shopping-item'),
+    path(
+        'shopping/<int:list_id>/items/pantry/<int:product_id>/',
+        views.AddPantryProductToShoppingListView.as_view(),
+        name='add-pantry-product-to-shopping-list',
+    ),
     path('shopping/<int:list_id>/complete/', views.CompleteShoppingListView.as_view(), name='complete-shopping-list'),
     path('shopping/items/<int:item_id>/update/', views.UpdateShoppingListItemView.as_view(), name='update-shopping-item'),
     path('shopping/items/<int:item_id>/toggle/', views.ToggleShoppingListItemView.as_view(), name='toggle-shopping-item'),

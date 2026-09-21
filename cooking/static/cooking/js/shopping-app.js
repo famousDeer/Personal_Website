@@ -1730,12 +1730,17 @@
                 toast('Nie ma aktywnej listy.', 'warning');
                 return;
             }
+            // Do listy dopisujemy sztuki (opakowania), nie wagę: w sklepie bierze
+            // się jedną paczkę, a nie 1000 g. Spiżarnia i tak przeliczy to po
+            // odhaczeniu na ilość w swojej jednostce.
             await enqueue({
                 type: OP_ADD,
                 list: list.id,
                 data: {
-                    uuid: newId(), name: product.name, quantity: product.package,
-                    unit: product.unit, category: product.category, note: '',
+                    uuid: newId(), name: product.name,
+                    quantity: product.add_quantity || '1',
+                    unit: product.add_unit || 'szt',
+                    category: product.category, note: '',
                 },
             });
             toast(`Dopisano do listy: ${product.name}`, 'success');

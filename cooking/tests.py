@@ -54,6 +54,8 @@ from .services.pantry_forecast import (
     infer_typical_shopping_weekday,
 )
 from .services.push import notify, prune_notification_log
+from .services.shopping_sync import set_item_purchased
+from django.contrib.messages import get_messages
 
 
 User = get_user_model()
@@ -3311,6 +3313,195 @@ class ShoppingOfflineSyncTests(TestCase):
             self.client.get(reverse('cooking:shopping-list-detail', args=[self.list.id])),
             reverse('cooking:shopping-app'),
         )
+
+
+
+class PantryProductToShoppingListTests(TestCase):
+    """Dopisanie produktu ze spiżarni: sztuki zamiast wagi, w obu trybach."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='dawid-szt', password='pass12345')
+        self.client.login(username='dawid-szt', password='pass12345')
+        self.list = ShoppingList.objects.create(created_by=self.user, title='Sobota')
+        self.flour = PantryProduct.objects.create(
+            created_by=self.user, name='Mąka', category='Produkty sypkie', barcode='5901111111111',
+            unit=PantryProduct.UNIT_GRAM, quantity_per_scan=Decimal('1000.00'),
+            current_quantity=Decimal('0.00'), current_package_count=0,
+        )
+        self.eggs = PantryProduct.objects.create(
+            created_by=self.user, name='Jajka', category='Nabiał',
+            unit=PantryProduct.UNIT_PIECE, quantity_per_scan=Decimal('10.00'),
+            current_quantity=Decimal('4.00'), current_package_count=4,
+        )
+        self.oil = PantryProduct.objects.create(
+            created_by=self.user, name='Olej luzem', category='Inne',
+            unit=PantryProduct.UNIT_LITER, quantity_per_scan=Decimal('1.00'),
+            current_quantity=Decimal('2.00'), current_package_count=0,
+        )
+
+    def add_from_pantry(self, product):
+        return self.client.post(reverse(
+            'cooking:add-pantry-product-to-shopping-list',
+            args=[self.list.id, product.id],
+        ))
+
+    # --- co trafia na listę -------------------------------------------------
+
+    def test_weighed_product_lands_on_the_list_as_one_piece(self):
+        self.add_from_pantry(self.flour)
+
+        item = self.list.items.get()
+        self.assertEqual(item.name, 'Mąka')
+        self.assertEqual(item.quantity, Decimal('1.00'))
+        self.assertEqual(item.unit, PantryProduct.UNIT_PIECE)
+        self.assertEqual(item.category, 'Produkty sypkie')
+        self.assertEqual(item.pantry_product, self.flour)
+
+    def test_product_counted_in_pieces_stays_in_pieces(self):
+        self.add_from_pantry(self.eggs)
+
+        item = self.list.items.get()
+        self.assertEqual(item.quantity, Decimal('1.00'))
+        self.assertEqual(item.unit, PantryProduct.UNIT_PIECE)
+
+    def test_product_without_a_package_keeps_its_own_unit(self):
+        self.add_from_pantry(self.oil)
+
+        item = self.list.items.get()
+        self.assertEqual(item.unit, PantryProduct.UNIT_LITER)
+        self.assertEqual(item.quantity, Decimal('1.00'))
+
+    def test_second_click_does_not_duplicate(self):
+        self.add_from_pantry(self.flour)
+        response = self.add_from_pantry(self.flour)
+
+        self.assertEqual(self.list.items.count(), 1)
+        messages = [str(message) for message in get_messages(response.wsgi_request)]
+        self.assertTrue(any('już jest na liście' in message for message in messages))
+
+    def test_completed_list_is_not_touched(self):
+        self.list.status = ShoppingList.COMPLETED
+        self.list.save(update_fields=['status'])
+
+        self.add_from_pantry(self.flour)
+
+        self.assertEqual(self.list.items.count(), 0)
+
+    def test_logged_out_user_cannot_add(self):
+        self.client.logout()
+
+        self.add_from_pantry(self.flour)
+
+        self.assertEqual(self.list.items.count(), 0)
+
+    # --- co wraca do spiżarni ----------------------------------------------
+
+    def test_one_piece_restocks_one_package(self):
+        self.add_from_pantry(self.flour)
+        item = self.list.items.get()
+
+        with transaction.atomic():
+            set_item_purchased(item, True, user=self.user)
+            item.save()
+
+        self.flour.refresh_from_db()
+        self.assertEqual(self.flour.current_quantity, Decimal('1000.00'))
+        self.assertEqual(self.flour.current_package_count, 1)
+        movement = self.flour.movements.get()
+        self.assertEqual(movement.quantity, Decimal('1000.00'))
+        self.assertEqual(movement.package_count, 1)
+
+    def test_three_pieces_restock_three_packages(self):
+        self.add_from_pantry(self.flour)
+        item = self.list.items.get()
+        item.quantity = Decimal('3.00')
+        item.save(update_fields=['quantity'])
+
+        with transaction.atomic():
+            set_item_purchased(item, True, user=self.user)
+            item.save()
+
+        self.flour.refresh_from_db()
+        self.assertEqual(self.flour.current_quantity, Decimal('3000.00'))
+        self.assertEqual(self.flour.current_package_count, 3)
+
+    def test_unchecking_takes_the_packages_back(self):
+        self.add_from_pantry(self.flour)
+        item = self.list.items.get()
+
+        with transaction.atomic():
+            set_item_purchased(item, True, user=self.user)
+            item.save()
+        with transaction.atomic():
+            set_item_purchased(item, False, user=self.user)
+            item.save()
+
+        self.flour.refresh_from_db()
+        self.assertEqual(self.flour.current_quantity, Decimal('0.00'))
+        self.assertEqual(self.flour.current_package_count, 0)
+
+    def test_weight_on_the_list_still_works(self):
+        item = ShoppingListItem.objects.create(
+            shopping_list=self.list, pantry_product=self.flour, name='Mąka',
+            quantity=Decimal('500.00'), unit=PantryProduct.UNIT_GRAM, category='Produkty sypkie',
+        )
+
+        with transaction.atomic():
+            set_item_purchased(item, True, user=self.user)
+            item.save()
+
+        self.flour.refresh_from_db()
+        self.assertEqual(self.flour.current_quantity, Decimal('500.00'))
+
+    def test_pieces_of_a_product_without_a_package_are_refused(self):
+        item = ShoppingListItem.objects.create(
+            shopping_list=self.list, pantry_product=self.oil, name='Olej luzem',
+            quantity=Decimal('1.00'), unit=PantryProduct.UNIT_PIECE, category='Inne',
+        )
+
+        with transaction.atomic():
+            warning = set_item_purchased(item, True, user=self.user)
+            item.save()
+
+        self.assertIn('nie dodano do spiżarni', warning)
+        self.oil.refresh_from_db()
+        self.assertEqual(self.oil.current_quantity, Decimal('2.00'))
+
+    # --- panel na stronie listy --------------------------------------------
+
+    def test_detail_page_shows_the_pantry_panel(self):
+        response = self.client.get(reverse('cooking:shopping-list-detail', args=[self.list.id]))
+
+        self.assertContains(response, 'Dopisz z zapasów')
+        self.assertContains(response, 'Mąka')
+        self.assertContains(response, reverse(
+            'cooking:add-pantry-product-to-shopping-list', args=[self.list.id, self.flour.id],
+        ))
+        rows = {row['product'].name: row for row in response.context['pantry_rows']}
+        self.assertEqual(rows['Mąka']['add_unit'], PantryProduct.UNIT_PIECE)
+        self.assertEqual(rows['Mąka']['add_quantity'], Decimal('1.00'))
+        self.assertEqual(rows['Olej luzem']['add_unit'], PantryProduct.UNIT_LITER)
+        self.assertFalse(rows['Mąka']['on_list'])
+
+    def test_panel_marks_products_already_on_the_list(self):
+        self.add_from_pantry(self.flour)
+
+        response = self.client.get(reverse('cooking:shopping-list-detail', args=[self.list.id]))
+
+        rows = {row['product'].name: row for row in response.context['pantry_rows']}
+        self.assertTrue(rows['Mąka']['on_list'])
+        self.assertFalse(rows['Jajka']['on_list'])
+
+    # --- to samo w trybie zakupów na telefonie ------------------------------
+
+    def test_phone_snapshot_says_how_much_to_add(self):
+        data = self.client.get(reverse('cooking:shopping-api-snapshot')).json()
+
+        products = {entry['name']: entry for entry in data['snapshot']['products']}
+        self.assertEqual(products['Mąka']['add_quantity'], '1.00')
+        self.assertEqual(products['Mąka']['add_unit'], 'szt')
+        self.assertEqual(products['Mąka']['add_unit_label'], 'szt.')
+        self.assertEqual(products['Olej luzem']['add_unit'], 'l')
 
 
 class ShopLayoutTests(TestCase):

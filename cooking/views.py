@@ -60,6 +60,7 @@ from .services.shopping_sync import (
     complete_shopping_list,
     refresh_pantry_purchase,
     set_item_purchased,
+    shopping_item_defaults,
     sort_items_by_shop,
 )
 from .services.pantry_quantities import (
@@ -339,6 +340,25 @@ def get_pantry_form_context(**extra_context):
     }
     context.update(extra_context)
     return context
+
+
+def pantry_rows_for_list(items):
+    """Spiżarnia obok listy: to samo, co ekran „Spiżarnia” w trybie zakupów.
+
+    Dla każdego produktu mówi, ile dopisze przycisk i czy już jest na liście.
+    """
+    on_list = {item.name.casefold() for item in items}
+    rows = []
+    for product in PantryProduct.objects.all():
+        quantity, unit = shopping_item_defaults(product)
+        rows.append({
+            'product': product,
+            'on_list': product.name.casefold() in on_list,
+            'add_quantity': quantity,
+            'add_unit': unit,
+            'add_unit_label': dict(PantryProduct.UNIT_CHOICES).get(unit, unit),
+        })
+    return rows
 
 
 def get_shopping_form_context(request, **extra_context):
@@ -1791,6 +1811,7 @@ class ShoppingListDetailView(LoginRequiredMixin, View):
             purchased_count=purchased_count,
             remaining_count=item_count - purchased_count,
             progress_percent=progress_percent,
+            pantry_rows=pantry_rows_for_list(items),
         )
         return render(request, 'cooking/shopping_detail.html', context)
 
@@ -1876,6 +1897,39 @@ class AddShoppingListItemView(LoginRequiredMixin, View):
         except Exception as exc:
             messages.error(request, f'Nie udało się dodać pozycji: {exc}')
 
+        return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+
+
+class AddPantryProductToShoppingListView(LoginRequiredMixin, View):
+    """Dopisuje produkt ze spiżarni do listy jednym przyciskiem.
+
+    To samo, co przycisk w trybie zakupów na telefonie: ilość i jednostkę
+    wybiera serwer, więc produkt ważony trafia na listę jako „1 szt.”.
+    """
+
+    def post(self, request, list_id, product_id):
+        shopping_list = get_object_or_404(ShoppingList, id=list_id)
+        product = get_object_or_404(PantryProduct, id=product_id)
+        if shopping_list.status == ShoppingList.COMPLETED:
+            messages.info(request, 'Ta lista została już zakończona.')
+            return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+
+        already = shopping_list.items.filter(name__iexact=product.name).first()
+        if already is not None:
+            messages.info(request, f'{product.name} już jest na liście.')
+            return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+
+        quantity, unit = shopping_item_defaults(product)
+        ShoppingListItem.objects.create(
+            shopping_list=shopping_list,
+            pantry_product=product,
+            name=product.name,
+            quantity=quantity,
+            unit=unit,
+            category=product.category,
+        )
+        shopping_list.save(update_fields=['updated_at'])
+        messages.success(request, f'Dodano do listy: {product.name}.')
         return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
 
 

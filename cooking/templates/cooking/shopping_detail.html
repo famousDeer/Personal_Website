@@ -124,6 +124,68 @@
                 </form>
             </div>
         </section>
+
+        <section class="shopping-panel animate-fade-in-up">
+            <div class="shopping-section-heading">
+                <div>
+                    <div class="small text-uppercase fw-bold text-muted mb-1">Spiżarnia</div>
+                    <h3 class="h5 fw-bold mb-0">Dopisz z zapasów</h3>
+                </div>
+                <div class="shopping-section-actions">
+                    <button class="btn btn-sm btn-outline-success" type="button" data-bs-toggle="collapse" data-bs-target="#shopping-pantry-picker" aria-expanded="false">
+                        <i class="bi bi-box-seam me-1"></i> Pokaż spiżarnię
+                    </button>
+                </div>
+            </div>
+
+            <div class="collapse" id="shopping-pantry-picker">
+                <div class="shopping-pantry-search">
+                    <i class="bi bi-search" aria-hidden="true"></i>
+                    <input type="search" class="form-control" placeholder="Szukaj produktu"
+                           aria-label="Szukaj w spiżarni" data-pantry-filter>
+                </div>
+
+                <div class="shopping-pantry-grid" data-pantry-rows>
+                    {% for row in pantry_rows %}
+                        <div class="shopping-pantry-row {% if row.on_list %}is-on-list{% endif %}" data-pantry-name="{{ row.product.name|lower }}">
+                            <div class="shopping-pantry-body">
+                                <strong class="text-truncate">{{ row.product.name }}</strong>
+                                <span>
+                                    {% if row.product.unit == 'szt' or row.product.unit == 'opak' %}{{ row.product.current_quantity|floatformat:0 }}{% else %}{{ row.product.current_quantity|floatformat:2 }}{% endif %} {{ row.product.get_unit_display }}
+                                    {% if row.product.tracks_packages and row.product.unit != 'szt' and row.product.unit != 'opak' %} · {{ row.product.current_package_count }} opak.{% endif %}
+                                    {% if row.product.category %} · {{ row.product.category }}{% endif %}
+                                </span>
+                            </div>
+
+                            {% if row.product.stock_status == 'empty' %}
+                                <span class="pantry-stock-badge is-empty">Brak</span>
+                            {% elif row.product.stock_status == 'low' %}
+                                <span class="pantry-stock-badge is-low">Niski stan</span>
+                            {% else %}
+                                <span class="pantry-stock-badge is-ok">W zapasie</span>
+                            {% endif %}
+
+                            {% if row.on_list %}
+                                <span class="shopping-pantry-tag"><i class="bi bi-cart-check me-1"></i>na liście</span>
+                            {% else %}
+                                <form method="post" action="{% url 'cooking:add-pantry-product-to-shopping-list' shopping_list.id row.product.id %}">
+                                    {% csrf_token %}
+                                    <button class="btn btn-sm btn-success shopping-pantry-add" type="submit"
+                                            title="Dopisz do listy: {{ row.product.name }}">
+                                        <i class="bi bi-cart-plus"></i>
+                                        <span>{% if row.add_unit == 'szt' %}{{ row.add_quantity|floatformat:0 }}{% else %}{{ row.add_quantity|floatformat:2 }}{% endif %} {{ row.add_unit_label }}</span>
+                                    </button>
+                                </form>
+                            {% endif %}
+                        </div>
+                    {% empty %}
+                        <p class="text-muted mb-0">Spiżarnia jest pusta. Produkty dodajesz w zakładce Spiżarnia.</p>
+                    {% endfor %}
+                </div>
+
+                <p class="text-muted mb-0 d-none" data-pantry-empty>Nic nie znaleziono.</p>
+            </div>
+        </section>
     {% else %}
         <section class="shopping-panel animate-fade-in-up">
             <div class="shopping-section-heading mb-0">
@@ -262,6 +324,25 @@
             }
             syncQuantityStep(form);
         });
+
+        // Wyszukiwarka w panelu spiżarni - to samo, co na telefonie.
+        const pantryFilter = document.querySelector('[data-pantry-filter]');
+        if (pantryFilter) {
+            const rows = [...document.querySelectorAll('[data-pantry-name]')];
+            const nothing = document.querySelector('[data-pantry-empty]');
+            pantryFilter.addEventListener('input', () => {
+                const needle = pantryFilter.value.trim().toLocaleLowerCase('pl');
+                let shown = 0;
+                rows.forEach((row) => {
+                    const match = !needle || row.dataset.pantryName.includes(needle);
+                    row.classList.toggle('d-none', !match);
+                    shown += match ? 1 : 0;
+                });
+                if (nothing) {
+                    nothing.classList.toggle('d-none', shown > 0);
+                }
+            });
+        }
     });
 </script>
 {% endblock %}
