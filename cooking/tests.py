@@ -24,6 +24,7 @@ from .models import (
     PantryProduct,
     ProductCatalogEntry,
     ProductCatalogQuota,
+    ProductGroup,
     PushSubscription,
     SentNotification,
     ShopLayout,
@@ -3314,6 +3315,360 @@ class ShoppingOfflineSyncTests(TestCase):
             reverse('cooking:shopping-app'),
         )
 
+
+
+
+class ProductGroupTests(TestCase):
+    """Ten sam produkt różnych firm: o braku decyduje grupa, nie marka."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='dawid-grupy', password='pass12345')
+        self.client.login(username='dawid-grupy', password='pass12345')
+        self.group = ProductGroup.objects.create(
+            name='Jogurt naturalny', category='Nabiał', minimum_packages=2, created_by=self.user,
+        )
+        self.pilos = self.yoghurt('Jogurt naturalny Pilos', packages=2, barcode='5901111100001')
+        self.piatnica = self.yoghurt('Jogurt naturalny Piątnica', packages=1, barcode='5901111100002')
+        self.bakoma = self.yoghurt('Jogurt naturalny Bakoma', packages=0, barcode='5901111100003')
+
+    def yoghurt(self, name, packages, barcode, group='self'):
+        return PantryProduct.objects.create(
+            created_by=self.user, name=name, category='Nabiał', barcode=barcode,
+            group=self.group if group == 'self' else group,
+            unit=PantryProduct.UNIT_GRAM, quantity_per_scan=Decimal('400.00'),
+            current_quantity=Decimal('400.00') * packages, current_package_count=packages,
+        )
+
+    # --- stan i status grupy ------------------------------------------------
+
+    def test_group_adds_up_the_brands(self):
+        self.assertEqual(self.group.packages_in_stock, 3)
+        self.assertEqual(self.group.stock_status, 'ok')
+
+    def test_empty_brand_does_not_make_the_group_empty(self):
+        self.assertEqual(self.bakoma.stock_status, 'empty')
+        self.assertEqual(self.group.stock_status, 'ok')
+
+    def test_group_at_minimum_is_low(self):
+        self.pilos.current_quantity = Decimal('400.00')
+        self.pilos.current_package_count = 1
+        self.pilos.save(update_fields=['current_quantity', 'current_package_count'])
+
+        self.assertEqual(ProductGroup.objects.get(pk=self.group.pk).stock_status, 'low')
+
+    def test_group_with_nothing_left_is_empty(self):
+        PantryProduct.objects.filter(group=self.group).update(
+            current_quantity=Decimal('0.00'), current_package_count=0,
+        )
+
+        self.assertEqual(ProductGroup.objects.get(pk=self.group.pk).stock_status, 'empty')
+
+    # --- sugestie zakupów ---------------------------------------------------
+
+    def suggestion_names(self):
+        from cooking.views import build_shopping_suggestions
+
+        return [suggestion['name'] for suggestion in build_shopping_suggestions()]
+
+    def test_empty_brand_alone_does_not_reach_the_shopping_list(self):
+        self.assertNotIn('Jogurt naturalny Bakoma', self.suggestion_names())
+        self.assertNotIn('Jogurt naturalny', self.suggestion_names())
+
+    def test_empty_group_reaches_the_list_once_under_its_own_name(self):
+        PantryProduct.objects.filter(group=self.group).update(
+            current_quantity=Decimal('0.00'), current_package_count=0,
+        )
+
+        names = self.suggestion_names()
+
+        self.assertEqual(names.count('Jogurt naturalny'), 1)
+        self.assertNotIn('Jogurt naturalny Pilos', names)
+        self.assertNotIn('Jogurt naturalny Bakoma', names)
+
+    def test_group_suggestion_is_in_packages(self):
+        PantryProduct.objects.filter(group=self.group).update(
+            current_quantity=Decimal('0.00'), current_package_count=0,
+        )
+        from cooking.views import build_shopping_suggestions
+
+        suggestion = next(
+            item for item in build_shopping_suggestions() if item['name'] == 'Jogurt naturalny'
+        )
+
+        self.assertEqual(suggestion['unit'], PantryProduct.UNIT_PIECE)
+        self.assertGreaterEqual(suggestion['quantity'], Decimal('2'))
+        self.assertEqual(suggestion['reason'], 'Brak w spiżarni')
+        self.assertEqual(suggestion['group'], self.group)
+        self.assertIsNone(suggestion['product'])
+
+    def test_product_outside_a_group_still_counts_for_itself(self):
+        PantryProduct.objects.create(
+            created_by=self.user, name='Masło extra', category='Nabiał',
+            unit=PantryProduct.UNIT_GRAM, quantity_per_scan=Decimal('200.00'),
+            current_quantity=Decimal('0.00'), current_package_count=0,
+        )
+
+        self.assertIn('Masło extra', self.suggestion_names())
+
+    def test_automatic_list_carries_the_group(self):
+        PantryProduct.objects.filter(group=self.group).update(
+            current_quantity=Decimal('0.00'), current_package_count=0,
+        )
+
+        self.client.post(reverse('cooking:generate-shopping-list'))
+
+        item = ShoppingListItem.objects.get(name='Jogurt naturalny')
+        self.assertEqual(item.pantry_group, self.group)
+        self.assertIsNone(item.pantry_product)
+        self.assertEqual(item.unit, PantryProduct.UNIT_PIECE)
+
+    # --- odhaczenie ---------------------------------------------------------
+
+    def group_item(self, quantity='1.00'):
+        shopping_list = ShoppingList.objects.create(created_by=self.user, title='Sobota')
+        return ShoppingListItem.objects.create(
+            shopping_list=shopping_list, pantry_group=self.group, name='Jogurt naturalny',
+            quantity=Decimal(quantity), unit=PantryProduct.UNIT_PIECE, category='Nabiał',
+        )
+
+    def test_check_off_restocks_the_last_bought_brand(self):
+        PantryMovement.objects.create(
+            product=self.piatnica, movement_type=PantryMovement.PURCHASE,
+            quantity=Decimal('400.00'), package_count=1, occurred_on=timezone.localdate(),
+        )
+        item = self.group_item('2.00')
+
+        with transaction.atomic():
+            set_item_purchased(item, True, user=self.user)
+            item.save()
+
+        self.piatnica.refresh_from_db()
+        self.pilos.refresh_from_db()
+        self.assertEqual(self.piatnica.current_package_count, 3)
+        self.assertEqual(self.piatnica.current_quantity, Decimal('1200.00'))
+        self.assertEqual(self.pilos.current_package_count, 2)
+
+    def test_without_history_the_first_brand_with_a_barcode_gets_it(self):
+        item = self.group_item()
+
+        with transaction.atomic():
+            set_item_purchased(item, True, user=self.user)
+            item.save()
+
+        restocked = [
+            product for product in PantryProduct.objects.filter(group=self.group)
+            if product.movements.exists()
+        ]
+        self.assertEqual(len(restocked), 1)
+        self.assertEqual(ProductGroup.objects.get(pk=self.group.pk).packages_in_stock, 4)
+
+    def test_unchecking_takes_it_back_from_the_same_brand(self):
+        item = self.group_item()
+
+        with transaction.atomic():
+            set_item_purchased(item, True, user=self.user)
+            item.save()
+        with transaction.atomic():
+            set_item_purchased(item, False, user=self.user)
+            item.save()
+
+        self.assertEqual(ProductGroup.objects.get(pk=self.group.pk).packages_in_stock, 3)
+
+    # --- dopisywanie ze spiżarni -------------------------------------------
+
+    def test_pantry_button_adds_the_group_name(self):
+        shopping_list = ShoppingList.objects.create(created_by=self.user, title='Sobota')
+
+        self.client.post(reverse(
+            'cooking:add-pantry-product-to-shopping-list', args=[shopping_list.id, self.bakoma.id],
+        ))
+
+        item = shopping_list.items.get()
+        self.assertEqual(item.name, 'Jogurt naturalny')
+        self.assertEqual(item.pantry_group, self.group)
+        self.assertEqual(item.unit, PantryProduct.UNIT_PIECE)
+        self.assertEqual(item.quantity, Decimal('1.00'))
+
+    def test_any_brand_of_a_group_already_on_the_list_is_not_offered_again(self):
+        shopping_list = ShoppingList.objects.create(created_by=self.user, title='Sobota')
+        self.client.post(reverse(
+            'cooking:add-pantry-product-to-shopping-list', args=[shopping_list.id, self.bakoma.id],
+        ))
+
+        self.client.post(reverse(
+            'cooking:add-pantry-product-to-shopping-list', args=[shopping_list.id, self.pilos.id],
+        ))
+
+        self.assertEqual(shopping_list.items.count(), 1)
+
+    def test_phone_snapshot_carries_the_group(self):
+        data = self.client.get(reverse('cooking:shopping-api-snapshot')).json()
+
+        product = next(
+            entry for entry in data['snapshot']['products'] if entry['name'] == 'Jogurt naturalny Bakoma'
+        )
+        self.assertEqual(product['group'], self.group.id)
+        self.assertEqual(product['group_name'], 'Jogurt naturalny')
+        self.assertEqual(product['add_name'], 'Jogurt naturalny')
+        self.assertEqual(product['add_unit'], 'szt')
+
+    def test_phone_can_add_a_group_offline(self):
+        shopping_list = ShoppingList.objects.create(created_by=self.user, title='Sobota')
+        response = self.client.post(
+            reverse('cooking:shopping-api-sync'),
+            data=json.dumps({'ops': [{
+                'op_id': str(uuid4()), 'type': 'item.add', 'at': timezone.now().isoformat(),
+                'list': shopping_list.id,
+                'data': {
+                    'uuid': str(uuid4()), 'name': 'Jogurt naturalny', 'quantity': '1',
+                    'unit': 'szt', 'category': 'Nabiał', 'group': self.group.id,
+                },
+            }]}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200, response.content[:200])
+        item = shopping_list.items.get()
+        self.assertEqual(item.pantry_group, self.group)
+
+
+class ProductGroupManagementTests(TestCase):
+    """Zakładanie, edycja i podpowiedzi grup."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='dawid-zarzad', password='pass12345')
+        self.client.login(username='dawid-zarzad', password='pass12345')
+        self.pilos = PantryProduct.objects.create(
+            created_by=self.user, name='Jogurt naturalny Pilos', category='Nabiał',
+            barcode='5902222200001', unit=PantryProduct.UNIT_GRAM,
+            quantity_per_scan=Decimal('400.00'), current_quantity=Decimal('800.00'),
+            current_package_count=2,
+        )
+        self.piatnica = PantryProduct.objects.create(
+            created_by=self.user, name='Jogurt naturalny Piątnica', category='Nabiał',
+            barcode='5902222200002', unit=PantryProduct.UNIT_GRAM,
+            quantity_per_scan=Decimal('150.00'), current_quantity=Decimal('0.00'),
+            current_package_count=0,
+        )
+
+    def test_page_proposes_products_that_look_the_same(self):
+        response = self.client.get(reverse('cooking:product-groups'))
+
+        proposals = response.context['proposals']
+        self.assertEqual(len(proposals), 1)
+        self.assertEqual(proposals[0]['name'], 'Jogurt naturalny')
+        self.assertEqual(
+            {product.name for product in proposals[0]['products']},
+            {'Jogurt naturalny Piątnica', 'Jogurt naturalny Pilos'},
+        )
+
+    def test_products_with_one_word_in_common_are_not_proposed(self):
+        PantryProduct.objects.create(
+            created_by=self.user, name='Mleko 3,2%', category='Nabiał',
+            unit=PantryProduct.UNIT_LITER, current_quantity=Decimal('1.00'),
+        )
+        PantryProduct.objects.create(
+            created_by=self.user, name='Mleko bez laktozy', category='Nabiał',
+            unit=PantryProduct.UNIT_LITER, current_quantity=Decimal('1.00'),
+        )
+
+        proposals = self.client.get(reverse('cooking:product-groups')).context['proposals']
+
+        self.assertEqual([proposal['name'] for proposal in proposals], ['Jogurt naturalny'])
+
+    def test_creating_a_group_moves_the_products_in(self):
+        response = self.client.post(reverse('cooking:create-product-group'), data={
+            'name': 'Jogurt naturalny', 'minimum_packages': '2',
+            'products': [self.pilos.id, self.piatnica.id],
+        })
+
+        group = ProductGroup.objects.get()
+        self.assertEqual(group.minimum_packages, 2)
+        self.assertEqual(group.category, 'Nabiał')
+        self.assertEqual(
+            set(PantryProduct.objects.filter(group=group).values_list('id', flat=True)),
+            {self.pilos.id, self.piatnica.id},
+        )
+        self.assertEqual(response.status_code, 302)
+
+    def test_a_group_needs_at_least_two_products(self):
+        self.client.post(reverse('cooking:create-product-group'), data={
+            'name': 'Jogurt naturalny', 'products': [self.pilos.id],
+        })
+
+        self.assertFalse(ProductGroup.objects.exists())
+
+    def test_duplicate_group_name_is_refused(self):
+        ProductGroup.objects.create(name='Jogurt naturalny')
+
+        self.client.post(reverse('cooking:create-product-group'), data={
+            'name': 'jogurt NATURALNY', 'products': [self.pilos.id, self.piatnica.id],
+        })
+
+        self.assertEqual(ProductGroup.objects.count(), 1)
+        self.pilos.refresh_from_db()
+        self.assertIsNone(self.pilos.group)
+
+    def test_editing_changes_minimum_and_membership(self):
+        group = ProductGroup.objects.create(name='Jogurt naturalny', minimum_packages=1)
+        PantryProduct.objects.filter(pk=self.pilos.pk).update(group=group)
+
+        self.client.post(reverse('cooking:update-product-group', args=[group.id]), data={
+            'name': 'Jogurt naturalny', 'minimum_packages': '3',
+            'add_products': [self.piatnica.id], 'remove_products': [self.pilos.id],
+        })
+
+        group.refresh_from_db()
+        self.pilos.refresh_from_db()
+        self.piatnica.refresh_from_db()
+        self.assertEqual(group.minimum_packages, 3)
+        self.assertIsNone(self.pilos.group)
+        self.assertEqual(self.piatnica.group, group)
+
+    def test_deleting_a_group_keeps_the_products(self):
+        group = ProductGroup.objects.create(name='Jogurt naturalny')
+        PantryProduct.objects.filter(pk__in=[self.pilos.pk, self.piatnica.pk]).update(group=group)
+
+        self.client.post(reverse('cooking:delete-product-group', args=[group.id]))
+
+        self.assertFalse(ProductGroup.objects.exists())
+        self.assertEqual(PantryProduct.objects.count(), 2)
+        self.pilos.refresh_from_db()
+        self.assertIsNone(self.pilos.group)
+
+    def test_new_product_can_join_a_group_right_away(self):
+        group = ProductGroup.objects.create(name='Jogurt naturalny', minimum_packages=2)
+
+        self.client.post(reverse('cooking:add-pantry-product'), data={
+            'name': 'Jogurt naturalny Bakoma', 'unit': PantryProduct.UNIT_PIECE,
+            'quantity_per_scan': '1', 'current_quantity': '0', 'current_package_count': '0',
+            'minimum_quantity': '0', 'group': group.id,
+        })
+
+        product = PantryProduct.objects.get(name='Jogurt naturalny Bakoma')
+        self.assertEqual(product.group, group)
+
+    def test_edit_form_can_move_a_product_between_groups(self):
+        group = ProductGroup.objects.create(name='Jogurt naturalny')
+
+        self.client.post(reverse('cooking:edit-pantry-product', args=[self.pilos.id]), data={
+            'name': self.pilos.name, 'barcode': self.pilos.barcode, 'category': 'Nabiał',
+            'unit': PantryProduct.UNIT_GRAM, 'quantity_per_scan': '400',
+            'current_quantity': '800', 'current_package_count': '2',
+            'minimum_quantity': '0', 'restock_lead_days': '3', 'group': group.id,
+        })
+
+        self.pilos.refresh_from_db()
+        self.assertEqual(self.pilos.group, group)
+
+    def test_logged_out_user_cannot_create_groups(self):
+        self.client.logout()
+
+        self.client.post(reverse('cooking:create-product-group'), data={
+            'name': 'Jogurt naturalny', 'products': [self.pilos.id, self.piatnica.id],
+        })
+
+        self.assertFalse(ProductGroup.objects.exists())
 
 
 class PantryProductToShoppingListTests(TestCase):

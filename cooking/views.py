@@ -1,5 +1,6 @@
 import json
 import mimetypes
+from collections import defaultdict
 import re
 from datetime import timedelta
 from uuid import UUID, uuid4
@@ -27,12 +28,19 @@ from .models import (
     PantryMovement,
     PantryProduct,
     ProductCatalogEntry,
+    ProductGroup,
     ShopLayout,
     Recipe,
     RecipeStep,
     RecipeStepIngredient,
     ShoppingList,
     ShoppingListItem,
+)
+from .services.product_groups import (
+    GroupForecastSubject,
+    packages_in_stock,
+    restock_target,
+    suggest_groups,
 )
 from .services.product_catalog import (
     cached_open_food_facts_entry,
@@ -61,6 +69,7 @@ from .services.shopping_sync import (
     refresh_pantry_purchase,
     set_item_purchased,
     shopping_item_defaults,
+    shopping_item_for_product,
     sort_items_by_shop,
 )
 from .services.pantry_quantities import (
@@ -242,24 +251,37 @@ def pantry_forecast_movements_prefetch(today):
 
 
 def build_shopping_suggestions():
+    """Czego brakuje w domu - po jednej pozycji na produkt albo na grupę.
+
+    Produkt należący do grupy („ten sam jogurt, inna firma”) nie liczy się sam:
+    o braku decyduje zapas całej grupy, liczony w opakowaniach. Dzięki temu
+    pusty jogurt jednej firmy nie trafia na listę, gdy w lodówce stoją dwa inne.
+    """
     today = timezone.localdate()
     suggestions = []
     shopping_weekday = get_household_typical_shopping_weekday()
 
-    products = list(PantryProduct.objects.prefetch_related(
+    products = list(PantryProduct.objects.select_related('group').prefetch_related(
         pantry_forecast_movements_prefetch(today),
     ))
+    loose = [product for product in products if not product.group_id]
+    grouped = defaultdict(list)
+    for product in products:
+        if product.group_id:
+            grouped[product.group_id].append(product)
+
+    groups = list(ProductGroup.objects.filter(pk__in=grouped))
+    subjects = loose + [GroupForecastSubject(group, grouped[group.pk]) for group in groups]
     forecasts = forecast_pantry_products(
-        products,
+        subjects,
         today=today,
         shopping_weekday=shopping_weekday,
     )
-    for product in products:
+
+    for product in loose:
         forecast = forecasts[product.pk]
-        restock_date = forecast.buy_date
         restock_due = forecast.is_due
-        needs_stock = product.stock_status in ['empty', 'low']
-        if not needs_stock and not restock_due:
+        if product.stock_status not in ['empty', 'low'] and not restock_due:
             continue
 
         suggested_quantity = forecast.suggested_quantity
@@ -278,12 +300,48 @@ def build_shopping_suggestions():
 
         suggestions.append({
             'product': product,
+            'group': None,
+            'name': product.name,
+            'category': product.category,
             'quantity': normalize_shopping_quantity(suggested_quantity, product.unit),
+            'unit': product.unit,
+            'unit_label': product.display_unit,
             'reason': reason,
-            'restock_date': restock_date,
+            'restock_date': forecast.buy_date,
             'forecast': forecast,
         })
 
+    for group in groups:
+        members = grouped[group.pk]
+        forecast = forecasts[f'group-{group.pk}']
+        in_stock = sum(packages_in_stock(member) for member in members)
+        status = 'empty' if in_stock <= 0 else ('low' if in_stock <= group.minimum_packages else 'ok')
+        if status == 'ok' and not forecast.is_due:
+            continue
+
+        packages = forecast.suggested_packages or int(forecast.suggested_quantity)
+        packages = max(packages, max(group.minimum_packages - in_stock, 0), 1)
+
+        reason = 'Niski stan'
+        if in_stock <= 0:
+            reason = 'Brak w spiżarni'
+        elif forecast.is_due:
+            reason = 'Prognoza: uzupełnij teraz'
+
+        suggestions.append({
+            'product': None,
+            'group': group,
+            'name': group.name,
+            'category': group.category,
+            'quantity': Decimal(packages),
+            'unit': PantryProduct.UNIT_PIECE,
+            'unit_label': dict(PantryProduct.UNIT_CHOICES)[PantryProduct.UNIT_PIECE],
+            'reason': reason,
+            'restock_date': forecast.buy_date,
+            'forecast': forecast,
+        })
+
+    suggestions.sort(key=lambda suggestion: suggestion['name'].casefold())
     return suggestions
 
 
@@ -337,6 +395,7 @@ def get_pantry_form_context(**extra_context):
         'categories': PANTRY_CATEGORIES,
         'units': PantryProduct.UNIT_CHOICES,
         'today': timezone.localdate(),
+        'product_groups': ProductGroup.objects.all(),
     }
     context.update(extra_context)
     return context
@@ -349,14 +408,16 @@ def pantry_rows_for_list(items):
     """
     on_list = {item.name.casefold() for item in items}
     rows = []
-    for product in PantryProduct.objects.all():
-        quantity, unit = shopping_item_defaults(product)
+    for product in PantryProduct.objects.select_related('group').all():
+        add = shopping_item_for_product(product)
         rows.append({
             'product': product,
-            'on_list': product.name.casefold() in on_list,
-            'add_quantity': quantity,
-            'add_unit': unit,
-            'add_unit_label': dict(PantryProduct.UNIT_CHOICES).get(unit, unit),
+            'group': add['group'],
+            'on_list': add['name'].casefold() in on_list,
+            'add_name': add['name'],
+            'add_quantity': add['quantity'],
+            'add_unit': add['unit'],
+            'add_unit_label': dict(PantryProduct.UNIT_CHOICES).get(add['unit'], add['unit']),
         })
     return rows
 
@@ -668,7 +729,8 @@ class DeleteRecipeView(LoginRequiredMixin, View):
 class PantryListView(LoginRequiredMixin, View):
     def get(self, request):
         today = timezone.localdate()
-        all_products = list(PantryProduct.objects.prefetch_related(
+        all_products = list(PantryProduct.objects.select_related('group').prefetch_related(
+            'group__products',
             pantry_forecast_movements_prefetch(today),
         ))
         search_query = request.GET.get('q', '').strip()
@@ -1224,10 +1286,13 @@ class AddPantryProductView(LoginRequiredMixin, View):
                 suggested = suggest_category_from_name(name)
                 category = suggested if suggested != PANTRY_CATEGORY_OTHER else ''
 
+            group = ProductGroup.objects.filter(pk=request.POST.get('group') or 0).first()
+
             with transaction.atomic():
                 product = PantryProduct.objects.create(
                     created_by=request.user,
                     name=name,
+                    group=group,
                     barcode=barcode,
                     quantity_per_scan=quantity_per_scan,
                     category=category,
@@ -1280,7 +1345,7 @@ class EditPantryProductView(LoginRequiredMixin, View):
     template_name = 'cooking/pantry_edit.html'
     editable_fields = [
         'name', 'barcode', 'category', 'unit', 'quantity_per_scan', 'current_quantity',
-        'current_package_count', 'minimum_quantity', 'restock_lead_days', 'notes',
+        'current_package_count', 'minimum_quantity', 'restock_lead_days', 'notes', 'group_id',
     ]
 
     def _initial_values(self, product):
@@ -1467,6 +1532,9 @@ class EditPantryProductView(LoginRequiredMixin, View):
         product.restock_lead_days = restock_lead_days
         if 'notes' in post:
             product.notes = post.get('notes', '').strip()
+        if 'group' in post:
+            raw_group = post.get('group') or ''
+            product.group = ProductGroup.objects.filter(pk=raw_group).first() if raw_group else None
         if new_image:
             product.image = new_image
         elif remove_image:
@@ -1777,14 +1845,14 @@ class GenerateShoppingListView(LoginRequiredMixin, View):
             source=ShoppingList.AUTOMATIC,
         )
         for suggestion in suggestions:
-            product = suggestion['product']
             ShoppingListItem.objects.create(
                 shopping_list=shopping_list,
-                pantry_product=product,
-                name=product.name,
+                pantry_product=suggestion['product'],
+                pantry_group=suggestion['group'],
+                name=suggestion['name'],
                 quantity=suggestion['quantity'],
-                unit=product.unit,
-                category=product.category,
+                unit=suggestion['unit'],
+                category=suggestion['category'],
                 note=suggestion['reason'],
             )
 
@@ -1900,6 +1968,123 @@ class AddShoppingListItemView(LoginRequiredMixin, View):
         return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
 
 
+class ProductGroupListView(LoginRequiredMixin, View):
+    """Grupy „ten sam produkt, inna firma”.
+
+    Grupa decyduje o brakach zamiast pojedynczej marki: zapas liczony jest
+    łącznie, w opakowaniach. Strona pokazuje grupy, ich marki i propozycje
+    połączenia - propozycje trzeba zatwierdzić, nic nie łączy się samo.
+    """
+
+    template_name = 'cooking/product_groups.html'
+
+    def get(self, request):
+        groups = list(
+            ProductGroup.objects
+            .prefetch_related('products')
+            .order_by('name')
+        )
+        rows = []
+        for group in groups:
+            members = group.members()
+            rows.append({
+                'group': group,
+                'members': sorted(members, key=lambda product: product.name),
+                'packages': sum(packages_in_stock(member) for member in members),
+                'status': group.stock_status,
+            })
+        loose = list(
+            PantryProduct.objects.filter(group__isnull=True).order_by('name')
+        )
+        return render(request, self.template_name, {
+            'rows': rows,
+            'loose_products': loose,
+            'proposals': suggest_groups(loose),
+            'categories': PANTRY_CATEGORIES,
+        })
+
+
+def _group_products(request, field='products'):
+    ids = [value for value in request.POST.getlist(field) if value.isdigit()]
+    return list(PantryProduct.objects.filter(pk__in=ids))
+
+
+class CreateProductGroupView(LoginRequiredMixin, View):
+    def post(self, request):
+        name = request.POST.get('name', '').strip()
+        products = _group_products(request)
+        try:
+            if not name:
+                raise ValueError('Nazwa grupy jest wymagana.')
+            if len(name) > 160:
+                raise ValueError('Nazwa grupy może mieć maksymalnie 160 znaków.')
+            if ProductGroup.objects.filter(name__iexact=name).exists():
+                raise ValueError(f'Grupa „{name}” już istnieje.')
+            if len(products) < 2:
+                raise ValueError('Grupa ma sens dla co najmniej dwóch produktów.')
+            minimum = parse_package_count(request.POST.get('minimum_packages'), default=1)
+            with transaction.atomic():
+                group = ProductGroup.objects.create(
+                    name=name,
+                    category=request.POST.get('category', '').strip() or products[0].category,
+                    minimum_packages=minimum,
+                    created_by=request.user,
+                )
+                PantryProduct.objects.filter(
+                    pk__in=[product.pk for product in products],
+                ).update(group=group)
+        except ValueError as exc:
+            messages.error(request, f'Nie udało się utworzyć grupy: {exc}')
+        else:
+            messages.success(
+                request,
+                f'Utworzono grupę „{group.name}” z {polish_count(len(products), "marki", "marek", "marek")}.',
+            )
+        return redirect('cooking:product-groups')
+
+
+class UpdateProductGroupView(LoginRequiredMixin, View):
+    def post(self, request, group_id):
+        group = get_object_or_404(ProductGroup, pk=group_id)
+        try:
+            name = request.POST.get('name', group.name).strip()
+            if not name:
+                raise ValueError('Nazwa grupy jest wymagana.')
+            if ProductGroup.objects.filter(name__iexact=name).exclude(pk=group.pk).exists():
+                raise ValueError(f'Grupa „{name}” już istnieje.')
+            minimum = parse_package_count(request.POST.get('minimum_packages'), default=group.minimum_packages)
+            with transaction.atomic():
+                group.name = name[:160]
+                group.category = request.POST.get('category', group.category).strip()
+                group.minimum_packages = minimum
+                group.save(update_fields=['name', 'category', 'minimum_packages', 'updated_at'])
+                added = _group_products(request, 'add_products')
+                if added:
+                    PantryProduct.objects.filter(
+                        pk__in=[product.pk for product in added],
+                    ).update(group=group)
+                removed = _group_products(request, 'remove_products')
+                if removed:
+                    PantryProduct.objects.filter(
+                        pk__in=[product.pk for product in removed], group=group,
+                    ).update(group=None)
+        except ValueError as exc:
+            messages.error(request, f'Nie udało się zapisać grupy: {exc}')
+        else:
+            messages.success(request, f'Zapisano grupę „{group.name}”.')
+        return redirect('cooking:product-groups')
+
+
+class DeleteProductGroupView(LoginRequiredMixin, View):
+    def post(self, request, group_id):
+        group = get_object_or_404(ProductGroup, pk=group_id)
+        name = group.name
+        # Marki zostają w spiżarni, tracą tylko przynależność do grupy.
+        group.delete()
+        messages.success(request, f'Usunięto grupę „{name}”. Produkty zostały w spiżarni.')
+        return redirect('cooking:product-groups')
+
+
 class AddPantryProductToShoppingListView(LoginRequiredMixin, View):
     """Dopisuje produkt ze spiżarni do listy jednym przyciskiem.
 
@@ -1914,22 +2099,23 @@ class AddPantryProductToShoppingListView(LoginRequiredMixin, View):
             messages.info(request, 'Ta lista została już zakończona.')
             return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
 
-        already = shopping_list.items.filter(name__iexact=product.name).first()
+        add = shopping_item_for_product(product)
+        already = shopping_list.items.filter(name__iexact=add['name']).first()
         if already is not None:
-            messages.info(request, f'{product.name} już jest na liście.')
+            messages.info(request, f'{add["name"]} już jest na liście.')
             return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
 
-        quantity, unit = shopping_item_defaults(product)
         ShoppingListItem.objects.create(
             shopping_list=shopping_list,
-            pantry_product=product,
-            name=product.name,
-            quantity=quantity,
-            unit=unit,
-            category=product.category,
+            pantry_product=None if add['group'] else product,
+            pantry_group=add['group'],
+            name=add['name'],
+            quantity=add['quantity'],
+            unit=add['unit'],
+            category=add['category'],
         )
         shopping_list.save(update_fields=['updated_at'])
-        messages.success(request, f'Dodano do listy: {product.name}.')
+        messages.success(request, f'Dodano do listy: {add["name"]}.')
         return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
 
 

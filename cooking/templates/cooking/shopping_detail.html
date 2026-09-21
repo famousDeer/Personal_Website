@@ -154,6 +154,7 @@
                                     {% if row.product.unit == 'szt' or row.product.unit == 'opak' %}{{ row.product.current_quantity|floatformat:0 }}{% else %}{{ row.product.current_quantity|floatformat:2 }}{% endif %} {{ row.product.get_unit_display }}
                                     {% if row.product.tracks_packages and row.product.unit != 'szt' and row.product.unit != 'opak' %} · {{ row.product.current_package_count }} opak.{% endif %}
                                     {% if row.product.category %} · {{ row.product.category }}{% endif %}
+                                    {% if row.group %} · <i class="bi bi-collection" aria-hidden="true"></i> {{ row.group.name }}{% endif %}
                                 </span>
                             </div>
 
@@ -171,7 +172,7 @@
                                 <form method="post" action="{% url 'cooking:add-pantry-product-to-shopping-list' shopping_list.id row.product.id %}">
                                     {% csrf_token %}
                                     <button class="btn btn-sm btn-success shopping-pantry-add" type="submit"
-                                            title="Dopisz do listy: {{ row.product.name }}">
+                                            title="Dopisz do listy: {{ row.add_name }}">
                                         <i class="bi bi-cart-plus"></i>
                                         <span>{% if row.add_unit == 'szt' %}{{ row.add_quantity|floatformat:0 }}{% else %}{{ row.add_quantity|floatformat:2 }}{% endif %} {{ row.add_unit_label }}</span>
                                     </button>

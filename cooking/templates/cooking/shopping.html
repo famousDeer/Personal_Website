@@ -71,18 +71,19 @@
     {% if suggestions %}
         <div class="shopping-suggestion-list mt-3">
             {% for suggestion in suggestions %}
-                {% with product=suggestion.product %}
-                    <div class="shopping-suggestion-row">
-                        <div class="min-w-0">
-                            <strong class="d-block text-truncate">{{ product.name }}</strong>
-                            <span class="small text-muted">{{ product.category|default:"Bez kategorii" }} · {{ suggestion.reason }}</span>
-                        </div>
-                        <span class="shopping-quantity-pill">
-                            {% if product.unit == 'szt' %}{{ suggestion.quantity|floatformat:0 }}{% else %}{{ suggestion.quantity|floatformat:2 }}{% endif %}
-                            {{ product.display_unit }}
+                <div class="shopping-suggestion-row">
+                    <div class="min-w-0">
+                        <strong class="d-block text-truncate">{{ suggestion.name }}</strong>
+                        <span class="small text-muted">
+                            {{ suggestion.category|default:"Bez kategorii" }} · {{ suggestion.reason }}
+                            {% if suggestion.group %} · grupa: {{ suggestion.group.brand_names|join:", " }}{% endif %}
                         </span>
                     </div>
-                {% endwith %}
+                    <span class="shopping-quantity-pill">
+                        {% if suggestion.unit == 'szt' %}{{ suggestion.quantity|floatformat:0 }}{% else %}{{ suggestion.quantity|floatformat:2 }}{% endif %}
+                        {{ suggestion.unit_label }}
+                    </span>
+                </div>
             {% endfor %}
         </div>
     {% else %}

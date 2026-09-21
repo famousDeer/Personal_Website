@@ -345,6 +345,39 @@ product, its photo and its movement history. Shopping-list items stay and lose o
 the link; completing such a list creates the product again. The household memory of
 the barcode stays unless "forget the barcode" is ticked.
 
+## Product groups (same product, different brand)
+
+The pantry holds real jars: "Jogurt naturalny Pilos", "… Piątnica", "… Bakoma" are three
+products with three barcodes and three stocks. But in the fridge there is simply natural
+yoghurt, so an empty Bakoma used to land on the shopping list while two other yoghurts
+were still there.
+
+A `ProductGroup` (migration `0017`) fixes that. Brands stay separate products and get an
+optional `group`; the group decides what is missing:
+- **Stock is counted in packages**, summed across the brands (`packages_in_stock`). A
+  brand that does not count packages (a weighed product with no scanner) counts as one
+  package while anything is left of it.
+- `minimum_packages` is the household rule ("always at least two yoghurts") and replaces
+  the members' own minimums for shopping decisions.
+- The forecast runs on the group through the same engine as products: the group is fed
+  to `pantry_forecast` as a stand-in product whose unit is packages, with every member's
+  movements converted to package counts (`cooking/services/product_groups.py`). Three
+  brands are one consumption stream, so the prediction has more data than per brand.
+- `build_shopping_suggestions` treats a group as one entry. Only the group's total
+  matters, so an empty brand alone no longer reaches the list.
+- The list carries **the group name only** ("Jogurt naturalny 2 szt."), with
+  `ShoppingListItem.pantry_group` set. Checking it off restocks the brand you bought
+  last (`restock_target`), converting packages to that brand's unit; unchecking takes it
+  back. A scan in the shopping app still credits the exact brand scanned.
+
+**Managing groups** (`/cooking/pantry/groups/`): groups with their brands and minimum,
+a manual "new group" form, and proposals. A proposal is offered when products in the same
+category share the first two words of their name after the brand (taken from the barcode
+catalog) is removed — two words, not one, because "Mleko 3,2%" and "Mleko bez laktozy"
+are not substitutes. Nothing is ever grouped automatically; a person confirms each one.
+A product can also be put in a group straight from the add and edit forms, which is how a
+newly scanned brand joins its group. Deleting a group keeps the products.
+
 ## Adding pantry products to a shopping list
 
 Both the shopping list page and the shopping app have a pantry panel: the whole
@@ -531,6 +564,7 @@ Website-Finance/
 │  │  ├─ pantry_forecast.py   # Consumption forecasting
 │  │  ├─ pantry_quantities.py # Quantity, unit and package helpers shared by views and sync
 │  │  ├─ pantry_sharing.py    # Merging per-user pantries into one (migration 0011)
+│  │  ├─ product_groups.py    # Same product, different brand: stock and forecast in packages
 │  │  ├─ push.py              # Web Push/VAPID sending, no-repeat guard, dead subscriptions
 │  │  ├─ shopping_sync.py     # Offline shopping: operations from the phone, pantry restocking
 │  │  ├─ polish.py            # Polish plural forms in messages

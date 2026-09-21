@@ -67,7 +67,7 @@ class Command(BaseCommand):
         if not suggestions:
             self.stdout.write('Spiżarnia: nic nie wymaga uzupełnienia.')
             return 0
-        names = [suggestion['product'].name for suggestion in suggestions]
+        names = [suggestion['name'] for suggestion in suggestions]
         shown = ', '.join(names[:MAX_NAMES])
         rest = len(names) - MAX_NAMES
         body = shown + (f' i {polish_count(rest, "inny", "inne", "innych")}' if rest > 0 else '')

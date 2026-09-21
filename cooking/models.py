@@ -86,6 +86,65 @@ class RecipeStepIngredient(models.Model):
         return f"{self.name} ({self.quantity} {self.unit})"
 
 
+class ProductGroup(models.Model):
+    """Ten sam produkt różnych firm: „Jogurt naturalny” = Pilos + Piątnica + Bakoma.
+
+    Marki zostają osobnymi produktami w spiżarni (każda ma swój kod kreskowy
+    i swój zapas), ale o tym, czego brakuje, decyduje grupa: zapas liczony jest
+    łącznie, w opakowaniach. Dzięki temu pusty jogurt jednej firmy nie trafia
+    na listę zakupów, kiedy w lodówce stoją jogurty dwóch pozostałych.
+    """
+
+    name = models.CharField(max_length=160)
+    category = models.CharField(max_length=120, blank=True)
+    # Ile opakowań ma zawsze być w domu - liczone łącznie dla wszystkich marek.
+    minimum_packages = models.PositiveSmallIntegerField(default=1)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+        verbose_name='Utworzona przez',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'product_groups'
+        ordering = ['name']
+        constraints = [
+            models.UniqueConstraint(Lower('name'), name='unique_product_group_name_ci'),
+        ]
+
+    def __str__(self):
+        return self.name
+
+    def members(self):
+        cached = getattr(self, '_prefetched_objects_cache', {}).get('products')
+        return list(cached) if cached is not None else list(self.products.all())
+
+    @property
+    def packages_in_stock(self):
+        """Ile opakowań stoi w domu, licząc wszystkie marki razem."""
+        from .services.product_groups import packages_in_stock
+
+        return sum(packages_in_stock(product) for product in self.members())
+
+    @property
+    def stock_status(self):
+        packages = self.packages_in_stock
+        if packages <= 0:
+            return 'empty'
+        if self.minimum_packages and packages <= self.minimum_packages:
+            return 'low'
+        return 'ok'
+
+    @property
+    def brand_names(self):
+        return [product.name for product in self.members()]
+
+
 class PantryProduct(models.Model):
     UNIT_PIECE = UNIT_PIECE
     UNIT_GRAM = UNIT_GRAM
@@ -110,6 +169,16 @@ class PantryProduct(models.Model):
         verbose_name='Dodane przez',
     )
     name = models.CharField(max_length=160)
+    # Grupa „ten sam produkt, inna firma”. Kiedy jest ustawiona, to ona decyduje
+    # o brakach i o tym, co trafia na listę zakupów.
+    group = models.ForeignKey(
+        'ProductGroup',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='products',
+        verbose_name='Grupa produktów',
+    )
     barcode = models.CharField(max_length=64, blank=True)
     quantity_per_scan = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('1.00'))
     category = models.CharField(max_length=120, blank=True)
@@ -413,6 +482,16 @@ class ShoppingListItem(models.Model):
         blank=True,
         related_name='+',
         verbose_name='Kupione przez',
+    )
+    # Pozycja na listę trafia jako grupa („Jogurt naturalny”), a nie konkretna
+    # marka - w sklepie bierze się, co jest. Przy odhaczeniu zapas dopisuje się
+    # do marki, którą kupowaliście ostatnio, chyba że skan powie inaczej.
+    pantry_group = models.ForeignKey(
+        'ProductGroup',
+        on_delete=models.SET_NULL,
+        related_name='shopping_items',
+        blank=True,
+        null=True,
     )
     # Ruch w spiżarni, którym odhaczenie uzupełniło zapas. Cofnięcie odhaczenia
     # usuwa ruch i zdejmuje ilość ze stanu; zakończenie listy go pomija.

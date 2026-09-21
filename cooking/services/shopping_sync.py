@@ -31,11 +31,13 @@ from ..models import (
     PANTRY_UNIT_CHOICES,
     PantryMovement,
     PantryProduct,
+    ProductGroup,
     ShopLayout,
     ShoppingList,
     ShoppingListItem,
     ShoppingSyncOperation,
 )
+from .product_groups import restock_target
 from .pantry_quantities import (
     convert_pantry_quantity,
     counts_in_packages,
@@ -86,6 +88,12 @@ class OperationRejected(Exception):
 # ---------------------------------------------------------------------------
 
 def _pantry_product_for(item, user=None, create_missing=False):
+    # Pozycja z grupy („Jogurt naturalny”) nie wskazuje marki, więc zapas
+    # dopisujemy do tej, którą kupowaliście ostatnio.
+    if item.pantry_group_id and item.pantry_product_id is None:
+        target = restock_target(item.pantry_group)
+        if target is not None:
+            return target
     product = item.pantry_product or find_pantry_product(item.name)
     if product is None and create_missing:
         product = PantryProduct.objects.create(
@@ -293,8 +301,34 @@ def shopping_item_defaults(product):
     return quantity.quantize(TWO_PLACES), product.unit
 
 
+def shopping_item_for_product(product):
+    """Co dopisać do listy po naciśnięciu przycisku przy produkcie.
+
+    Produkt z grupy trafia na listę pod nazwą grupy i w sztukach - w sklepie
+    bierze się dowolną markę, a przy odhaczeniu zapas wraca do tej, którą
+    kupowaliście ostatnio.
+    """
+    group = product.group
+    if group is not None:
+        return {
+            'name': group.name,
+            'quantity': Decimal('1.00'),
+            'unit': PantryProduct.UNIT_PIECE,
+            'category': group.category or product.category,
+            'group': group,
+        }
+    quantity, unit = shopping_item_defaults(product)
+    return {
+        'name': product.name,
+        'quantity': quantity,
+        'unit': unit,
+        'category': product.category,
+        'group': None,
+    }
+
+
 def pantry_product_json(product):
-    add_quantity, add_unit = shopping_item_defaults(product)
+    add = shopping_item_for_product(product)
     return {
         'id': product.id,
         'name': product.name,
@@ -308,10 +342,14 @@ def pantry_product_json(product):
         'tracks_packages': product.tracks_packages,
         'minimum': format(product.minimum_quantity, '.2f'),
         'status': product.stock_status,
-        # Ile dopisać do listy jednym przyciskiem (serwer decyduje, nie telefon).
-        'add_quantity': format(add_quantity, '.2f'),
-        'add_unit': add_unit,
-        'add_unit_label': UNIT_LABELS.get(add_unit, add_unit),
+        # Co dopisać do listy jednym przyciskiem (serwer decyduje, nie telefon).
+        'add_name': add['name'],
+        'add_quantity': format(add['quantity'], '.2f'),
+        'add_unit': add['unit'],
+        'add_unit_label': UNIT_LABELS.get(add['unit'], add['unit']),
+        'add_category': add['category'],
+        'group': add['group'].id if add['group'] else None,
+        'group_name': add['group'].name if add['group'] else '',
     }
 
 
@@ -378,7 +416,10 @@ def shopping_snapshot():
         ],
         # Spiżarnia w telefonie: podpowiedzi przy dopisywaniu pozycji, podgląd
         # stanu przy półce w sklepie i skanowanie kodów bez połączenia.
-        'products': [pantry_product_json(product) for product in PantryProduct.objects.order_by('name')],
+        'products': [
+            pantry_product_json(product)
+            for product in PantryProduct.objects.select_related('group').order_by('name')
+        ],
     }
 
 
@@ -466,11 +507,18 @@ def _op_add(raw, user, when):
     category = str(data.get('category') or '').strip()
     if category and category not in PANTRY_CATEGORIES:
         category = ''
-    product = find_pantry_product(name)
+    group = None
+    raw_group = data.get('group')
+    if raw_group:
+        group = ProductGroup.objects.filter(pk=raw_group).first()
+        if group is None:
+            raise OperationSkipped('Grupa produktów została usunięta w domu.')
+    product = None if group is not None else find_pantry_product(name)
     ShoppingListItem.objects.create(
         shopping_list=shopping_list,
         uuid=item_uuid,
         pantry_product=product,
+        pantry_group=group,
         name=name,
         quantity=quantity,
         unit=unit,

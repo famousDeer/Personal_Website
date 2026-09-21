@@ -1,0 +1,239 @@
+{% extends 'cooking/index.html' %}
+{% load pantry_extras %}
+
+{% block title %}Grupy produktów{% endblock %}
+
+{% block content_cooking %}
+<div class="shopping-detail-shell animate-fade-in">
+    <div class="shopping-detail-header">
+        <div class="min-w-0">
+            <div class="small text-uppercase fw-bold text-muted mb-1">Spiżarnia</div>
+            <h2 class="fw-bold mb-2 recipe-title">Grupy produktów</h2>
+            <p class="text-muted mb-0">
+                Ten sam produkt różnych firm w jednej grupie. O braku decyduje wtedy zapas całej
+                grupy, liczony w opakowaniach, więc pusty jogurt jednej firmy nie trafi na listę,
+                gdy w lodówce stoją jogurty dwóch pozostałych.
+            </p>
+        </div>
+        <div class="shopping-header-actions">
+            <a href="{% url 'cooking:pantry' %}" class="btn btn-soft-neutral" title="Wróć do spiżarni">
+                <i class="bi bi-arrow-left"></i>
+            </a>
+        </div>
+    </div>
+
+    {% if proposals %}
+        <section class="shopping-panel animate-fade-in-up">
+            <div class="shopping-section-heading">
+                <div>
+                    <div class="small text-uppercase fw-bold text-muted mb-1">Podpowiedzi</div>
+                    <h3 class="h5 fw-bold mb-0">Te produkty wyglądają na to samo</h3>
+                </div>
+            </div>
+            <p class="text-muted small">Nic nie łączy się samo — sprawdź i zatwierdź.</p>
+
+            <div class="shopping-pantry-grid">
+                {% for proposal in proposals %}
+                    <form method="post" action="{% url 'cooking:create-product-group' %}" class="group-proposal">
+                        {% csrf_token %}
+                        <input type="hidden" name="name" value="{{ proposal.name }}">
+                        <input type="hidden" name="category" value="{{ proposal.category }}">
+                        <input type="hidden" name="minimum_packages" value="1">
+                        {% for product in proposal.products %}
+                            <input type="hidden" name="products" value="{{ product.id }}">
+                        {% endfor %}
+                        <div class="shopping-pantry-body">
+                            <strong>{{ proposal.name }}</strong>
+                            <span>
+                                {% for product in proposal.products %}{{ product.name }}{% if not forloop.last %} · {% endif %}{% endfor %}
+                            </span>
+                        </div>
+                        <button class="btn btn-sm btn-success shopping-pantry-add" type="submit">
+                            <i class="bi bi-collection"></i>
+                            <span>Utwórz grupę</span>
+                        </button>
+                    </form>
+                {% endfor %}
+            </div>
+        </section>
+    {% endif %}
+
+    <section class="shopping-panel animate-fade-in-up">
+        <div class="shopping-section-heading">
+            <div>
+                <div class="small text-uppercase fw-bold text-muted mb-1">Nowa grupa</div>
+                <h3 class="h5 fw-bold mb-0">Połącz produkty ręcznie</h3>
+            </div>
+            <div class="shopping-section-actions">
+                <button class="btn btn-sm btn-outline-success" type="button" data-bs-toggle="collapse" data-bs-target="#new-group" aria-expanded="false">
+                    <i class="bi bi-plus-lg me-1"></i> Nowa grupa
+                </button>
+            </div>
+        </div>
+
+        <div class="collapse" id="new-group">
+            <form method="post" action="{% url 'cooking:create-product-group' %}">
+                {% csrf_token %}
+                <div class="row g-3 mb-3">
+                    <div class="col-md-5">
+                        <label class="form-label small text-uppercase fw-bold text-muted" for="group-name">Nazwa grupy</label>
+                        <input type="text" class="form-control" id="group-name" name="name" maxlength="160"
+                               placeholder="np. Jogurt naturalny" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small text-uppercase fw-bold text-muted" for="group-category">Kategoria</label>
+                        <select class="form-select" id="group-category" name="category">
+                            <option value="">Jak pierwszy produkt</option>
+                            {% pantry_category_options %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-uppercase fw-bold text-muted" for="group-minimum">Minimum (opak.)</label>
+                        <input type="number" class="form-control" id="group-minimum" name="minimum_packages"
+                               min="0" max="99" value="1">
+                    </div>
+                </div>
+
+                <label class="form-label small text-uppercase fw-bold text-muted">Produkty w grupie</label>
+                {% if loose_products %}
+                    <div class="group-picker mb-3">
+                        {% for product in loose_products %}
+                            <label class="group-pick">
+                                <input type="checkbox" name="products" value="{{ product.id }}">
+                                <span>
+                                    <strong>{{ product.name }}</strong>
+                                    <em>{{ product.category|default:"Bez kategorii" }}</em>
+                                </span>
+                            </label>
+                        {% endfor %}
+                    </div>
+                    <button class="btn btn-success" type="submit">
+                        <i class="bi bi-collection me-1"></i> Utwórz grupę
+                    </button>
+                {% else %}
+                    <p class="text-muted mb-0">Wszystkie produkty należą już do grup.</p>
+                {% endif %}
+            </form>
+        </div>
+    </section>
+
+    {% if rows %}
+        {% for row in rows %}
+            <section class="shopping-panel animate-fade-in-up">
+                <div class="shopping-section-heading">
+                    <div class="min-w-0">
+                        <div class="small text-uppercase fw-bold text-muted mb-1">
+                            {{ row.group.category|default:"Bez kategorii" }}
+                        </div>
+                        <h3 class="h5 fw-bold mb-0 text-truncate">{{ row.group.name }}</h3>
+                    </div>
+                    <div class="shopping-section-actions">
+                        {% if row.status == 'empty' %}
+                            <span class="pantry-stock-badge is-empty">Brak</span>
+                        {% elif row.status == 'low' %}
+                            <span class="pantry-stock-badge is-low">Niski stan</span>
+                        {% else %}
+                            <span class="pantry-stock-badge is-ok">W zapasie</span>
+                        {% endif %}
+                        <span class="shopping-quantity-pill">{{ row.packages }} opak. · min. {{ row.group.minimum_packages }}</span>
+                        <button class="btn btn-sm btn-soft-neutral" type="button" data-bs-toggle="collapse"
+                                data-bs-target="#group-edit-{{ row.group.id }}" aria-expanded="false" title="Edytuj grupę">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="shopping-pantry-grid">
+                    {% for product in row.members %}
+                        <div class="shopping-pantry-row">
+                            <div class="shopping-pantry-body">
+                                <strong class="text-truncate">{{ product.name }}</strong>
+                                <span>
+                                    {% if product.unit == 'szt' or product.unit == 'opak' %}{{ product.current_quantity|floatformat:0 }}{% else %}{{ product.current_quantity|floatformat:2 }}{% endif %} {{ product.get_unit_display }}
+                                    {% if product.tracks_packages and product.unit != 'szt' and product.unit != 'opak' %} · {{ product.current_package_count }} opak.{% endif %}
+                                </span>
+                            </div>
+                            <a class="btn btn-sm btn-soft-neutral" href="{% url 'cooking:edit-pantry-product' product.id %}" title="Edytuj produkt">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                        </div>
+                    {% empty %}
+                        <p class="text-muted mb-0">Ta grupa nie ma jeszcze żadnej marki.</p>
+                    {% endfor %}
+                </div>
+
+                <div class="collapse mt-3" id="group-edit-{{ row.group.id }}">
+                    <form method="post" action="{% url 'cooking:update-product-group' row.group.id %}">
+                        {% csrf_token %}
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-5">
+                                <label class="form-label small text-uppercase fw-bold text-muted">Nazwa grupy</label>
+                                <input type="text" class="form-control" name="name" value="{{ row.group.name }}" maxlength="160" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small text-uppercase fw-bold text-muted">Kategoria</label>
+                                <select class="form-select" name="category">
+                                    <option value="">Bez kategorii</option>
+                                    {% pantry_category_options row.group.category %}
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small text-uppercase fw-bold text-muted">Minimum (opak.)</label>
+                                <input type="number" class="form-control" name="minimum_packages" min="0" max="99"
+                                       value="{{ row.group.minimum_packages }}">
+                            </div>
+                        </div>
+
+                        {% if row.members %}
+                            <label class="form-label small text-uppercase fw-bold text-muted">Wyjmij z grupy</label>
+                            <div class="group-picker mb-3">
+                                {% for product in row.members %}
+                                    <label class="group-pick">
+                                        <input type="checkbox" name="remove_products" value="{{ product.id }}">
+                                        <span><strong>{{ product.name }}</strong></span>
+                                    </label>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+
+                        {% if loose_products %}
+                            <label class="form-label small text-uppercase fw-bold text-muted">Dołącz do grupy</label>
+                            <div class="group-picker mb-3">
+                                {% for product in loose_products %}
+                                    <label class="group-pick">
+                                        <input type="checkbox" name="add_products" value="{{ product.id }}">
+                                        <span>
+                                            <strong>{{ product.name }}</strong>
+                                            <em>{{ product.category|default:"Bez kategorii" }}</em>
+                                        </span>
+                                    </label>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+
+                        <div class="d-flex flex-wrap gap-2">
+                            <button class="btn btn-success" type="submit">
+                                <i class="bi bi-check-lg me-1"></i> Zapisz grupę
+                            </button>
+                        </div>
+                    </form>
+
+                    <form method="post" action="{% url 'cooking:delete-product-group' row.group.id %}" class="mt-2">
+                        {% csrf_token %}
+                        <button class="btn btn-outline-danger" type="submit">
+                            <i class="bi bi-trash me-1"></i> Usuń grupę (produkty zostaną)
+                        </button>
+                    </form>
+                </div>
+            </section>
+        {% endfor %}
+    {% else %}
+        <section class="shopping-panel animate-fade-in-up">
+            <div class="shopping-empty-inline">
+                <i class="bi bi-collection"></i>
+                <span>Nie ma jeszcze żadnej grupy. Każdy produkt liczy się sam za siebie.</span>
+            </div>
+        </section>
+    {% endif %}
+</div>
+{% endblock %}

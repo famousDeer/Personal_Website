@@ -1107,9 +1107,9 @@
         if (!list) {
             return null;
         }
-        return list.items.find(
-            (item) => item.name.toLocaleLowerCase('pl') === product.name.toLocaleLowerCase('pl'),
-        ) || null;
+        // Produkt z grupy trafia na listę pod nazwą grupy, więc jej szukamy.
+        const target = (product.add_name || product.name).toLocaleLowerCase('pl');
+        return list.items.find((item) => item.name.toLocaleLowerCase('pl') === target) || null;
     }
 
     function renderPantry(view, list) {
@@ -1125,6 +1125,7 @@
                                 <span class="sa-qty">${escapeHtml(formatQuantity(product.quantity))} ${escapeHtml(product.unit_label)}</span>
                                 <span class="sa-tag is-stock-${escapeHtml(product.status)}">${STATUS_LABELS[product.status] || product.status}</span>
                                 ${product.tracks_packages ? `<span class="sa-note">${product.packages} opak.</span>` : ''}
+                                ${product.group_name ? `<span class="sa-note"><i class="bi bi-collection" aria-hidden="true"></i> ${escapeHtml(product.group_name)}</span>` : ''}
                                 ${onList ? '<span class="sa-tag"><i class="bi bi-cart" aria-hidden="true"></i> na liście</span>' : ''}
                             </span>
                         </div>
@@ -1135,7 +1136,7 @@
                             <button type="button" class="sa-step" data-pantry="purchase" aria-label="Dokupiono jedno opakowanie: ${escapeHtml(product.name)}">
                                 <i class="bi bi-plus-lg" aria-hidden="true"></i>
                             </button>
-                            ${onList ? '' : `<button type="button" class="sa-step" data-pantry="to-list" aria-label="Dopisz do listy: ${escapeHtml(product.name)}">
+                            ${onList ? '' : `<button type="button" class="sa-step" data-pantry="to-list" aria-label="Dopisz do listy: ${escapeHtml(product.add_name || product.name)}">
                                 <i class="bi bi-cart-plus" aria-hidden="true"></i>
                             </button>`}
                         </div>
@@ -1737,13 +1738,16 @@
                 type: OP_ADD,
                 list: list.id,
                 data: {
-                    uuid: newId(), name: product.name,
+                    uuid: newId(),
+                    name: product.add_name || product.name,
                     quantity: product.add_quantity || '1',
                     unit: product.add_unit || 'szt',
-                    category: product.category, note: '',
+                    category: product.add_category || product.category,
+                    group: product.group || null,
+                    note: '',
                 },
             });
-            toast(`Dopisano do listy: ${product.name}`, 'success');
+            toast(`Dopisano do listy: ${product.add_name || product.name}`, 'success');
             return;
         }
         await enqueue({ type: OP_PANTRY_MOVEMENT, product: product.id, action, count: 1 });

@@ -118,6 +118,16 @@
                     </div>
 
                     <div class="form-floating mt-3">
+                        <select class="form-select" id="group" name="group">
+                            <option value="">Bez grupy — produkt liczy się sam</option>
+                            {% for group in product_groups %}
+                                <option value="{{ group.id }}" {% if form_values.group == group.id|stringformat:"s" %}selected{% endif %}>{{ group.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <label for="group">Grupa produktów (ten sam produkt, inna firma)</label>
+                    </div>
+
+                    <div class="form-floating mb-3">
                         <textarea class="form-control" id="notes" name="notes" placeholder="Notatki" style="height: 110px;">{{ form_values.notes|default:'' }}</textarea>
                         <label for="notes">Notatki</label>
                     </div>

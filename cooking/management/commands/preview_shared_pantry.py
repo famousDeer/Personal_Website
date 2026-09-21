@@ -17,7 +17,17 @@ class Command(BaseCommand):
     help = 'Podgląd łączenia duplikatów przy przejściu na wspólną spiżarnię (bez zmian w bazie).'
 
     def handle(self, *args, **options):
-        products = list(PantryProduct.objects.select_related('created_by'))
+        # Podgląd działa przed migracją 0011, więc wczytujemy tylko kolumny,
+        # które wtedy już istniały - nowsze pola (np. grupa produktów) pominięte.
+        products = list(
+            PantryProduct.objects
+            .select_related('created_by')
+            .only(
+                'name', 'barcode', 'category', 'unit', 'quantity_per_scan',
+                'current_quantity', 'current_package_count', 'minimum_quantity',
+                'restock_lead_days', 'notes', 'image', 'created_by',
+            )
+        )
         plan = plan_pantry_merges(products)
         owners = sorted({getattr(p.created_by, 'username', '?') for p in products})
         self.stdout.write(f'Produkty w bazie: {len(products)} (użytkownicy: {", ".join(owners) or "brak"})')
