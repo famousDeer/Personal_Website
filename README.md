@@ -370,13 +370,18 @@ optional `group`; the group decides what is missing:
   last (`restock_target`), converting packages to that brand's unit; unchecking takes it
   back. A scan in the shopping app still credits the exact brand scanned.
 
-**Managing groups** (`/cooking/pantry/groups/`): groups with their brands and minimum,
-a manual "new group" form, and proposals. A proposal is offered when products in the same
-category share the first two words of their name after the brand (taken from the barcode
-catalog) is removed — two words, not one, because "Mleko 3,2%" and "Mleko bez laktozy"
-are not substitutes. Nothing is ever grouped automatically; a person confirms each one.
-A product can also be put in a group straight from the add and edit forms, which is how a
-newly scanned brand joins its group. Deleting a group keeps the products.
+**Managing groups** happens on the pantry page itself, under a **Kategorie / Grupy**
+switch (`?widok=grupy`; the old `/cooking/pantry/groups/` address redirects there and
+current filters survive the switch). The group view lists one collapsed panel per group —
+its header carries the group's stock, minimum and status, and the brands appear only when
+you open it — plus a "Bez grupy" panel, a manual "new group" form and proposals. A
+proposal is offered when products in the same category share the first two words of their
+name after the brand (taken from the barcode catalog) is removed — two words, not one,
+because "Mleko 3,2%" and "Mleko bez laktozy" are not substitutes. Nothing is ever grouped
+automatically; a person confirms each one. Each group's settings (name, category, minimum,
+which brands belong) sit inside its panel. A product can also be put in a group straight
+from the add and edit forms, which is how a newly scanned brand joins its group. Deleting
+a group keeps the products.
 
 ## Adding pantry products to a shopping list
 

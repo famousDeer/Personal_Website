@@ -11,6 +11,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Count, Prefetch, Q, Sum
 from django.http import FileResponse, Http404, JsonResponse
 from django.urls import reverse
+from django.utils.http import urlencode
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views import View
 from django.contrib.auth.decorators import login_required
@@ -726,6 +727,80 @@ class DeleteRecipeView(LoginRequiredMixin, View):
         return redirect('cooking:recipe-list')
 
 
+def pantry_cards_by_category(product_cards):
+    """Kafelki spiżarni pogrupowane po kategorii - widok domyślny."""
+    buckets = {}
+    for card in product_cards:
+        category = card['product'].category or 'Bez kategorii'
+        buckets.setdefault(category, []).append(card)
+
+    category_order = [*PANTRY_CATEGORIES, 'Bez kategorii']
+    ordered = [category for category in category_order if category in buckets] + [
+        category for category in sorted(buckets) if category not in category_order
+    ]
+    return [
+        {
+            'name': category,
+            'cards': buckets[category],
+            'count': len(buckets[category]),
+            'low_count': _low_count(buckets[category]),
+            'group': None,
+            'open': index == 0,
+        }
+        for index, category in enumerate(ordered)
+    ]
+
+
+def pantry_cards_by_group(product_cards):
+    """Kafelki spiżarni pogrupowane po grupie produktów.
+
+    Panele są domyślnie zwinięte: w tym widoku liczy się stan całej grupy,
+    a marki interesują dopiero wtedy, gdy ktoś je rozwinie.
+    """
+    buckets = {}
+    for card in product_cards:
+        group = card['product'].group
+        buckets.setdefault(group.pk if group else None, {'group': group, 'cards': []})
+        buckets[group.pk if group else None]['cards'].append(card)
+
+    rows = []
+    for bucket in buckets.values():
+        group = bucket['group']
+        if group is None:
+            continue
+        members = group.members()
+        rows.append({
+            'name': group.name,
+            'cards': bucket['cards'],
+            'count': len(bucket['cards']),
+            'low_count': _low_count(bucket['cards']),
+            'group': group,
+            'packages': sum(packages_in_stock(member) for member in members),
+            'status': group.stock_status,
+            'open': False,
+        })
+    rows.sort(key=lambda row: row['name'].casefold())
+
+    loose = buckets.get(None)
+    if loose:
+        rows.append({
+            'name': 'Bez grupy',
+            'cards': loose['cards'],
+            'count': len(loose['cards']),
+            'low_count': _low_count(loose['cards']),
+            'group': None,
+            'open': False,
+        })
+    return rows
+
+
+def _low_count(cards):
+    return sum(
+        1 for card in cards
+        if card['product'].stock_status in ['low', 'empty'] or card['forecast'].is_due
+    )
+
+
 class PantryListView(LoginRequiredMixin, View):
     def get(self, request):
         today = timezone.localdate()
@@ -797,29 +872,13 @@ class PantryListView(LoginRequiredMixin, View):
             if matches_status:
                 product_cards.append(card)
 
-        grouped_cards = {}
-        for card in product_cards:
-            category = card['product'].category or 'Bez kategorii'
-            grouped_cards.setdefault(category, []).append(card)
-
-        category_order = [*PANTRY_CATEGORIES, 'Bez kategorii']
-        ordered_categories = [
-            category for category in category_order if category in grouped_cards
-        ] + [
-            category for category in sorted(grouped_cards) if category not in category_order
-        ]
-        product_groups = [
-            {
-                'name': category,
-                'cards': grouped_cards[category],
-                'count': len(grouped_cards[category]),
-                'low_count': sum(
-                    1 for card in grouped_cards[category]
-                    if card['product'].stock_status in ['low', 'empty'] or card['forecast'].is_due
-                ),
-            }
-            for category in ordered_categories
-        ]
+        # Dwa sposoby patrzenia na tę samą spiżarnię: po kategoriach (jak dotąd)
+        # albo po grupach „ten sam produkt, inna firma”.
+        view_mode = 'grupy' if request.GET.get('widok') == 'grupy' else 'kategorie'
+        if view_mode == 'grupy':
+            product_groups = pantry_cards_by_group(product_cards)
+        else:
+            product_groups = pantry_cards_by_category(product_cards)
 
         movement_stats = PantryMovement.objects.aggregate(
             total_consumed=Sum('quantity', filter=Q(movement_type=PantryMovement.CONSUME)),
@@ -827,9 +886,22 @@ class PantryListView(LoginRequiredMixin, View):
             movement_count=Count('id'),
         )
 
+        loose_products = [
+            product for product in all_products if not product.group_id
+        ]
         context = {
             'product_cards': product_cards,
             'product_groups': product_groups,
+            'view_mode': view_mode,
+            'group_count': ProductGroup.objects.count(),
+            # Filtry mają przeżyć przełączenie widoku, więc przenosimy je w adresie.
+            'query_without_view': urlencode(
+                [(key, value) for key, value in request.GET.items() if key != 'widok'],
+            ),
+            # Narzędzia grup pokazujemy tylko w widoku grup - w kategoriach
+            # byłyby tylko szumem.
+            'proposals': suggest_groups(loose_products) if view_mode == 'grupy' else [],
+            'loose_products': sorted(loose_products, key=lambda item: item.name) if view_mode == 'grupy' else [],
             'categories': PANTRY_CATEGORIES,
             'units': PantryProduct.UNIT_CHOICES,
             'current_search': search_query,
@@ -1968,40 +2040,19 @@ class AddShoppingListItemView(LoginRequiredMixin, View):
         return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
 
 
+GROUPS_VIEW_URL = 'grupy'
+
+
+def groups_redirect():
+    """Widok grup mieszka w spiżarni, pod przełącznikiem Grupy/Kategorie."""
+    return redirect(f"{reverse('cooking:pantry')}?widok={GROUPS_VIEW_URL}")
+
+
 class ProductGroupListView(LoginRequiredMixin, View):
-    """Grupy „ten sam produkt, inna firma”.
-
-    Grupa decyduje o brakach zamiast pojedynczej marki: zapas liczony jest
-    łącznie, w opakowaniach. Strona pokazuje grupy, ich marki i propozycje
-    połączenia - propozycje trzeba zatwierdzić, nic nie łączy się samo.
-    """
-
-    template_name = 'cooking/product_groups.html'
+    """Stary adres grup - zostaje, żeby zapisane odnośniki dalej działały."""
 
     def get(self, request):
-        groups = list(
-            ProductGroup.objects
-            .prefetch_related('products')
-            .order_by('name')
-        )
-        rows = []
-        for group in groups:
-            members = group.members()
-            rows.append({
-                'group': group,
-                'members': sorted(members, key=lambda product: product.name),
-                'packages': sum(packages_in_stock(member) for member in members),
-                'status': group.stock_status,
-            })
-        loose = list(
-            PantryProduct.objects.filter(group__isnull=True).order_by('name')
-        )
-        return render(request, self.template_name, {
-            'rows': rows,
-            'loose_products': loose,
-            'proposals': suggest_groups(loose),
-            'categories': PANTRY_CATEGORIES,
-        })
+        return groups_redirect()
 
 
 def _group_products(request, field='products'):
@@ -2040,7 +2091,7 @@ class CreateProductGroupView(LoginRequiredMixin, View):
                 request,
                 f'Utworzono grupę „{group.name}” z {polish_count(len(products), "marki", "marek", "marek")}.',
             )
-        return redirect('cooking:product-groups')
+        return groups_redirect()
 
 
 class UpdateProductGroupView(LoginRequiredMixin, View):
@@ -2072,7 +2123,7 @@ class UpdateProductGroupView(LoginRequiredMixin, View):
             messages.error(request, f'Nie udało się zapisać grupy: {exc}')
         else:
             messages.success(request, f'Zapisano grupę „{group.name}”.')
-        return redirect('cooking:product-groups')
+        return groups_redirect()
 
 
 class DeleteProductGroupView(LoginRequiredMixin, View):
@@ -2082,7 +2133,7 @@ class DeleteProductGroupView(LoginRequiredMixin, View):
         # Marki zostają w spiżarni, tracą tylko przynależność do grupy.
         group.delete()
         messages.success(request, f'Usunięto grupę „{name}”. Produkty zostały w spiżarni.')
-        return redirect('cooking:product-groups')
+        return groups_redirect()
 
 
 class AddPantryProductToShoppingListView(LoginRequiredMixin, View):

@@ -3551,8 +3551,11 @@ class ProductGroupManagementTests(TestCase):
             current_package_count=0,
         )
 
-    def test_page_proposes_products_that_look_the_same(self):
-        response = self.client.get(reverse('cooking:product-groups'))
+    def groups_view(self):
+        return self.client.get(reverse('cooking:pantry'), {'widok': 'grupy'})
+
+    def test_group_view_proposes_products_that_look_the_same(self):
+        response = self.groups_view()
 
         proposals = response.context['proposals']
         self.assertEqual(len(proposals), 1)
@@ -3572,7 +3575,7 @@ class ProductGroupManagementTests(TestCase):
             unit=PantryProduct.UNIT_LITER, current_quantity=Decimal('1.00'),
         )
 
-        proposals = self.client.get(reverse('cooking:product-groups')).context['proposals']
+        proposals = self.groups_view().context['proposals']
 
         self.assertEqual([proposal['name'] for proposal in proposals], ['Jogurt naturalny'])
 
@@ -3660,6 +3663,53 @@ class ProductGroupManagementTests(TestCase):
 
         self.pilos.refresh_from_db()
         self.assertEqual(self.pilos.group, group)
+
+    def test_old_groups_address_leads_to_the_pantry_view(self):
+        response = self.client.get(reverse('cooking:product-groups'))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], f"{reverse('cooking:pantry')}?widok=grupy")
+
+    def test_pantry_shows_categories_by_default(self):
+        response = self.client.get(reverse('cooking:pantry'))
+
+        self.assertEqual(response.context['view_mode'], 'kategorie')
+        names = [bucket['name'] for bucket in response.context['product_groups']]
+        self.assertIn('Nabiał', names)
+        self.assertTrue(response.context['product_groups'][0]['open'])
+
+    def test_group_view_lists_groups_collapsed(self):
+        group = ProductGroup.objects.create(name='Jogurt naturalny', minimum_packages=2)
+        PantryProduct.objects.filter(pk__in=[self.pilos.pk, self.piatnica.pk]).update(group=group)
+
+        response = self.groups_view()
+
+        self.assertEqual(response.context['view_mode'], 'grupy')
+        buckets = {bucket['name']: bucket for bucket in response.context['product_groups']}
+        self.assertEqual(buckets['Jogurt naturalny']['group'], group)
+        self.assertEqual(buckets['Jogurt naturalny']['packages'], 2)
+        self.assertEqual(buckets['Jogurt naturalny']['count'], 2)
+        self.assertFalse(any(bucket['open'] for bucket in response.context['product_groups']))
+
+    def test_products_without_a_group_land_in_their_own_panel(self):
+        group = ProductGroup.objects.create(name='Jogurt naturalny')
+        PantryProduct.objects.filter(pk=self.pilos.pk).update(group=group)
+
+        buckets = {bucket['name']: bucket for bucket in self.groups_view().context['product_groups']}
+
+        self.assertEqual(buckets['Bez grupy']['count'], 1)
+        self.assertIsNone(buckets['Bez grupy']['group'])
+
+    def test_switching_the_view_keeps_the_filters(self):
+        response = self.client.get(reverse('cooking:pantry'), {'widok': 'grupy', 'q': 'jogurt'})
+
+        self.assertEqual(response.context['query_without_view'], 'q=jogurt')
+
+    def test_group_tools_are_hidden_in_the_category_view(self):
+        response = self.client.get(reverse('cooking:pantry'))
+
+        self.assertEqual(response.context['proposals'], [])
+        self.assertEqual(response.context['loose_products'], [])
 
     def test_logged_out_user_cannot_create_groups(self):
         self.client.logout()

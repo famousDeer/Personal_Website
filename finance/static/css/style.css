@@ -5106,6 +5106,144 @@ a { text-decoration: none; }
     font-weight: 700;
 }
 
+/* Przełącznik widoku spiżarni: Kategorie / Grupy. */
+.pantry-view-tools {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.pantry-view-switch {
+    display: inline-flex;
+    padding: 0.2rem;
+    background: var(--surface-subtle);
+    border: 1px solid var(--surface-border);
+    border-radius: 999px;
+}
+
+.pantry-view-switch a {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.85rem;
+    color: var(--text-muted);
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-decoration: none;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.pantry-view-switch a:hover {
+    color: var(--text-main);
+}
+
+.pantry-view-switch a.is-active {
+    color: var(--text-main);
+    background: var(--surface-card);
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+}
+
+.pantry-view-count {
+    padding: 0 0.35rem;
+    color: var(--text-muted);
+    background: var(--surface-subtle);
+    border-radius: 999px;
+    font-size: 0.72rem;
+}
+
+.pantry-view-switch a.is-active .pantry-view-count {
+    background: var(--surface-border);
+}
+
+/* Narzędzia grup w widoku grup: podpowiedzi i zakładanie nowej grupy. */
+.pantry-group-tools {
+    margin-bottom: 0.85rem;
+    padding: 0.9rem 1rem;
+    background: var(--surface-card);
+    border: 1px solid var(--surface-border);
+    border-radius: 14px;
+}
+
+.pantry-group-tools-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.pantry-group-tools-head strong {
+    display: block;
+    color: var(--text-main);
+    font-size: 1.05rem;
+}
+
+.pantry-group-tools-head p {
+    margin: 0.15rem 0 0;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.pantry-group-proposals {
+    display: grid;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+.pantry-group-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 0.6rem 0.9rem 0;
+}
+
+.pantry-group-edit {
+    margin: 0 0.9rem;
+    padding: 0.9rem;
+    background: var(--surface-subtle);
+    border: 1px solid var(--surface-border);
+    border-radius: 12px;
+}
+
+@media (max-width: 767.98px) {
+    /* Na telefonie nazwa grupy dostaje własny wiersz - inaczej ucina się
+       do „Jogurt na…”, żeby zmieścić odznaki stanu. */
+    .pantry-category-header {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 0.45rem;
+    }
+
+    .pantry-category-header > span:last-child {
+        width: 100%;
+        padding-left: 1.6rem;
+        justify-content: flex-start;
+    }
+
+    .pantry-section-heading {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 0.6rem;
+    }
+
+    .pantry-view-tools {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .pantry-view-switch {
+        flex: 1 1 auto;
+    }
+
+    .pantry-view-switch a {
+        flex: 1 1 0;
+        justify-content: center;
+    }
+}
+
 .pantry-category-list {
     gap: 0.85rem;
 }

@@ -30,10 +30,6 @@
                     <i class="bi bi-pencil-square" aria-hidden="true"></i>
                     <span>Dodaj bez kodu</span>
                 </a>
-                <a href="{% url 'cooking:product-groups' %}" class="btn btn-light rounded-pill fw-bold">
-                    <i class="bi bi-collection" aria-hidden="true"></i>
-                    <span>Grupy produktów</span>
-                </a>
             </nav>
         </details>
     </header>
@@ -140,10 +136,124 @@
         <div>
             <div class="small text-uppercase fw-bold text-muted">Wspólne zapasy domu</div>
             <h3>Produkty w spiżarni</h3>
-            <p>Termin zakupu jest aktualizowany wraz z każdym zeskanowanym zużyciem.</p>
+            <p>
+                {% if view_mode == 'grupy' %}
+                    Grupa to ten sam produkt różnych firm — o braku decyduje jej łączny zapas.
+                {% else %}
+                    Termin zakupu jest aktualizowany wraz z każdym zeskanowanym zużyciem.
+                {% endif %}
+            </p>
         </div>
-        <span class="pantry-section-count">{{ product_count }} prod.</span>
+        <div class="pantry-view-tools">
+            <div class="pantry-view-switch" role="group" aria-label="Widok spiżarni">
+                <a href="{% url 'cooking:pantry' %}{% if query_without_view %}?{{ query_without_view }}{% endif %}"
+                   class="{% if view_mode != 'grupy' %}is-active{% endif %}"
+                   {% if view_mode != 'grupy' %}aria-current="page"{% endif %}>
+                    <i class="bi bi-tags" aria-hidden="true"></i> Kategorie
+                </a>
+                <a href="{% url 'cooking:pantry' %}?widok=grupy{% if query_without_view %}&amp;{{ query_without_view }}{% endif %}"
+                   class="{% if view_mode == 'grupy' %}is-active{% endif %}"
+                   {% if view_mode == 'grupy' %}aria-current="page"{% endif %}>
+                    <i class="bi bi-collection" aria-hidden="true"></i> Grupy
+                    {% if group_count %}<span class="pantry-view-count">{{ group_count }}</span>{% endif %}
+                </a>
+            </div>
+            <span class="pantry-section-count">{{ product_count }} prod.</span>
+        </div>
     </div>
+
+    {% if view_mode == 'grupy' %}
+        {% if proposals %}
+            <section class="pantry-group-tools animate-fade-in-up">
+                <div class="pantry-group-tools-head">
+                    <div>
+                        <div class="small text-uppercase fw-bold text-muted">Podpowiedzi</div>
+                        <strong>Te produkty wyglądają na to samo</strong>
+                        <p>Nic nie łączy się samo — sprawdź i zatwierdź.</p>
+                    </div>
+                </div>
+                <div class="pantry-group-proposals">
+                    {% for proposal in proposals %}
+                        <form method="post" action="{% url 'cooking:create-product-group' %}" class="group-proposal">
+                            {% csrf_token %}
+                            <input type="hidden" name="name" value="{{ proposal.name }}">
+                            <input type="hidden" name="category" value="{{ proposal.category }}">
+                            <input type="hidden" name="minimum_packages" value="1">
+                            {% for product in proposal.products %}
+                                <input type="hidden" name="products" value="{{ product.id }}">
+                            {% endfor %}
+                            <div class="shopping-pantry-body">
+                                <strong>{{ proposal.name }}</strong>
+                                <span>{% for product in proposal.products %}{{ product.name }}{% if not forloop.last %} · {% endif %}{% endfor %}</span>
+                            </div>
+                            <button class="btn btn-sm btn-success shopping-pantry-add" type="submit">
+                                <i class="bi bi-collection"></i>
+                                <span>Utwórz grupę</span>
+                            </button>
+                        </form>
+                    {% endfor %}
+                </div>
+            </section>
+        {% endif %}
+
+        <section class="pantry-group-tools animate-fade-in-up">
+            <div class="pantry-group-tools-head">
+                <div>
+                    <div class="small text-uppercase fw-bold text-muted">Nowa grupa</div>
+                    <strong>Połącz produkty ręcznie</strong>
+                </div>
+                <button class="btn btn-sm btn-outline-success" type="button" data-bs-toggle="collapse"
+                        data-bs-target="#new-group" aria-expanded="false">
+                    <i class="bi bi-plus-lg me-1"></i> Nowa grupa
+                </button>
+            </div>
+
+            <div class="collapse" id="new-group">
+                <form method="post" action="{% url 'cooking:create-product-group' %}" class="pt-3">
+                    {% csrf_token %}
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-5">
+                            <label class="form-label small text-uppercase fw-bold text-muted" for="group-name">Nazwa grupy</label>
+                            <input type="text" class="form-control" id="group-name" name="name" maxlength="160"
+                                   placeholder="np. Jogurt naturalny" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small text-uppercase fw-bold text-muted" for="group-category">Kategoria</label>
+                            <select class="form-select" id="group-category" name="category">
+                                <option value="">Jak pierwszy produkt</option>
+                                {% pantry_category_options %}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-uppercase fw-bold text-muted" for="group-minimum">Minimum (opak.)</label>
+                            <input type="number" class="form-control" id="group-minimum" name="minimum_packages"
+                                   min="0" max="99" value="1">
+                        </div>
+                    </div>
+
+                    {% if loose_products %}
+                        <label class="form-label small text-uppercase fw-bold text-muted">Produkty w grupie</label>
+                        <div class="group-picker mb-3">
+                            {% for product in loose_products %}
+                                <label class="group-pick">
+                                    <input type="checkbox" name="products" value="{{ product.id }}">
+                                    <span>
+                                        <strong>{{ product.name }}</strong>
+                                        <em>{{ product.category|default:"Bez kategorii" }}</em>
+                                    </span>
+                                </label>
+                            {% endfor %}
+                        </div>
+                        <button class="btn btn-success" type="submit">
+                            <i class="bi bi-collection me-1"></i> Utwórz grupę
+                        </button>
+                    {% else %}
+                        <p class="text-muted mb-0">Wszystkie produkty należą już do grup.</p>
+                    {% endif %}
+                </form>
+            </div>
+        </section>
+    {% endif %}
 
     {% if product_groups %}
         <div class="pantry-category-list animate-fade-in-up">
@@ -151,21 +261,100 @@
                 <section class="pantry-category-panel">
                     <button class="pantry-category-header" type="button" data-bs-toggle="collapse"
                             data-bs-target="#pantry-category-{{ forloop.counter }}"
-                            aria-expanded="{% if forloop.first or current_category %}true{% else %}false{% endif %}"
+                            aria-expanded="{% if group.open or current_category %}true{% else %}false{% endif %}"
                             aria-controls="pantry-category-{{ forloop.counter }}">
                         <span class="d-flex align-items-center gap-2 min-w-0">
                             <i class="bi bi-chevron-down pantry-category-chevron"></i>
                             <span class="fw-bold text-truncate">{{ group.name }}</span>
                         </span>
                         <span class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-                            {% if group.low_count %}
+                            {% if group.group %}
+                                {% if group.status == 'empty' %}
+                                    <span class="pantry-stock-badge is-empty">Brak</span>
+                                {% elif group.status == 'low' %}
+                                    <span class="pantry-stock-badge is-low">Niski stan</span>
+                                {% else %}
+                                    <span class="pantry-stock-badge is-ok">W zapasie</span>
+                                {% endif %}
+                                <span class="badge bg-success-subtle text-success rounded-pill">
+                                    {{ group.packages }} opak. · min. {{ group.group.minimum_packages }}
+                                </span>
+                            {% elif group.low_count %}
                                 <span class="badge bg-danger-subtle text-danger rounded-pill">{{ group.low_count }} do uzupełnienia</span>
                             {% endif %}
                             <span class="badge bg-secondary-subtle text-secondary rounded-pill">{{ group.count }} prod.</span>
                         </span>
                     </button>
 
-                    <div id="pantry-category-{{ forloop.counter }}" class="collapse {% if forloop.first or current_category %}show{% endif %}">
+                    <div id="pantry-category-{{ forloop.counter }}" class="collapse {% if group.open or current_category %}show{% endif %}">
+                        {% if group.group %}
+                            <div class="pantry-group-actions">
+                                <button class="btn btn-sm btn-soft-neutral" type="button" data-bs-toggle="collapse"
+                                        data-bs-target="#group-edit-{{ group.group.id }}" aria-expanded="false">
+                                    <i class="bi bi-pencil me-1"></i> Ustawienia grupy
+                                </button>
+                            </div>
+
+                            <div class="collapse pantry-group-edit" id="group-edit-{{ group.group.id }}">
+                                <form method="post" action="{% url 'cooking:update-product-group' group.group.id %}">
+                                    {% csrf_token %}
+                                    <div class="row g-3 mb-3">
+                                        <div class="col-md-5">
+                                            <label class="form-label small text-uppercase fw-bold text-muted">Nazwa grupy</label>
+                                            <input type="text" class="form-control" name="name" value="{{ group.group.name }}" maxlength="160" required>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label small text-uppercase fw-bold text-muted">Kategoria</label>
+                                            <select class="form-select" name="category">
+                                                <option value="">Bez kategorii</option>
+                                                {% pantry_category_options group.group.category %}
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label small text-uppercase fw-bold text-muted">Minimum (opak.)</label>
+                                            <input type="number" class="form-control" name="minimum_packages" min="0" max="99"
+                                                   value="{{ group.group.minimum_packages }}">
+                                        </div>
+                                    </div>
+
+                                    <label class="form-label small text-uppercase fw-bold text-muted">Wyjmij z grupy</label>
+                                    <div class="group-picker mb-3">
+                                        {% for product in group.group.products.all %}
+                                            <label class="group-pick">
+                                                <input type="checkbox" name="remove_products" value="{{ product.id }}">
+                                                <span><strong>{{ product.name }}</strong></span>
+                                            </label>
+                                        {% endfor %}
+                                    </div>
+
+                                    {% if loose_products %}
+                                        <label class="form-label small text-uppercase fw-bold text-muted">Dołącz do grupy</label>
+                                        <div class="group-picker mb-3">
+                                            {% for product in loose_products %}
+                                                <label class="group-pick">
+                                                    <input type="checkbox" name="add_products" value="{{ product.id }}">
+                                                    <span>
+                                                        <strong>{{ product.name }}</strong>
+                                                        <em>{{ product.category|default:"Bez kategorii" }}</em>
+                                                    </span>
+                                                </label>
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+
+                                    <button class="btn btn-success" type="submit">
+                                        <i class="bi bi-check-lg me-1"></i> Zapisz grupę
+                                    </button>
+                                </form>
+
+                                <form method="post" action="{% url 'cooking:delete-product-group' group.group.id %}" class="mt-2">
+                                    {% csrf_token %}
+                                    <button class="btn btn-outline-danger" type="submit">
+                                        <i class="bi bi-trash me-1"></i> Usuń grupę (produkty zostaną)
+                                    </button>
+                                </form>
+                            </div>
+                        {% endif %}
                         <div class="pantry-product-grid">
                             {% for card in group.cards %}
                                 {% with product=card.product %}
