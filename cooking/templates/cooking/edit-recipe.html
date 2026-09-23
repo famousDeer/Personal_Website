@@ -1,4 +1,5 @@
 {% extends 'cooking/index.html' %}
+{% load ui %}
 {% load pantry_extras %}
 {% load static %}
 {% load l10n %}
@@ -8,22 +9,20 @@
 {% block content_cooking %}
 
 <div class="row justify-content-center">
-    <div class="col-lg-10 col-xl-9">
+    <div class="col-12 col-xxl-11">
         
-        <div class="text-center mb-4 animate-fade-in">
-            <h2 class="fw-bold mb-1 recipe-title" style="color: #d35400;">Edycja Przepisu</h2>
-            <p class="text-muted small">Wprowadź poprawki do: <strong>{{ recipe.title }}</strong></p>
-        </div>
+        {% url 'cooking:recipe-list' as back_url %}
+{% page_head title=recipe.title eyebrow="Kuchnia" icon="bi-egg-fried" sub="Edycja przepisu – zmiany widzą wszyscy domownicy." back=back_url %}{% endpage_head %}
 
         <form method="post" enctype="multipart/form-data" class="animate-fade-in-up">
             {% csrf_token %}
 
             <div class="row g-4">
                 
-                <div class="col-md-5">
+                <div class="col-lg-4">
                     <div class="card border-0 shadow-sm action-card mb-3 overflow-hidden">
                         <div class="card-body p-0">
-                            <div class="image-upload-container position-relative bg-light" style="height: 300px; border-bottom: 2px dashed #ddd;">
+                            <div class="image-upload-container position-relative bg-light" style="height: 300px; border-bottom: 2px dashed var(--line-input);">
                                 <img id="imagePreview" 
                                      src="{% if recipe.image %}{{ recipe.image.url }}{% else %}#{% endif %}" 
                                      class="w-100 h-100 object-fit-cover {% if not recipe.image %}d-none{% endif %}">
@@ -61,7 +60,7 @@
                     </div>
                 </div>
 
-                <div class="col-md-7">
+                <div class="col-lg-8">
                     <div class="card border-0 shadow-lg action-card h-100">
                         <div class="card-body p-4 p-md-5">
                             
@@ -114,7 +113,7 @@
                             </div>
 
                             <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
-                                <h5 class="mb-0 fw-bold" style="color: #d35400;">Etapy gotowania</h5>
+                                <h5 class="mb-0 fw-bold">Etapy gotowania</h5>
                                 <button class="btn btn-sm btn-outline-primary rounded-pill" type="button" data-add-step>
                                     <i class="bi bi-plus-lg me-1"></i> Etap
                                 </button>
@@ -125,7 +124,7 @@
                                     <section class="recipe-step-card" data-step-card>
                                         <div class="recipe-step-header">
                                             <span class="badge rounded-pill bg-primary-subtle text-primary" data-step-label>Krok {{ forloop.counter }}</span>
-                                            <button class="btn btn-sm btn-light rounded-circle" type="button" data-remove-step title="Usuń etap">
+                                            <button class="btn btn-sm btn-light btn-icon" type="button" data-remove-step title="Usuń etap" aria-label="Usuń etap">
                                                 <i class="bi bi-x-lg"></i>
                                             </button>
                                         </div>
@@ -172,7 +171,7 @@
                                                             <option value="">Kategoria</option>
                                                             {% pantry_category_options ingredient.category %}
                                                         </select>
-                                                        <button class="btn btn-light" type="button" data-remove-ingredient title="Usuń składnik">
+                                                        <button class="btn btn-light btn-icon" type="button" data-remove-ingredient title="Usuń składnik" aria-label="Usuń składnik">
                                                             <i class="bi bi-x-lg"></i>
                                                         </button>
                                                     </div>
@@ -190,7 +189,7 @@
                                                             <option value="">Kategoria</option>
                                                             {% pantry_category_options %}
                                                         </select>
-                                                        <button class="btn btn-light" type="button" data-remove-ingredient title="Usuń składnik">
+                                                        <button class="btn btn-light btn-icon" type="button" data-remove-ingredient title="Usuń składnik" aria-label="Usuń składnik">
                                                             <i class="bi bi-x-lg"></i>
                                                         </button>
                                                     </div>
@@ -202,7 +201,7 @@
                                     <section class="recipe-step-card" data-step-card>
                                         <div class="recipe-step-header">
                                             <span class="badge rounded-pill bg-primary-subtle text-primary" data-step-label>Krok 1</span>
-                                            <button class="btn btn-sm btn-light rounded-circle" type="button" data-remove-step title="Usuń etap">
+                                            <button class="btn btn-sm btn-light btn-icon" type="button" data-remove-step title="Usuń etap" aria-label="Usuń etap">
                                                 <i class="bi bi-x-lg"></i>
                                             </button>
                                         </div>
@@ -247,7 +246,7 @@
                                                         <option value="">Kategoria</option>
                                                         {% pantry_category_options %}
                                                     </select>
-                                                    <button class="btn btn-light" type="button" data-remove-ingredient title="Usuń składnik">
+                                                    <button class="btn btn-light btn-icon" type="button" data-remove-ingredient title="Usuń składnik" aria-label="Usuń składnik">
                                                         <i class="bi bi-x-lg"></i>
                                                     </button>
                                                 </div>
@@ -262,19 +261,9 @@
                 </div>
 
             </div>
-
-            <div class="fixed-bottom-bar bg-white shadow-lg p-2 d-flex gap-3 mt-3 rounded-pill mx-auto animate-fade-in-up" 
-                style="position: sticky; bottom: 20px; z-index: 100; width: fit-content; border: 1px solid rgba(0,0,0,0.08);">
-                
-                <a href="{% url 'cooking:recipe-list' %}" class="btn btn-light rounded-pill px-4 fw-medium">
-                    Anuluj
-                </a>
-                
-                <button type="submit" class="btn btn-dark rounded-pill px-5 fw-bold" 
-                        style="background-color: #d35400; border: none; box-shadow: 0 4px 12px rgba(211, 84, 0, 0.3);">
-                    <i class="bi bi-check-lg me-1"></i> Zapisz zmiany
-                </button>
-                
+            <div class="u-form-actions">
+                <a href="{% url 'cooking:recipe-list' %}" class="btn btn-outline-secondary">Anuluj</a>
+                <button type="submit" class="btn btn-primary"> <i class="bi bi-check-lg me-1"></i> Zapisz zmiany </button>
             </div>
 
         </form>

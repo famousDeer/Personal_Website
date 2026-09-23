@@ -795,10 +795,7 @@ def pantry_cards_by_group(product_cards):
 
 
 def _low_count(cards):
-    return sum(
-        1 for card in cards
-        if card['product'].stock_status in ['low', 'empty'] or card['forecast'].is_due
-    )
+    return sum(1 for card in cards if card.get('needs_restock'))
 
 
 class PantryListView(LoginRequiredMixin, View):
@@ -842,6 +839,19 @@ class PantryListView(LoginRequiredMixin, View):
             shopping_weekday=shopping_weekday,
         )
 
+        # Marka w grupie z zapasem nie jest brakiem - tak samo liczy lista zakupów.
+        # Bez tego pusta Bakoma świeciła "Uzupełnij teraz", choć w lodówce stały
+        # dwa inne jogurty, a lista (słusznie) jej nie dodawała.
+        group_packages = {}
+        for product in all_products:
+            if product.group_id:
+                group_packages[product.group_id] = group_packages.get(product.group_id, 0) + packages_in_stock(product)
+
+        def covered_by_group(product):
+            if not product.group_id:
+                return False
+            return group_packages.get(product.group_id, 0) > product.group.minimum_packages
+
         for product in visible_products:
             forecast = forecasts[product.pk]
             average_daily = forecast.rate
@@ -860,13 +870,17 @@ class PantryListView(LoginRequiredMixin, View):
                 'forecast': forecast,
                 'manual_consume_id': uuid4(),
                 'manual_purchase_id': uuid4(),
+                'group_covered': covered_by_group(product),
+                'group_packages': group_packages.get(product.group_id, 0),
             }
+            needs_restock = not card['group_covered'] and (
+                product.stock_status in ['low', 'empty'] or forecast.is_due
+            )
+            card['needs_restock'] = needs_restock
             if status_filter == 'low':
-                matches_status = (
-                    product.stock_status in ['low', 'empty'] or forecast.is_due
-                )
+                matches_status = needs_restock
             elif status_filter == 'ok':
-                matches_status = product.stock_status == 'ok' and not forecast.is_due
+                matches_status = not needs_restock
             else:
                 matches_status = not status_filter or product.stock_status == status_filter
             if matches_status:
@@ -910,10 +924,7 @@ class PantryListView(LoginRequiredMixin, View):
             'product_count': len(product_cards),
             'has_any_products': bool(all_products),
             'filters_active': bool(search_query or status_filter or category_filter),
-            'low_stock_count': sum(
-                1 for card in product_cards
-                if card['product'].stock_status in ['low', 'empty'] or card['forecast'].is_due
-            ),
+            'low_stock_count': sum(1 for card in product_cards if card['needs_restock']),
             'total_current_quantity': sum(
                 (card['product'].current_quantity for card in product_cards),
                 Decimal('0'),

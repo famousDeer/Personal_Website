@@ -1,8 +1,10 @@
 {% extends 'base.html' %}
+{% load ui %}
 
 {% block title %}Moje konto{% endblock %}
 
 {% block content %}
+{% page_head title="Konto" eyebrow="Konto" icon="bi-person" sub="Twoje dane logowania i konta wspólne domu." %}{% endpage_head %}
 <div class="row g-4">
     <div class="col-lg-6">
         <div class="card border-0 shadow-sm action-card h-100">
@@ -12,7 +14,7 @@
                         <i class="bi bi-person-circle fs-3"></i>
                     </div>
                     <div>
-                        <h2 class="fw-bold mb-0">Moje konto</h2>
+                        <h2 class="u-section-title mb-0">Moje konto</h2>
                         <p class="text-muted mb-0">Edytuj nazwę użytkownika i adres e-mail.</p>
                     </div>
                 </div>
@@ -50,7 +52,7 @@
                         <i class="bi bi-people-fill fs-3"></i>
                     </div>
                     <div>
-                        <h2 class="fw-bold mb-0">Konto wspólne</h2>
+                        <h2 class="u-section-title mb-0">Konto wspólne</h2>
                         <p class="text-muted mb-0">Połącz dwa konta użytkowników w jeden wspólny budżet.</p>
                     </div>
                 </div>

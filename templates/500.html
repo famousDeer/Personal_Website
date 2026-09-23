@@ -1,0 +1,31 @@
+{% load static %}<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Coś poszło nie tak</title>
+    {% comment %} Strona błędu serwera nie dziedziczy po base.html: przy błędzie 500
+       Django nie uruchamia procesorów kontekstu, więc nawigacja z menu
+       użytkownika mogłaby sama wywołać kolejny błąd. {% endcomment %}
+    <link rel="stylesheet" href="{% static 'css/tokens.css' %}">
+    <link rel="stylesheet" href="{% static 'vendor/bootstrap/bootstrap.min.css' %}">
+    <link rel="stylesheet" href="{% static 'vendor/bootstrap-icons/bootstrap-icons.css' %}">
+    <link rel="stylesheet" href="{% static 'css/ui.css' %}">
+    <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body style="min-height: 100vh; display: grid; place-items: center; padding: 1rem; background: var(--surface-0);">
+    <div class="u-narrow-sm">
+        <div class="card">
+            <div class="u-empty">
+                <i class="bi bi-exclamation-octagon"></i>
+                <strong>Coś poszło nie tak</strong>
+                <p>Serwer napotkał błąd. Spróbuj ponownie za chwilę — jeśli błąd się powtarza, sprawdź logi kontenera na Raspberry Pi.</p>
+                <div class="mt-3">
+                    <a href="/" class="btn btn-primary"><i class="bi bi-house"></i> Strona startowa</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

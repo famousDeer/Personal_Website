@@ -6,43 +6,45 @@
 
 {% block content_cooking %}
 <div class="shopping-detail-shell animate-fade-in">
-    <div class="shopping-detail-header">
-        <div class="min-w-0">
-            <div class="small text-uppercase fw-bold text-muted mb-1">Lista zakupów</div>
-            <h2 class="fw-bold mb-2 recipe-title text-truncate">{{ shopping_list.title }}</h2>
-            <div class="d-flex flex-wrap gap-2">
-                <span class="badge {% if shopping_list.source == 'automatic' %}bg-primary-subtle text-primary{% else %}bg-success-subtle text-success{% endif %} rounded-pill">
-                    {{ shopping_list.get_source_display }}
-                </span>
-                <span class="badge {% if shopping_list.status == 'completed' %}bg-secondary-subtle text-secondary{% else %}bg-warning-subtle text-warning{% endif %} rounded-pill">
-                    {{ shopping_list.get_status_display }}
-                </span>
-                <span class="badge bg-light text-muted rounded-pill">{{ shopping_list.created_at|date:"d.m.Y H:i" }}</span>
+    <header class="u-page-head">
+        <div class="u-page-head-main">
+            <a class="u-back" href="{% url 'cooking:shopping-list' %}" aria-label="Wróć do list" title="Wróć do list">
+                <i class="bi bi-arrow-left" aria-hidden="true"></i>
+            </a>
+            <div class="min-w-0">
+                <span class="u-eyebrow"><i class="bi bi-egg-fried" aria-hidden="true"></i>Lista zakupów</span>
+                <h1 class="u-page-title">{{ shopping_list.title }}</h1>
+                <div class="d-flex flex-wrap gap-2 mt-2">
+                    <span class="badge {% if shopping_list.source == 'automatic' %}bg-primary-subtle text-primary{% else %}bg-success-subtle text-success{% endif %}">
+                        {{ shopping_list.get_source_display }}
+                    </span>
+                    <span class="badge {% if shopping_list.status == 'completed' %}bg-secondary-subtle text-secondary{% else %}bg-warning-subtle text-warning{% endif %}">
+                        {{ shopping_list.get_status_display }}
+                    </span>
+                    {% if shopping_list.shop %}
+                        <span class="badge bg-secondary-subtle text-secondary"><i class="bi bi-shop"></i> {{ shopping_list.shop.name }}</span>
+                    {% endif %}
+                    <span class="badge bg-secondary-subtle text-secondary">{{ shopping_list.created_at|date:"d.m.Y H:i" }}</span>
+                </div>
             </div>
         </div>
-        <div class="shopping-header-actions">
-            <a href="{% url 'cooking:shopping-list' %}" class="btn btn-soft-neutral" title="Wróć do list">
-                <i class="bi bi-arrow-left"></i>
-            </a>
+        <div class="u-page-actions">
             {% if shopping_list.status == 'active' %}
-                <a href="{% url 'cooking:shopping-app' %}" class="btn btn-outline-success" title="Tryb zakupów – działa także bez połączenia">
-                    <i class="bi bi-phone"></i>
+                <a href="{% url 'cooking:shopping-app' %}" class="btn btn-primary" title="Tryb zakupów – działa także bez połączenia">
+                    <i class="bi bi-phone"></i> Tryb zakupów
                 </a>
             {% endif %}
-            <a href="{% url 'cooking:edit-shopping-list' shopping_list.id %}" class="btn btn-soft-neutral" title="Edytuj nazwę listy">
+            <a href="{% url 'cooking:edit-shopping-list' shopping_list.id %}" class="btn btn-outline-secondary btn-icon" title="Edytuj nazwę i sklep" aria-label="Edytuj nazwę i sklep">
                 <i class="bi bi-pencil"></i>
             </a>
-            <a href="{% url 'cooking:pantry' %}" class="btn btn-outline-success" title="Spiżarnia">
-                <i class="bi bi-box-seam"></i>
-            </a>
-            <form method="post" action="{% url 'cooking:delete-shopping-list' shopping_list.id %}" onsubmit="return confirm('Usunąć tę listę zakupów?');">
+            <form method="post" action="{% url 'cooking:delete-shopping-list' shopping_list.id %}" onsubmit="return confirm('Usunąć tę listę zakupów?');" class="u-page-actions-icon">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-outline-danger" title="Usuń listę">
+                <button type="submit" class="btn btn-outline-danger btn-icon" title="Usuń listę" aria-label="Usuń listę">
                     <i class="bi bi-trash"></i>
                 </button>
             </form>
         </div>
-    </div>
+    </header>
 
     <section class="shopping-summary-panel animate-fade-in-up">
         <div class="shopping-summary-main">
@@ -151,7 +153,7 @@
                             <div class="shopping-pantry-body">
                                 <strong class="text-truncate">{{ row.product.name }}</strong>
                                 <span>
-                                    {% if row.product.unit == 'szt' or row.product.unit == 'opak' %}{{ row.product.current_quantity|floatformat:0 }}{% else %}{{ row.product.current_quantity|floatformat:2 }}{% endif %} {{ row.product.get_unit_display }}
+                                    {{ row.product.current_quantity|qty }} {{ row.product.get_unit_display }}
                                     {% if row.product.tracks_packages and row.product.unit != 'szt' and row.product.unit != 'opak' %} · {{ row.product.current_package_count }} opak.{% endif %}
                                     {% if row.product.category %} · {{ row.product.category }}{% endif %}
                                     {% if row.group %} · <i class="bi bi-collection" aria-hidden="true"></i> {{ row.group.name }}{% endif %}
@@ -174,7 +176,7 @@
                                     <button class="btn btn-sm btn-success shopping-pantry-add" type="submit"
                                             title="Dopisz do listy: {{ row.add_name }}">
                                         <i class="bi bi-cart-plus"></i>
-                                        <span>{% if row.add_unit == 'szt' %}{{ row.add_quantity|floatformat:0 }}{% else %}{{ row.add_quantity|floatformat:2 }}{% endif %} {{ row.add_unit_label }}</span>
+                                        <span>{{ row.add_quantity|qty }} {{ row.add_unit_label }}</span>
                                     </button>
                                 </form>
                             {% endif %}
@@ -231,7 +233,7 @@
                         </div>
 
                         <span class="shopping-quantity-pill">
-                            {% if item.unit == 'szt' %}{{ item.quantity|floatformat:0 }}{% else %}{{ item.quantity|floatformat:2 }}{% endif %}
+                            {{ item.quantity|qty }}
                             {{ item.display_unit }}
                         </span>
 

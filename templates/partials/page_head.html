@@ -1,0 +1,21 @@
+{% comment %}
+Jeden nagłówek strony dla całej aplikacji: etykietka modułu, tytuł, zdanie
+kontekstu i akcje po prawej. Używany przez tag {% page_head %} z accounts/templatetags/ui.py.
+{% endcomment %}
+<header class="u-page-head">
+    <div class="u-page-head-main">
+        {% if back %}
+            <a class="u-back" href="{{ back }}" aria-label="{{ back_label }}" title="{{ back_label }}">
+                <i class="bi bi-arrow-left" aria-hidden="true"></i>
+            </a>
+        {% endif %}
+        <div class="min-w-0">
+            {% if eyebrow %}
+                <span class="u-eyebrow">{% if icon %}<i class="bi {{ icon }}" aria-hidden="true"></i>{% endif %}{{ eyebrow }}</span>
+            {% endif %}
+            <h1 class="u-page-title">{{ title }}</h1>
+            {% if sub %}<p class="u-page-sub">{{ sub }}</p>{% endif %}
+        </div>
+    </div>
+    {% if actions %}<div class="u-page-actions">{{ actions }}</div>{% endif %}
+</header>

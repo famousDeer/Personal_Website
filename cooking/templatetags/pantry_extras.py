@@ -55,3 +55,33 @@ def plain_decimal(value):
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return plain_decimal(Decimal(str(value)))
     return value
+
+
+@register.filter
+def qty(value):
+    """Ilość w stylu interfejsu: maks. 2 miejsca po przecinku, bez zbędnych zer.
+
+    Ten sam format co ``formatQuantity`` w skryptach (``toLocaleString('pl-PL',
+    {maximumFractionDigits: 2})``), więc liczba wyrenderowana przez serwer nie
+    zmienia wyglądu po odświeżeniu przez JS: 900 ml zamiast 900,00 ml,
+    1,5 kg zamiast 1,50 kg. Tysiące grupowane są spacją od 10 000 w górę,
+    tak jak robi to polska lokalizacja przeglądarki.
+    """
+    if value in (None, ''):
+        return ''
+    try:
+        number = Decimal(str(value))
+    except Exception:
+        return value
+    number = number.quantize(Decimal('0.01'))
+    negative = number < 0
+    integer, _, fraction = f'{abs(number):f}'.partition('.')
+    fraction = fraction.rstrip('0')
+    if len(integer) > 4:
+        groups = []
+        while integer:
+            groups.insert(0, integer[-3:])
+            integer = integer[:-3]
+        integer = ' '.join(groups)
+    text = integer + (f',{fraction}' if fraction else '')
+    return f'-{text}' if negative and text.strip('0, ') else text

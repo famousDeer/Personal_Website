@@ -1,22 +1,15 @@
 {% extends 'base.html' %}
+{% load ui %}
 
 {% block title %}Edytuj konto wspólne{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-lg-6">
+        {% url 'profile' as back_url %}
+        {% page_head title="Edytuj konto wspólne" eyebrow="Konto" icon="bi-person" sub="Zmień nazwę konta i sprawdź, kto ma do niego dostęp." back=back_url %}{% endpage_head %}
         <div class="card border-0 shadow-sm action-card">
             <div class="card-body p-4 p-lg-5">
-                <div class="d-flex align-items-center gap-3 mb-4">
-                    <div class="icon-box bg-success-subtle text-success">
-                        <i class="bi bi-pencil-square fs-3"></i>
-                    </div>
-                    <div>
-                        <h2 class="fw-bold mb-0">Edytuj konto wspólne</h2>
-                        <p class="text-muted mb-0">Zmień nazwę konta i sprawdź, kto ma do niego dostęp.</p>
-                    </div>
-                </div>
-
                 <form method="post" class="d-flex flex-column gap-3">
                     {% csrf_token %}
                     <div>

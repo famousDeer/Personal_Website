@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load ui %}
 
 {% block title %}Finanse{% endblock %}
 
@@ -39,95 +40,67 @@
 {% endblock %}
 
 {% block content_finance %}
-<div class="row g-4">
-    
-    <div class="col-md-6 col-lg-3">
-      <a class="text-decoration-none" href="{% url 'finance:dashboard' %}">
-        <div class="card h-100 action-card border-0 shadow-sm">
-          <div class="card-body text-center p-4">
-            <div class="icon-box bg-success-subtle text-success mb-3 mx-auto">
-                <i class="bi bi-speedometer2 fs-4"></i>
-            </div>
-            <h5 class="card-title fw-bold">Dashboard</h5>
-            <p class="card-text small opacity-75">Podsumowanie bieżącego miesiąca.</p>
-          </div>
-        </div>
-      </a>
-    </div>
+{% page_head title="Finanse" eyebrow="Finanse" icon="bi-wallet2" sub="Budżet domowy: wydatki, przychody, inwestycje i podróże." %}
+    <a href="{% url 'finance:add_expense' %}" class="btn u-btn-expense">
+        <i class="bi bi-dash-circle"></i> Wydatek
+    </a>
+    <a href="{% url 'finance:add_income' %}" class="btn u-btn-income">
+        <i class="bi bi-plus-circle"></i> Przychód
+    </a>
+    <a href="{% url 'finance:import_bank_transactions' %}" class="btn btn-outline-primary">
+        <i class="bi bi-upload"></i> Import wyciągu
+    </a>
+{% endpage_head %}
 
-    <div class="col-md-6 col-lg-3">
-      <a class="text-decoration-none" href="{% url 'finance:expense_list' %}">
-        <div class="card h-100 action-card border-0 shadow-sm">
-          <div class="card-body text-center p-4">
-            <div class="icon-box bg-danger-subtle text-danger mb-3 mx-auto">
-                <i class="bi bi-cash-stack fs-4"></i>
-            </div>
-            <h5 class="card-title fw-bold">Wydatki</h5>
-            <p class="card-text small opacity-75">Przeglądaj i filtruj wydatki.</p>
-          </div>
-        </div>
-      </a>
-    </div>
-
-    <div class="col-md-6 col-lg-3">
-      <a class="text-decoration-none" href="{% url 'finance:income_list' %}">
-        <div class="card h-100 action-card border-0 shadow-sm">
-          <div class="card-body text-center p-4">
-            <div class="icon-box bg-success-subtle text-success mb-3 mx-auto">
-                <i class="bi bi-cash-coin fs-4"></i>
-            </div>
-            <h5 class="card-title fw-bold">Przychody</h5>
-            <p class="card-text small opacity-75">Przeglądaj i filtruj przychody.</p>
-          </div>
-        </div>
-      </a>
-    </div>
-
-    <div class="col-md-6 col-lg-3">
-      <a class="text-decoration-none" href="{% url 'finance:reports' %}">
-        <div class="card h-100 action-card border-0 shadow-sm">
-          <div class="card-body text-center p-4">
-            <div class="icon-box bg-primary-subtle text-primary mb-3 mx-auto">
-                <i class="bi bi-graph-up fs-4"></i>
-            </div>
-            <h5 class="card-title fw-bold">Raporty</h5>
-            <p class="card-text small opacity-75">Wykresy i podsumowania.</p>
-          </div>
-        </div>
-      </a>
-    </div>
-
-    <div class="col-md-6 col-lg-3">
-      <a class="text-decoration-none" href="{% url 'finance:brokerage' %}">
-        <div class="card h-100 action-card border-0 shadow-sm">
-          <div class="card-body text-center p-4">
-            <div class="icon-box bg-info-subtle text-info mb-3 mx-auto">
-                <i class="bi bi-graph-up-arrow fs-4"></i>
-            </div>
-            <h5 class="card-title fw-bold">Konta maklerskie</h5>
-            <p class="card-text small opacity-75">Portfel, wyceny, dywidendy i podatki.</p>
-          </div>
-        </div>
-      </a>
-    </div>
-</div>
-
-<div class="row g-4 mt-2">
-    <div class="col-md-4">
-      <a class="btn btn-danger w-100 py-3 rounded-3 shadow-sm fw-bold" href="{% url 'finance:add_expense' %}">
-        <i class="bi bi-dash-circle me-2"></i> Dodaj wydatek
-      </a>
-    </div>
-    <div class="col-md-4">
-      <a class="btn btn-success w-100 py-3 rounded-3 shadow-sm fw-bold" href="{% url 'finance:add_income' %}">
-        <i class="bi bi-plus-circle me-2"></i> Dodaj przychód
-      </a>
-    </div>
-    <div class="col-md-4">
-      <a class="btn btn-primary w-100 py-3 rounded-3 shadow-sm fw-bold" href="{% url 'finance:import_bank_transactions' %}">
-        <i class="bi bi-upload me-2"></i> Import wyciągu
-      </a>
-    </div>
+<div class="u-tile-grid is-3 animate-fade-in-up">
+    <a href="{% url 'finance:dashboard' %}" class="u-tile">
+        <span class="u-tile-icon"><i class="bi bi-speedometer2"></i></span>
+        <span class="u-tile-body">
+            <span class="u-tile-title">Panel finansowy</span>
+            <span class="u-tile-text">Podsumowanie bieżącego miesiąca.</span>
+        </span>
+        <i class="bi bi-chevron-right u-tile-arrow"></i>
+    </a>
+    <a href="{% url 'finance:expense_list' %}" class="u-tile">
+        <span class="u-tile-icon"><i class="bi bi-arrow-down-circle"></i></span>
+        <span class="u-tile-body">
+            <span class="u-tile-title">Wydatki</span>
+            <span class="u-tile-text">Przeglądaj i filtruj wydatki oraz inwestycje.</span>
+        </span>
+        <i class="bi bi-chevron-right u-tile-arrow"></i>
+    </a>
+    <a href="{% url 'finance:income_list' %}" class="u-tile">
+        <span class="u-tile-icon"><i class="bi bi-arrow-up-circle"></i></span>
+        <span class="u-tile-body">
+            <span class="u-tile-title">Przychody</span>
+            <span class="u-tile-text">Przeglądaj i filtruj przychody.</span>
+        </span>
+        <i class="bi bi-chevron-right u-tile-arrow"></i>
+    </a>
+    <a href="{% url 'finance:reports' %}" class="u-tile">
+        <span class="u-tile-icon"><i class="bi bi-graph-up"></i></span>
+        <span class="u-tile-body">
+            <span class="u-tile-title">Raporty</span>
+            <span class="u-tile-text">Wykresy i podsumowania miesięcy.</span>
+        </span>
+        <i class="bi bi-chevron-right u-tile-arrow"></i>
+    </a>
+    <a href="{% url 'finance:brokerage' %}" class="u-tile">
+        <span class="u-tile-icon"><i class="bi bi-graph-up-arrow"></i></span>
+        <span class="u-tile-body">
+            <span class="u-tile-title">Konta maklerskie</span>
+            <span class="u-tile-text">Portfel, wyceny, dywidendy i podatki.</span>
+        </span>
+        <i class="bi bi-chevron-right u-tile-arrow"></i>
+    </a>
+    <a href="{% url 'finance:travels' %}" class="u-tile">
+        <span class="u-tile-icon"><i class="bi bi-airplane"></i></span>
+        <span class="u-tile-body">
+            <span class="u-tile-title">Podróże</span>
+            <span class="u-tile-text">Miejsca, terminy i koszty wyjazdów.</span>
+        </span>
+        <i class="bi bi-chevron-right u-tile-arrow"></i>
+    </a>
 </div>
 {% endblock %}
 {% endblock %}

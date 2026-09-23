@@ -1,19 +1,12 @@
 {% extends 'cooking/index.html' %}
+{% load ui %}
 {% load pantry_extras %}
 
 {% block title %}Nowa lista zakupów{% endblock %}
 
 {% block content_cooking %}
-<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-4 animate-fade-in">
-    <div>
-        <div class="small text-uppercase fw-bold text-muted mb-1">Nowa lista</div>
-        <h2 class="fw-bold mb-1 recipe-title">Lista zakupów</h2>
-        <p class="text-muted mb-0">Dodaj produkty, ilości i kategorie przed wyjściem do sklepu.</p>
-    </div>
-    <a href="{% url 'cooking:shopping-list' %}" class="btn btn-soft-neutral rounded-pill px-4">
-        <i class="bi bi-arrow-left me-1"></i> Listy zakupów
-    </a>
-</div>
+{% url 'cooking:shopping-list' as back_url %}
+{% page_head title="Nowa lista zakupów" eyebrow="Kuchnia" icon="bi-egg-fried" sub="Dodaj produkty, ilości i kategorie przed wyjściem do sklepu." back=back_url %}{% endpage_head %}
 
 <form method="post" class="card border-0 shadow-lg action-card animate-fade-in-up" data-shopping-create-form>
     {% csrf_token %}

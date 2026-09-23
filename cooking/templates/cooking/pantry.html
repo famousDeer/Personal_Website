@@ -1,5 +1,6 @@
 {% extends 'cooking/index.html' %}
 {% load pantry_extras %}
+{% load ui %}
 {% load humanize static %}
 
 {% block title %}Spiżarnia{% endblock %}
@@ -13,26 +14,14 @@
      data-zxing-url="{% static 'cooking/vendor/zxing-browser-0.2.1.min.js' %}">
     <form class="d-none" data-scanner-csrf>{% csrf_token %}</form>
 
-    <header class="pantry-page-heading animate-fade-in">
-        <div>
-            <span class="pantry-page-eyebrow"><i class="bi bi-house-heart" aria-hidden="true"></i> Spiżarnia domowa</span>
-            <h2 class="recipe-title">Spiżarnia pod kontrolą</h2>
-            <p>Skanuj produkty przy wkładaniu i zużyciu. Stan oraz termin kolejnego zakupu policzą się automatycznie.</p>
-        </div>
-        <details class="pantry-more-tools">
-            <summary><i class="bi bi-three-dots" aria-hidden="true"></i> Więcej opcji</summary>
-            <nav class="pantry-page-links" aria-label="Pozostałe narzędzia spiżarni">
-                <a href="{% url 'cooking:shopping-list' %}" class="btn btn-outline-primary rounded-pill fw-bold">
-                    <i class="bi bi-cart-check" aria-hidden="true"></i>
-                    <span>Listy zakupów</span>
-                </a>
-                <a href="{% url 'cooking:add-pantry-product' %}" class="btn btn-light rounded-pill fw-bold">
-                    <i class="bi bi-pencil-square" aria-hidden="true"></i>
-                    <span>Dodaj bez kodu</span>
-                </a>
-            </nav>
-        </details>
-    </header>
+    {% page_head title="Spiżarnia" eyebrow="Kuchnia" icon="bi-egg-fried" sub="Skanuj produkty przy wkładaniu i zużyciu – stan i termin kolejnego zakupu policzą się same." %}
+        <a href="{% url 'cooking:shopping-list' %}" class="btn btn-outline-primary">
+            <i class="bi bi-cart-check" aria-hidden="true"></i> Listy zakupów
+        </a>
+        <a href="{% url 'cooking:add-pantry-product' %}" class="btn btn-outline-primary">
+            <i class="bi bi-plus-lg" aria-hidden="true"></i> Dodaj bez kodu
+        </a>
+    {% endpage_head %}
 
     <section class="pantry-scan-hero animate-fade-in-up" aria-labelledby="pantry-scan-title">
         <div class="pantry-scan-hero-copy">
@@ -418,17 +407,17 @@
                                             <div class="pantry-product-stock-total">
                                                 <span class="pantry-product-stock-label">Łącznie</span>
                                                 <strong data-product-total-stock>
-                                                    <span data-product-stock>{% if product.unit == 'szt' %}{{ product.current_quantity|floatformat:0 }}{% else %}{{ product.current_quantity|floatformat:2 }}{% endif %}</span>
+                                                    <span data-product-stock>{{ product.current_quantity|qty }}</span>
                                                     <small>{{ product.display_unit }}</small>
                                                 </strong>
                                                 <span class="pantry-product-stock-hint">
-                                                    1 opak. = {% if product.unit == 'szt' %}{{ product.quantity_per_scan|floatformat:0 }}{% else %}{{ product.quantity_per_scan|floatformat:2 }}{% endif %} {{ product.display_unit }}
+                                                    1 opak. = {{ product.quantity_per_scan|qty }} {{ product.display_unit }}
                                                 </span>
                                             </div>
                                         </div>
 
                                         {% with forecast=card.forecast %}
-                                            <section class="pantry-product-forecast is-{{ forecast.status|default:'no_history' }}{% if forecast.is_due or forecast.at_or_below_minimum %} is-due{% endif %}"
+                                            <section class="pantry-product-forecast is-{{ forecast.status|default:'no_history' }}{% if not card.group_covered %}{% if forecast.is_due or forecast.at_or_below_minimum %} is-due{% endif %}{% endif %}"
                                                      aria-label="Prognoza zakupu produktu {{ product.name }}">
                                                 <div class="pantry-forecast-heading">
                                                     <span class="pantry-forecast-label">
@@ -445,7 +434,15 @@
                                                     {% endif %}
                                                 </div>
 
-                                                {% if forecast.at_or_below_minimum %}
+                                                {% if card.group_covered %}
+                                                    <div class="pantry-forecast-learning" data-group-covered>
+                                                        <span class="pantry-forecast-state-icon"><i class="bi bi-collection" aria-hidden="true"></i></span>
+                                                        <span>
+                                                            <strong>Zapas jest w grupie</strong>
+                                                            <small>{{ product.group.name }}: {{ card.group_packages }} opak. w domu, minimum {{ product.group.minimum_packages }}. O zakupie decyduje cała grupa.</small>
+                                                        </span>
+                                                    </div>
+                                                {% elif forecast.at_or_below_minimum %}
                                                     <div class="pantry-forecast-main">
                                                         <span>Zapas osiągnął ustawione minimum</span>
                                                         <strong>Uzupełnij teraz</strong>
@@ -459,7 +456,7 @@
                                                         {% if forecast.suggested_packages %}
                                                             <span><i class="bi bi-bag-plus" aria-hidden="true"></i> Kup {{ forecast.suggested_packages }} opak.</span>
                                                         {% elif forecast.suggested_quantity %}
-                                                            <span><i class="bi bi-bag-plus" aria-hidden="true"></i> Kup {{ forecast.suggested_quantity|floatformat:2 }} {{ product.display_unit }}</span>
+                                                            <span><i class="bi bi-bag-plus" aria-hidden="true"></i> Kup {{ forecast.suggested_quantity|qty }} {{ product.display_unit }}</span>
                                                         {% endif %}
                                                     </div>
                                                 {% elif not forecast or forecast.status == 'no_history' %}
@@ -475,7 +472,7 @@
                                                         <span class="pantry-forecast-state-icon"><i class="bi bi-hourglass-split" aria-hidden="true"></i></span>
                                                         <span>
                                                             <strong>{% if forecast.buy_date %}Orientacyjnie kup do {{ forecast.buy_date|date:"d.m" }}{% else %}Pierwsza prognoza w przygotowaniu{% endif %}</strong>
-                                                            <small>Mamy {{ forecast.event_count }} zdarzeń z {{ forecast.history_days }} dni. Kolejne skany zwiększą pewność.</small>
+                                                            <small>Mamy {{ forecast.event_count|pl:"zdarzenie,zdarzenia,zdarzeń" }} z {{ forecast.history_days|pl:"dnia,dni,dni" }}. Kolejne skany zwiększą pewność.</small>
                                                         </span>
                                                     </div>
                                                 {% else %}
@@ -508,7 +505,7 @@
                                                         {% if forecast.suggested_packages %}
                                                             <span><i class="bi bi-bag-plus" aria-hidden="true"></i> Kup {{ forecast.suggested_packages }} opak.</span>
                                                         {% elif forecast.suggested_quantity %}
-                                                            <span><i class="bi bi-bag-plus" aria-hidden="true"></i> Kup {{ forecast.suggested_quantity|floatformat:2 }} {{ product.display_unit }}</span>
+                                                            <span><i class="bi bi-bag-plus" aria-hidden="true"></i> Kup {{ forecast.suggested_quantity|qty }} {{ product.display_unit }}</span>
                                                         {% endif %}
                                                     </div>
 
@@ -516,7 +513,7 @@
                                                         <summary>Skąd ta prognoza?</summary>
                                                         <p>
                                                             Tempo {{ forecast.rate|floatformat:2 }} {{ product.display_unit }}/dzień,
-                                                            {{ forecast.event_count }} zdarzeń z {{ forecast.history_days }} dni.
+                                                            {{ forecast.event_count|pl:"zdarzenie,zdarzenia,zdarzeń" }} z {{ forecast.history_days|pl:"dnia,dni,dni" }}.
                                                             {% if forecast.model == 'intermittent' %}Produkt jest używany nieregularnie, dlatego prognoza uwzględnia odstępy między użyciami.
                                                             {% else %}Nowsze zużycia mają większy wpływ na termin niż starsze.{% endif %}
                                                         </p>

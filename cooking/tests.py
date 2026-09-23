@@ -3711,6 +3711,29 @@ class ProductGroupManagementTests(TestCase):
         self.assertEqual(response.context['proposals'], [])
         self.assertEqual(response.context['loose_products'], [])
 
+    def test_empty_brand_in_a_stocked_group_is_not_a_shortage_on_the_pantry_page(self):
+        group = ProductGroup.objects.create(name='Jogurt naturalny', minimum_packages=1)
+        PantryProduct.objects.filter(pk__in=[self.pilos.pk, self.piatnica.pk]).update(group=group)
+
+        response = self.client.get(reverse('cooking:pantry'))
+
+        cards = {card['product'].name: card for card in response.context['product_cards']}
+        empty_brand = cards['Jogurt naturalny Piątnica']
+        self.assertTrue(empty_brand['group_covered'])
+        self.assertFalse(empty_brand['needs_restock'])
+        self.assertContains(response, 'data-group-covered')
+        self.assertEqual(response.context['low_stock_count'], 0)
+
+    def test_empty_group_still_counts_as_a_shortage(self):
+        group = ProductGroup.objects.create(name='Jogurt naturalny', minimum_packages=5)
+        PantryProduct.objects.filter(pk__in=[self.pilos.pk, self.piatnica.pk]).update(group=group)
+
+        response = self.client.get(reverse('cooking:pantry'))
+
+        cards = {card['product'].name: card for card in response.context['product_cards']}
+        self.assertFalse(cards['Jogurt naturalny Piątnica']['group_covered'])
+        self.assertTrue(cards['Jogurt naturalny Piątnica']['needs_restock'])
+
     def test_logged_out_user_cannot_create_groups(self):
         self.client.logout()
 
@@ -4555,3 +4578,26 @@ class ShoppingItemUuidMigrationTests(TransactionTestCase):
         executor = MigrationExecutor(connection)
         executor.loader.build_graph()
         executor.migrate(executor.loader.graph.leaf_nodes())
+
+
+class QuantityFilterTests(SimpleTestCase):
+    """Filtr qty: ten sam zapis ilości co formatQuantity w skryptach."""
+
+    def render(self, value):
+        return Template('{% load pantry_extras %}{{ v|qty }}').render(Context({'v': value}))
+
+    def test_trailing_zeros_are_dropped(self):
+        self.assertEqual(self.render(Decimal('900.00')), '900')
+        self.assertEqual(self.render(Decimal('1.50')), '1,5')
+        self.assertEqual(self.render(Decimal('0.25')), '0,25')
+
+    def test_rounds_to_two_decimal_places(self):
+        self.assertEqual(self.render(Decimal('2.456')), '2,46')
+
+    def test_groups_thousands_from_ten_thousand_like_the_browser(self):
+        self.assertEqual(self.render(Decimal('1000')), '1000')
+        self.assertEqual(self.render(Decimal('12345.5')), '12\u00a0345,5')
+
+    def test_empty_values(self):
+        self.assertEqual(self.render(None), '')
+        self.assertEqual(self.render(''), '')

@@ -1,14 +1,14 @@
 {% extends 'finance/index.html' %}
+{% load ui %}
 
-{% block title %}Edytuj Wydatek{% endblock %}
+{% block title %}Edytuj podróż{% endblock %}
 
 {% block content_finance %}
 <div class="row justify-content-center">
     <div class="col-md-6">
+        {% url 'finance:travels' as back_url %}
+        {% page_head title="Edytuj podróż" eyebrow="Finanse" icon="bi-wallet2" back=back_url %}{% endpage_head %}
         <div class="card">
-            <div class="card-header bg-warning text-white">
-                <h4 class="mb-0"><i class="bi bi-pencil-square"></i> Edytuj Podróz</h4>
-            </div>
             <div class="card-body">
                 <form method="post">
                     {% csrf_token %}
@@ -55,7 +55,7 @@
                         {% endif %}
                     </div>
                     <button type="submit" class="btn btn-success">
-                        <i class="bi bi-save"></i> Zaktualizuj podróz
+                        <i class="bi bi-save"></i> Zapisz zmiany
                     </button>
                     <a href="{% url 'finance:travels' %}" class="btn btn-secondary">
                         <i class="bi bi-x-circle"></i> Anuluj

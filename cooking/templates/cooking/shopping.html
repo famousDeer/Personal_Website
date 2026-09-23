@@ -1,51 +1,46 @@
 {% extends 'cooking/index.html' %}
+{% load ui pantry_extras %}
 
 {% block title %}Listy zakupów{% endblock %}
 
 {% block content_cooking %}
-<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-4 animate-fade-in">
-    <div>
-        <div class="small text-uppercase fw-bold text-muted mb-1">Zakupy</div>
-        <h2 class="fw-bold mb-1 recipe-title">Listy zakupów</h2>
-        <p class="text-muted mb-0">Ręczne listy i automatyczne uzupełnienia ze stanu spiżarni.</p>
-    </div>
-    <div class="d-flex flex-wrap gap-2">
-        <a href="{% url 'cooking:shopping-app' %}" class="btn btn-outline-success rounded-pill px-4 fw-bold"
+{% page_head title="Listy zakupów" eyebrow="Kuchnia" icon="bi-egg-fried" sub="Ręczne listy i automatyczne uzupełnienia ze stanu spiżarni." %}
+        <a href="{% url 'cooking:shopping-app' %}" class="btn btn-outline-success"
            title="Lista na telefon, działa także bez połączenia z domową siecią">
-            <i class="bi bi-phone me-1"></i> Tryb zakupów
+            <i class="bi bi-phone"></i> Tryb zakupów
         </a>
         <form method="post" action="{% url 'cooking:generate-shopping-list' %}">
             {% csrf_token %}
-            <button type="submit" class="btn btn-primary rounded-pill px-4 fw-bold" {% if not suggestions %}disabled{% endif %}>
-                <i class="bi bi-magic me-1"></i> Automatyczna lista
+            <button type="submit" class="btn btn-outline-primary" {% if not suggestions %}disabled{% endif %}>
+                <i class="bi bi-magic"></i> Automatyczna lista
             </button>
         </form>
-        <a href="{% url 'cooking:create-shopping-list' %}" class="btn btn-success rounded-pill px-4 fw-bold">
-            <i class="bi bi-plus-lg me-1"></i> Nowa lista
+        <a href="{% url 'cooking:create-shopping-list' %}" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> Nowa lista
         </a>
-    </div>
-</div>
+    
+{% endpage_head %}
 
 <div class="row g-3 mb-4 animate-fade-in-up">
-    <div class="col-md-3">
+    <div class="col-6 col-md-3">
         <div class="pantry-metric">
             <div class="small text-uppercase fw-bold text-muted">Aktywne listy</div>
             <div class="fs-3 fw-bold">{{ active_count }}</div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-6 col-md-3">
         <div class="pantry-metric">
             <div class="small text-uppercase fw-bold text-muted">Pozycje</div>
             <div class="fs-3 fw-bold">{{ total_items_count }}</div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-6 col-md-3">
         <div class="pantry-metric">
             <div class="small text-uppercase fw-bold text-muted">Kupione</div>
             <div class="fs-3 fw-bold text-success">{{ purchased_items_count }}</div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-6 col-md-3">
         <div class="pantry-metric">
             <div class="small text-uppercase fw-bold text-muted">Sugestie</div>
             <div class="fs-3 fw-bold text-primary">{{ suggestions_count }}</div>
@@ -80,7 +75,7 @@
                         </span>
                     </div>
                     <span class="shopping-quantity-pill">
-                        {% if suggestion.unit == 'szt' %}{{ suggestion.quantity|floatformat:0 }}{% else %}{{ suggestion.quantity|floatformat:2 }}{% endif %}
+                        {{ suggestion.quantity|qty }}
                         {{ suggestion.unit_label }}
                     </span>
                 </div>

@@ -1,32 +1,30 @@
 {% extends 'finance/index.html' %}
 
-{% block title %}Lista Przychodów{% endblock %}
+{% block title %}Przychody{% endblock %}
 
 {% block content_finance %}
 {% load humanize %}
-<div class="row align-items-center mb-4 animate-fade-in finance-list-header">
-    <div class="col-md-6">
-        <h2 class="fw-bold mb-0"><i class="bi bi-cash-stack text-success me-2"></i>Lista Przychodów</h2>
-        <p class="text-muted small mb-0">Zarządzaj swoimi wpływami</p>
-    </div>
-    
-    <div class="col-md-6 d-flex justify-content-md-end align-items-center gap-2 mt-3 mt-md-0 finance-list-toolbar">
+<div class="u-page-head">
+    <div>
+        <span class="u-eyebrow"><i class="bi bi-wallet2" aria-hidden="true"></i>Finanse</span>
+        <h1 class="u-page-title">Przychody</h1>
+        <p class="u-page-sub">Wynagrodzenia, premie i inne wpływy na aktywne konto.</p>
         {% if total_filtered > 0 %}
-        <div class="finance-list-total bg-success-subtle text-success border border-success-subtle">
-            <i class="bi bi-graph-up-arrow" aria-hidden="true"></i>
-            <span class="finance-list-total-label">Suma</span>
-            <span class="finance-list-total-value">+{{ total_filtered|floatformat:2|intcomma }} zł</span>
+        <div class="d-flex flex-wrap gap-2 mt-3">
+            <span class="u-chip u-chip-dot is-income">
+                Suma <strong class="u-num">+{{ total_filtered|floatformat:2|intcomma }} zł</strong>
+            </span>
         </div>
         {% endif %}
+    </div>
 
-        <div class="finance-list-actions">
-            <a href="{% url 'finance:add_income' %}" class="btn btn-success finance-list-action shadow-sm">
-                <i class="bi bi-plus-lg" aria-hidden="true"></i><span>Dodaj</span>
-            </a>
-            <a href="{% url 'finance:import_bank_transactions' %}" class="btn btn-outline-success finance-list-action">
-                <i class="bi bi-upload" aria-hidden="true"></i><span>Import</span>
-            </a>
-        </div>
+    <div class="u-page-actions">
+        <a href="{% url 'finance:add_income' %}" class="btn btn-primary">
+            <i class="bi bi-plus-lg" aria-hidden="true"></i> Dodaj
+        </a>
+        <a href="{% url 'finance:import_bank_transactions' %}" class="btn btn-outline-primary">
+            <i class="bi bi-upload" aria-hidden="true"></i> Import
+        </a>
     </div>
 </div>
 
@@ -151,16 +149,16 @@
             {% for income in incomes.object_list %}
             <div class="u-card mb-3">
                 <div class="card-body p-3">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <div>
-                            <span class="fw-bold fs-5">{{ income.title }}</span>
+                    <div class="d-flex justify-content-between align-items-start gap-3 mb-2">
+                        <div class="min-w-0">
+                            <span class="u-list-card-title">{{ income.title }}</span>
                             <div class="d-flex align-items-center gap-2 mt-1 small text-muted">
                                 <span class="badge {% if income.source == transfer_income_source %}bg-primary-subtle text-primary{% else %}bg-primary-subtle text-primary{% endif %} rounded-pill fw-normal">
                                     {{ income.source }}
                                 </span>
                             </div>
                         </div>
-                        <span class="u-amount is-income u-num" style="font-size:var(--fs-h3)">
+                        <span class="u-amount is-income u-num" style="font-size:1.1rem">
                             +{{ income.amount|floatformat:2|intcomma }}&nbsp;zł
                         </span>
                     </div>

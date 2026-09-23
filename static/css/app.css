@@ -1,0 +1,1010 @@
+/* =========================================================================
+   Warstwa ujednolicenia (wrzesień 2026)
+   =========================================================================
+   Ostatni arkusz w kolejce (po tokens.css → bootstrap → style.css → ui.css).
+   Nadaje wszystkim modułom - finansom, kuchni, garażowi i kontu - jeden
+   wygląd: te same nagłówki stron, karty, przyciski, pola formularzy,
+   odznaki i puste stany. Kolor akcji jest jeden: zieleń marki. Niebieski,
+   czerwony i zielony zostają wyłącznie jako znaczenie kwot (inwestycja,
+   wydatek, przychód), nigdy jako kolor przycisku.
+
+   Zasada dla nowych widoków: używaj klas u-* (u-page-head, u-card, u-btn,
+   u-metric, u-empty) albo zwykłych klas Bootstrapa - obie drogi wyglądają
+   tak samo, bo ten arkusz dopina Bootstrapa do tokenów.
+   ========================================================================= */
+
+/* --- Tokeny: kontrast tekstu drugorzędnego -------------------------------
+   Poprzednie wartości dawały 4,39:1 (--ink-3) i 2,37:1 (--ink-4) na tle
+   strony - poniżej progu 4,5:1 dla zwykłego tekstu. Obie są teraz powyżej
+   4,5:1 zarówno na karcie, jak i na tle strony.                            */
+:root {
+    --ink-3: #52627a;
+    --ink-4: #627186;
+    --line-input: rgba(15, 23, 42, 0.16);
+    --focus-ring: 0 0 0 3px rgba(8, 116, 67, 0.22);
+    --accent: var(--brand-700);
+    --accent-hover: var(--brand-800);
+    --accent-ink: #ffffff;
+    --accent-soft: var(--brand-50);
+    --accent-soft-ink: var(--brand-800);
+    --eyebrow-ink: var(--brand-700);
+    --warn-ink: #8a5a00;
+    --warn-bg: #fff4d6;
+    --control-h: 2.75rem;      /* 44 px - wygodny cel dotyku */
+    --control-h-sm: 2.25rem;
+}
+
+:root[data-theme="dark"] {
+    --line-input: rgba(255, 255, 255, 0.16);
+    --focus-ring: 0 0 0 3px rgba(76, 196, 141, 0.28);
+    --accent: #2fbe8a;
+    --accent-hover: #4cd3a3;
+    --accent-ink: #0f172a;
+    --accent-soft: rgba(47, 190, 138, 0.14);
+    --accent-soft-ink: #6fdcb2;
+    --eyebrow-ink: var(--brand-300);
+    --warn-ink: #f0b95a;
+    --warn-bg: rgba(240, 185, 90, 0.14);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]):not([data-theme="dark"]) {
+        --line-input: rgba(255, 255, 255, 0.16);
+        --focus-ring: 0 0 0 3px rgba(76, 196, 141, 0.28);
+        --accent: #2fbe8a;
+        --accent-hover: #4cd3a3;
+        --accent-ink: #0f172a;
+        --accent-soft: rgba(47, 190, 138, 0.14);
+        --accent-soft-ink: #6fdcb2;
+        --eyebrow-ink: var(--brand-300);
+        --warn-ink: #f0b95a;
+        --warn-bg: rgba(240, 185, 90, 0.14);
+    }
+}
+
+/* --- Most do starego arkusza ----------------------------------------------
+   style.css ma własny słownik (--text-main, --surface-card, --recipe-accent…)
+   z wartościami wpisanymi na sztywno. Podpinamy go pod tokeny, więc setki
+   starych reguł od razu mówią tym samym językiem - w obu motywach, bo tokeny
+   same przełączają się z motywem.                                          */
+:root {
+    --bg-body: var(--surface-0);
+    --text-main: var(--ink-1);
+    --text-muted: var(--ink-3);
+    --surface-card: var(--surface-1);
+    --surface-subtle: var(--surface-2);
+    --surface-border: var(--line-1);
+    --input-bg: var(--surface-1);
+    --input-bg-focus: var(--surface-1);
+    --input-border: var(--line-input);
+    --input-placeholder: var(--ink-4);
+    --button-neutral-bg: var(--surface-1);
+    --button-neutral-hover: var(--surface-3);
+    --radius-card: var(--r-lg);
+    --shadow-card: var(--sh-1);
+    --shadow-card-hover: var(--sh-2);
+    --recipe-accent: var(--accent);
+    --bg-recipe-card: var(--surface-1);
+}
+
+/* --- Typografia ----------------------------------------------------------
+   Jedna rodzina w całej aplikacji. Kuchnia miała szeryfowy krój w kolorze
+   pomarańczowym (Playfair Display, którego zresztą nigdzie nie ładowano -
+   przeglądarka brała przypadkowy krój szeryfowy z systemu).               */
+body {
+    font-family: var(--font-ui);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+main h1, main h2, main h3, main h4, main h5, main h6,
+.recipe-title {
+    font-family: var(--font-ui) !important;
+    letter-spacing: -0.01em;
+}
+
+.recipe-title {
+    color: var(--ink-1) !important;
+    font-weight: 700 !important;
+}
+
+a { color: var(--accent); }
+a:hover { color: var(--accent-hover); }
+
+.text-muted, .text-body-secondary { color: var(--ink-3) !important; }
+
+.u-num, .font-monospace-num { font-variant-numeric: tabular-nums; }
+
+/* Kwoty mają kolor znaczenia wszędzie, nie tylko w tabeli - na telefonie
+   karty wydatków pokazywały "-32,00 zł" zwykłym atramentem.               */
+.u-amount { font-weight: 700; white-space: nowrap; }
+.u-amount.is-income { color: var(--income-ink); }
+.u-amount.is-expense { color: var(--expense-ink); }
+.u-amount.is-invest { color: var(--invest-ink); }
+
+/* --- Nagłówek strony -----------------------------------------------------
+   etykietka → tytuł → zdanie kontekstu, akcje po prawej. Na telefonie
+   akcje schodzą pod tytuł i dzielą szerokość po równo.                     */
+.u-page-head {
+    align-items: flex-end;
+    margin-bottom: var(--sp-5);
+}
+
+.u-page-head-main {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--sp-3);
+    min-width: 0;
+}
+
+.u-page-head .u-eyebrow,
+.u-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--eyebrow-ink);
+}
+
+.u-page-title {
+    font-size: var(--fs-h1);
+    font-weight: 750;
+    line-height: var(--lh-tight);
+    letter-spacing: -0.015em;
+    overflow-wrap: anywhere;
+}
+
+.u-page-sub {
+    font-size: var(--fs-body);
+    color: var(--ink-3);
+}
+
+.u-page-actions {
+    align-items: center;
+}
+
+.u-page-head.is-inline-actions { align-items: flex-start; }
+
+.u-page-note {
+    margin: calc(var(--sp-4) * -0.6) 0 var(--sp-4);
+    color: var(--ink-3);
+    font-size: var(--fs-sm);
+}
+
+/* Notka pod nagłówkiem z przyciskiem "wróć" stoi w jednej linii z tytułem. */
+.u-page-head:has(.u-back) + .u-page-note {
+    padding-left: calc(2.5rem + var(--sp-3));
+}
+
+.u-back {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    margin-top: 0.2rem;
+    color: var(--ink-2);
+    background: var(--surface-1);
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-pill);
+    text-decoration: none;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.u-back:hover {
+    color: var(--ink-1);
+    background: var(--surface-3);
+}
+
+@media (max-width: 767.98px) {
+    .u-page-head {
+        align-items: stretch;
+        flex-direction: column;
+        gap: var(--sp-3);
+        margin-bottom: var(--sp-4);
+    }
+
+    .u-page-actions {
+        width: 100%;
+    }
+
+    .u-page-actions > .btn,
+    .u-page-actions > .u-btn,
+    .u-page-actions > form,
+    .u-page-actions > .dropdown {
+        flex: 1 1 0;
+    }
+
+    .u-page-actions > form > .btn,
+    .u-page-actions > .dropdown > .btn {
+        width: 100%;
+    }
+
+    .u-page-actions > .btn-icon,
+    .u-page-actions > .u-btn-icon,
+    .u-page-actions > .u-page-actions-icon,
+    .u-page-actions > .dropdown:has(> .btn-icon) {
+        flex: 0 0 auto;
+    }
+
+    /* Gdy jedyną akcją jest ikona (np. menu ⋮), zostaje obok tytułu,
+       zamiast rozciągać się w pusty pasek pod nim.                         */
+    .u-page-head.is-inline-actions {
+        flex-direction: row;
+        align-items: flex-start;
+    }
+
+    .u-page-head.is-inline-actions .u-page-actions {
+        width: auto;
+    }
+}
+
+/* Wąska kolumna dla formularzy: nagłówek i karta mają tę samą szerokość,
+   więc tytuł stoi dokładnie nad polami, a nie gdzieś z boku.               */
+.u-narrow {
+    width: 100%;
+    max-width: 46rem;
+    margin-inline: auto;
+}
+
+.u-narrow-sm {
+    width: 100%;
+    max-width: 34rem;
+    margin-inline: auto;
+}
+
+/* Nagłówki na zielonym tle banera. Bootstrap maluje h1-h6 kolorem
+   --bs-heading-color (ciemny atrament), więc w jasnym motywie tytuł
+   "Jeden skan. Aktualny stan." był ciemnozielony na zielonym.              */
+.u-hero :is(h1, h2, h3, h4),
+.pantry-scan-hero :is(h1, h2, h3, h4) {
+    color: #fff !important;
+}
+
+/* --- Karty ---------------------------------------------------------------- */
+.card {
+    --bs-card-border-radius: var(--r-lg);
+    --bs-card-inner-border-radius: calc(var(--r-lg) - 1px);
+    --bs-card-border-color: var(--line-1);
+    --bs-card-bg: var(--surface-1);
+    --bs-card-cap-bg: transparent;
+    --bs-card-spacer-y: 1.25rem;
+    --bs-card-spacer-x: 1.25rem;
+    border: 1px solid var(--line-1) !important;
+    border-radius: var(--r-lg) !important;
+    box-shadow: var(--sh-1) !important;
+}
+
+/* Karty formularzy miały cień "shadow-lg" i unosiły się nad stroną jak
+   modal. Wszystkie karty mają teraz ten sam, spokojny cień.               */
+.card.shadow, .card.shadow-lg, .card.shadow-sm, .action-card {
+    box-shadow: var(--sh-1) !important;
+}
+
+.card-header,
+.card-header.bg-warning, .card-header.bg-primary, .card-header.bg-success,
+.card-header.bg-danger, .card-header.bg-info, .card-header.bg-dark,
+.card-header.text-white, .card-header.text-dark {
+    padding: 1rem 1.25rem;
+    background: transparent !important;
+    color: var(--ink-1) !important;
+    border-bottom: 1px solid var(--line-2) !important;
+    font-weight: 650;
+}
+
+.card-header h1, .card-header h2, .card-header h3,
+.card-header h4, .card-header h5, .card-header h6 {
+    color: var(--ink-1) !important;
+    font-size: var(--fs-h3);
+    font-weight: 650;
+}
+
+.card-footer {
+    background: transparent;
+    border-top: 1px solid var(--line-2);
+}
+
+.card-body.p-4.p-md-5 {
+    padding: 1.5rem !important;
+}
+
+@media (min-width: 768px) {
+    .card-body.p-4.p-md-5 {
+        padding: 2rem !important;
+    }
+}
+
+/* --- Kafelki modułów (strona startowa, finanse, kuchnia) ------------------
+   Ikona w miękkim kwadracie, tytuł, jedno zdanie i strzałka. Wszystkie
+   kafelki mają tę samą barwę akcentu - moduł rozpoznaje się po ikonie
+   i nazwie, nie po kolorze.                                                */
+.u-tile-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-3);
+}
+
+@media (min-width: 768px) {
+    .u-tile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .u-tile-grid.is-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+.u-tile {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    min-height: 5.25rem;
+    padding: var(--sp-4);
+    color: var(--ink-2);
+    background: var(--surface-1);
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-lg);
+    box-shadow: var(--sh-1);
+    text-decoration: none;
+    transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease),
+                transform var(--dur) var(--ease);
+}
+
+.u-tile:hover {
+    color: var(--ink-2);
+    border-color: color-mix(in srgb, var(--accent) 35%, var(--line-1));
+    box-shadow: var(--sh-2);
+    transform: translateY(-1px);
+}
+
+.u-tile-icon, .icon-box {
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    color: var(--accent) !important;
+    background: var(--accent-soft) !important;
+    border-radius: var(--r-md);
+    font-size: 1.25rem;
+}
+
+.u-tile-body {
+    display: grid;
+    gap: 0.15rem;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.u-tile-title {
+    color: var(--ink-1);
+    font-size: var(--fs-body);
+    font-weight: 700;
+}
+
+.u-tile-text {
+    color: var(--ink-3);
+    font-size: var(--fs-sm);
+    line-height: 1.35;
+}
+
+.u-tile-arrow {
+    flex: 0 0 auto;
+    color: var(--ink-4);
+    font-size: 1.25rem;
+    transition: transform var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.u-tile:hover .u-tile-arrow {
+    color: var(--accent);
+    transform: translateX(2px);
+}
+
+/* Pasek szybkich akcji pod kafelkami. */
+.u-quick-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    margin-top: var(--sp-4);
+}
+
+@media (max-width: 575.98px) {
+    .u-quick-actions > .btn { flex: 1 1 calc(50% - var(--sp-2)); }
+}
+
+/* --- Przyciski -------------------------------------------------------------
+   Jeden kształt (pigułka), jedna wysokość, jeden kolor akcji. Bootstrapowy
+   "primary" jest teraz zielenią marki - niebieskie przyciski znikają.      */
+.btn, .u-btn {
+    --bs-btn-border-radius: var(--r-pill);
+    --bs-btn-font-weight: 650;
+    --bs-btn-focus-box-shadow: var(--focus-ring);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    min-height: var(--control-h);
+    padding: 0.5rem 1.1rem;
+    border-radius: var(--r-pill) !important;
+    font-size: var(--fs-sm);
+    font-weight: 650;
+    line-height: 1.2;
+    white-space: nowrap;
+    box-shadow: none;
+    transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
+                color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+
+/* Przycisk na całą szerokość (np. "Zapisz gotowanie i odejmij produkty")
+   może się zawijać - inaczej na telefonie wystaje poza ekran.              */
+.btn.w-100, .d-grid > .btn, .btn-lg, .btn.btn-block {
+    white-space: normal;
+    text-align: center;
+}
+
+.btn:active, .u-btn:active { transform: translateY(1px); }
+.btn:focus-visible, .u-btn:focus-visible { box-shadow: var(--focus-ring) !important; outline: none; }
+
+.btn-sm, .u-btn-sm {
+    min-height: var(--control-h-sm);
+    padding: 0.35rem 0.85rem;
+    font-size: var(--fs-caption);
+}
+
+.btn-lg {
+    min-height: 3.1rem;
+    padding: 0.7rem 1.4rem;
+    font-size: var(--fs-body);
+}
+
+.btn > .bi, .u-btn > .bi { font-size: 1.05em; }
+.btn > .bi.me-1, .btn > .bi.me-2, .u-btn > .bi.me-1 { margin-right: 0 !important; }
+
+/* Główna akcja: primary, success i stary gradient u-btn-primary wyglądają
+   identycznie - płaska zieleń marki.                                       */
+.btn-primary, .btn-success, .u-btn-primary,
+:root[data-theme="dark"] .btn-primary, :root[data-theme="dark"] .btn-success,
+:root[data-theme="dark"] .btn-primary:focus, :root[data-theme="dark"] .btn-success:focus {
+    --bs-btn-bg: var(--accent);
+    --bs-btn-border-color: var(--accent);
+    --bs-btn-color: var(--accent-ink);
+    --bs-btn-hover-bg: var(--accent-hover);
+    --bs-btn-hover-border-color: var(--accent-hover);
+    --bs-btn-hover-color: var(--accent-ink);
+    --bs-btn-active-bg: var(--accent-hover);
+    --bs-btn-active-border-color: var(--accent-hover);
+    --bs-btn-active-color: var(--accent-ink);
+    --bs-btn-disabled-bg: var(--accent);
+    --bs-btn-disabled-border-color: var(--accent);
+    --bs-btn-disabled-color: var(--accent-ink);
+    background: var(--accent) !important;
+    border-color: var(--accent) !important;
+    color: var(--accent-ink) !important;
+    box-shadow: none !important;
+}
+
+.btn-primary:hover, .btn-success:hover, .u-btn-primary:hover,
+:root[data-theme="dark"] .btn-primary:hover, :root[data-theme="dark"] .btn-success:hover {
+    background: var(--accent-hover) !important;
+    border-color: var(--accent-hover) !important;
+    color: var(--accent-ink) !important;
+}
+
+.btn-dark,
+:root[data-theme="dark"] .btn-dark {
+    background: var(--accent) !important;
+    border-color: var(--accent) !important;
+    color: var(--accent-ink) !important;
+}
+
+.btn-dark:hover { background: var(--accent-hover) !important; border-color: var(--accent-hover) !important; }
+
+/* Akcja drugorzędna: obrys, bez koloru. */
+.btn-outline-primary, .btn-outline-success, .btn-outline-secondary, .btn-outline-dark,
+.btn-light, .btn-soft-neutral, .btn-secondary, .btn-outline-info, .btn-info, .u-btn-ghost {
+    --bs-btn-bg: var(--surface-1);
+    --bs-btn-border-color: var(--line-input);
+    --bs-btn-color: var(--ink-1);
+    --bs-btn-hover-bg: var(--surface-3);
+    --bs-btn-hover-border-color: var(--line-input);
+    --bs-btn-hover-color: var(--ink-1);
+    --bs-btn-active-bg: var(--surface-3);
+    --bs-btn-active-border-color: var(--line-input);
+    --bs-btn-active-color: var(--ink-1);
+    background: var(--surface-1) !important;
+    border: 1px solid var(--line-input) !important;
+    color: var(--ink-1) !important;
+    box-shadow: none !important;
+}
+
+.btn-outline-primary:hover, .btn-outline-success:hover, .btn-outline-secondary:hover,
+.btn-outline-dark:hover, .btn-light:hover, .btn-soft-neutral:hover, .btn-secondary:hover,
+.btn-outline-info:hover, .btn-info:hover, .u-btn-ghost:hover,
+.btn-outline-primary.active, .btn-outline-success.active, .btn-outline-secondary.active {
+    background: var(--surface-3) !important;
+    color: var(--ink-1) !important;
+}
+
+/* Ikona w przyciskach drugorzędnych niesie kolor marki - akcent bez
+   malowania całego przycisku.                                              */
+.btn-outline-primary > .bi, .btn-outline-success > .bi, .u-btn-ghost > .bi {
+    color: var(--accent);
+}
+
+/* Działanie nieodwracalne: czerwony obrys, wypełnienie dopiero przy
+   najechaniu - usunięcie nie może krzyczeć na każdej liście.               */
+.btn-outline-danger {
+    --bs-btn-color: var(--expense-ink);
+    --bs-btn-border-color: var(--line-input);
+    --bs-btn-hover-bg: var(--expense-bg);
+    --bs-btn-hover-color: var(--expense-ink);
+    --bs-btn-hover-border-color: transparent;
+    background: var(--surface-1) !important;
+    border-color: var(--line-input) !important;
+    color: var(--expense-ink) !important;
+}
+
+.btn-outline-danger:hover {
+    background: var(--expense-bg) !important;
+    border-color: transparent !important;
+}
+
+.btn-danger,
+:root[data-theme="dark"] .btn-danger,
+:root[data-theme="dark"] .btn-danger:focus {
+    background: var(--expense-ink) !important;
+    border-color: var(--expense-ink) !important;
+    color: #fff !important;
+}
+
+:root[data-theme="dark"] .btn-danger,
+:root[data-theme="dark"] .btn-danger:focus {
+    background: #f08b84 !important;
+    border-color: #f08b84 !important;
+    color: #0f172a !important;
+}
+
+/* Pomarańczowy przycisk kuchni był trzecim kolorem akcji w aplikacji. */
+.btn-warning, .btn-warning:focus, .btn-warning.text-white,
+:root[data-theme="dark"] .btn-warning, :root[data-theme="dark"] .btn-warning:focus {
+    background: var(--accent) !important;
+    border-color: var(--accent) !important;
+    color: var(--accent-ink) !important;
+}
+
+.btn-warning:hover, :root[data-theme="dark"] .btn-warning:hover {
+    background: var(--accent-hover) !important;
+    border-color: var(--accent-hover) !important;
+    color: var(--accent-ink) !important;
+}
+
+/* "Wymaga uwagi" (np. wpłaty bez rachunku): żółty Bootstrapa na białym
+   miał kontrast 1,6:1, więc tekst bierze ciemny odcień ostrzeżenia. */
+.btn-outline-warning {
+    background: var(--warn-bg) !important;
+    border-color: transparent !important;
+    color: var(--warn-ink) !important;
+}
+
+.btn-outline-warning:hover {
+    background: var(--warn-ink) !important;
+    color: var(--surface-1) !important;
+}
+
+/* Kwotowe akcje zostają w miękkich barwach znaczenia. */
+.u-btn-expense { background: var(--expense-bg) !important; color: var(--expense-ink) !important; }
+.u-btn-income { background: var(--income-bg) !important; color: var(--income-ink) !important; }
+
+.btn-link {
+    min-height: auto;
+    padding: 0.25rem 0.5rem;
+    color: var(--accent);
+    text-decoration: none;
+}
+
+/* Przycisk z samą ikoną: kółko, a nie rozciągnięta pigułka. */
+.btn.btn-icon, .u-btn.u-btn-icon {
+    width: var(--control-h);
+    min-width: var(--control-h);
+}
+
+.btn-sm.btn-icon {
+    width: var(--control-h-sm);
+    min-width: var(--control-h-sm);
+}
+
+.btn-icon, .u-btn-icon {
+    width: var(--control-h-sm);
+    min-width: var(--control-h-sm);
+    padding: 0 !important;
+}
+
+.btn-group > .btn { border-radius: var(--r-pill) !important; }
+.btn-group { gap: 0.35rem; }
+
+/* --- Logowanie i rejestracja --------------------------------------------- */
+.u-auth-mark {
+    display: inline-grid;
+    place-items: center;
+    width: 3.5rem;
+    height: 3.5rem;
+    margin-bottom: var(--sp-3);
+    color: #fff;
+    background: var(--brand-gradient);
+    border-radius: var(--r-lg);
+    box-shadow: var(--sh-brand);
+    font-size: 1.6rem;
+}
+
+/* --- Pola formularzy ------------------------------------------------------ */
+.form-control, .form-select {
+    min-height: var(--control-h);
+    padding: 0.55rem 0.85rem;
+    color: var(--ink-1);
+    background-color: var(--surface-1);
+    border: 1px solid var(--line-input);
+    border-radius: var(--r-sm);
+    font-size: var(--fs-body);
+    box-shadow: none;
+    transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+
+.form-select {
+    padding-right: 2.25rem;
+}
+
+textarea.form-control {
+    min-height: 6rem;
+}
+
+/* Szare pola bez ramki (bg-light border-0) w formularzu przepisu: w motywie
+   ciemnym bootstrapowe "light" zostawało jasne. Wszystkie pola wyglądają
+   teraz tak samo, a "bg-light" oznacza po prostu powierzchnię drugiego planu. */
+.bg-light { background-color: var(--surface-2) !important; }
+
+.form-control.bg-light, .form-select.bg-light, .input-group-text.bg-light,
+.form-control.border-0, .form-select.border-0 {
+    background-color: var(--surface-1) !important;
+    border: 1px solid var(--line-input) !important;
+}
+
+.input-group-text.bg-light { background-color: var(--surface-2) !important; }
+
+.form-control-sm, .form-select-sm {
+    min-height: var(--control-h-sm);
+    padding: 0.35rem 0.7rem;
+    font-size: var(--fs-sm);
+}
+
+.form-control:focus, .form-select:focus {
+    color: var(--ink-1);
+    background-color: var(--surface-1);
+    border-color: var(--accent);
+    box-shadow: var(--focus-ring);
+}
+
+.form-control::placeholder {
+    color: var(--ink-4);
+}
+
+.form-floating > .form-control,
+.form-floating > .form-select {
+    min-height: 3.5rem;
+    height: 3.5rem;
+    padding-top: 1.55rem;
+    padding-bottom: 0.45rem;
+}
+
+.form-floating > textarea.form-control {
+    height: auto;
+    min-height: 7rem;
+}
+
+.form-floating > label {
+    padding: 0.95rem 0.85rem;
+    color: var(--ink-3);
+}
+
+.form-floating > .form-control:focus ~ label,
+.form-floating > .form-control:not(:placeholder-shown) ~ label,
+.form-floating > .form-select ~ label {
+    color: var(--ink-3);
+}
+
+.form-floating > .form-control:focus ~ label::after,
+.form-floating > .form-control:not(:placeholder-shown) ~ label::after,
+.form-floating > .form-select ~ label::after {
+    background: transparent !important;
+}
+
+.form-label {
+    margin-bottom: 0.35rem;
+    color: var(--ink-2);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+}
+
+/* Etykiety pisane wersalikami (np. "MIESIĄC" w filtrach) zostają, ale
+   w kolorze, który da się przeczytać.                                      */
+.form-label.text-uppercase, label.small.text-uppercase {
+    color: var(--ink-3) !important;
+    font-size: var(--fs-eyebrow) !important;
+    letter-spacing: var(--tracking-eyebrow);
+}
+
+.form-text { color: var(--ink-3); }
+
+.input-group > .form-control, .input-group > .form-select { border-radius: var(--r-sm); }
+.input-group-text {
+    min-height: var(--control-h);
+    color: var(--ink-3);
+    background: var(--surface-2);
+    border: 1px solid var(--line-input);
+    border-radius: var(--r-sm);
+}
+
+.form-check-input {
+    width: 1.15em;
+    height: 1.15em;
+    border: 1.5px solid var(--line-input);
+    background-color: var(--surface-1);
+}
+
+.form-check-input:checked {
+    background-color: var(--accent);
+    border-color: var(--accent);
+}
+
+.form-check-input:focus {
+    border-color: var(--accent);
+    box-shadow: var(--focus-ring);
+}
+
+.form-switch .form-check-input {
+    width: 2.4em;
+    height: 1.35em;
+}
+
+/* Cel dotyku dla pól wyboru: cała etykieta jest klikalna i ma wysokość
+   wygodną dla kciuka.                                                      */
+.form-check {
+    min-height: 1.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding-left: 0;
+}
+
+.form-check .form-check-input {
+    float: none;
+    margin: 0;
+    flex: 0 0 auto;
+}
+
+.form-check-label { cursor: pointer; }
+
+/* --- Odznaki i chipy ------------------------------------------------------
+   Miękkie odznaki Bootstrapa miały tekst w kolorze tła (np. żółte "Aktywna"
+   na żółtym, 1,47:1). Tekst jest teraz ciemniejszym stopniem tej barwy.    */
+.badge {
+    font-weight: 650;
+    letter-spacing: 0.01em;
+}
+
+.badge.rounded-pill, .badge { border-radius: var(--r-pill); }
+
+.bg-primary-subtle { background: var(--accent-soft) !important; }
+.bg-primary-subtle.text-primary, .bg-primary-subtle .text-primary { color: var(--accent-soft-ink) !important; }
+.bg-success-subtle { background: var(--income-bg) !important; }
+.bg-success-subtle.text-success { color: var(--income-ink) !important; }
+.bg-danger-subtle { background: var(--expense-bg) !important; }
+.bg-danger-subtle.text-danger { color: var(--expense-ink) !important; }
+.bg-warning-subtle { background: var(--warn-bg) !important; }
+.bg-warning-subtle.text-warning, .bg-warning-subtle .text-warning,
+.bg-warning-subtle.text-dark { color: var(--warn-ink) !important; }
+.bg-info-subtle { background: var(--invest-bg) !important; }
+.bg-info-subtle.text-info { color: var(--invest-ink) !important; }
+.bg-secondary-subtle { background: var(--neutral-bg) !important; }
+.bg-secondary-subtle.text-secondary, .bg-light.text-muted, .bg-light.text-dark {
+    color: var(--ink-3) !important;
+}
+
+.badge.bg-light { background: var(--surface-3) !important; }
+
+/* Tekst w kolorze ostrzeżenia i informacji (np. koszty serwisu i opon
+   w garażu) miał 1,6-2:1 na białym tle.                                    */
+.text-warning { color: var(--warn-ink) !important; }
+.text-info { color: var(--invest-ink) !important; }
+.text-primary { color: var(--accent) !important; }
+.text-success { color: var(--income-ink) !important; }
+.text-danger { color: var(--expense-ink) !important; }
+
+/* --- Alerty i komunikaty -------------------------------------------------- */
+.alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid transparent;
+    border-radius: var(--r-md);
+    font-size: var(--fs-sm);
+}
+
+.alert-dismissible { padding-right: 3rem; }
+.alert-success { background: var(--income-bg); color: var(--income-ink); border-color: transparent; }
+.alert-danger, .alert-error { background: var(--expense-bg); color: var(--expense-ink); border-color: transparent; }
+.alert-warning { background: var(--warn-bg); color: var(--warn-ink); border-color: transparent; }
+.alert-info { background: var(--invest-bg); color: var(--invest-ink); border-color: transparent; }
+.alert .btn-close { padding: 1.05rem 1rem; }
+
+/* --- Puste stany ---------------------------------------------------------- */
+.u-empty {
+    display: grid;
+    justify-items: center;
+    gap: 0.4rem;
+    padding: var(--sp-6) var(--sp-4);
+    text-align: center;
+    color: var(--ink-3);
+}
+
+.u-empty > .bi {
+    display: grid;
+    place-items: center;
+    width: 3rem;
+    height: 3rem;
+    margin-bottom: 0.25rem;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-radius: var(--r-pill);
+    font-size: 1.35rem;
+}
+
+.u-empty strong {
+    color: var(--ink-1);
+    font-size: var(--fs-lead);
+}
+
+.u-empty p { margin: 0; max-width: 42ch; }
+
+/* --- Tabele --------------------------------------------------------------- */
+.table > :not(caption) > * > * {
+    padding: 0.75rem 0.85rem;
+}
+
+.table thead th, .table > thead > tr > th {
+    color: var(--ink-3) !important;
+    font-size: var(--fs-eyebrow);
+    font-weight: 700;
+    letter-spacing: var(--tracking-eyebrow);
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+/* --- Nawigacja ------------------------------------------------------------ */
+.app-brand > span:not(.app-brand-mark) .bi { display: none; }
+.app-brand { gap: 0.6rem; letter-spacing: -0.01em; }
+
+.dropdown-menu {
+    padding: 0.35rem;
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-md);
+    box-shadow: var(--sh-3);
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 0.75rem;
+    border-radius: var(--r-xs);
+    font-size: var(--fs-sm);
+}
+
+.dropdown-item > .bi.me-2 { margin-right: 0 !important; color: var(--ink-3); }
+
+/* --- Wspólne kafelki statystyk na telefonie --------------------------------
+   Na wąskim ekranie kafelki szły jeden pod drugim, każdy na całą szerokość:
+   cztery liczby zajmowały cały pierwszy ekran. Teraz są dwa w rzędzie.     */
+@media (max-width: 575.98px) {
+    .u-metric-grid,
+    .shopping-stats-grid,
+    .travel-stat-grid,
+    .car-metric-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: var(--sp-2) !important;
+    }
+
+    .u-metric { padding: var(--sp-3); }
+    .u-metric-value { font-size: 1.35rem; }
+
+    /* Kafelek podróży: ikona nad liczbą, żeby "15 000 zł" mieściło się
+       w jednej linii przy dwóch kafelkach w rzędzie. */
+    .travel-stat-card { flex-direction: column; align-items: flex-start; gap: var(--sp-2); padding: var(--sp-3); }
+    .travel-stat-icon { flex-basis: auto; width: 36px; height: 36px; }
+    .travel-stat-value { white-space: nowrap; font-size: 1.25rem; }
+}
+
+@media (max-width: 575.98px) {
+    .shopping-summary-main {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: var(--sp-3) !important;
+    }
+}
+
+/* --- Pasek akcji długiego formularza ---------------------------------------
+   Przepis ma kilka ekranów wysokości, więc "Zapisz" przykleja się do dołu
+   okna. Wcześniej była to pływająca pigułka nad treścią formularza; teraz
+   pasek zajmuje szerokość formularza i nie zasłania pól.                   */
+.u-form-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--sp-2);
+    margin-top: var(--sp-4);
+    padding: var(--sp-3) 0 calc(var(--sp-3) + env(safe-area-inset-bottom, 0px));
+    background: linear-gradient(to top, var(--surface-0) 72%, transparent);
+}
+
+@media (max-width: 991.98px) {
+    /* Dolna nawigacja jest przyklejona do ekranu, więc pasek staje nad nią. */
+    .u-form-actions {
+        bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px));
+        padding-bottom: var(--sp-3);
+    }
+}
+
+@media (max-width: 575.98px) {
+    .u-form-actions > .btn { flex: 1 1 0; }
+}
+
+/* Formularz przepisu: podgląd zdjęcia i wiersze składników */
+.image-upload-container { background: var(--surface-2) !important; transition: background-color 0.2s; }
+.image-upload-container:hover { background: var(--surface-3) !important; }
+
+.recipe-step-card { background: var(--surface-2); border-color: var(--line-1); border-radius: var(--r-md); }
+
+@media (min-width: 768px) {
+    .recipe-ingredient-row {
+        grid-template-columns: minmax(0, 2fr) minmax(4.5rem, 0.8fr) minmax(5.5rem, 0.9fr) minmax(0, 1.4fr) auto;
+    }
+}
+
+@media (max-width: 767.98px) {
+    /* Na telefonie: nazwa na całą szerokość, ilość i jednostka obok siebie,
+       kategoria z przyciskiem usuwania w ostatnim rzędzie. */
+    .recipe-ingredient-row {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto !important;
+        padding: var(--sp-3);
+        background: var(--surface-1);
+        border: 1px solid var(--line-1);
+        border-radius: var(--r-sm);
+    }
+    .recipe-ingredient-row > input[name="ingredient_name"] { grid-column: 1 / -1; }
+    .recipe-ingredient-row > select[name="ingredient_category"] { grid-column: 1 / 3; }
+    .recipe-ingredient-row > button { width: auto !important; }
+}
+
+/* --- Drobiazgi ---------------------------------------------------------------- */
+.min-w-0 { min-width: 0; }
+
+.animate-fade-in, .animate-fade-in-up {
+    animation-duration: 0.25s !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .animate-fade-in, .animate-fade-in-up { animation: none !important; }
+}
+
+hr { border-color: var(--line-2); opacity: 1; }
+
+::selection { background: var(--brand-100); color: var(--ink-1); }
+:root[data-theme="dark"] ::selection { background: rgba(47, 190, 138, 0.35); color: #fff; }
+
+/* Karty wydatków i przychodów na telefonie: tytuł łamie się między słowami,
+   a kwota zostaje w jednej linii obok niego. */
+.u-list-card-title {
+    display: block;
+    font-size: 1.05rem;
+    font-weight: 700;
+    line-height: 1.3;
+    color: var(--ink-1);
+    overflow-wrap: break-word;
+    word-break: normal;
+}

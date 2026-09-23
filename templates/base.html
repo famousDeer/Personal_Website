@@ -20,7 +20,7 @@
          [document.querySelector('meta[name=app-build]').content,
           getComputedStyle(document.documentElement).getPropertyValue('--ui-build')]
     {% endcomment %}
-    <meta name="app-build" content="2026-09-19-d">
+    <meta name="app-build" content="2026-09-23-a">
 
     <title>{% block title %}Finanse{% endblock %}</title>
 
@@ -52,6 +52,7 @@
     <link rel="stylesheet" href="{% static 'vendor/flatpickr/flatpickr.min.css' %}">
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
     <link rel="stylesheet" href="{% static 'css/ui.css' %}">
+    <link rel="stylesheet" href="{% static 'css/app.css' %}">
     {% block extra_css %}{% endblock %}
 </head>
 <body>
@@ -60,11 +61,12 @@
     <div class="app-nav-inner">
         <a class="app-brand" href="{% block navbar_brand_url %}{% url 'index' %}{% endblock %}">
             <span class="app-brand-mark"><i class="bi bi-house-heart-fill"></i></span>
-            {% if request.path == '/' %}
-                <span>Dashboard</span>
-            {% else %}
-                {% block navbar_brand %}<span>Moja Aplikacja</span>{% endblock %}
-            {% endif %}
+            {% comment %} Nazwa modułu liczona w jednym miejscu. Wcześniej każdy moduł
+               nadpisywał ją po swojemu (z ikoną albo bez), a garaż i konto
+               pokazywały zaślepkę "Moja Aplikacja". {% endcomment %}
+            {% with ns=request.resolver_match.namespace %}
+                <span>{% if ns == 'finance' %}Finanse{% elif ns == 'cooking' %}Kuchnia{% elif ns == 'cars' %}Garaż{% elif ns == 'habits' %}Nawyki{% elif request.resolver_match.url_name == 'profile' or request.resolver_match.url_name == 'edit_shared_account' %}Konto{% else %}Dom{% endif %}</span>
+            {% endwith %}
         </a>
 
         {% if user.is_authenticated %}

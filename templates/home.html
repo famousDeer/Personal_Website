@@ -1,75 +1,61 @@
 {% extends 'base.html' %}
+{% load ui %}
 
-{% block title %}Dashboard domowy{% endblock %}
+{% block title %}Dom{% endblock %}
 
 {% block content %}
 {% if user.is_authenticated %}
-<section class="home-shell animate-fade-in">
-    <div class="home-header">
-        <div>
-            <div class="small text-uppercase fw-bold text-muted mb-1">Panel domowy</div>
-            <h1 class="home-title">Dashboard</h1>
-            <p class="text-muted mb-0">Szybki dostęp do finansów, kuchni, samochodów i nawyków.</p>
-        </div>
-        <div class="home-account">
-            <span class="home-account-label">Zalogowano jako</span>
-            <strong>{{ user.username }}</strong>
-        </div>
-    </div>
+{% page_head title="Dzień dobry, "|add:user.username eyebrow="Panel domowy" icon="bi-house-heart" sub="Finanse, kuchnia, garaż i nawyki w jednym miejscu." %}{% endpage_head %}
 
-    <div class="home-quick-grid">
-        <a href="{% url 'finance:dashboard' %}" class="home-module home-module-primary">
-            <span class="home-module-icon"><i class="bi bi-wallet2"></i></span>
-            <span>
-                <span class="home-module-title">Finanse</span>
-                <span class="home-module-text">Budżet, wydatki, przychody i raporty.</span>
-            </span>
-            <i class="bi bi-arrow-right-short home-module-arrow"></i>
-        </a>
-        <a href="{% url 'cooking:cook' %}" class="home-module home-module-warning">
-            <span class="home-module-icon"><i class="bi bi-egg-fried"></i></span>
-            <span>
-                <span class="home-module-title">Gotowanie</span>
-                <span class="home-module-text">Przepisy, gotowanie i spiżarnia.</span>
-            </span>
-            <i class="bi bi-arrow-right-short home-module-arrow"></i>
-        </a>
-        <a href="{% url 'cars:garage' %}" class="home-module home-module-info">
-            <span class="home-module-icon"><i class="bi bi-car-front-fill"></i></span>
-            <span>
-                <span class="home-module-title">Samochody</span>
-                <span class="home-module-text">Garaż, serwis, paliwo i opony.</span>
-            </span>
-            <i class="bi bi-arrow-right-short home-module-arrow"></i>
-        </a>
-        <a href="{% url 'habits:list' %}" class="home-module home-module-success">
-            <span class="home-module-icon"><i class="bi bi-check2-circle"></i></span>
-            <span>
-                <span class="home-module-title">Nawyki</span>
-                <span class="home-module-text">Lista nawyków i codzienne postępy.</span>
-            </span>
-            <i class="bi bi-arrow-right-short home-module-arrow"></i>
-        </a>
-    </div>
+<div class="u-tile-grid animate-fade-in-up">
+    <a href="{% url 'finance:dashboard' %}" class="u-tile">
+        <span class="u-tile-icon"><i class="bi bi-wallet2"></i></span>
+        <span class="u-tile-body">
+            <span class="u-tile-title">Finanse</span>
+            <span class="u-tile-text">Budżet, wydatki, przychody i raporty.</span>
+        </span>
+        <i class="bi bi-chevron-right u-tile-arrow"></i>
+    </a>
+    <a href="{% url 'cooking:pantry' %}" class="u-tile">
+        <span class="u-tile-icon"><i class="bi bi-egg-fried"></i></span>
+        <span class="u-tile-body">
+            <span class="u-tile-title">Kuchnia</span>
+            <span class="u-tile-text">Spiżarnia, listy zakupów i przepisy.</span>
+        </span>
+        <i class="bi bi-chevron-right u-tile-arrow"></i>
+    </a>
+    <a href="{% url 'cars:garage' %}" class="u-tile">
+        <span class="u-tile-icon"><i class="bi bi-car-front-fill"></i></span>
+        <span class="u-tile-body">
+            <span class="u-tile-title">Garaż</span>
+            <span class="u-tile-text">Serwis, paliwo i opony.</span>
+        </span>
+        <i class="bi bi-chevron-right u-tile-arrow"></i>
+    </a>
+    <a href="{% url 'habits:list' %}" class="u-tile">
+        <span class="u-tile-icon"><i class="bi bi-check2-circle"></i></span>
+        <span class="u-tile-body">
+            <span class="u-tile-title">Nawyki</span>
+            <span class="u-tile-text">Lista nawyków i codzienne postępy.</span>
+        </span>
+        <i class="bi bi-chevron-right u-tile-arrow"></i>
+    </a>
+</div>
 
-    <div class="home-action-strip">
-        <a href="{% url 'finance:add_expense' %}" class="btn btn-danger">
-            <i class="bi bi-dash-circle me-1"></i> Wydatek
-        </a>
-        <a href="{% url 'finance:add_income' %}" class="btn btn-success">
-            <i class="bi bi-plus-circle me-1"></i> Przychód
-        </a>
-        <a href="{% url 'cooking:add-recipe' %}" class="btn btn-soft-neutral">
-            <i class="bi bi-journal-plus me-1"></i> Przepis
-        </a>
-        <a href="{% url 'cars:add_car' %}" class="btn btn-soft-neutral">
-            <i class="bi bi-car-front me-1"></i> Auto
-        </a>
-        <a href="{% url 'profile' %}" class="btn btn-soft-neutral ms-lg-auto">
-            <i class="bi bi-person-gear me-1"></i> Konto
-        </a>
-    </div>
-</section>
+<div class="u-quick-actions">
+    <a href="{% url 'finance:add_expense' %}" class="btn u-btn-expense">
+        <i class="bi bi-dash-circle"></i> Wydatek
+    </a>
+    <a href="{% url 'finance:add_income' %}" class="btn u-btn-income">
+        <i class="bi bi-plus-circle"></i> Przychód
+    </a>
+    <a href="{% url 'cooking:shopping-list' %}" class="btn btn-outline-secondary">
+        <i class="bi bi-cart-check"></i> Zakupy
+    </a>
+    <a href="{% url 'cooking:add-recipe' %}" class="btn btn-outline-secondary">
+        <i class="bi bi-journal-plus"></i> Przepis
+    </a>
+</div>
 {% else %}
 <section class="home-login-shell animate-fade-in">
     <div class="home-login-panel">

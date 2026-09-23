@@ -1,4 +1,5 @@
 {% extends 'finance/index.html' %}
+{% load ui %}
 
 {% block title %}Panel finansowy{% endblock %}
 
@@ -9,7 +10,7 @@
    rolę głównej metryki zamiast drobnego dopisku pod tytułem. {% endcomment %}
 <div class="u-page-head">
     <div>
-        <span class="u-eyebrow">Panel finansowy</span>
+        <span class="u-eyebrow"><i class="bi bi-wallet2" aria-hidden="true"></i>Finanse</span>
         <h1 class="u-page-title">Wrzesień w skrócie</h1>
         <p class="u-page-sub">
             Bilans miesiąca:
@@ -73,7 +74,7 @@
                                 </h4>
                                 {% if selected_cost_categories %}
                                     <span class="badge rounded-pill bg-success-subtle text-success">
-                                        {{ selected_cost_categories|length }} wybranych
+                                        {{ selected_cost_categories|length|pl:"wybrana,wybrane,wybranych" }}
                                     </span>
                                 {% else %}
                                     <span class="badge rounded-pill bg-light text-muted border">

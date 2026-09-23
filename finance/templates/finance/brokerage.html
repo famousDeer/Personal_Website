@@ -1,5 +1,5 @@
 {% extends 'finance/index.html' %}
-{% load humanize static %}
+{% load humanize static ui %}
 
 {% block title %}Konta maklerskie{% endblock %}
 
@@ -11,21 +11,21 @@
 
 {% block content_finance %}
 <div class="brokerage-page">
-    <header class="brokerage-header brokerage-hero brokerage-command-header">
-        <div class="brokerage-hero-copy">
-            <div class="brokerage-eyebrow"><span class="brokerage-live-dot"></span> Portfel inwestycyjny</div>
-            <h1>Centrum inwestora</h1>
-            <p>
+    <header class="u-page-head brokerage-header">
+        <div>
+            <span class="u-eyebrow"><i class="bi bi-graph-up-arrow" aria-hidden="true"></i>Finanse · inwestycje</span>
+            <h1 class="u-page-title">Centrum inwestora</h1>
+            <p class="u-page-sub">
                 {% if selected_brokerage_account %}
                     Wynik, ekspozycja i przepływy rachunku {{ selected_brokerage_account.name }} w jednym widoku.
                 {% else %}
                     Pełny obraz rachunków, pozycji i jakości danych bez mieszania wartości w różnych walutach.
                 {% endif %}
             </p>
-            <div class="brokerage-hero-status" aria-label="Status portfela">
-                <span><i class="bi bi-briefcase"></i> {{ portfolio_health.positions_count }} otwartych pozycji</span>
-                <span><i class="bi bi-building"></i> {{ brokerage_accounts|length }} rachunków</span>
-                <span>
+            <div class="d-flex flex-wrap gap-2 mt-3" aria-label="Status portfela">
+                <span class="u-chip"><i class="bi bi-briefcase"></i> {{ portfolio_health.positions_count|pl:"otwarta pozycja,otwarte pozycje,otwartych pozycji" }}</span>
+                <span class="u-chip"><i class="bi bi-building"></i> {{ brokerage_accounts|length|pl:"rachunek,rachunki,rachunków" }}</span>
+                <span class="u-chip">
                     <i class="bi bi-clock-history"></i>
                     {% if portfolio_health.latest_valuation_at %}
                         Wycena {{ portfolio_health.latest_valuation_at|date:"d.m.Y H:i" }}
@@ -35,13 +35,13 @@
                 </span>
             </div>
         </div>
-        <div class="brokerage-actions">
-            <a href="{% url 'finance:import_brokerage_transactions' %}" class="btn btn-primary rounded-pill fw-bold text-white brokerage-import-cta">
-                <i class="bi bi-file-earmark-arrow-up me-1"></i> Importuj dane
+        <div class="u-page-actions brokerage-actions">
+            <a href="{% url 'finance:import_brokerage_transactions' %}" class="btn btn-primary brokerage-import-cta">
+                <i class="bi bi-file-earmark-arrow-up"></i> Importuj dane
             </a>
             <div class="dropdown">
-                <button class="btn btn-outline-primary rounded-pill fw-bold dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="bi bi-arrow-repeat me-1"></i> Synchronizuj
+                <button class="btn btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="bi bi-arrow-repeat"></i> Synchronizuj
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end shadow-sm brokerage-command-menu">
                     <li>
@@ -65,8 +65,8 @@
                 </ul>
             </div>
             <div class="dropdown">
-                <button class="btn btn-soft-neutral rounded-pill fw-bold dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Dodaj dane ręcznie">
-                    <i class="bi bi-plus-lg me-1"></i> Dodaj
+                <button class="btn btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Dodaj dane ręcznie">
+                    <i class="bi bi-plus-lg"></i> Dodaj
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end shadow-sm">
                     <li><a class="dropdown-item" href="{% url 'finance:add_brokerage_account' %}"><i class="bi bi-bank me-2"></i>Konto maklerskie</a></li>
@@ -124,7 +124,7 @@
                     {% endif %}
                 </p>
             </div>
-            <span class="brokerage-count-pill"><i class="bi bi-layers"></i> {{ currency_totals|length }} walut</span>
+            <span class="brokerage-count-pill"><i class="bi bi-layers"></i> {{ currency_totals|length|pl:"waluta,waluty,walut" }}</span>
         </div>
         <div class="brokerage-kpi-grid">
             {% for item in currency_totals %}
@@ -440,7 +440,7 @@
             </section>
         </aside>
 
-        <main class="brokerage-main">
+        <section class="brokerage-main">
             {% if portfolio_health.missing_price_count or portfolio_health.history_error_count or unassigned_investments %}
                 <section class="brokerage-attention-panel" aria-labelledby="brokerageAttentionTitle">
                     <div class="brokerage-attention-heading">
@@ -469,7 +469,7 @@
                         <div>
                             <span class="brokerage-section-kicker">Ekspozycja</span>
                             <h2>Otwarte pozycje</h2>
-                            <p>{{ positions|length }} pozycji · {{ portfolio_health.profitable_positions_count }} zyskownych · {{ portfolio_health.losing_positions_count }} stratnych.</p>
+                            <p>{{ positions|length|pl:"pozycja,pozycje,pozycji" }} · {{ portfolio_health.profitable_positions_count|pl:"zyskowna,zyskowne,zyskownych" }} · {{ portfolio_health.losing_positions_count|pl:"stratna,stratne,stratnych" }}.</p>
                         </div>
                     </div>
                     <div class="brokerage-search brokerage-search-wide">
@@ -813,7 +813,7 @@
                     </div>
                 </section>
             </div>
-        </main>
+        </section>
     </div>
 </div>
 
@@ -985,7 +985,7 @@
 
 {% block extra_js %}
 {{ block.super }}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{% static 'vendor/chart/chart.umd.js' %}"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('[data-brokerage-filter]').forEach((input) => {

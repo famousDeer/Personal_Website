@@ -916,7 +916,7 @@ class FinanceCoreTests(TestCase):
         self.assertContains(response, 'id="brokeragePortfolioAccountSelect"')
         self.assertContains(response, f'data-portfolio-account="{account.id}"')
         self.assertContains(response, f'Wartość portfela · {account.name}')
-        self.assertContains(response, '<h1>Centrum inwestora</h1>', html=True)
+        self.assertContains(response, '<h1 class="u-page-title">Centrum inwestora</h1>', html=True)
         self.assertContains(response, 'aria-label="Wybierz konto maklerskie"')
         self.assertContains(response, 'aria-label="Filtruj otwarte pozycje"')
         self.assertContains(response, 'aria-labelledby="brokeragePortfolioChartTitle"')

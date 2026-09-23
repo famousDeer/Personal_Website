@@ -1,19 +1,15 @@
 {% extends 'finance/index.html' %}
+{% load ui %}
 {% load static %}
 
-{% block title %}Dodaj Wydatek{% endblock %}
+{% block title %}Nowy wydatek{% endblock %}
 
 {% block content_finance %}
 <div class="row justify-content-center">
     <div class="col-lg-5 col-md-7">
         
-        <div class="text-center mb-4 animate-fade-in">
-            <div class="icon-box bg-danger-subtle text-danger mx-auto mb-3 shadow-sm" 
-                 style="width: 70px; height: 70px; font-size: 2rem; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-                <i class="bi bi-cart-plus"></i>
-            </div>
-            <h2 class="fw-bold mb-1">Nowy Wydatek</h2>
-        </div>
+        {% url 'finance:expense_list' as back_url %}
+{% page_head title="Nowy wydatek" eyebrow="Finanse" icon="bi-wallet2" sub="Zapisz zakup, rachunek albo przelew na inne konto." back=back_url %}{% endpage_head %}
 
         <div class="card border-0 shadow-lg action-card animate-fade-in-up">
             <div class="card-body p-4 p-md-5">
@@ -91,7 +87,7 @@
                     </div>
 
                     <div class="d-grid gap-2">
-                        <button type="submit" class="btn btn-danger btn-lg rounded-pill shadow-sm fw-bold">
+                        <button type="submit" class="btn btn-primary btn-lg">
                             <i class="bi bi-dash-circle me-1"></i> Dodaj wydatek
                         </button>
                         
@@ -132,7 +128,8 @@
                 transferSelect.required = showTransfer;
                 if (!showTransfer) {
                     transferSelect.value = '';
-        }
+                }
+            }
 
             if (brokerageWrapper && brokerageSelect) {
                 const showBrokerage = categoryField.value === investmentCategory;

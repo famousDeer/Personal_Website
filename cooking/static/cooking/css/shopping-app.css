@@ -777,6 +777,32 @@ button:disabled { cursor: not-allowed; }
 
 .sa-footer[hidden] { display: none; }
 
+/* Na wąskim telefonie trzy przyciski stopki nie mieściły się w szerokości
+   ekranu (390 px) i "Zakończ listę" wystawało poza krawędź. Przyciski mogą
+   się teraz zwęzić, a napis w razie potrzeby kończy się wielokropkiem.     */
+.sa-footer > .sa-primary,
+.sa-footer > .sa-secondary {
+    min-width: 0;
+}
+
+.sa-footer > .sa-primary > span,
+.sa-footer > .sa-secondary > span,
+.sa-footer > .sa-primary {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+@media (max-width: 420px) {
+    .sa-footer { gap: 6px; padding-left: var(--sp-3); padding-right: var(--sp-3); }
+    .sa-footer .sa-primary,
+    .sa-footer .sa-secondary:not(.is-icon) {
+        flex: 1;
+        gap: 6px;
+        padding: 0 var(--sp-3);
+        font-size: 0.9rem;
+    }
+}
+
 .sa-primary,
 .sa-secondary {
     text-decoration: none;

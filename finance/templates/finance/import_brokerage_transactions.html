@@ -1,23 +1,16 @@
 {% extends 'finance/index.html' %}
+{% load ui %}
 {% load static %}
 
 {% block title %}Import danych XTB{% endblock %}
 
 {% block content_finance %}
 <div class="brokerage-import-page">
-    <header class="brokerage-import-hero">
-        <div>
-            <div class="brokerage-eyebrow">Centrum danych maklerskich</div>
-            <h2>Import raportów XTB</h2>
-            <p>Wczytaj jednocześnie rachunki PLN, EUR, USD i IKE. Numery kont, waluty i typ rachunku zostaną rozpoznane z raportów.</p>
-        </div>
-        <a href="{% url 'finance:brokerage' %}" class="btn btn-soft-neutral rounded-pill px-4">
-            <i class="bi bi-arrow-left me-1"></i> Wróć do portfela
-        </a>
-    </header>
+    {% url 'finance:brokerage' as back_url %}
+    {% page_head title="Import raportów XTB" eyebrow="Konta maklerskie" icon="bi-graph-up-arrow" sub="Wczytaj jednocześnie rachunki PLN, EUR, USD i IKE. Numery kont, waluty i typ rachunku zostaną rozpoznane z raportów." back=back_url back_label="Wróć do portfela" %}{% endpage_head %}
 
     <div class="brokerage-import-layout">
-        <main class="brokerage-import-card">
+        <section class="brokerage-import-card">
             <div class="brokerage-import-card-heading">
                 <span class="brokerage-import-icon"><i class="bi bi-file-earmark-spreadsheet"></i></span>
                 <div>
@@ -58,7 +51,7 @@
                     </button>
                 </div>
             </form>
-        </main>
+        </section>
 
         <aside class="brokerage-import-guide">
             <h5>Co zostanie zaktualizowane</h5>

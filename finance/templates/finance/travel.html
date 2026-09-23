@@ -1,46 +1,42 @@
 {% extends 'finance/index.html' %}
+{% load static ui %}
 
 {% block title %}Podróże{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}">
 {% endblock %}
 
 {% block content_finance %}
 {% load humanize l10n %}
 
 <div class="travel-page">
-    <div class="travel-header animate-fade-in">
-        <div>
-            <div class="small text-uppercase fw-bold text-muted mb-1">Podróże</div>
-            <h2 class="fw-bold mb-1"><i class="bi bi-suitcase-fill text-primary me-2"></i>Moje miejsca i terminy</h2>
-            <p class="text-muted mb-0">Jedna pinezka dla miasta, wiele przedziałów dat pod tą samą lokalizacją.</p>
-        </div>
-        <a href="{% url 'finance:add_travel' %}" class="btn btn-primary rounded-pill shadow-sm px-4 fw-bold">
-            <i class="bi bi-plus-lg me-1"></i> Dodaj termin
+    {% page_head title="Podróże" eyebrow="Finanse" icon="bi-wallet2" sub="Jedna pinezka dla miasta, wiele przedziałów dat pod tą samą lokalizacją." %}
+        <a href="{% url 'finance:add_travel' %}" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> Dodaj termin
         </a>
-    </div>
+    {% endpage_head %}
 
     <div class="travel-stat-grid animate-fade-in-up">
         <div class="travel-stat-card">
             <span class="travel-stat-icon bg-primary-subtle text-primary"><i class="bi bi-pin-map-fill"></i></span>
             <div>
                 <div class="travel-stat-value">{{ travel_stats.locations_count }}</div>
-                <div class="travel-stat-label">lokalizacje</div>
+                <div class="travel-stat-label">{{ travel_stats.locations_count|pl_word:"lokalizacja,lokalizacje,lokalizacji" }}</div>
             </div>
         </div>
         <div class="travel-stat-card">
             <span class="travel-stat-icon bg-success-subtle text-success"><i class="bi bi-calendar2-range"></i></span>
             <div>
                 <div class="travel-stat-value">{{ travel_stats.total_count }}</div>
-                <div class="travel-stat-label">przedziały dat</div>
+                <div class="travel-stat-label">{{ travel_stats.total_count|pl_word:"termin,terminy,terminów" }}</div>
             </div>
         </div>
         <div class="travel-stat-card">
             <span class="travel-stat-icon bg-warning-subtle text-warning"><i class="bi bi-briefcase-fill"></i></span>
             <div>
                 <div class="travel-stat-value">{{ travel_stats.business_days }}</div>
-                <div class="travel-stat-label">dni delegacji</div>
+                <div class="travel-stat-label">{{ travel_stats.business_days|pl_word:"dzień delegacji,dni delegacji,dni delegacji" }}</div>
             </div>
         </div>
         <div class="travel-stat-card">
@@ -61,14 +57,14 @@
                 </p>
             </div>
             <span class="badge bg-primary-subtle text-primary rounded-pill">
-                {{ travel_map_points|length }} pinezek
+                {{ travel_map_points|length|pl:"pinezka,pinezki,pinezek" }}
             </span>
         </div>
         <div id="travelMap" class="travel-map"></div>
         {% if missing_coordinates_count %}
             <div class="travel-map-note">
                 <i class="bi bi-info-circle me-1"></i>
-                {{ missing_coordinates_count }} lokalizacje nie mają jeszcze współrzędnych. Widok uzupełnia jedną brakującą pinezkę przy odświeżeniu strony albo po ponownym zapisaniu terminu.
+                {{ missing_coordinates_count|pl:"lokalizacja nie ma,lokalizacje nie mają,lokalizacji nie ma" }} jeszcze współrzędnych. Widok uzupełnia jedną brakującą pinezkę przy odświeżeniu strony albo po ponownym zapisaniu terminu.
             </div>
         {% endif %}
     </section>
@@ -148,7 +144,7 @@
                             <div class="d-flex align-items-center gap-2 flex-wrap">
                                 <h3 class="travel-title mb-0">{{ group.label }}</h3>
                                 <span class="badge rounded-pill bg-primary-subtle text-primary">
-                                    {{ group.trip_count }} termin{% if group.trip_count != 1 %}y{% endif %}
+                                    {{ group.trip_count|pl:"termin,terminy,terminów" }}
                                 </span>
                                 {% if group.business_count %}
                                     <span class="badge rounded-pill bg-warning-subtle text-warning">
@@ -292,7 +288,7 @@
 
 {% block extra_js %}
 {{ block.super }}
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const mapElement = document.getElementById('travelMap');

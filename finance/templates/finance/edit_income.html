@@ -1,14 +1,14 @@
 {% extends 'finance/index.html' %}
+{% load ui %}
 
-{% block title %}Edytuj Przychód{% endblock %}
+{% block title %}Edytuj przychód{% endblock %}
 
 {% block content_finance %}
 <div class="row justify-content-center">
-    <div class="col-md-6">
+    <div class="col-lg-6 col-md-8">
+        {% url 'finance:income_list' as back_url %}
+        {% page_head title="Edytuj przychód" eyebrow="Finanse" icon="bi-wallet2" back=back_url %}{% endpage_head %}
         <div class="card">
-            <div class="card-header bg-warning text-white">
-                <h4 class="mb-0"><i class="bi bi-pencil-square"></i> Edytuj Przychód</h4>
-            </div>
             <div class="card-body">
                 <form method="post">
                     {% csrf_token %}

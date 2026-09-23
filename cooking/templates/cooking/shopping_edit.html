@@ -1,22 +1,13 @@
 {% extends 'cooking/index.html' %}
+{% load ui %}
 
 {% block title %}Edytuj listę zakupów{% endblock %}
 
 {% block content_cooking %}
-<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-4 animate-fade-in">
-    <div>
-        <div class="small text-uppercase fw-bold text-muted mb-1">Edycja listy</div>
-        <h2 class="fw-bold mb-1 recipe-title">Nazwa i sklep</h2>
-        <p class="text-muted mb-0">Sklep ustawia kolejność kategorii na liście, czyli kolejność alejek.</p>
-    </div>
-    <a href="{% url 'cooking:shopping-list-detail' shopping_list.id %}" class="btn btn-soft-neutral rounded-pill px-4">
-        <i class="bi bi-arrow-left me-1"></i> Wróć
-    </a>
-</div>
-
-<div class="row justify-content-center animate-fade-in-up">
-    <div class="col-lg-7 col-xl-6">
-        <div class="card border-0 shadow-lg action-card">
+<div class="u-narrow-sm animate-fade-in-up">
+{% url 'cooking:shopping-list-detail' shopping_list.id as back_url %}
+{% page_head title="Edytuj listę" eyebrow="Kuchnia" icon="bi-egg-fried" sub="Sklep ustawia kolejność kategorii na liście, czyli kolejność alejek." back=back_url %}{% endpage_head %}
+        <div class="card">
             <div class="card-body p-4">
                 <form method="post">
                     {% csrf_token %}
@@ -56,6 +47,5 @@
                 </form>
             </div>
         </div>
-    </div>
 </div>
 {% endblock %}

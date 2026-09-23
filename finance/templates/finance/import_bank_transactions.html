@@ -1,31 +1,22 @@
 {% extends 'finance/index.html' %}
+{% load ui %}
 {% load humanize static %}
 
-{% block title %}Import Wyciągu{% endblock %}
+{% block title %}Import wyciągu{% endblock %}
 
 {% block content_finance %}
 <div class="row justify-content-center">
     <div class="col-12 col-xl-11">
-        <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3 mb-4 animate-fade-in bank-import-page-header">
-            <div class="d-flex align-items-center gap-3">
-                <div class="icon-box bg-primary-subtle text-primary">
-                    <i class="bi bi-upload fs-4"></i>
-                </div>
-                <div>
-                    <div class="small text-uppercase fw-bold text-muted">Millennium i ING CSV</div>
-                    <h2 class="fw-bold mb-0">Import wyciągu bankowego</h2>
-                </div>
-            </div>
+        {% url 'finance:expense_list' as back_url %}
+        {% page_head title="Import wyciągu bankowego" eyebrow="Finanse" icon="bi-wallet2" sub="Pliki CSV z Millennium i ING. Duplikaty wykryjemy przed zapisem." back=back_url %}
             {% if preview %}
-                <div class="d-flex flex-wrap gap-2 bank-import-summary" aria-label="Podsumowanie podglądu">
-                    <span class="badge rounded-pill bg-danger-subtle text-danger px-3 py-2">{{ preview.expenses_count }} wydatków</span>
-                    <span class="badge rounded-pill bg-success-subtle text-success px-3 py-2">{{ preview.incomes_count }} przychodów</span>
-                    {% if preview.duplicate_count %}
-                        <span class="badge rounded-pill bg-warning-subtle text-warning px-3 py-2">{{ preview.duplicate_count }} duplikatów</span>
-                    {% endif %}
-                </div>
+                <span class="badge bg-danger-subtle text-danger">{{ preview.expenses_count|pl:"wydatek,wydatki,wydatków" }}</span>
+                <span class="badge bg-success-subtle text-success">{{ preview.incomes_count|pl:"przychód,przychody,przychodów" }}</span>
+                {% if preview.duplicate_count %}
+                    <span class="badge bg-warning-subtle text-warning">{{ preview.duplicate_count|pl:"duplikat,duplikaty,duplikatów" }}</span>
+                {% endif %}
             {% endif %}
-        </div>
+        {% endpage_head %}
 
         <div class="card border-0 shadow-sm action-card mb-4 animate-fade-in-up bank-import-upload-panel">
             <div class="card-body p-4">

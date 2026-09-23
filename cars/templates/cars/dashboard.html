@@ -3,73 +3,50 @@
 
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-4 animate-fade-in" style="position: relative; z-index: 10;">
-    <div class="d-flex align-items-center">
-        <a href="{% url 'cars:garage' %}" class="btn rounded-circle shadow-sm me-3 text-muted">
-            <i class="bi bi-arrow-left"></i>
+{% load l10n %}
+<header class="u-page-head is-inline-actions" style="position: relative; z-index: 10;">
+    <div class="u-page-head-main">
+        <a class="u-back" href="{% url 'cars:garage' %}" aria-label="Wróć do garażu" title="Wróć do garażu">
+            <i class="bi bi-arrow-left" aria-hidden="true"></i>
         </a>
-        <div>
-            <h2 class="fw-bold mb-0">{{ car.brand }} <span class="text-primary">{{ car.model }}</span></h2>
-            <div class="text-muted small">
-                {% load l10n %}
-                <i class="bi bi-calendar4 me-1"></i> {{ car.year|unlocalize }}r
-                <i class="bi bi-fuel-pump me-1"></i> {{ car.fuel_type }}
-            </div>
+        <div class="min-w-0">
+            <span class="u-eyebrow"><i class="bi bi-car-front" aria-hidden="true"></i>Garaż</span>
+            <h1 class="u-page-title">{{ car.brand }} {{ car.model }}</h1>
+            <p class="u-page-sub">{{ car.year|unlocalize }} · {{ car.fuel_type }}</p>
         </div>
     </div>
     {% if user.is_authenticated and user == car.user %}
-    <div class="dropdown">
-        <button
-            class="btn btn-light btn-sm rounded-circle shadow-sm table-dropdown-btn"
-            data-edit-url="{% url 'cars:edit' car.id%}"
-            data-delete-url="{% url 'cars:delete' car.id%}"
-            type="button">
-            <i class="bi bi-three-dots-vertical text-muted"></i>
-        </button>
+    <div class="u-page-actions">
+        <div class="dropdown">
+            <button
+                class="btn btn-outline-secondary btn-icon table-dropdown-btn"
+                data-edit-url="{% url 'cars:edit' car.id%}"
+                data-delete-url="{% url 'cars:delete' car.id%}"
+                type="button" aria-label="Edytuj lub usuń samochód">
+                <i class="bi bi-three-dots-vertical"></i>
+            </button>
+        </div>
     </div>
     {% endif %}
-</div>
+</header>
 
 {% load humanize %}
-<div class="row g-3 mb-4 animate-fade-in-up">
-    <div class="col-6 col-lg-3">
-        <div class="card border-0 shadow-sm action-card h-100">
-            <div class="card-body p-3">
-                <small class="text-muted text-uppercase fw-bold" style="font-size: 0.65rem;">Przebieg</small>
-                <h5 class="fw-bold mb-0 mt-1">{{ car.odometer|intcomma }} km</h5>
-            </div>
-        </div>
+<div class="u-metric-grid car-metric-grid mb-4 animate-fade-in-up">
+    <div class="u-metric">
+        <div class="u-metric-label"><i class="bi bi-speedometer2"></i> Przebieg</div>
+        <div class="u-metric-value u-num">{{ car.odometer|intcomma }} km</div>
     </div>
-    <div class="col-6 col-lg-3">
-        <div class="card border-0 shadow-sm action-card h-100">
-            <div class="card-body p-3">
-                <small class="text-muted text-uppercase fw-bold" style="font-size: 0.65rem;">Śr. Spalanie</small>
-                <h5 class="fw-bold mb-0 mt-1 {% if avg_consumption > 10 %}text-warning{% else %}text-success{% endif %}">
-                    {{ avg_consumption|floatformat:1 }} L/100
-                </h5>
-            </div>
-        </div>
+    <div class="u-metric">
+        <div class="u-metric-label"><i class="bi bi-fuel-pump"></i> Śr. spalanie</div>
+        <div class="u-metric-value u-num {% if avg_consumption > 10 %}text-warning{% endif %}">{{ avg_consumption|floatformat:1 }} l/100 km</div>
     </div>
-    <div class="col-6 col-lg-3">
-        <div class="card border-0 shadow-sm action-card h-100">
-            <div class="card-body p-3">
-                <small class="text-muted text-uppercase fw-bold" style="font-size: 0.65rem;">Koszt / km</small>
-                <h5 class="fw-bold mb-0 mt-1 text-primary">{{ cost_per_km|floatformat:2 }} zł</h5>
-            </div>
-        </div>
+    <div class="u-metric">
+        <div class="u-metric-label"><i class="bi bi-signpost"></i> Koszt / km</div>
+        <div class="u-metric-value u-num">{{ cost_per_km|floatformat:2 }} zł</div>
     </div>
-    <div class="col-6 col-lg-3">
-        <div class="card border-0 shadow-sm action-card h-100">
-            <div class="card-body p-3 d-flex align-items-center justify-content-between">
-                <div>
-                    <small class="text-uppercase fw-bold" style="font-size: 0.65rem;">Łączne Koszty</small>
-                    <h4 class="fw-bold mb-0 text-primary">{{ total_cost|floatformat:2|intcomma }} zł</h4>
-                </div>
-                <div class="icon-box text-primary rounded-circle shadow-sm" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
-                    <i class="bi bi-wallet2"></i>
-                </div>
-            </div>
-        </div>
+    <div class="u-metric is-expense">
+        <div class="u-metric-label"><i class="bi bi-wallet2"></i> Łączne koszty</div>
+        <div class="u-metric-value u-num is-expense">{{ total_cost|floatformat:2|intcomma }} zł</div>
     </div>
 </div>
 

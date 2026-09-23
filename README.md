@@ -579,8 +579,10 @@ Website-Finance/
 ├─ cars/                      # Fuel, services, tyres
 │  └─ pdf_utils.py            # Service history PDF
 ├─ accounts/                  # Auth, shared household accounts
+│  └─ templatetags/ui.py      # {% page_head %}: the one page header used everywhere
 ├─ habits/                    # Not in active use yet
-├─ templates/                 # base.html, home.html, error pages
+├─ templates/                 # base.html, home.html, error pages, partials/page_head.html
+├─ static/css/                # tokens.css, ui.css, app.css (see "Look and feel")
 ├─ media/                     # Public uploads (recipe and catalog images)
 ├─ private_media/             # Owner-only product photos, outside the public tree
 ├─ manage.py
@@ -588,6 +590,50 @@ Website-Finance/
 ├─ docker-compose.yml
 └─ .env
 ```
+
+## Look and feel
+
+Every page uses the same building blocks, so a new page should too.
+
+**Stylesheets, in load order** (`templates/base.html`): `static/css/tokens.css`
+(colours, radii, spacing; light and dark), Bootstrap, the legacy
+`finance/static/css/style.css`, `static/css/ui.css` (shared components) and
+`static/css/app.css`, the final layer that makes the older markup match:
+one action colour, 44 px touch targets, neutral secondary buttons, form
+fields and badges with readable contrast. Put new shared styles in
+`app.css`, and use the tokens (`var(--accent)`, `var(--ink-3)`,
+`var(--surface-1)` …) rather than hard-coded colours so dark mode keeps
+working.
+
+**Page header.** Use the tag instead of writing a header by hand:
+
+```django
+{% load ui %}
+{% url 'cooking:recipe-list' as back_url %}
+{% page_head title="Nowy przepis" eyebrow="Kuchnia" icon="bi-egg-fried" sub="Short description." back=back_url %}
+    <a class="btn btn-primary" href="...">Main action</a>
+{% endpage_head %}
+```
+
+The eyebrow is the module (Finanse `bi-wallet2`, Kuchnia `bi-egg-fried`,
+Garaż `bi-car-front`, Konto `bi-person`), `back` adds the round back
+button, and whatever is inside the block becomes the action buttons
+(they stack full width on a phone).
+
+**Conventions**
+
+| What | Use |
+|---|---|
+| Main action on a page | `btn btn-primary` (one per view) |
+| Other actions | `btn btn-outline-secondary` |
+| Icon-only button | `btn btn-light btn-icon` + `aria-label` |
+| Tiles linking to sections | `.u-tile-grid` > `a.u-tile` (`.is-3` for three columns) |
+| Numbers at a glance | `.u-metric-grid` (two per row on a phone) |
+| Nothing to show yet | `.u-empty` inside a `.card` |
+| Long form's save bar | `.u-form-actions` (sticks to the bottom of the screen) |
+| Money | `.u-amount.is-income` / `.is-expense` / `.is-invest` |
+| Quantities | `{{ value|qty }}` from `pantry_extras`: 900 ml, 1,5 kg (same format as the JS) |
+| Counted nouns | `{{ n|pl:"rachunek,rachunki,rachunków" }}` from `ui`: 1 rachunek, 2 rachunki, 5 rachunków (`pl_word` gives the noun alone) |
 
 ## Environment variables
 Required at minimum:

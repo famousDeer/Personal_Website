@@ -90,7 +90,7 @@ class GarageView(LoginRequiredMixin, View):
 class AddCarView(LoginRequiredMixin, View):
     def get(self, request):
         form = CarForm()
-        return render(request, 'cars/form_generic.html', {'form': form, 'title': 'Dodaj Samochód'})
+        return render(request, 'cars/form_generic.html', {'form': form, 'title': 'Nowy samochód'})
 
     def post(self, request):
         form = CarForm(request.POST)
@@ -99,7 +99,7 @@ class AddCarView(LoginRequiredMixin, View):
             car.user = request.user
             car.save()
             return redirect('cars:garage')
-        return render(request, 'cars/form_generic.html', {'form': form, 'title': 'Dodaj Samochód'})
+        return render(request, 'cars/form_generic.html', {'form': form, 'title': 'Nowy samochód'})
 
 # 3. KOKPIT (Główny widok ze szczegółami)
 class CarDashboardView(LoginRequiredMixin, View):
@@ -148,7 +148,7 @@ class AddFuelView(LoginRequiredMixin, View):
     def get(self, request, car_id):
         car = get_object_or_404(Cars, id=car_id, user=request.user)
         form = FuelForm()
-        return render(request, 'cars/form_generic.html', {'form': form, 'title': f'Tankowanie: {car.brand}'})
+        return render(request, 'cars/form_generic.html', {'form': form, 'title': 'Nowe tankowanie', 'car': car})
 
     def post(self, request, car_id):
         car = get_object_or_404(Cars, id=car_id, user=request.user)
@@ -163,7 +163,7 @@ class AddFuelView(LoginRequiredMixin, View):
             log.save()
             recalculate_fuel_consumptions(car)
             return redirect('cars:dashboard', car_id=car.id)
-        return render(request, 'cars/form_generic.html', {'form': form, 'title': 'Dodaj Tankowanie'})
+        return render(request, 'cars/form_generic.html', {'form': form, 'title': 'Nowe tankowanie', 'car': car})
 
 # 5. USUWANIE AUTA
 class DeleteCarView(LoginRequiredMixin, View):
@@ -177,7 +177,7 @@ class EditCarView(LoginRequiredMixin, View):
     def get(self, request, car_id):
         car = get_object_or_404(Cars, id=car_id, user=request.user)
         form = CarForm(instance=car)
-        return render(request, 'cars/form_generic.html', {'form': form, 'title': f'Edytuj Samochód: {car.brand}'})
+        return render(request, 'cars/form_generic.html', {'form': form, 'title': 'Edytuj samochód', 'car': car})
 
     def post(self, request, car_id):
         car = get_object_or_404(Cars, id=car_id, user=request.user)
@@ -185,7 +185,7 @@ class EditCarView(LoginRequiredMixin, View):
         if form.is_valid():
             form.save()
             return redirect('cars:dashboard', car_id=car.id)
-        return render(request, 'cars/form_generic.html', {'form': form, 'title': f'Edytuj Samochód: {car.brand}'})
+        return render(request, 'cars/form_generic.html', {'form': form, 'title': 'Edytuj samochód', 'car': car})
 
 # 7. DODAWANIE SERWISU
 class AddServiceView(LoginRequiredMixin, View):
@@ -194,7 +194,7 @@ class AddServiceView(LoginRequiredMixin, View):
         service = CarService(car=car)
         form = ServiceForm(initial={'date': timezone.localdate()}, instance=service)
         parts_formset = ServicePartFormSet(instance=service, prefix='parts')
-        return render_service_form(request, car, form, parts_formset, f'Dodaj Serwis: {car.brand}')
+        return render_service_form(request, car, form, parts_formset, 'Nowy serwis')
 
     def post(self, request, car_id):
         car = get_object_or_404(Cars, id=car_id, user=request.user)
@@ -208,7 +208,7 @@ class AddServiceView(LoginRequiredMixin, View):
             parts_formset.instance = service
             parts_formset.save()
             return redirect('cars:dashboard', car_id=car.id)
-        return render_service_form(request, car, form, parts_formset, f'Dodaj Serwis: {car.brand}')
+        return render_service_form(request, car, form, parts_formset, 'Nowy serwis')
     
 # 8. EDYTOWANIE SERWISU
 class EditServiceView(LoginRequiredMixin, View):
@@ -217,7 +217,7 @@ class EditServiceView(LoginRequiredMixin, View):
         service = get_object_or_404(car.services.prefetch_related('parts'), id=service_id)
         form = ServiceForm(instance=service)
         parts_formset = ServicePartFormSet(instance=service, prefix='parts')
-        return render_service_form(request, car, form, parts_formset, f'Edytuj Serwis: {car.brand}')
+        return render_service_form(request, car, form, parts_formset, 'Edytuj serwis')
 
     def post(self, request, car_id, service_id):
         car = get_object_or_404(Cars, id=car_id, user=request.user)
@@ -228,7 +228,7 @@ class EditServiceView(LoginRequiredMixin, View):
             form.save()
             parts_formset.save()
             return redirect('cars:dashboard', car_id=car.id)
-        return render_service_form(request, car, form, parts_formset, f'Edytuj Serwis: {car.brand}')
+        return render_service_form(request, car, form, parts_formset, 'Edytuj serwis')
 
 # 9. USUWANIE SERWISU
 class DeleteServiceView(LoginRequiredMixin, View):
@@ -243,7 +243,7 @@ class AddTyresView(LoginRequiredMixin, View):
     def get(self, request, car_id):
         car = get_object_or_404(Cars, id=car_id, user=request.user)
         form = TyreForm()
-        return render(request, 'cars/form_generic.html', {'form': form, 'title': f'Dodaj Opony: {car.brand}'})
+        return render(request, 'cars/form_generic.html', {'form': form, 'title': 'Nowy komplet opon', 'car': car})
 
     def post(self, request, car_id):
         car = get_object_or_404(Cars, id=car_id, user=request.user)
@@ -253,7 +253,7 @@ class AddTyresView(LoginRequiredMixin, View):
             tyre.car = car
             tyre.save()
             return redirect('cars:dashboard', car_id=car.id)
-        return render(request, 'cars/form_generic.html', {'form': form, 'title': 'Dodaj Opony'})
+        return render(request, 'cars/form_generic.html', {'form': form, 'title': 'Nowy komplet opon', 'car': car})
 
 # 11. EDYTOWANIE OPON
 class EditTyresView(LoginRequiredMixin, View):
@@ -261,7 +261,7 @@ class EditTyresView(LoginRequiredMixin, View):
         car = get_object_or_404(Cars, id=car_id, user=request.user)
         tyre = get_object_or_404(car.tyres, id=tyre_id)
         form = TyreForm(instance=tyre)
-        return render(request, 'cars/form_generic.html', {'form': form, 'title': f'Edytuj Opony: {car.brand}'})
+        return render(request, 'cars/form_generic.html', {'form': form, 'title': 'Edytuj opony', 'car': car})
 
     def post(self, request, car_id, tyre_id):
         car = get_object_or_404(Cars, id=car_id, user=request.user)
@@ -270,7 +270,7 @@ class EditTyresView(LoginRequiredMixin, View):
         if form.is_valid():
             form.save()
             return redirect('cars:dashboard', car_id=car.id)
-        return render(request, 'cars/form_generic.html', {'form': form, 'title': 'Edytuj Opony'})
+        return render(request, 'cars/form_generic.html', {'form': form, 'title': 'Edytuj opony', 'car': car})
 
 # 12. USUWANIE OPON
 class DeleteTyresView(LoginRequiredMixin, View):
@@ -289,7 +289,7 @@ class AddTyreUsageView(LoginRequiredMixin, View):
         return render(
             request,
             'cars/form_generic.html',
-            {'form': form, 'title': f'Dodaj sezon opon: {tyre.brand}'},
+            {'form': form, 'title': 'Nowy sezon opon', 'car': car, 'subtitle': tyre.brand},
         )
 
     def post(self, request, car_id, tyre_id):
@@ -302,7 +302,7 @@ class AddTyreUsageView(LoginRequiredMixin, View):
             usage.save()
             update_car_odometer_from_tyre_usage(car, usage)
             return redirect('cars:dashboard', car_id=car.id)
-        return render(request, 'cars/form_generic.html', {'form': form, 'title': f'Dodaj sezon opon: {tyre.brand}'})
+        return render(request, 'cars/form_generic.html', {'form': form, 'title': 'Nowy sezon opon', 'car': car, 'subtitle': tyre.brand})
 
 
 class EditTyreUsageView(LoginRequiredMixin, View):
@@ -314,7 +314,7 @@ class EditTyreUsageView(LoginRequiredMixin, View):
         return render(
             request,
             'cars/form_generic.html',
-            {'form': form, 'title': f'Edytuj sezon opon: {tyre.brand}'},
+            {'form': form, 'title': 'Edytuj sezon opon', 'car': car, 'subtitle': tyre.brand},
         )
 
     def post(self, request, car_id, tyre_id, usage_id):
@@ -326,7 +326,7 @@ class EditTyreUsageView(LoginRequiredMixin, View):
             usage = form.save()
             update_car_odometer_from_tyre_usage(car, usage)
             return redirect('cars:dashboard', car_id=car.id)
-        return render(request, 'cars/form_generic.html', {'form': form, 'title': f'Edytuj sezon opon: {tyre.brand}'})
+        return render(request, 'cars/form_generic.html', {'form': form, 'title': 'Edytuj sezon opon', 'car': car, 'subtitle': tyre.brand})
 
 
 class DeleteTyreUsageView(LoginRequiredMixin, View):
@@ -343,7 +343,7 @@ class EditFuelView(LoginRequiredMixin, View):
         car = get_object_or_404(Cars, id=car_id, user=request.user)
         fuel_log = get_object_or_404(car.fuel_consumptions, id=fuel_id)
         form = FuelForm(instance=fuel_log)
-        return render(request, 'cars/form_generic.html', {'form': form, 'title': f'Edytuj Tankowanie: {car.brand}'})
+        return render(request, 'cars/form_generic.html', {'form': form, 'title': 'Edytuj tankowanie', 'car': car})
 
     def post(self, request, car_id, fuel_id):
         car = get_object_or_404(Cars, id=car_id, user=request.user)
@@ -359,7 +359,7 @@ class EditFuelView(LoginRequiredMixin, View):
             log.save()
             recalculate_fuel_consumptions(car)
             return redirect('cars:dashboard', car_id=car.id)
-        return render(request, 'cars/form_generic.html', {'form': form, 'title': 'Edytuj Tankowanie'})
+        return render(request, 'cars/form_generic.html', {'form': form, 'title': 'Edytuj tankowanie', 'car': car})
 
 # 14. USUWANIE WPISU O PALIWIE
 class DeleteFuelView(LoginRequiredMixin, View):
