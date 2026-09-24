@@ -6,11 +6,11 @@
 # o zdjęcie kodu. Caddy stoi przed aplikacją, szyfruje połączenie i przekazuje
 # ruch do gunicorna (usługa "web").
 #
-# Certyfikat wystawia lokalny urząd certyfikacji Caddy'ego ("tls internal").
-# Nie potrzeba internetu ani żadnego konta, ale każdy telefon musi raz zaufać
-# jego certyfikatowi głównemu - instrukcja jest pod http://<adres-pi>/certyfikat.
+# Certyfikat wystawia lokalny urząd certyfikacji Caddy'ego ("internal").
+# Nie potrzeba internetu ani żadnego konta, ale każde urządzenie musi raz zaufać
+# jego certyfikatowi głównemu - instrukcja i test są pod http://<adres-pi>/certyfikat.
 # Urząd żyje w wolumenie caddy_data. Usunięcie wolumenu wygeneruje nowy urząd
-# i telefony trzeba będzie skonfigurować od nowa.
+# i wszystkie urządzenia trzeba będzie skonfigurować od nowa.
 {
 	# W kontenerze nie ma systemowego magazynu zaufania do zmieniania.
 	skip_install_trust
@@ -26,27 +26,64 @@
 	# dla niego certyfikatu, więc połączenie się zrywa i przeglądarka pokazuje
 	# ERR_SSL_PROTOCOL_ERROR. default_sni mówi, którego certyfikatu użyć.
 	default_sni {$HTTPS_IP:localhost}
+	# Bez HTTP/3. Chrome przez QUIC (HTTP/3) nie uznaje certyfikatów, którym
+	# zaufano ręcznie na urządzeniu - tylko tych z publicznych urzędów. Domowy
+	# certyfikat działa wyłącznie przez zwykłe TCP (HTTP/1.1 i HTTP/2), więc
+	# nie ogłaszamy przeglądarkom HTTP/3 (nagłówek Alt-Svc) wcale.
+	servers {
+		protocols h1 h2
+	}
+	# Pośredni certyfikat urzędu żyje rok zamiast domyślnych 7 dni: mniej
+	# wymian w tle. Certyfikat główny (ten instalowany na telefonach) jest
+	# ważny 10 lat i ta zmiana go nie dotyczy.
+	pki {
+		ca local {
+			intermediate_lifetime 365d
+		}
+	}
 }
 
 # Adresy, pod którymi domownicy otwierają stronę (zmienna HTTPS_SITES w .env).
 # Certyfikat obejmuje każdy z nich. Warto mieć też adres IP: Android nie zawsze
 # rozwiązuje nazwy .local.
 {$HTTPS_SITES:localhost} {
-	tls internal
+	tls {
+		issuer internal {
+			# 30 dni zamiast domyślnych 12 godzin. Raspberry Pi nie ma zegara
+			# z baterią: po zaniku prądu startuje z godziną sprzed wyłączenia
+			# i dopiero po chwili ustawia ją z internetu. Certyfikat 12-godzinny
+			# mógł wtedy być już przeterminowany, choć Caddy tego nie widział.
+			# Caddy i tak odnawia go sam (na 10 dni przed końcem).
+			lifetime 30d
+		}
+	}
 	encode gzip
-	# Caddy dopisuje X-Forwarded-Proto: https, a Django z BEHIND_HTTPS_PROXY=1
-	# na tej podstawie wie, że połączenie było szyfrowane (CSRF, is_secure).
-	reverse_proxy {$UPSTREAM:web:8000}
+
+	# Test zaufania dla strony /certyfikat: ta strona (po HTTP) pyta ten adres
+	# po HTTPS. Odpowiedź przychodzi tylko wtedy, gdy urządzenie ufa
+	# certyfikatowi - inaczej przeglądarka zrywa połączenie.
+	handle /certyfikat/test {
+		header Access-Control-Allow-Origin "*"
+		header Cache-Control "no-store"
+		respond "ok" 200
+	}
+
+	handle {
+		# Caddy dopisuje X-Forwarded-Proto: https, a Django z BEHIND_HTTPS_PROXY=1
+		# na tej podstawie wie, że połączenie było szyfrowane (CSRF, is_secure).
+		reverse_proxy {$UPSTREAM:web:8000}
+	}
 }
 
 # Zwykłe HTTP. Instrukcja i certyfikat główny muszą być dostępne bez HTTPS -
-# dopóki telefon nie ufa certyfikatowi, strona HTTPS pokazuje ostrzeżenie.
+# dopóki urządzenie nie ufa certyfikatowi, strona HTTPS pokazuje ostrzeżenie.
 # Cała reszta jest przekierowywana na HTTPS (302, nie 301: przeglądarki
 # zapamiętują stałe przekierowania, co utrudniłoby ewentualny powrót).
 http:// {
 	handle /certyfikat {
 		root * /srv/https-setup
 		rewrite * /certyfikat.html
+		header Cache-Control "no-store"
 		file_server
 	}
 	handle /certyfikat.crt {
@@ -55,6 +92,16 @@ http:// {
 		# iOS rozpoznaje certyfikat do instalacji po tym typie.
 		header Content-Type application/x-x509-ca-cert
 		header Content-Disposition "attachment; filename=\"certyfikat-domowy.crt\""
+		header Cache-Control "no-store"
+		file_server
+	}
+	# Ten sam certyfikat bez "pobierz jako plik": strona /certyfikat liczy z niego
+	# odcisk palca i datę ważności, żeby dało się porównać z zainstalowanym.
+	handle /certyfikat.pem {
+		root * {$CADDY_PKI_DIR:/data/caddy/pki/authorities/local}
+		rewrite * /root.crt
+		header Content-Type "text/plain; charset=utf-8"
+		header Cache-Control "no-store"
 		file_server
 	}
 	handle {

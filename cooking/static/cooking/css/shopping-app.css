@@ -940,3 +940,14 @@ button:disabled { cursor: not-allowed; }
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Link do strony z certyfikatem pod „Stanem aplikacji”. */
+.sa-details-note {
+    margin: 12px 0 0;
+    font-size: 0.85rem;
+    color: var(--ink-3);
+}
+
+.sa-details-note a {
+    font-weight: 700;
+}

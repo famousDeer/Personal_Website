@@ -6,76 +6,339 @@
 <meta name="color-scheme" content="light dark">
 <title>Certyfikat domowy</title>
 <style>
-  :root { --bg:#f4f6f8; --card:#fff; --ink:#0f172a; --ink2:#475569; --line:#e2e8f0; --brand:#087443; --brand-ink:#fff; --note:#fff7e6; --note-ink:#7a4b00; }
+  :root { --bg:#f4f6f8; --card:#fff; --ink:#0f172a; --ink2:#475569; --line:#e2e8f0; --brand:#087443; --brand-ink:#fff;
+          --note:#fff7e6; --note-ink:#7a4b00; --ok:#e7f6ee; --ok-ink:#065f37; --bad:#fdecec; --bad-ink:#9f1d1d; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#0d1117; --card:#161b22; --ink:#f0f4f8; --ink2:#a8b3c2; --line:#2a3340; --brand:#1eaa6b; --brand-ink:#04150c; --note:#2b2310; --note-ink:#f5c46a; }
+    :root { --bg:#0d1117; --card:#161b22; --ink:#f0f4f8; --ink2:#a8b3c2; --line:#2a3340; --brand:#1eaa6b; --brand-ink:#04150c;
+            --note:#2b2310; --note-ink:#f5c46a; --ok:#10291c; --ok-ink:#7fe0ae; --bad:#2d1414; --bad-ink:#ffaaa5; }
   }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-  main { max-width:560px; margin:0 auto; padding:24px 16px 48px; }
+  main { max-width:600px; margin:0 auto; padding:24px 16px 48px; }
   h1 { font-size:1.45rem; line-height:1.25; margin:0 0 8px; }
+  h2 { font-size:1.05rem; margin:0 0 8px; }
   p { margin:0 0 12px; color:var(--ink2); }
   .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; margin:16px 0; }
-  .btn { display:block; text-align:center; padding:14px 16px; border-radius:12px; background:var(--brand); color:var(--brand-ink); font-weight:700; text-decoration:none; }
+  .btn { display:block; text-align:center; padding:14px 16px; border-radius:12px; background:var(--brand); color:var(--brand-ink);
+         font-weight:700; text-decoration:none; border:0; width:100%; font-size:1rem; cursor:pointer; }
   .btn.secondary { background:transparent; color:var(--ink); border:1px solid var(--line); }
+  .btn.small { display:inline-block; width:auto; padding:8px 14px; font-size:.92rem; margin-top:8px; }
   details { border-top:1px solid var(--line); padding:12px 0 4px; }
   details:first-of-type { border-top:0; padding-top:0; }
   summary { font-weight:700; cursor:pointer; padding:4px 0; }
-  ol { margin:10px 0 4px; padding-left:22px; }
-  li { margin:0 0 10px; }
+  ol, ul { margin:10px 0 4px; padding-left:22px; }
+  li { margin:0 0 10px; color:var(--ink2); }
   b { color:var(--ink); }
   .path { font-weight:600; color:var(--ink); }
   .note { background:var(--note); color:var(--note-ink); border-radius:10px; padding:10px 12px; font-size:.92rem; }
+  .status { border-radius:14px; padding:14px 16px; margin:16px 0; border:1px solid var(--line); background:var(--card); }
+  .status strong { display:block; font-size:1.05rem; margin-bottom:2px; }
+  .status p { margin:0; }
+  .status[data-state="ok"] { background:var(--ok); color:var(--ok-ink); border-color:transparent; }
+  .status[data-state="ok"] p { color:var(--ok-ink); }
+  .status[data-state="bad"] { background:var(--bad); color:var(--bad-ink); border-color:transparent; }
+  .status[data-state="bad"] p { color:var(--bad-ink); }
+  .status[data-state="checking"] strong::before { content:"⏳ "; }
+  .status[data-state="ok"] strong::before { content:"✓ "; }
+  .status[data-state="bad"] strong::before { content:"✕ "; }
+  dl { margin:0; display:grid; grid-template-columns:auto 1fr; gap:6px 12px; font-size:.95rem; }
+  dt { color:var(--ink2); }
+  dd { margin:0; min-width:0; overflow-wrap:anywhere; }
+  .fp { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.85rem; letter-spacing:.02em; }
 </style>
 </head>
 <body>
 <main>
   <h1>Bezpieczne połączenie ze stroną domową</h1>
-  <p>Skaner w spiżarni może używać aparatu tylko przez połączenie HTTPS. Żeby telefon je zaakceptował,
-     trzeba raz zaufać certyfikatowi domowego serwera. Zajmuje to około dwóch minut na każdym telefonie.</p>
+  <p>Strona domowa działa przez HTTPS z certyfikatem wystawionym przez nasz serwer. Żeby telefon albo komputer
+     go zaakceptował, trzeba raz zaufać certyfikatowi głównemu serwera. Zajmuje to około dwóch minut na każdym urządzeniu.</p>
+
+  <div class="status" id="status" data-state="checking" role="status" aria-live="polite">
+    <strong id="status-title">Sprawdzam, czy to urządzenie ufa serwerowi…</strong>
+    <p id="status-text">To potrwa kilka sekund.</p>
+    <button class="btn secondary small" id="recheck" type="button" hidden>Sprawdź ponownie</button>
+  </div>
 
   <a class="btn" href="/certyfikat.crt">Pobierz certyfikat</a>
 
+  <div class="card" id="cert-info" hidden>
+    <h2>Certyfikat tego serwera</h2>
+    <dl>
+      <dt>Nazwa</dt><dd id="cert-name">—</dd>
+      <dt>Ważny do</dt><dd id="cert-until">—</dd>
+      <dt>Odcisk SHA-256</dt><dd class="fp" id="cert-fp">—</dd>
+    </dl>
+    <p style="margin-top:10px;font-size:.92rem">Porównaj odcisk z certyfikatem zainstalowanym w telefonie (gdzie go znaleźć &ndash; w instrukcjach niżej).
+       Inny odcisk znaczy, że w telefonie jest stary certyfikat: usuń go i zainstaluj ten.</p>
+  </div>
+
   <div class="card">
     <details id="ios">
-      <summary>iPhone</summary>
+      <summary>iPhone i iPad</summary>
       <ol>
         <li>Otwórz tę stronę w <b>Safari</b> &ndash; tylko Safari potrafi zainstalować certyfikat na iPhonie.</li>
         <li>Stuknij <b>Pobierz certyfikat</b> i potwierdź <b>Zezwól</b>.</li>
         <li>Otwórz <b>Ustawienia</b>. Na górze pojawi się pozycja o pobranym profilu &ndash; stuknij ją
             (jeśli jej nie widać, wpisz w wyszukiwarce Ustawień <b>profil</b>). Wybierz <b>Zainstaluj</b>,
             podaj kod telefonu i jeszcze raz <b>Zainstaluj</b>.</li>
-        <li>Przejdź do <span class="path">Ustawienia &rsaquo; Ogólne &rsaquo; Informacje &rsaquo; Ustawienie zaufania certyfikatu</span>
+        <li><b>Nie pomijaj tego kroku:</b> <span class="path">Ustawienia &rsaquo; Ogólne &rsaquo; Informacje &rsaquo; Ustawienie zaufania certyfikatu</span>
             i w sekcji <b>Włącz pełne zaufanie do certyfikatów głównych</b> włącz przełącznik przy
-            <b>Caddy Local Authority</b>.</li>
+            <b>Caddy Local Authority</b>. Bez niego profil jest zainstalowany, ale strona dalej jest „niebezpieczna”.</li>
+        <li>Zamknij Safari i aplikację zakupów (przesuń w górę w przełączniku aplikacji) i otwórz je ponownie.</li>
       </ol>
+      <p class="note">Stary certyfikat usuniesz w <span class="path">Ustawienia &rsaquo; Ogólne &rsaquo; VPN i zarządzanie urządzeniem</span>.</p>
     </details>
     <details id="android">
       <summary>Android</summary>
       <ol>
         <li>Stuknij <b>Pobierz certyfikat</b> &ndash; plik <b>certyfikat-domowy.crt</b> trafi do Pobranych.</li>
         <li>Otwórz <b>Ustawienia</b> i wpisz w wyszukiwarce <b>certyfikat</b>. Wybierz
-            <b>Certyfikat CA</b> (zwykle w <span class="path">Bezpieczeństwo i prywatność &rsaquo; Więcej ustawień zabezpieczeń</span>;
-            nazwy różnią się między producentami).</li>
+            <b>Certyfikat CA</b> (zwykle w <span class="path">Bezpieczeństwo i prywatność &rsaquo; Więcej ustawień zabezpieczeń &rsaquo; Zainstaluj z pamięci</span>;
+            nazwy różnią się między producentami). <b>Nie wybieraj</b> „Certyfikat VPN i aplikacji” ani „Certyfikat Wi-Fi” &ndash;
+            takiego certyfikatu przeglądarka nie używa.</li>
         <li>Potwierdź <b>Zainstaluj mimo to</b>, odblokuj telefon i wybierz pobrany plik.</li>
+        <li>Zamknij Chrome i aplikację zakupów całkowicie (przesuń je w górę na liście ostatnich aplikacji) i otwórz ponownie.</li>
         <li>Otwieraj stronę przez <b>adres IP</b> serwera &ndash; Android nie zawsze rozpoznaje nazwy kończące się na .local.</li>
       </ol>
-      <p class="note">Android może potem pokazywać powiadomienie „Sieć może być monitorowana”. To standardowy komunikat
-         przy każdym ręcznie dodanym certyfikacie.</p>
+      <p class="note">Zainstalowany certyfikat sprawdzisz w <span class="path">Ustawienia &rsaquo; Bezpieczeństwo &rsaquo; Zaufane dane uwierzytelniające &rsaquo; Użytkownik</span>
+         (stuknij go, żeby zobaczyć odcisk SHA-256). Android może pokazywać powiadomienie „Sieć może być monitorowana” &ndash;
+         to standardowy komunikat przy każdym ręcznie dodanym certyfikacie.</p>
     </details>
+    <details id="mac">
+      <summary>Mac (Safari, Chrome, Edge)</summary>
+      <ol>
+        <li>Kliknij <b>Pobierz certyfikat</b> i otwórz pobrany plik <b>certyfikat-domowy.crt</b> (dwukrotne kliknięcie) &ndash; otworzy się <b>Pęk kluczy</b>.</li>
+        <li>Wybierz pęk <b>System</b> i kliknij <b>Dodaj</b> (podaj hasło do Maca).</li>
+        <li>W Pęku kluczy wybierz <span class="path">System &rsaquo; Certyfikaty</span>, kliknij dwukrotnie <b>Caddy Local Authority</b>,
+            rozwiń <b>Zaufanie</b> i przy „Przy używaniu tego certyfikatu” wybierz <b>Zawsze ufaj</b>. Zamknij okno i potwierdź hasłem.</li>
+        <li>Zamknij przeglądarkę całkowicie (<b>Cmd+Q</b>) i otwórz ją ponownie.</li>
+      </ol>
+      <p class="note">Samo dodanie do Pęku kluczy nie wystarczy &ndash; bez „Zawsze ufaj” przeglądarka dalej pisze „Niezabezpieczona”.</p>
+    </details>
+    <details id="windows">
+      <summary>Windows (Chrome, Edge)</summary>
+      <ol>
+        <li>Kliknij <b>Pobierz certyfikat</b>, otwórz plik i wybierz <b>Zainstaluj certyfikat…</b></li>
+        <li>Wybierz <b>Komputer lokalny</b> i <b>Dalej</b>.</li>
+        <li>Zaznacz <b>Umieść wszystkie certyfikaty w następującym magazynie</b>, kliknij <b>Przeglądaj</b> i wybierz
+            <b>Zaufane główne urzędy certyfikacji</b>. Dalej &rsaquo; Zakończ.</li>
+        <li>Zamknij przeglądarkę całkowicie i otwórz ją ponownie.</li>
+      </ol>
+    </details>
+    <details id="other">
+      <summary>Firefox i Linux</summary>
+      <ul>
+        <li><b>Firefox</b> (każdy system) ma własną listę certyfikatów:
+            <span class="path">Ustawienia &rsaquo; Prywatność i bezpieczeństwo &rsaquo; Certyfikaty &rsaquo; Wyświetl certyfikaty &rsaquo; Organy certyfikacji &rsaquo; Importuj</span>,
+            wybierz pobrany plik i zaznacz <b>Zaufaj temu CA przy identyfikacji witryn internetowych</b>.</li>
+        <li><b>Chrome na Linuksie</b>: <span class="path">Ustawienia &rsaquo; Prywatność i bezpieczeństwo &rsaquo; Bezpieczeństwo &rsaquo; Zarządzaj certyfikatami</span>,
+            zaimportuj plik jako urząd certyfikacji i zaznacz zaufanie przy identyfikowaniu witryn.</li>
+      </ul>
+    </details>
+  </div>
+
+  <div class="card">
+    <h2>Nadal widzisz ostrzeżenie?</h2>
+    <ul>
+      <li><b>„Zaawansowane &rsaquo; Przejdź do strony” niczego nie naprawia.</b> Chrome pamięta to kliknięcie tylko przez tydzień.
+          Potem ostrzeżenie wraca, a aplikacja zakupów na telefonie, która nie ma gdzie go kliknąć, traci połączenie z serwerem.
+          Trwale działa tylko zainstalowany certyfikat.</li>
+      <li><b>W telefonie jest stary certyfikat.</b> Gdy serwer był instalowany od nowa, ma nowy urząd certyfikacji.
+          Porównaj odcisk SHA-256 powyżej z tym w telefonie; jeśli jest inny, usuń stary i zainstaluj ten.</li>
+      <li><b>iPhone:</b> sprawdź krok z „pełnym zaufaniem”. <b>Android:</b> certyfikat musi być zainstalowany jako „Certyfikat CA”.
+          <b>Mac:</b> w Pęku kluczy musi być „Zawsze ufaj”.</li>
+      <li>Po instalacji zamknij całkowicie przeglądarkę i aplikację zakupów, a potem wróć tutaj i stuknij <b>Sprawdź ponownie</b>.</li>
+    </ul>
   </div>
 
   <a class="btn secondary" id="open-https" href="/">Gotowe &ndash; otwórz stronę przez HTTPS</a>
 </main>
 <script>
-  // Link do wersji HTTPS pod tym samym adresem, pod którym otwarto tę stronę.
-  document.getElementById('open-https').href = 'https://' + location.hostname + '/cooking/pantry/';
+(function () {
+  'use strict';
+  var host = location.hostname;
+  document.getElementById('open-https').href = 'https://' + host + '/cooking/pantry/';
+
   // Rozwiń instrukcję dla systemu, na którym otwarto stronę.
   var ua = navigator.userAgent;
   var isIOS = /iPhone|iPad|iPod/.test(ua) || (ua.indexOf('Macintosh') !== -1 && 'ontouchend' in document);
-  var target = isIOS ? 'ios' : (/Android/.test(ua) ? 'android' : null);
+  var target = isIOS ? 'ios'
+    : /Android/.test(ua) ? 'android'
+    : /Firefox\//.test(ua) ? 'other'
+    : /Macintosh/.test(ua) ? 'mac'
+    : /Windows/.test(ua) ? 'windows'
+    : /Linux/.test(ua) ? 'other' : null;
   if (target) { document.getElementById(target).open = true; }
-  else { document.getElementById('ios').open = true; document.getElementById('android').open = true; }
+
+  // --- Czy to urządzenie ufa serwerowi? -------------------------------------
+  // Ta strona działa po zwykłym HTTP, więc może zapytać ten sam serwer po HTTPS.
+  // Przeglądarka, która nie ufa certyfikatowi, zrywa takie połączenie bez pytania.
+  var statusBox = document.getElementById('status');
+  var statusTitle = document.getElementById('status-title');
+  var statusText = document.getElementById('status-text');
+  var recheck = document.getElementById('recheck');
+
+  function show(state, title, text) {
+    statusBox.setAttribute('data-state', state);
+    statusTitle.textContent = title;
+    statusText.textContent = text;
+    recheck.hidden = state === 'checking';
+  }
+
+  function checkTrust() {
+    show('checking', 'Sprawdzam, czy to urządzenie ufa serwerowi…', 'To potrwa kilka sekund.');
+    var done = false;
+    var timer = setTimeout(function () { finish(false); }, 8000);
+    function finish(ok) {
+      if (done) { return; }
+      done = true;
+      clearTimeout(timer);
+      if (ok) {
+        show('ok', 'To urządzenie ufa serwerowi',
+          'Połączenie https://' + host + ' jest bezpieczne. Jeśli mimo to widzisz ostrzeżenie, zajrzyj niżej do „Nadal widzisz ostrzeżenie?”.');
+      } else {
+        show('bad', 'To urządzenie jeszcze nie ufa serwerowi',
+          'Zainstaluj certyfikat według instrukcji poniżej (albo usuń stary i zainstaluj ten), a potem sprawdź ponownie.');
+      }
+    }
+    try {
+      fetch('https://' + host + '/certyfikat/test?t=' + Date.now(), { mode: 'no-cors', cache: 'no-store' })
+        .then(function () { finish(true); }, function () { finish(false); });
+    } catch (error) {
+      finish(false);
+    }
+  }
+  recheck.addEventListener('click', checkTrust);
+  checkTrust();
+
+  // --- Dane certyfikatu: nazwa, ważność i odcisk SHA-256 ----------------------
+  // crypto.subtle działa tylko w bezpiecznym kontekście, a ta strona jest po HTTP,
+  // dlatego SHA-256 jest policzone ręcznie.
+  var K = [0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+
+  function ror(x, n) { return (x >>> n) | (x << (32 - n)); }
+
+  function sha256(bytes) {
+    var H = new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]);
+    var length = bytes.length;
+    var padded = new Uint8Array(((length + 9 + 63) >> 6) << 6);
+    padded.set(bytes);
+    padded[length] = 0x80;
+    var view = new DataView(padded.buffer);
+    view.setUint32(padded.length - 8, Math.floor(length / 0x20000000));
+    view.setUint32(padded.length - 4, (length << 3) >>> 0);
+    var W = new Uint32Array(64);
+    for (var offset = 0; offset < padded.length; offset += 64) {
+      for (var i = 0; i < 16; i++) { W[i] = view.getUint32(offset + i * 4); }
+      for (i = 16; i < 64; i++) {
+        var s0 = ror(W[i - 15], 7) ^ ror(W[i - 15], 18) ^ (W[i - 15] >>> 3);
+        var s1 = ror(W[i - 2], 17) ^ ror(W[i - 2], 19) ^ (W[i - 2] >>> 10);
+        W[i] = (W[i - 16] + s0 + W[i - 7] + s1) | 0;
+      }
+      var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+      for (i = 0; i < 64; i++) {
+        var t1 = (h + (ror(e, 6) ^ ror(e, 11) ^ ror(e, 25)) + ((e & f) ^ (~e & g)) + K[i] + W[i]) | 0;
+        var t2 = ((ror(a, 2) ^ ror(a, 13) ^ ror(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
+        h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
+      }
+      H[0] += a; H[1] += b; H[2] += c; H[3] += d; H[4] += e; H[5] += f; H[6] += g; H[7] += h;
+    }
+    var out = [];
+    for (i = 0; i < 8; i++) {
+      for (var shift = 24; shift >= 0; shift -= 8) { out.push((H[i] >>> shift) & 0xff); }
+    }
+    return out;
+  }
+
+  function derNode(bytes, pos) {
+    var tag = bytes[pos];
+    var length = bytes[pos + 1];
+    var start = pos + 2;
+    if (length & 0x80) {
+      var count = length & 0x7f;
+      length = 0;
+      for (var i = 0; i < count; i++) { length = length * 256 + bytes[start++]; }
+    }
+    return { tag: tag, start: start, end: start + length };
+  }
+
+  function derChildren(bytes, node) {
+    var children = [];
+    for (var pos = node.start; pos < node.end;) {
+      var child = derNode(bytes, pos);
+      children.push(child);
+      pos = child.end;
+    }
+    return children;
+  }
+
+  function ascii(bytes, node) {
+    var text = '';
+    for (var i = node.start; i < node.end; i++) { text += String.fromCharCode(bytes[i]); }
+    return text;
+  }
+
+  function utf8(bytes, node) {
+    try { return new TextDecoder('utf-8').decode(bytes.slice(node.start, node.end)); }
+    catch (error) { return ascii(bytes, node); }
+  }
+
+  function derTime(bytes, node) {
+    var text = ascii(bytes, node);
+    var year = node.tag === 0x17 ? 2000 + Number(text.slice(0, 2)) : Number(text.slice(0, 4));
+    if (node.tag === 0x17 && year >= 2050) { year -= 100; }
+    var rest = node.tag === 0x17 ? text.slice(2) : text.slice(4);
+    return new Date(Date.UTC(year, Number(rest.slice(0, 2)) - 1, Number(rest.slice(2, 4)),
+      Number(rest.slice(4, 6)), Number(rest.slice(6, 8)), Number(rest.slice(8, 10))));
+  }
+
+  function commonName(bytes, name) {
+    var sets = derChildren(bytes, name);
+    for (var i = 0; i < sets.length; i++) {
+      var pairs = derChildren(bytes, sets[i]);
+      for (var j = 0; j < pairs.length; j++) {
+        var parts = derChildren(bytes, pairs[j]);
+        var oid = parts[0];
+        if (oid && oid.end - oid.start === 3 && bytes[oid.start] === 0x55 && bytes[oid.start + 1] === 0x04 && bytes[oid.start + 2] === 0x03) {
+          return utf8(bytes, parts[1]);
+        }
+      }
+    }
+    return '';
+  }
+
+  function describe(pem) {
+    var base64 = pem.replace(/-----[^-]+-----/g, '').replace(/\s+/g, '');
+    var binary = atob(base64);
+    var bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) { bytes[i] = binary.charCodeAt(i); }
+    var certificate = derNode(bytes, 0);
+    var tbs = derChildren(bytes, certificate)[0];
+    var fields = derChildren(bytes, tbs);
+    var index = fields[0].tag === 0xa0 ? 1 : 0;
+    var validity = derChildren(bytes, fields[index + 3]);
+    return {
+      name: commonName(bytes, fields[index + 4]),
+      notAfter: derTime(bytes, validity[1]),
+      fingerprint: sha256(bytes).map(function (value) {
+        return (value < 16 ? '0' : '') + value.toString(16).toUpperCase();
+      }).join(' '),
+    };
+  }
+
+  fetch('/certyfikat.pem', { cache: 'no-store' })
+    .then(function (response) { return response.ok ? response.text() : Promise.reject(response.status); })
+    .then(function (pem) {
+      var info = describe(pem);
+      document.getElementById('cert-name').textContent = info.name || '—';
+      document.getElementById('cert-until').textContent = info.notAfter.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' });
+      document.getElementById('cert-fp').textContent = info.fingerprint;
+      document.getElementById('cert-info').hidden = false;
+    })
+    .catch(function () { /* bez danych certyfikatu instrukcja nadal działa */ });
+
+  window.__certyfikat = { sha256: sha256, describe: describe };
+})();
 </script>
 </body>
 </html>

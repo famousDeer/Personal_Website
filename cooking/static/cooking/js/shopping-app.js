@@ -196,6 +196,19 @@
     // Ten sam wzorzec co w skanerze spiżarni: z http://192.168.x.x nie da się
     // ani włączyć aparatu, ani zapisać aplikacji w telefonie - podpowiadamy
     // adres HTTPS zamiast samego komunikatu o błędzie.
+    // Telefon, który nie ufa certyfikatowi serwera, otwiera stronę tylko dzięki
+    // „Zaawansowane › Przejdź do strony”. Chrome pamięta to przez tydzień, ale
+    // service workera z takiego adresu nie zarejestruje („SSL certificate error
+    // occurred when fetching the script”). To pewny znak, że trzeba zainstalować
+    // certyfikat - a po tygodniu aplikacja i tak straciłaby połączenie z domem.
+    function certificateProblem() {
+        return window.isSecureContext && /ssl|certificate|certyfikat/i.test(state.offline.error || '');
+    }
+
+    function certificateHelpUrl() {
+        return `http://${window.location.hostname}/certyfikat`;
+    }
+
     function secureVersionUrl() {
         if (window.location.protocol !== 'http:'
             || ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)) {
@@ -765,6 +778,11 @@
             ['Połączenie', window.isSecureContext
                 ? 'bezpieczne (https)'
                 : 'niezabezpieczone - tryb offline nie zadziała'],
+            ['Certyfikat serwera', !window.isSecureContext
+                ? 'nie dotyczy (http)'
+                : certificateProblem()
+                    ? 'telefon mu nie ufa - zainstaluj go'
+                    : (state.offline.checked && !state.offline.error ? 'zaufany' : 'nie sprawdzono')],
             ['Uruchomiona', standalone ? 'z ikony na ekranie telefonu' : 'w przeglądarce'],
             ['Aplikacja zapisana w telefonie', state.offline.shell
                 ? `tak (${state.offline.files} z ${state.offline.total} plików)`
@@ -794,6 +812,10 @@
                     </button>
                 </div>
                 <dl>${rows.map(([label, value]) => `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl>
+                <p class="sa-details-note">
+                    W domu, a lista się nie synchronizuje?
+                    <a href="${escapeHtml(certificateHelpUrl())}">Sprawdź certyfikat serwera</a>
+                </p>
                 ${pushSupported && !insecureUrl ? `
                     <button type="button" class="sa-secondary" data-push="${state.pushOn ? 'off' : 'on'}">
                         <i class="bi bi-bell${state.pushOn ? '-slash' : ''}" aria-hidden="true"></i>
@@ -896,7 +918,18 @@
                     ${secureUrl ? `<a class="sa-banner-action" href="${escapeHtml(secureUrl)}">Otwórz przez HTTPS</a>` : ''}
                 </div>`);
         }
-        if (window.isSecureContext && state.offline.checked && !state.offline.shell && state.status !== 'offline') {
+        if (certificateProblem()) {
+            banners.push(`
+                <div class="sa-banner is-warning">
+                    <i class="bi bi-shield-exclamation" aria-hidden="true"></i>
+                    <div>
+                        <strong>Telefon nie ufa certyfikatowi serwera.</strong>
+                        Strona działa tylko dzięki „Przejdź do strony”, które Chrome pamięta przez tydzień &ndash;
+                        potem aplikacja traci połączenie z domem. Zainstaluj certyfikat, żeby to się nie powtarzało.
+                    </div>
+                    <a class="sa-banner-action" href="${escapeHtml(certificateHelpUrl())}">Napraw</a>
+                </div>`);
+        } else if (window.isSecureContext && state.offline.checked && !state.offline.shell && state.status !== 'offline') {
             banners.push(`
                 <div class="sa-banner is-warning">
                     <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>

@@ -245,14 +245,36 @@ docker compose up -d --build web caddy
   certificate, and the browser shows `ERR_SSL_PROTOCOL_ERROR`. `HTTPS_IP` becomes
   Caddy's `default_sni` and fixes that. Names such as `raspberrypi.local` do send SNI
   and are unaffected.
-- `http://<address>/certyfikat` is a page for phones with the certificate download and
-  step-by-step instructions for iPhone and Android. Each phone trusts the certificate
-  once; after that the scanner opens the camera immediately.
+- `http://<address>/certyfikat` is the page for every device that opens the site: it
+  checks live whether *this* device trusts the server (it fetches
+  `https://<address>/certyfikat/test`, which only succeeds over a trusted connection),
+  shows the root certificate's name, expiry and SHA-256 fingerprint (to spot an old
+  certificate left on a phone), and has step-by-step instructions for iPhone, Android,
+  Mac, Windows, Firefox and Linux. Each device trusts the certificate once; after that
+  the site and the scanner work without warnings.
+- **"Advanced → Proceed" is not a fix.** Chrome remembers that click for one week; then the
+  warning comes back and the installed shopping app, which cannot show the button, loses
+  its connection to the server. The shopping app detects this case (its service worker
+  cannot be registered over a bypassed certificate), shows a "Telefon nie ufa
+  certyfikatowi serwera" banner and links to the certificate page.
 - Everything else on port 80 redirects to HTTPS. Port 8000 keeps working over plain
   HTTP; the scanner there shows a link to the HTTPS version.
 - `web` runs with `BEHIND_HTTPS_PROXY=1`, which sets `SECURE_PROXY_SSL_HEADER`. Without
   it Django sees the proxied request as plain HTTP and every form fails the CSRF
   origin check (`https://host` vs `http://host`) with a 403.
+
+Certificate settings in `deploy/Caddyfile` (tested with Caddy 2.10; `docker compose pull
+caddy` before restarting if the image on the Pi is older than 2.7):
+
+- Leaf certificates live 30 days instead of Caddy's default 12 hours and are renewed
+  automatically 10 days before they expire. The Pi has no battery-backed clock: after a
+  power cut it starts with the time it was switched off and only corrects it from the
+  internet a moment later, and a 12-hour certificate could already be expired by then.
+- The intermediate certificate lives a year instead of 7 days. Caddy never issues a
+  leaf that outlives its intermediate (it shortens it and logs a warning), so the switch
+  from the old 7-day intermediate is safe.
+- HTTP/3 is off (`protocols h1 h2`). Chrome does not accept locally installed root
+  certificates over QUIC, only over TCP, so advertising HTTP/3 could only cause errors.
 
 > **The `caddy_data` volume holds the certificate authority.** Deleting it creates a
 > new one, and every phone has to install the certificate again. Phones that trust
