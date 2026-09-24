@@ -52,6 +52,7 @@ from .services.pantry_forecast import (
     _intermittent_days_range,
     forecast_pantry_product,
     forecast_pantry_products,
+    infer_shopping_interval,
     infer_typical_shopping_weekday,
 )
 from .services.push import notify, prune_notification_log
@@ -647,9 +648,9 @@ class PantryForecastTests(TestCase):
     def test_intermittent_pattern_has_wider_range_than_regular_pattern_at_similar_rate(self):
         regular = self.product(name='Regularny', current_quantity=Decimal('12.00'), minimum_quantity=Decimal('2.00'))
         intermittent = self.product(name='Sporadyczny', current_quantity=Decimal('12.00'), minimum_quantity=Decimal('2.00'))
-        for days_ago in range(30):
+        for days_ago in range(35):
             self.consume(regular, 1, days_ago=days_ago)
-        for days_ago in range(0, 30, 5):
+        for days_ago in range(0, 35, 5):
             self.consume(intermittent, 5, days_ago=days_ago)
 
         regular_forecast = forecast_pantry_product(regular, today=self.today)
@@ -724,33 +725,48 @@ class PantryForecastTests(TestCase):
         self.assertEqual(forecast.suggested_packages, 0)
         self.assertEqual(forecast.suggested_quantity, Decimal('200.00'))
 
-    def test_aligned_shopping_day_marks_today_as_due(self):
+    def test_stock_that_lasts_until_the_next_trip_is_not_due_yet(self):
+        # 1 szt./dzień, zakupy co 7 dni: poziom uzupełnienia S = 2 + 7 = 9 szt.
         product = self.product(
-            current_quantity=Decimal('4.00'),
+            current_quantity=Decimal('12.00'),
             minimum_quantity=Decimal('2.00'),
             restock_lead_days=0,
         )
-        for days_ago in range(30):
+        for days_ago in range(35):
             self.consume(product, 1, days_ago=days_ago)
-        expected = forecast_pantry_product(product, today=self.today)
-        shopping_weekday = (self.today.weekday() - 1) % 7
 
-        aligned = forecast_pantry_product(
-            product,
-            today=self.today,
-            shopping_weekday=shopping_weekday,
+        forecast = forecast_pantry_product(product, today=self.today, review_days=7)
+
+        self.assertEqual(forecast.status, 'ready')
+        self.assertFalse(forecast.is_due)
+        self.assertEqual(forecast.suggested_packages, 0)
+        self.assertGreater(forecast.buy_date, self.today)
+
+    def test_list_made_before_the_usual_shopping_day_counts_consumption_until_then(self):
+        product = self.product(
+            current_quantity=Decimal('12.00'),
+            minimum_quantity=Decimal('2.00'),
+            restock_lead_days=0,
+        )
+        for days_ago in range(35):
+            self.consume(product, 1, days_ago=days_ago)
+        shopping_weekday = (self.today.weekday() + 5) % 7  # zakupy za 5 dni
+
+        forecast = forecast_pantry_product(
+            product, today=self.today, review_days=7, shopping_weekday=shopping_weekday,
         )
 
-        self.assertGreater(expected.buy_date, self.today)
-        self.assertEqual(aligned.buy_date, self.today)
-        self.assertTrue(aligned.is_due)
+        # Za 5 dni zostanie 7 szt., a do kolejnych zakupów trzeba 9.
+        self.assertTrue(forecast.is_due)
+        self.assertEqual(forecast.buy_date, self.today + timedelta(days=5))
+        self.assertEqual(forecast.suggested_packages, 2)
 
     def test_typical_shopping_weekday_requires_a_clear_pattern(self):
         saturdays = [self.today - timedelta(days=(self.today.weekday() - 5) % 7 + 7 * offset) for offset in range(4)]
         self.assertEqual(infer_typical_shopping_weekday(saturdays), 5)
         self.assertIsNone(infer_typical_shopping_weekday(saturdays[:2]))
 
-    def test_new_product_uses_local_category_prior_normalized_to_its_package(self):
+    def test_new_product_does_not_borrow_the_pace_of_other_products(self):
         learned = self.product(
             name='Jogurt uczony',
             category='Nabiał',
@@ -776,8 +792,155 @@ class PantryForecastTests(TestCase):
 
         self.assertEqual(forecasts[learned.pk].rate, Decimal('200.00'))
         self.assertEqual(forecasts[new_product.pk].status, 'no_history')
-        self.assertEqual(forecasts[new_product.pk].rate, Decimal('100.00'))
+        self.assertEqual(forecasts[new_product.pk].rate, Decimal('0.00'))
         self.assertIsNone(forecasts[new_product.pk].buy_date)
+
+
+class PantryForecastLearningTests(TestCase):
+    """Nauka, sztuki i ilości - to, co trafia na automatyczną listę."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='nauka', password='pass12345')
+        self.today = timezone.localdate()
+
+    def yogurt(self, **overrides):
+        values = {
+            'created_by': self.user,
+            'name': f'Jogurt {PantryProduct.objects.count() + 1}',
+            'barcode': f'59000000{PantryProduct.objects.count() + 1:05d}',
+            'unit': PantryProduct.UNIT_GRAM,
+            'quantity_per_scan': Decimal('400.00'),
+            'current_quantity': Decimal('0.00'),
+            'current_package_count': 0,
+            'minimum_quantity': Decimal('400.00'),
+            'restock_lead_days': 2,
+        }
+        values.update(overrides)
+        return PantryProduct.objects.create(**values)
+
+    def move(self, product, kind, packages, days_ago, grams=400):
+        return PantryMovement.objects.create(
+            product=product,
+            movement_type=kind,
+            quantity=Decimal(packages * grams),
+            package_count=packages,
+            occurred_on=self.today - timedelta(days=days_ago),
+        )
+
+    def test_two_yogurts_eaten_in_two_days_suggest_the_minimum_in_pieces(self):
+        product = self.yogurt(minimum_quantity=Decimal('800.00'))
+        self.move(product, PantryMovement.PURCHASE, 2, days_ago=2)
+        self.move(product, PantryMovement.CONSUME, 1, days_ago=1)
+        self.move(product, PantryMovement.CONSUME, 1, days_ago=0)
+
+        forecast = forecast_pantry_product(product, today=self.today)
+
+        # Stary model robił z tego 3600-4000 g (9-10 opakowań).
+        self.assertEqual(forecast.status, 'cold_start')
+        self.assertEqual(forecast.purchase_basis, 'minimum')
+        self.assertTrue(forecast.counts_packages)
+        self.assertTrue(forecast.is_due)
+        self.assertEqual(forecast.suggested_packages, 2)
+        self.assertEqual(forecast.suggested_quantity, Decimal('800.00'))
+        self.assertEqual(forecast.learning_events_left, 4)
+        self.assertEqual(forecast.learning_days_left, 25)
+
+    def test_learning_without_a_minimum_suggests_one_package(self):
+        product = self.yogurt(minimum_quantity=Decimal('0.00'))
+
+        forecast = forecast_pantry_product(product, today=self.today)
+
+        self.assertEqual(forecast.status, 'no_history')
+        self.assertEqual(forecast.suggested_packages, 1)
+
+    def test_learning_product_above_minimum_is_not_due(self):
+        product = self.yogurt(current_quantity=Decimal('1200.00'), current_package_count=3)
+        self.move(product, PantryMovement.CONSUME, 1, days_ago=1)
+
+        forecast = forecast_pantry_product(product, today=self.today)
+
+        self.assertFalse(forecast.is_due)
+        self.assertIsNone(forecast.buy_date)
+
+    def test_learning_needs_four_weeks_and_six_consumptions(self):
+        product = self.yogurt(current_quantity=Decimal('4000.00'), current_package_count=10)
+        for days_ago in range(0, 20, 2):  # 10 zużyć, ale tylko 19 dni
+            self.move(product, PantryMovement.CONSUME, 1, days_ago=days_ago)
+
+        forecast = forecast_pantry_product(product, today=self.today)
+
+        self.assertEqual(forecast.status, 'cold_start')
+        self.assertEqual(forecast.learning_events_left, 0)
+        self.assertEqual(forecast.learning_days_left, 9)
+
+    def weekly_history(self, product, bought_per_week):
+        # 5 tygodni: zakup 34, 27, ..., 6 dni temu i jedno opakowanie każdego dnia.
+        for week in range(5, 0, -1):
+            self.move(product, PantryMovement.PURCHASE, bought_per_week, days_ago=week * 7 - 1)
+        for days_ago in range(35):
+            self.move(product, PantryMovement.CONSUME, 1, days_ago=days_ago)
+
+    def test_ready_forecast_suggests_whole_packages(self):
+        product = self.yogurt(current_quantity=Decimal('1200.00'), current_package_count=3)
+        self.weekly_history(product, bought_per_week=7)
+
+        forecast = forecast_pantry_product(product, today=self.today, review_days=7)
+
+        # S = minimum 1 + 1/dzień x (7 dni + 2 dni wyprzedzenia) = 10 szt.; w domu 3.
+        self.assertEqual(forecast.status, 'ready')
+        self.assertTrue(forecast.counts_packages)
+        self.assertEqual(forecast.weekly_usage, Decimal('7.00'))
+        self.assertTrue(forecast.is_due)
+        self.assertEqual(forecast.suggested_packages, 7)
+        self.assertEqual(forecast.suggested_quantity, Decimal('2800.00'))
+
+    def test_suggestion_grows_gradually_from_previous_purchases(self):
+        product = self.yogurt(current_quantity=Decimal('1200.00'), current_package_count=3)
+        self.weekly_history(product, bought_per_week=2)
+
+        forecast = forecast_pantry_product(product, today=self.today, review_days=7)
+
+        # Potrzeba 7, ale dotąd kupowaliście po 2: maksymalnie 1,5 x 2 = 3.
+        self.assertEqual(forecast.suggested_packages, 3)
+
+    def test_growth_limit_never_goes_below_the_minimum(self):
+        product = self.yogurt(minimum_quantity=Decimal('2000.00'))
+        self.weekly_history(product, bought_per_week=1)
+
+        forecast = forecast_pantry_product(product, today=self.today, review_days=7)
+
+        self.assertTrue(forecast.at_or_below_minimum)
+        self.assertGreaterEqual(forecast.suggested_packages, 5)
+
+    def test_negative_stock_correction_counts_when_rebuilding_the_history(self):
+        product = PantryProduct.objects.create(
+            created_by=self.user, name='Ryż', unit=PantryProduct.UNIT_GRAM,
+            current_quantity=Decimal('100.00'), minimum_quantity=Decimal('0.00'),
+        )
+        # Wczoraj korekta z 1100 g na 100 g, przedtem zapas był cały czas.
+        PantryMovement.objects.create(
+            product=product, movement_type=PantryMovement.ADJUST,
+            quantity=Decimal('-1000.00'), occurred_on=self.today - timedelta(days=1),
+        )
+        PantryMovement.objects.create(
+            product=product, movement_type=PantryMovement.CONSUME,
+            quantity=Decimal('100.00'), occurred_on=self.today - timedelta(days=10),
+        )
+
+        forecast = forecast_pantry_product(product, today=self.today)
+
+        # Przed korektą ryż był w domu, więc 11 dni obserwacji, a nie 2.
+        self.assertEqual(forecast.history_days, 11)
+
+    def test_shopping_interval_is_the_median_gap_between_shopping_days(self):
+        saturdays = [self.today - timedelta(days=7 * week) for week in range(6)]
+        self.assertEqual(infer_shopping_interval(saturdays), 7)
+        twice_a_week = sorted(
+            [self.today - timedelta(days=7 * week) for week in range(4)]
+            + [self.today - timedelta(days=7 * week + 3) for week in range(4)]
+        )
+        self.assertIn(infer_shopping_interval(twice_a_week), (3, 4))
+        self.assertEqual(infer_shopping_interval(saturdays[:2]), 7)
 
 
 class PantryBarcodeTests(TestCase):
@@ -1688,7 +1851,8 @@ class ShoppingListTests(TestCase):
         self.assertEqual(shopping_list.created_by, self.user)
         item = shopping_list.items.get(name='Ryż')
         self.assertEqual(item.pantry_product, low_product)
-        self.assertEqual(item.quantity, Decimal('0.80'))
+        # Bez historii zużycia proponujemy próg minimalny ze spiżarni (1 kg).
+        self.assertEqual(item.quantity, Decimal('1.00'))
         self.assertFalse(shopping_list.items.filter(name='Makaron').exists())
         # Spiżarnia jest wspólna: brakujący produkt dodany przez domownika też trafia na listę.
         self.assertEqual(shopping_list.items.get(name='Cukier').quantity, Decimal('1.00'))
@@ -3397,7 +3561,7 @@ class ProductGroupTests(TestCase):
 
         self.assertEqual(suggestion['unit'], PantryProduct.UNIT_PIECE)
         self.assertGreaterEqual(suggestion['quantity'], Decimal('2'))
-        self.assertEqual(suggestion['reason'], 'Brak w spiżarni')
+        self.assertTrue(suggestion['reason'].startswith('Brak w spiżarni'))
         self.assertEqual(suggestion['group'], self.group)
         self.assertIsNone(suggestion['product'])
 
@@ -3930,6 +4094,74 @@ class PantryProductToShoppingListTests(TestCase):
         self.assertEqual(products['Mąka']['add_unit'], 'szt')
         self.assertEqual(products['Mąka']['add_unit_label'], 'szt.')
         self.assertEqual(products['Olej luzem']['add_unit'], 'l')
+
+
+class AutomaticListInPiecesTests(TestCase):
+    """Automatyczna lista: produkty w opakowaniach w sztukach, nauka = minimum."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='auto-szt', password='pass12345')
+        self.client.login(username='auto-szt', password='pass12345')
+        self.yogurt = PantryProduct.objects.create(
+            created_by=self.user, name='Jogurt grecki', category='Nabiał', barcode='5902222222222',
+            unit=PantryProduct.UNIT_GRAM, quantity_per_scan=Decimal('400.00'),
+            current_quantity=Decimal('0.00'), current_package_count=0,
+            minimum_quantity=Decimal('800.00'),
+        )
+        today = timezone.localdate()
+        PantryMovement.objects.create(
+            product=self.yogurt, movement_type=PantryMovement.PURCHASE,
+            quantity=Decimal('800.00'), package_count=2, occurred_on=today - timedelta(days=2),
+        )
+        for days_ago in (1, 0):
+            PantryMovement.objects.create(
+                product=self.yogurt, movement_type=PantryMovement.CONSUME,
+                quantity=Decimal('400.00'), package_count=1,
+                occurred_on=today - timedelta(days=days_ago),
+            )
+
+    def test_packaged_product_is_suggested_in_pieces_equal_to_the_minimum(self):
+        from cooking.views import build_shopping_suggestions
+
+        suggestion = next(item for item in build_shopping_suggestions() if item['name'] == 'Jogurt grecki')
+
+        self.assertEqual(suggestion['unit'], PantryProduct.UNIT_PIECE)
+        self.assertEqual(suggestion['unit_label'], 'szt.')
+        self.assertEqual(suggestion['quantity'], Decimal('2'))
+        self.assertIn('prognoza się uczy', suggestion['reason'])
+
+    def test_generated_list_item_restocks_whole_packages(self):
+        self.client.post(reverse('cooking:generate-shopping-list'))
+        item = ShoppingList.objects.get().items.get(name='Jogurt grecki')
+
+        self.assertEqual(item.unit, PantryProduct.UNIT_PIECE)
+        self.assertEqual(item.quantity, Decimal('2.00'))
+
+        with transaction.atomic():
+            warning = set_item_purchased(item, True, user=self.user)
+            item.save()
+
+        self.assertEqual(warning, '')
+        self.yogurt.refresh_from_db()
+        self.assertEqual(self.yogurt.current_quantity, Decimal('800.00'))
+        self.assertEqual(self.yogurt.current_package_count, 2)
+
+    def test_shopping_page_shows_pieces_instead_of_grams(self):
+        response = self.client.get(reverse('cooking:shopping-list'))
+
+        self.assertContains(response, 'Jogurt grecki')
+        self.assertNotContains(response, '800 g')
+        self.assertContains(response, 'prognoza się uczy')
+
+    def test_pantry_card_explains_the_learning_phase(self):
+        self.yogurt.current_quantity = Decimal('2000.00')
+        self.yogurt.current_package_count = 5
+        self.yogurt.save()
+
+        response = self.client.get(reverse('cooking:pantry'))
+
+        self.assertContains(response, 'Uczę się zużycia')
+        self.assertContains(response, 'Do prognozy potrzebuję jeszcze 4 zużycia i 25 dni obserwacji.')
 
 
 class ShopLayoutTests(TestCase):

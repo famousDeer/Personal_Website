@@ -41,9 +41,10 @@ Demo image:
   every user, even after the product is deleted (see [Pantry catalog](#pantry-catalog))
 - Fixed Polish category list for food and household goods (drugstore, cleaning,
   paper, pets, medicines), mapped from the Open Facts taxonomies
-- Consumption forecasting per product: regular and intermittent demand models,
-  outlier capping, weekday factors, confidence scoring and a suggested buy date
-  aligned to your usual shopping day
+- Consumption forecasting per product, counted in packages: a learning phase that
+  suggests the pantry minimum until there is enough history, then regular and
+  intermittent demand models over 180 days, outlier capping and a periodic-review
+  order quantity for your shopping rhythm (see [Automatic shopping list](#automatic-shopping-list))
 - Shopping lists generated from the forecast or entered by hand; checking off a
   product that is in the pantry restocks it immediately, completing a list adds the rest
 - Offline shopping mode for phones (installable web app): check off, add, change
@@ -400,6 +401,40 @@ product restocks two packages (2 × `quantity_per_scan`), and unchecking takes t
 again. An item that still carries a weight (`500 g`) keeps working as before, and
 pieces of a product with no package size are refused with an explanation instead of
 being stored as a wrong number.
+
+## Automatic shopping list
+
+`build_shopping_suggestions` (cooking/views.py) puts on the list every product (or
+product group) that is empty, at or below its minimum, or that the forecast says will
+run short before the next shopping trip. The forecast lives in
+`cooking/services/pantry_forecast.py`:
+
+1. **Pieces, not grams.** A scanned product (barcode or counted packages) is forecast
+   in packages: 400 g of yoghurt is 1 szt. The list says `Jogurt 2 szt.`, and checking
+   it off restocks two packages.
+2. **Learning phase.** Until a product has 28 days of history and 6 days with
+   consumption, nothing is extrapolated: it goes on the list only when it reaches the
+   minimum, and the quantity is that minimum (at least one package). The pantry card
+   says how many consumptions and days are still missing.
+3. **Pace.** After that: average use per day *while the product was in the house* (days
+   with no stock are not "zero use"), from the last 180 days, recent days weighted more
+   (30-day half-life) and pulled towards the long-run mean so one busy week does not
+   swing it. Occasional products use a separate frequency × size model.
+4. **How much.** A periodic-review (R, S) policy: top the stock up to
+   `S = minimum + pace × (R + buy-ahead days) + safety stock`, where R is the
+   household's shopping rhythm (median gap between shopping days, 2–14, default 7) and
+   the safety stock comes from how much use over such periods varied in the history.
+   Rounded up to whole packages.
+5. **No jumps.** A suggestion is at most 1.5 × the largest purchase of that product in
+   the last 90 days (but never below the minimum), so a rising need grows 2 → 3 → 5 → 8
+   instead of jumping.
+
+The parameters were tuned on a household simulation (weekly shopping for 36 weeks,
+40 random runs: yoghurt, milk, flour, toilet paper, ketchup, weekend-only beer and a
+product whose use doubles). The new model covers 98–100% of consumption, about the same
+as the old one, keeps less stock and made no oversized suggestion, where the old one
+proposed up to 23 packages while learning. Without a regular shopping day the old model
+dropped to 93–96% for yoghurt and milk and 86% for the beer; the new one stayed at 98–100%.
 
 ## Offline shopping mode
 

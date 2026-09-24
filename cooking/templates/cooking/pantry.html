@@ -447,54 +447,45 @@
                                                         <span>Zapas osiągnął ustawione minimum</span>
                                                         <strong>Uzupełnij teraz</strong>
                                                         <small>
-                                                            {% if forecast.status == 'no_history' %}Nie mamy jeszcze historii zużycia, dlatego sugestia opiera się na progu minimalnym.
-                                                            {% elif forecast.status == 'cold_start' %}Prognoza nadal się uczy, ale bieżący stan wymaga już uzupełnienia.
-                                                            {% else %}Zakup zabezpieczy zapas przed kolejnym cyklem zużycia.{% endif %}
+                                                            {% if forecast.is_learning %}Prognoza jeszcze się uczy, więc proponuję ilość równą progowi minimalnemu.
+                                                            {% else %}Tyle wystarczy do kolejnych zakupów za ok. {{ forecast.review_days|pl:"dzień,dni,dni" }}, z zapasem bezpieczeństwa.{% endif %}
                                                         </small>
                                                     </div>
                                                     <div class="pantry-forecast-signals" aria-label="Sugerowany zakup">
-                                                        {% if forecast.suggested_packages %}
-                                                            <span><i class="bi bi-bag-plus" aria-hidden="true"></i> Kup {{ forecast.suggested_packages }} opak.</span>
-                                                        {% elif forecast.suggested_quantity %}
-                                                            <span><i class="bi bi-bag-plus" aria-hidden="true"></i> Kup {{ forecast.suggested_quantity|qty }} {{ product.display_unit }}</span>
-                                                        {% endif %}
+                                                        <span><i class="bi bi-bag-plus" aria-hidden="true"></i> Kup {% if forecast.counts_packages %}{{ forecast.suggested_packages }} szt.{% else %}{{ forecast.suggested_quantity|qty }} {{ product.display_unit }}{% endif %}</span>
                                                     </div>
-                                                {% elif not forecast or forecast.status == 'no_history' %}
+                                                {% elif forecast.is_learning %}
                                                     <div class="pantry-forecast-learning">
-                                                        <span class="pantry-forecast-state-icon"><i class="bi bi-activity" aria-hidden="true"></i></span>
+                                                        <span class="pantry-forecast-state-icon"><i class="bi {% if forecast.event_count %}bi-hourglass-split{% else %}bi-activity{% endif %}" aria-hidden="true"></i></span>
                                                         <span>
                                                             <strong>Uczę się zużycia</strong>
-                                                            <small>Zeskanuj kilka zużyć, a wyznaczymy wiarygodny termin zakupu.</small>
-                                                        </span>
-                                                    </div>
-                                                {% elif forecast.status == 'cold_start' %}
-                                                    <div class="pantry-forecast-learning">
-                                                        <span class="pantry-forecast-state-icon"><i class="bi bi-hourglass-split" aria-hidden="true"></i></span>
-                                                        <span>
-                                                            <strong>{% if forecast.buy_date %}Orientacyjnie kup do {{ forecast.buy_date|date:"d.m" }}{% else %}Pierwsza prognoza w przygotowaniu{% endif %}</strong>
-                                                            <small>Mamy {{ forecast.event_count|pl:"zdarzenie,zdarzenia,zdarzeń" }} z {{ forecast.history_days|pl:"dnia,dni,dni" }}. Kolejne skany zwiększą pewność.</small>
+                                                            <small>
+                                                                Do prognozy potrzebuję jeszcze{% if forecast.learning_events_left %} {{ forecast.learning_events_left|pl:"zużycie,zużycia,zużyć" }}{% endif %}{% if forecast.learning_events_left and forecast.learning_days_left %} i{% endif %}{% if forecast.learning_days_left %} {{ forecast.learning_days_left|pl:"dzień,dni,dni" }} obserwacji{% endif %}.
+                                                                Do tego czasu produkt trafi na listę, gdy spadnie do minimum &ndash; w ilości równej minimum.
+                                                            </small>
                                                         </span>
                                                     </div>
                                                 {% else %}
                                                     <div class="pantry-forecast-main">
                                                         <span>
-                                                            {% if forecast.is_due %}Czas uzupełnić zapas
-                                                            {% else %}Kup najpóźniej{% endif %}
+                                                            {% if forecast.is_due %}Na najbliższe zakupy
+                                                            {% else %}Kup około{% endif %}
                                                         </span>
                                                         <strong>
-                                                            {% if forecast.is_due %}Kup teraz
+                                                            {% if forecast.is_due %}Kup {% if forecast.counts_packages %}{{ forecast.suggested_packages }} szt.{% else %}{{ forecast.suggested_quantity|qty }} {{ product.display_unit }}{% endif %}
                                                             {% elif forecast.buy_date %}{{ forecast.buy_date|date:"d.m" }}
                                                             {% else %}Termin nieustalony{% endif %}
                                                         </strong>
                                                         {% if forecast.minimum_date_from %}
                                                             <small>
-                                                                Minimum prawdopodobnie
+                                                                Zapas spadnie do minimum ok.
                                                                 {{ forecast.minimum_date_from|date:"d.m" }}{% if forecast.minimum_date_to and forecast.minimum_date_to != forecast.minimum_date_from %}–{{ forecast.minimum_date_to|date:"d.m" }}{% endif %}
                                                             </small>
                                                         {% endif %}
                                                     </div>
 
                                                     <div class="pantry-forecast-signals" aria-label="Szczegóły prognozy">
+                                                        <span><i class="bi bi-calendar-week" aria-hidden="true"></i> ok. {{ forecast.weekly_usage|qty }} {% if forecast.counts_packages %}szt.{% else %}{{ product.display_unit }}{% endif %} / tydzień</span>
                                                         {% if forecast.trend == 'rising' %}
                                                             <span class="is-rising"><i class="bi bi-graph-up-arrow" aria-hidden="true"></i> Zużycie rośnie{% if forecast.trend_percent != None %} o {{ forecast.trend_percent|floatformat:0 }}%{% endif %}</span>
                                                         {% elif forecast.trend == 'falling' %}
@@ -502,20 +493,14 @@
                                                         {% elif forecast.trend == 'stable' %}
                                                             <span><i class="bi bi-arrow-right" aria-hidden="true"></i> Tempo stabilne</span>
                                                         {% endif %}
-                                                        {% if forecast.suggested_packages %}
-                                                            <span><i class="bi bi-bag-plus" aria-hidden="true"></i> Kup {{ forecast.suggested_packages }} opak.</span>
-                                                        {% elif forecast.suggested_quantity %}
-                                                            <span><i class="bi bi-bag-plus" aria-hidden="true"></i> Kup {{ forecast.suggested_quantity|qty }} {{ product.display_unit }}</span>
-                                                        {% endif %}
                                                     </div>
 
                                                     <details class="pantry-forecast-details">
                                                         <summary>Skąd ta prognoza?</summary>
                                                         <p>
-                                                            Tempo {{ forecast.rate|floatformat:2 }} {{ product.display_unit }}/dzień,
-                                                            {{ forecast.event_count|pl:"zdarzenie,zdarzenia,zdarzeń" }} z {{ forecast.history_days|pl:"dnia,dni,dni" }}.
-                                                            {% if forecast.model == 'intermittent' %}Produkt jest używany nieregularnie, dlatego prognoza uwzględnia odstępy między użyciami.
-                                                            {% else %}Nowsze zużycia mają większy wpływ na termin niż starsze.{% endif %}
+                                                            {{ forecast.event_count|pl:"zużycie,zużycia,zużyć" }} z {{ forecast.history_days|pl:"dnia,dni,dni" }}, w których produkt był w domu; nowsze ważą więcej.
+                                                            {% if forecast.model == 'intermittent' %}Produkt jest używany co jakiś czas, więc liczę, jak często i ile naraz go ubywa.{% endif %}
+                                                            Zakup uzupełnia zapas do minimum plus zużycie do kolejnych zakupów (co ok. {{ forecast.review_days|pl:"dzień,dni,dni" }}) i zapas bezpieczeństwa, w pełnych opakowaniach.
                                                         </p>
                                                     </details>
                                                 {% endif %}

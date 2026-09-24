@@ -241,18 +241,18 @@ class PantryProduct(models.Model):
     def package_count_is_known(self):
         return self.tracks_packages
 
-    def _pantry_forecast(self, days=90):
+    def _pantry_forecast(self, days=180):
         from .services.pantry_forecast import forecast_pantry_product
 
         return forecast_pantry_product(self, max_history_days=max(int(days), 14))
 
-    def average_daily_consumption(self, days=90):
+    def average_daily_consumption(self, days=180):
         return self._pantry_forecast(days=days).rate
 
-    def projected_depletion_date(self, days=90):
+    def projected_depletion_date(self, days=180):
         return self._pantry_forecast(days=days).minimum_date_to
 
-    def suggested_restock_date(self, days=90):
+    def suggested_restock_date(self, days=180):
         return self._pantry_forecast(days=days).buy_date
 
 

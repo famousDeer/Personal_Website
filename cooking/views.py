@@ -52,7 +52,9 @@ from .services.product_catalog import (
     suggested_category_for_catalog_entry,
 )
 from .services.pantry_forecast import (
+    HISTORY_DAYS,
     forecast_pantry_products,
+    infer_shopping_interval,
     infer_typical_shopping_weekday,
 )
 from .services.pantry_editing import (
@@ -241,14 +243,38 @@ def get_household_typical_shopping_weekday():
     return infer_typical_shopping_weekday(purchase_dates)
 
 
+def get_household_shopping_interval():
+    """Co ile dni dom robi zakupy (z dni zakupów w ostatnich 90 dniach)."""
+    purchase_dates = PantryMovement.objects.filter(
+        movement_type=PantryMovement.PURCHASE,
+        occurred_on__gte=timezone.localdate() - timedelta(days=90),
+    ).values_list('occurred_on', flat=True).distinct()
+    return infer_shopping_interval(purchase_dates)
+
+
 def pantry_forecast_movements_prefetch(today):
     return Prefetch(
         'movements',
         queryset=PantryMovement.objects.filter(
-            occurred_on__gte=today - timedelta(days=89),
+            occurred_on__gte=today - timedelta(days=HISTORY_DAYS - 1),
         ).order_by('occurred_on', 'created_at'),
         to_attr='forecast_movements',
     )
+
+
+LEARNING_NOTE = 'prognoza się uczy, ilość = minimum'
+
+
+def _suggestion_reason(stock_status, forecast):
+    if stock_status == 'empty':
+        reason = 'Brak w spiżarni'
+    elif stock_status == 'low':
+        reason = 'Niski stan'
+    else:
+        reason = 'Prognoza: zabraknie przed kolejnymi zakupami'
+    if forecast.purchase_basis == 'minimum':
+        reason = f'{reason} · {LEARNING_NOTE}'
+    return reason
 
 
 def build_shopping_suggestions():
@@ -257,10 +283,15 @@ def build_shopping_suggestions():
     Produkt należący do grupy („ten sam jogurt, inna firma”) nie liczy się sam:
     o braku decyduje zapas całej grupy, liczony w opakowaniach. Dzięki temu
     pusty jogurt jednej firmy nie trafia na listę, gdy w lodówce stoją dwa inne.
+
+    Produkty kupowane w opakowaniach (jogurt 400 g, mleko 1 l) trafiają na
+    listę w sztukach: „Jogurt 2 szt.”, a nie „800 g”. Dopóki prognoza się
+    uczy, ilość to próg minimalny ze spiżarni (patrz services/pantry_forecast).
     """
     today = timezone.localdate()
     suggestions = []
     shopping_weekday = get_household_typical_shopping_weekday()
+    review_days = get_household_shopping_interval()
 
     products = list(PantryProduct.objects.select_related('group').prefetch_related(
         pantry_forecast_movements_prefetch(today),
@@ -277,37 +308,39 @@ def build_shopping_suggestions():
         subjects,
         today=today,
         shopping_weekday=shopping_weekday,
+        review_days=review_days,
     )
+    unit_labels = dict(PantryProduct.UNIT_CHOICES)
 
     for product in loose:
         forecast = forecasts[product.pk]
-        restock_due = forecast.is_due
-        if product.stock_status not in ['empty', 'low'] and not restock_due:
+        if product.stock_status not in ['empty', 'low'] and not forecast.is_due:
             continue
 
-        suggested_quantity = forecast.suggested_quantity
-        if suggested_quantity <= 0:
-            suggested_quantity = (
-                product.quantity_per_scan
-                if product.barcode or product.unit in [PantryProduct.UNIT_PIECE, PantryProduct.UNIT_PACKAGE]
-                else Decimal('1.00')
-            )
-
-        reason = 'Niski stan'
-        if product.current_quantity <= 0:
-            reason = 'Brak w spiżarni'
-        elif restock_due:
-            reason = 'Prognoza: uzupełnij teraz'
+        if forecast.counts_packages:
+            # Stan w gramach, ale w sklepie bierze się opakowania.
+            quantity = Decimal(max(forecast.suggested_packages, 1))
+            unit = PantryProduct.UNIT_PIECE
+        else:
+            quantity = forecast.suggested_quantity
+            if quantity <= 0:
+                quantity = (
+                    product.quantity_per_scan
+                    if product.unit in [PantryProduct.UNIT_PIECE, PantryProduct.UNIT_PACKAGE]
+                    else Decimal('1.00')
+                )
+            quantity = normalize_shopping_quantity(quantity, product.unit)
+            unit = product.unit
 
         suggestions.append({
             'product': product,
             'group': None,
             'name': product.name,
             'category': product.category,
-            'quantity': normalize_shopping_quantity(suggested_quantity, product.unit),
-            'unit': product.unit,
-            'unit_label': product.display_unit,
-            'reason': reason,
+            'quantity': quantity,
+            'unit': unit,
+            'unit_label': unit_labels.get(unit, unit),
+            'reason': _suggestion_reason(product.stock_status, forecast),
             'restock_date': forecast.buy_date,
             'forecast': forecast,
         })
@@ -323,12 +356,6 @@ def build_shopping_suggestions():
         packages = forecast.suggested_packages or int(forecast.suggested_quantity)
         packages = max(packages, max(group.minimum_packages - in_stock, 0), 1)
 
-        reason = 'Niski stan'
-        if in_stock <= 0:
-            reason = 'Brak w spiżarni'
-        elif forecast.is_due:
-            reason = 'Prognoza: uzupełnij teraz'
-
         suggestions.append({
             'product': None,
             'group': group,
@@ -336,8 +363,8 @@ def build_shopping_suggestions():
             'category': group.category,
             'quantity': Decimal(packages),
             'unit': PantryProduct.UNIT_PIECE,
-            'unit_label': dict(PantryProduct.UNIT_CHOICES)[PantryProduct.UNIT_PIECE],
-            'reason': reason,
+            'unit_label': unit_labels[PantryProduct.UNIT_PIECE],
+            'reason': _suggestion_reason(status, forecast),
             'restock_date': forecast.buy_date,
             'forecast': forecast,
         })
@@ -837,6 +864,7 @@ class PantryListView(LoginRequiredMixin, View):
             all_products,
             today=today,
             shopping_weekday=shopping_weekday,
+            review_days=get_household_shopping_interval(),
         )
 
         # Marka w grupie z zapasem nie jest brakiem - tak samo liczy lista zakupów.
