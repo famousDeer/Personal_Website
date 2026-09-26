@@ -1,4 +1,4 @@
-{% load static %}<!DOCTYPE html>
+{% load static ui %}<!DOCTYPE html>
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
@@ -20,7 +20,7 @@
          [document.querySelector('meta[name=app-build]').content,
           getComputedStyle(document.documentElement).getPropertyValue('--ui-build')]
     {% endcomment %}
-    <meta name="app-build" content="2026-09-25-a">
+    <meta name="app-build" content="2026-09-26-a">
 
     <title>{% block title %}Finanse{% endblock %}</title>
 
@@ -169,10 +169,12 @@
 <main class="app-shell my-4 page-content">
     {% if messages %}
         {% for message in messages %}
-            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
-                {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Zamknij"></button>
-            </div>
+            {% if 'undo' not in message.extra_tags %}
+                <div class="alert alert-{{ message.level_tag }} alert-dismissible fade show app-message" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Zamknij"></button>
+                </div>
+            {% endif %}
         {% endfor %}
     {% endif %}
     {% block content %}{% endblock %}
@@ -202,7 +204,43 @@
 </nav>
 {% endif %}
 
+{% comment %} Dymki na dole ekranu. „Usunięto · Cofnij” po usunięciu (utils/undo.py):
+   obiekt znika od razu, a przycisk przywraca go przez kilka minut. Obsługa
+   w static/js/app-actions.js. {% endcomment %}
+<div class="app-toasts" id="app-toasts" aria-live="polite">
+    {% for message in messages %}
+        {% if 'undo' in message.extra_tags %}
+            <div class="app-toast is-{{ message.level_tag }}" role="status" data-toast-timeout="8000">
+                <span class="app-toast-text">{{ message }}</span>
+                <form method="post" action="{% url 'undo' message|undo_token %}" data-partial="auto">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button type="submit" class="app-toast-action">Cofnij</button>
+                </form>
+                <button type="button" class="app-toast-close" data-toast-close aria-label="Zamknij">
+                    <i class="bi bi-x-lg" aria-hidden="true"></i>
+                </button>
+            </div>
+        {% endif %}
+    {% endfor %}
+</div>
+
+{% comment %} Jeden arkusz potwierdzenia dla rzadkich, nieodwracalnych akcji
+   (formularze z data-confirm). Na telefonie wysuwa się od dołu, na komputerze
+   jest oknem wyrastającym z przycisku. {% endcomment %}
+<dialog class="app-confirm" id="app-confirm" aria-labelledby="app-confirm-title" aria-describedby="app-confirm-detail">
+    <div class="app-confirm-body">
+        <h2 class="app-confirm-title" id="app-confirm-title" data-confirm-title></h2>
+        <p class="app-confirm-detail" id="app-confirm-detail" data-confirm-detail></p>
+    </div>
+    <div class="app-confirm-actions">
+        <button type="button" class="btn btn-danger" data-confirm-accept>Usuń</button>
+        <button type="button" class="btn btn-outline-secondary" data-confirm-cancel>Anuluj</button>
+    </div>
+</dialog>
+
 <script src="{% static 'vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
+<script src="{% static 'js/app-actions.js' %}"></script>
 <script src="{% static 'vendor/flatpickr/flatpickr.min.js' %}"></script>
 <script src="{% static 'vendor/flatpickr/pl.js' %}"></script>
 <script>

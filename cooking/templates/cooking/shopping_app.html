@@ -90,10 +90,15 @@
 
     <main class="sa-main" data-list aria-live="off"></main>
 
-    <section class="sa-add" data-add-panel hidden aria-label="Dodaj produkt">
+    {% comment %} Arkusz „Dodaj produkt”: wysuwa się spod przycisku na sprężynie, tło się
+       przyciemnia, a arkusz można zsunąć palcem za uchwyt albo nagłówek.
+       Obsługa w shopping-app.js („Arkusz dodawania”). {% endcomment %}
+    <div class="sa-scrim" data-add-scrim hidden></div>
+    <section class="sa-add" data-add-panel hidden role="dialog" aria-modal="true" aria-labelledby="sa-add-title">
+        <div class="sa-sheet-grip" data-sheet-grip aria-hidden="true"><span></span></div>
         <form class="sa-add-form" data-add-form autocomplete="off" novalidate>
             <div class="sa-add-head">
-                <strong>Dodaj produkt</strong>
+                <strong id="sa-add-title">Dodaj produkt</strong>
                 <button type="button" class="sa-icon-button" data-add-close aria-label="Zamknij">
                     <i class="bi bi-x-lg" aria-hidden="true"></i>
                 </button>

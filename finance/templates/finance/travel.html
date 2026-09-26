@@ -184,11 +184,9 @@
                                 <a href="{% url 'finance:edit_travel' destination.id %}" class="btn btn-light btn-sm rounded-circle" data-bs-toggle="tooltip" title="Edytuj">
                                     <i class="bi bi-pencil-fill"></i>
                                 </a>
-                                <button type="button"
+                                <button type="submit" form="delete-travel-{{ destination.id }}"
                                         class="btn btn-light btn-sm rounded-circle text-danger"
-                                        title="Usuń"
-                                        data-bs-toggle="modal"
-                                        data-bs-target="#deleteTravelModal-{{ destination.id }}">
+                                        title="Usuń" aria-label="Usuń termin: {{ destination.destination_name }}">
                                     <i class="bi bi-trash-fill"></i>
                                 </button>
                             </div>
@@ -253,33 +251,16 @@
     {% endif %}
 </div>
 
+{% comment %} Usunięcie terminu potwierdza wspólny arkusz (data-confirm). {% endcomment %}
 {% for group in location_groups.object_list %}
     {% for destination in group.destinations %}
-        <div class="modal fade" id="deleteTravelModal-{{ destination.id }}" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
-                    <div class="modal-body p-4 text-center">
-                        <div class="icon-box bg-danger-subtle text-danger mx-auto mb-3 rounded-circle" style="width: 80px; height: 80px;">
-                            <i class="bi bi-exclamation-triangle-fill fs-1"></i>
-                        </div>
-                        <h4 class="fw-bold mb-2">Usuń termin w {{ destination.destination_name }}?</h4>
-                        <p class="text-muted mb-4">
-                            {{ destination.start_date|date:"d.m.Y" }} - {{ destination.end_date|date:"d.m.Y" }},
-                            <strong class="text-dark">{{ destination.country.name }}</strong><br>
-                            <span class="small text-danger">Wydatki powiązane z tą podróżą pozostaną.</span>
-                        </p>
-
-                        <div class="d-flex gap-2 justify-content-center">
-                            <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Anuluj</button>
-                            <form action="{% url 'finance:delete_travel' destination.id %}" method="post">
-                                {% csrf_token %}
-                                <button type="submit" class="btn btn-danger rounded-pill px-4 fw-bold">Tak, usuń</button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <form method="post" action="{% url 'finance:delete_travel' destination.id %}" id="delete-travel-{{ destination.id }}" hidden
+              data-confirm="Usunąć termin w {{ destination.destination_name }}?"
+              data-confirm-detail="{{ destination.start_date|date:'d.m.Y' }} – {{ destination.end_date|date:'d.m.Y' }}, {{ destination.country.name }}. Wydatki w finansach zostaną."
+              data-confirm-action="Usuń termin">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        </form>
     {% endfor %}
 {% endfor %}
 

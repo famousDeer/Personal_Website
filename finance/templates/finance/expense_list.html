@@ -137,11 +137,9 @@
                                    class="btn btn-light btn-sm text-primary rounded-circle" title="Edytuj">
                                     <i class="bi bi-pencil-fill"></i>
                                 </a>
-                                <button type="button" 
-                                        class="btn btn-light btn-sm text-danger rounded-circle ms-1" 
-                                        title="Usuń" 
-                                        data-bs-toggle="modal" 
-                                        data-bs-target="#deleteExpenseModal-{{ expense.id }}">
+                                <button type="submit" form="delete-expense-{{ expense.id }}"
+                                        class="btn btn-light btn-sm text-danger rounded-circle ms-1"
+                                        title="Usuń" aria-label="Usuń wydatek: {{ expense.title }}">
                                     <i class="bi bi-trash-fill"></i>
                                 </button>
                             </div>
@@ -201,11 +199,9 @@
                                class="btn btn-outline-primary rounded-start-pill" title="Edytuj">
                                 <i class="bi bi-pencil"></i>
                             </a>
-                            <button type="button" 
-                                    class="btn btn-outline-danger rounded-end-pill" 
-                                    title="Usuń"
-                                    data-bs-toggle="modal" 
-                                    data-bs-target="#deleteExpenseModal-{{ expense.id }}">
+                            <button type="submit" form="delete-expense-{{ expense.id }}"
+                                    class="btn btn-outline-danger rounded-end-pill"
+                                    title="Usuń" aria-label="Usuń wydatek: {{ expense.title }}">
                                 <i class="bi bi-trash"></i>
                             </button>
                         </div>
@@ -327,7 +323,7 @@
                                 <a href="{% url 'finance:edit_expense' expense.id %}?{{ request.GET.urlencode }}" class="btn btn-light btn-sm text-primary rounded-circle" title="Edytuj">
                                     <i class="bi bi-pencil-fill"></i>
                                 </a>
-                                <button type="button" class="btn btn-light btn-sm text-danger rounded-circle ms-1" title="Usuń" data-bs-toggle="modal" data-bs-target="#deleteInvestmentModal-{{ expense.id }}">
+                                <button type="submit" form="delete-expense-{{ expense.id }}" class="btn btn-light btn-sm text-danger rounded-circle ms-1" title="Usuń" aria-label="Usuń inwestycję: {{ expense.title }}">
                                     <i class="bi bi-trash-fill"></i>
                                 </button>
                             </div>
@@ -392,7 +388,7 @@
                             <a href="{% url 'finance:edit_expense' expense.id %}?{{ request.GET.urlencode }}" class="btn btn-outline-primary rounded-start-pill" title="Edytuj">
                                 <i class="bi bi-pencil"></i>
                             </a>
-                            <button type="button" class="btn btn-outline-danger rounded-end-pill" title="Usuń" data-bs-toggle="modal" data-bs-target="#deleteInvestmentModal-{{ expense.id }}">
+                            <button type="submit" form="delete-expense-{{ expense.id }}" class="btn btn-outline-danger rounded-end-pill" title="Usuń" aria-label="Usuń inwestycję: {{ expense.title }}">
                                 <i class="bi bi-trash"></i>
                             </button>
                         </div>
@@ -410,67 +406,20 @@
         </div>
     </div>
 </div>
+{% comment %} Usuwanie bez pytania: wydatek znika od razu, a dymek na dole ma
+   „Cofnij” (utils/undo.py). Przyciski w tabeli i na kartach wysyłają te
+   formularze atrybutem form="…". Pole next wraca na tę samą stronę listy,
+   z tymi samymi filtrami. {% endcomment %}
 {% for expense in expenses.object_list %}
-<div class="modal fade" id="deleteExpenseModal-{{ expense.id }}" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
-            <div class="modal-body p-4 text-center">
-                
-                <div class="icon-box bg-danger-subtle text-danger mx-auto mb-3 rounded-circle" style="width: 80px; height: 80px; display: flex; align-items: center; justify-content: center;">
-                    <i class="bi bi-exclamation-triangle-fill fs-1"></i>
-                </div>
-                
-                <h4 class="fw-bold mb-2">Usuń wydatek?</h4>
-                <p class="text-muted mb-4">
-                    Czy na pewno chcesz usunąć wydatek z dnia 
-                    <strong class="text-dark">{{ expense.date|date:"d.m.Y" }}</strong> 
-                    o kwocie <strong class="text-danger">-{{ expense.cost|floatformat:2|intcomma }} zł</strong>? <br>
-                    <span class="small text-danger">Tej operacji nie można cofnąć.</span>
-                </p>
-
-                <div class="d-flex gap-2 justify-content-center">
-                    <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Anuluj</button>
-                    
-                    <form action="{% url 'finance:delete_expense' expense.id %}" method="post">
-                        {% csrf_token %}
-                        <button type="submit" class="btn btn-danger rounded-pill px-4 fw-bold">
-                            Tak, usuń
-                        </button>
-                    </form>
-                </div>
-
-            </div>
-        </div>
-    </div>
-</div>
+<form method="post" action="{% url 'finance:delete_expense' expense.id %}" id="delete-expense-{{ expense.id }}" hidden>
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+</form>
 {% endfor %}
 {% for expense in investments %}
-<div class="modal fade" id="deleteInvestmentModal-{{ expense.id }}" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
-            <div class="modal-body p-4 text-center">
-                <div class="icon-box bg-info-subtle text-info mx-auto mb-3 rounded-circle" style="width: 80px; height: 80px; display: flex; align-items: center; justify-content: center;">
-                    <i class="bi bi-piggy-bank fs-1"></i>
-                </div>
-                <h4 class="fw-bold mb-2">Usuń inwestycję?</h4>
-                <p class="text-muted mb-4">
-                    Czy na pewno chcesz usunąć inwestycję z dnia
-                    <strong class="text-dark">{{ expense.date|date:"d.m.Y" }}</strong>
-                    o kwocie <strong class="text-info">-{{ expense.cost|floatformat:2|intcomma }} zł</strong>?<br>
-                    <span class="small text-danger">Tej operacji nie można cofnąć.</span>
-                </p>
-                <div class="d-flex gap-2 justify-content-center">
-                    <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Anuluj</button>
-                    <form action="{% url 'finance:delete_expense' expense.id %}" method="post">
-                        {% csrf_token %}
-                        <button type="submit" class="btn btn-danger rounded-pill px-4 fw-bold">
-                            Tak, usuń
-                        </button>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+<form method="post" action="{% url 'finance:delete_expense' expense.id %}" id="delete-expense-{{ expense.id }}" hidden>
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+</form>
 {% endfor %}
 {% endblock %}

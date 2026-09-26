@@ -117,7 +117,10 @@
                     <a href="{% url 'cooking:edit-shopping-list' shopping_list.id %}" class="btn btn-sm btn-soft-neutral" title="Edytuj nazwę">
                         <i class="bi bi-pencil"></i>
                     </a>
-                    <form method="post" action="{% url 'cooking:delete-shopping-list' shopping_list.id %}" onsubmit="return confirm('Usunąć tę listę zakupów?');">
+                    <form method="post" action="{% url 'cooking:delete-shopping-list' shopping_list.id %}"
+                          data-confirm="Usunąć listę „{{ shopping_list.title }}”?"
+                          data-confirm-detail="Znikną też wszystkie jej pozycje. Spiżarni to nie zmieni."
+                          data-confirm-action="Usuń listę">
                         {% csrf_token %}
                         <button type="submit" class="btn btn-sm btn-outline-danger" title="Usuń listę">
                             <i class="bi bi-trash"></i>
@@ -152,7 +155,10 @@
                         {{ shopping_list.title }}
                     </a>
                     <span class="text-muted small">{{ shopping_list.updated_at|date:"d.m.Y H:i" }}</span>
-                    <form method="post" action="{% url 'cooking:delete-shopping-list' shopping_list.id %}" onsubmit="return confirm('Usunąć tę zakończoną listę?');">
+                    <form method="post" action="{% url 'cooking:delete-shopping-list' shopping_list.id %}"
+                          data-confirm="Usunąć zakończoną listę „{{ shopping_list.title }}”?"
+                          data-confirm-detail="Zniknie z historii zakupów. Zapasy w spiżarni zostają."
+                          data-confirm-action="Usuń listę">
                         {% csrf_token %}
                         <button type="submit" class="btn btn-sm btn-outline-danger" title="Usuń listę">
                             <i class="bi bi-trash"></i>

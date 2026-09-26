@@ -125,6 +125,8 @@
         countdown: null,
         retryCallback: null,
         changed: false,
+        changedProducts: new Set(),
+        needsReload: false,
         photoFile: null,
         photoPreviewUrl: null,
         photoPickerPending: false,
@@ -1747,6 +1749,7 @@
             });
             state.actionLocked = false;
             state.changed = true;
+            state.changedProducts.add(data.product.id);
             updateVisibleStock(data.product);
             showSuccess(data);
         } catch (error) {
@@ -1826,6 +1829,8 @@
             });
             state.actionLocked = false;
             state.changed = true;
+            // Nowy produkt nie ma jeszcze kafelka - tu potrzebne jest pełne odświeżenie.
+            state.needsReload = true;
             showSuccess(data);
         } catch (error) {
             state.actionLocked = false;
@@ -1942,6 +1947,7 @@
             }
             state.actionLocked = false;
             state.changed = true;
+            state.changedProducts.add(data.product.id);
             state.product = data.product;
             announce('Zdjęcie produktu zostało zapisane lokalnie. Wybierz akcję dla produktu.');
             presentKnownProduct(data.product, state.catalog, state.autoActionTimeoutMs);
@@ -1978,7 +1984,19 @@
         state.photoPickerInput = null;
         state.pendingPhotoRequest = null;
         if (state.changed) {
-            window.location.reload();
+            // Zmienione kafelki i podsumowanie podmieniają się bez przeładowania
+            // i bez powrotu na górę strony. Nowy produkt wymaga przeładowania.
+            const ids = [...state.changedProducts];
+            state.changed = false;
+            state.changedProducts.clear();
+            if (state.needsReload || !window.AppPartial || !ids.length) {
+                state.needsReload = false;
+                window.location.reload();
+            } else {
+                const cards = ids.map((id) => `#product-${id}`).join(', ');
+                window.AppPartial.refresh(`${cards}, #pantry-metrics, [data-panel-badges]`)
+                    .catch(() => window.location.reload());
+            }
         }
     });
 
@@ -2188,14 +2206,54 @@
         button.addEventListener('click', startScanner);
     });
 
-    selectAll('[data-manual-movement-form]').forEach((form) => {
-        form.addEventListener('submit', () => {
-            form.setAttribute('aria-busy', 'true');
-            selectAll('button[type="submit"]', form).forEach((button) => {
-                button.disabled = true;
-            });
-        });
-    });
+    // Operacje ręczne wysyłają się w tle (data-partial, static/js/app-actions.js).
+    // Stan na kafelku zmienia się od razu, zanim serwer odpowie; odpowiedź
+    // podmienia kafelek na dokładny (prognoza, znacznik stanu, grupa).
+    if (window.AppPartial) {
+        const numberFormat = new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 2 });
+        window.AppPartial.optimistic['pantry-movement'] = (form) => {
+            const card = form.closest('.pantry-product-card');
+            if (!card) {
+                return null;
+            }
+            const type = select('input[name="movement_type"]', form)?.value;
+            const packagesInput = select('input[name="package_count"]', form);
+            const quantityInput = select('input[name="quantity"]', form);
+            const sign = type === 'consume' ? -1 : 1;
+            const size = Number(card.dataset.scanSize) || 0;
+            let packages = Number(card.dataset.stockPackages) || 0;
+            let quantity = Number(card.dataset.stockQuantity) || 0;
+            if (packagesInput) {
+                const count = Number(packagesInput.value) || 0;
+                packages = Math.max(0, packages + sign * count);
+                quantity = Math.max(0, quantity + sign * count * size);
+            } else if (quantityInput) {
+                quantity = Math.max(0, quantity + sign * (Number(String(quantityInput.value).replace(',', '.')) || 0));
+            }
+            if (quantity === 0) {
+                packages = 0;
+            }
+            const packageEl = select('[data-product-package-stock]', card);
+            const quantityEl = select('[data-product-stock]', card);
+            const before = [packageEl?.textContent, quantityEl?.textContent];
+            if (packageEl && packagesInput && packageEl.textContent.trim() !== '—') {
+                packageEl.textContent = numberFormat.format(packages);
+            }
+            if (quantityEl) {
+                quantityEl.textContent = numberFormat.format(quantity);
+            }
+            card.classList.add('is-stock-changed');
+            return () => {
+                if (packageEl) {
+                    packageEl.textContent = before[0];
+                }
+                if (quantityEl) {
+                    quantityEl.textContent = before[1];
+                }
+                card.classList.remove('is-stock-changed');
+            };
+        };
+    }
 
     elements.retryButton.addEventListener('click', () => {
         const retry = state.retryCallback;

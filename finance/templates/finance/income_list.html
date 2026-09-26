@@ -117,11 +117,9 @@
                                        data-bs-toggle="tooltip" title="Edytuj">
                                         <i class="bi bi-pencil-fill"></i>
                                     </a>
-                                    <button type="button" 
-                                            class="btn btn-light btn-sm text-danger rounded-circle ms-1" 
-                                            title="Usuń" 
-                                            data-bs-toggle="modal" 
-                                            data-bs-target="#deleteIncomeModal-{{ income.id }}">
+                                    <button type="submit" form="delete-income-{{ income.id }}"
+                                            class="btn btn-light btn-sm text-danger rounded-circle ms-1"
+                                            title="Usuń" aria-label="Usuń przychód: {{ income.title }}">
                                         <i class="bi bi-trash-fill"></i>
                                     </button>
                                 </div>
@@ -176,11 +174,9 @@
                                        class="btn btn-outline-primary rounded-start-pill" title="Edytuj">
                                         <i class="bi bi-pencil"></i>
                                     </a>
-                                    <button type="button" 
-                                            class="btn btn-outline-danger rounded-end-pill" 
-                                            title="Usuń"
-                                            data-bs-toggle="modal" 
-                                            data-bs-target="#deleteIncomeModal-{{ income.id }}">
+                                    <button type="submit" form="delete-income-{{ income.id }}"
+                                            class="btn btn-outline-danger rounded-end-pill"
+                                            title="Usuń" aria-label="Usuń przychód: {{ income.title }}">
                                         <i class="bi bi-trash"></i>
                                     </button>
                                 </div>
@@ -240,38 +236,11 @@
     </div>
     {% endif %}
 </div>
+{% comment %} Usuwanie bez pytania, z „Cofnij” w dymku (utils/undo.py). {% endcomment %}
 {% for income in incomes %}
-<div class="modal fade" id="deleteIncomeModal-{{ income.id }}" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
-            <div class="modal-body p-4 text-center">
-                
-                <div class="icon-box bg-danger-subtle text-danger mx-auto mb-3 rounded-circle" style="width: 80px; height: 80px; display: flex; align-items: center; justify-content: center;">
-                    <i class="bi bi-exclamation-triangle-fill fs-1"></i>
-                </div>
-                
-                <h4 class="fw-bold mb-2">Usuń przychód?</h4>
-                <p class="text-muted mb-4">
-                    Czy na pewno chcesz usunąć przychód z dnia 
-                    <strong class="text-dark">{{ income.date|date:"d.m.Y" }}</strong> 
-                    o kwocie <strong class="text-success">{{ income.amount }} zł</strong>? <br>
-                    <span class="small text-danger">Tej operacji nie można cofnąć.</span>
-                </p>
-
-                <div class="d-flex gap-2 justify-content-center">
-                    <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Anuluj</button>
-                    
-                    <form action="{% url 'finance:delete_income' income.id %}" method="post">
-                        {% csrf_token %}
-                        <button type="submit" class="btn btn-danger rounded-pill px-4 fw-bold">
-                            Tak, usuń
-                        </button>
-                    </form>
-                </div>
-
-            </div>
-        </div>
-    </div>
-</div>
+<form method="post" action="{% url 'finance:delete_income' income.id %}" id="delete-income-{{ income.id }}" hidden>
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+</form>
 {% endfor %}
 {% endblock %}

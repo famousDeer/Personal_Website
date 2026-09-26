@@ -114,9 +114,15 @@
                                             <li><a class="dropdown-item" href="{% url 'cooking:edit-recipe' recipe.id %}"><i class="bi bi-pencil me-2"></i>Edytuj</a></li>
                                             <li><hr class="dropdown-divider"></li>
                                             <li>
-                                                <button type="button" class="dropdown-item text-danger" data-bs-toggle="modal" data-bs-target="#deleteModal-{{ recipe.id }}">
-                                                    <i class="bi bi-trash me-2"></i>Usuń
-                                                </button>
+                                                <form method="post" action="{% url 'cooking:delete-recipe' recipe.id %}"
+                                                      data-confirm="Usunąć przepis „{{ recipe.title }}”?"
+                                                      data-confirm-detail="Znikną też jego kroki i składniki. Tego nie da się cofnąć."
+                                                      data-confirm-action="Usuń przepis">
+                                                    {% csrf_token %}
+                                                    <button type="submit" class="dropdown-item text-danger">
+                                                        <i class="bi bi-trash me-2"></i>Usuń
+                                                    </button>
+                                                </form>
                                             </li>
                                         </ul>
                                     </div>
@@ -149,31 +155,6 @@
             </article>
         </div>
 
-        {% if user.is_authenticated and user == recipe.user %}
-            <div class="modal fade" id="deleteModal-{{ recipe.id }}" tabindex="-1" aria-hidden="true">
-                <div class="modal-dialog modal-dialog-centered">
-                    <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
-                        <div class="modal-body p-4 text-center">
-                            <div class="icon-box bg-danger-subtle text-danger mx-auto mb-3 rounded-circle" style="width: 80px; height: 80px; display: flex; align-items: center; justify-content: center;">
-                                <i class="bi bi-exclamation-triangle-fill fs-1"></i>
-                            </div>
-                            <h4 class="fw-bold mb-2">Usuń przepis?</h4>
-                            <p class="text-muted mb-4">
-                                Czy na pewno chcesz usunąć przepis <strong class="text-dark">{{ recipe.title }}</strong>?
-                                <br><span class="small text-danger">Tej operacji nie można cofnąć.</span>
-                            </p>
-                            <div class="d-flex gap-2 justify-content-center">
-                                <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Anuluj</button>
-                                <form action="{% url 'cooking:delete-recipe' recipe.id %}" method="post">
-                                    {% csrf_token %}
-                                    <button type="submit" class="btn btn-danger rounded-pill px-4 fw-bold">Tak, usuń</button>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        {% endif %}
     {% empty %}
         <div class="col-12">
             <div class="card border-0 shadow-sm action-card">

@@ -199,14 +199,14 @@
                         produkt utworzy się od nowa.
                     {% endif %}
                 </p>
-                <form method="post" action="{% url 'cooking:delete-pantry-product' product.id %}">
+                {% comment %} Potwierdzenie jednym wspólnym arkuszem (data-confirm, static/js/app-actions.js)
+                   zamiast pola „Tak, usuń”. Arkusz ustawia confirm=1, którego wymaga serwer. {% endcomment %}
+                <form method="post" action="{% url 'cooking:delete-pantry-product' product.id %}"
+                      data-confirm="Usunąć „{{ product.name }}” ze spiżarni?"
+                      data-confirm-detail="Zniknie produkt, jego zdjęcie i historia ({{ movement_count_label }}), dla całego domu. Tego nie da się cofnąć."
+                      data-confirm-action="Usuń produkt">
                     {% csrf_token %}
-                    <div class="form-check mb-2">
-                        <input class="form-check-input" type="checkbox" value="1" id="confirm-delete" name="confirm" required>
-                        <label class="form-check-label" for="confirm-delete">
-                            Tak, usuń &bdquo;{{ product.name }}&rdquo; ze spiżarni
-                        </label>
-                    </div>
+                    <input type="hidden" name="confirm" value="" data-confirm-flag>
                     {% if product.barcode %}
                         <div class="form-check mb-3">
                             <input class="form-check-input" type="checkbox" value="1" id="forget-barcode" name="forget_barcode">

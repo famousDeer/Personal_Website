@@ -1,0 +1,232 @@
+{% load l10n pantry_extras ui %}
+{% comment %}
+Kafelek produktu w spiżarni. Osobny plik, bo po operacji ręcznej (zużycie,
+dodanie) strona podmienia tylko ten kafelek zamiast przeładowywać całość
+(data-partial, static/js/app-actions.js). id="product-N" jest też kotwicą:
+bez JavaScriptu serwer wraca pod #product-N, więc przeglądarka przewija do
+produktu zamiast na górę strony.
+
+Kontekst: card (słownik z PantryListView), product = card.product.
+{% endcomment %}
+<article class="pantry-product-card is-{{ product.stock_status }}"
+         id="product-{{ product.id }}"
+         data-pantry-product-id="{{ product.id }}"
+         data-group-id="{{ product.group_id|default_if_none:'' }}"
+         data-stock-packages="{{ product.current_package_count|unlocalize }}"
+         data-stock-quantity="{{ product.current_quantity|unlocalize }}"
+         data-scan-size="{{ product.quantity_per_scan|unlocalize }}"
+         data-product-package-size="{{ product.quantity_per_scan }}"
+         data-product-unit="{{ product.unit }}">
+    <div class="pantry-product-card-head">
+        <div class="pantry-product-visual">
+            {% if product.image %}
+                <img class="pantry-product-thumb"
+                     src="{% url 'cooking:pantry-product-image' product.id %}"
+                     alt="Zdjęcie produktu {{ product.name }}" loading="lazy">
+            {% elif card.catalog_entry.image %}
+                <img class="pantry-product-thumb"
+                     src="{% url 'cooking:pantry-catalog-image' card.catalog_entry.id %}"
+                     alt="Zdjęcie produktu {{ product.name }}" loading="lazy">
+            {% else %}
+                <span class="pantry-product-thumb-placeholder" aria-hidden="true">
+                    <i class="bi bi-box-seam"></i>
+                </span>
+            {% endif %}
+        </div>
+        <div class="pantry-product-title min-w-0">
+            <div class="pantry-product-title-row">
+                <h4>{{ product.name }}</h4>
+                <a class="pantry-product-edit" href="{% url 'cooking:edit-pantry-product' product.id %}"
+                   title="Edytuj lub usuń produkt" aria-label="Edytuj lub usuń {{ product.name }}">
+                    <i class="bi bi-pencil" aria-hidden="true"></i>
+                </a>
+                {% if product.stock_status == 'empty' %}
+                    <span class="pantry-stock-badge is-empty">Brak</span>
+                {% elif product.stock_status == 'low' %}
+                    <span class="pantry-stock-badge is-low">Niski stan</span>
+                {% else %}
+                    <span class="pantry-stock-badge is-ok">W zapasie</span>
+                {% endif %}
+            </div>
+            <p>
+                {% if card.catalog_entry.brand %}<span>{{ card.catalog_entry.brand }}</span>{% endif %}
+                {% if product.barcode %}<span><i class="bi bi-upc" aria-hidden="true"></i> {{ product.barcode }}</span>{% endif %}
+                {% if product.group %}
+                    <span title="O braku decyduje cała grupa: {{ product.group.packages_in_stock }} z {{ product.group.minimum_packages }} opak.">
+                        <i class="bi bi-collection" aria-hidden="true"></i>
+                        {{ product.group.name }} · {{ product.group.packages_in_stock }} opak.
+                    </span>
+                {% endif %}
+            </p>
+        </div>
+    </div>
+
+    <div class="pantry-product-stock-grid">
+        <div class="pantry-product-stock-primary">
+            <span class="pantry-product-stock-label">Opakowania</span>
+            <strong>
+                <span data-product-package-stock>{% if product.package_count_is_known %}{{ product.current_package_count }}{% else %}—{% endif %}</span>
+                <small>szt.</small>
+            </strong>
+            <span class="pantry-product-stock-hint">{% if product.package_count_is_known %}pełne opakowania{% else %}liczba niepodana{% endif %}</span>
+        </div>
+        <div class="pantry-product-stock-total">
+            <span class="pantry-product-stock-label">Łącznie</span>
+            <strong data-product-total-stock>
+                <span data-product-stock>{{ product.current_quantity|qty }}</span>
+                <small>{{ product.display_unit }}</small>
+            </strong>
+            <span class="pantry-product-stock-hint">
+                1 opak. = {{ product.quantity_per_scan|qty }} {{ product.display_unit }}
+            </span>
+        </div>
+    </div>
+
+    {% with forecast=card.forecast %}
+        <section class="pantry-product-forecast is-{{ forecast.status|default:'no_history' }}{% if not card.group_covered %}{% if forecast.is_due or forecast.at_or_below_minimum %} is-due{% endif %}{% endif %}"
+                 aria-label="Prognoza zakupu produktu {{ product.name }}">
+            <div class="pantry-forecast-heading">
+                <span class="pantry-forecast-label">
+                    <i class="bi bi-stars" aria-hidden="true"></i>
+                    Prognoza zakupu
+                </span>
+                {% if forecast.status == 'ready' %}
+                    <span class="pantry-confidence-badge is-{{ forecast.confidence }}"
+                          title="Wynik pewności: {{ forecast.confidence_score|floatformat:0 }}%">
+                        {% if forecast.confidence == 'high' %}Wysoka pewność
+                        {% elif forecast.confidence == 'medium' %}Średnia pewność
+                        {% else %}Niska pewność{% endif %}
+                    </span>
+                {% endif %}
+            </div>
+
+            {% if card.group_covered %}
+                <div class="pantry-forecast-learning" data-group-covered>
+                    <span class="pantry-forecast-state-icon"><i class="bi bi-collection" aria-hidden="true"></i></span>
+                    <span>
+                        <strong>Zapas jest w grupie</strong>
+                        <small>{{ product.group.name }}: {{ card.group_packages }} opak. w domu, minimum {{ product.group.minimum_packages }}. O zakupie decyduje cała grupa.</small>
+                    </span>
+                </div>
+            {% elif forecast.at_or_below_minimum %}
+                <div class="pantry-forecast-main">
+                    <span>Zapas osiągnął ustawione minimum</span>
+                    <strong>Uzupełnij teraz</strong>
+                    <small>
+                        {% if forecast.is_learning %}Prognoza jeszcze się uczy, więc proponuję ilość równą progowi minimalnemu.
+                        {% else %}Tyle wystarczy do kolejnych zakupów za ok. {{ forecast.review_days|pl:"dzień,dni,dni" }}, z zapasem bezpieczeństwa.{% endif %}
+                    </small>
+                </div>
+                <div class="pantry-forecast-signals" aria-label="Sugerowany zakup">
+                    <span><i class="bi bi-bag-plus" aria-hidden="true"></i> Kup {% if forecast.counts_packages %}{{ forecast.suggested_packages }} szt.{% else %}{{ forecast.suggested_quantity|qty }} {{ product.display_unit }}{% endif %}</span>
+                </div>
+            {% elif forecast.is_learning %}
+                <div class="pantry-forecast-learning">
+                    <span class="pantry-forecast-state-icon"><i class="bi {% if forecast.event_count %}bi-hourglass-split{% else %}bi-activity{% endif %}" aria-hidden="true"></i></span>
+                    <span>
+                        <strong>Uczę się zużycia</strong>
+                        <small>
+                            Do prognozy potrzebuję jeszcze{% if forecast.learning_events_left %} {{ forecast.learning_events_left|pl:"zużycie,zużycia,zużyć" }}{% endif %}{% if forecast.learning_events_left and forecast.learning_days_left %} i{% endif %}{% if forecast.learning_days_left %} {{ forecast.learning_days_left|pl:"dzień,dni,dni" }} obserwacji{% endif %}.
+                            Do tego czasu produkt trafi na listę, gdy spadnie do minimum &ndash; w ilości równej minimum.
+                        </small>
+                    </span>
+                </div>
+            {% else %}
+                <div class="pantry-forecast-main">
+                    <span>
+                        {% if forecast.is_due %}Na najbliższe zakupy
+                        {% else %}Kup około{% endif %}
+                    </span>
+                    <strong>
+                        {% if forecast.is_due %}Kup {% if forecast.counts_packages %}{{ forecast.suggested_packages }} szt.{% else %}{{ forecast.suggested_quantity|qty }} {{ product.display_unit }}{% endif %}
+                        {% elif forecast.buy_date %}{{ forecast.buy_date|date:"d.m" }}
+                        {% else %}Termin nieustalony{% endif %}
+                    </strong>
+                    {% if forecast.minimum_date_from %}
+                        <small>
+                            Zapas spadnie do minimum ok.
+                            {{ forecast.minimum_date_from|date:"d.m" }}{% if forecast.minimum_date_to and forecast.minimum_date_to != forecast.minimum_date_from %}–{{ forecast.minimum_date_to|date:"d.m" }}{% endif %}
+                        </small>
+                    {% endif %}
+                </div>
+
+                <div class="pantry-forecast-signals" aria-label="Szczegóły prognozy">
+                    <span><i class="bi bi-calendar-week" aria-hidden="true"></i> ok. {{ forecast.weekly_usage|qty }} {% if forecast.counts_packages %}szt.{% else %}{{ product.display_unit }}{% endif %} / tydzień</span>
+                    {% if forecast.trend == 'rising' %}
+                        <span class="is-rising"><i class="bi bi-graph-up-arrow" aria-hidden="true"></i> Zużycie rośnie{% if forecast.trend_percent != None %} o {{ forecast.trend_percent|floatformat:0 }}%{% endif %}</span>
+                    {% elif forecast.trend == 'falling' %}
+                        <span class="is-falling"><i class="bi bi-graph-down-arrow" aria-hidden="true"></i> Zużycie spada{% if forecast.trend_percent != None %} o {{ forecast.trend_percent|floatformat:0 }}%{% endif %}</span>
+                    {% elif forecast.trend == 'stable' %}
+                        <span><i class="bi bi-arrow-right" aria-hidden="true"></i> Tempo stabilne</span>
+                    {% endif %}
+                </div>
+
+                <details class="pantry-forecast-details" id="forecast-why-{{ product.id }}">
+                    <summary>Skąd ta prognoza?</summary>
+                    <p>
+                        {{ forecast.event_count|pl:"zużycie,zużycia,zużyć" }} z {{ forecast.history_days|pl:"dnia,dni,dni" }}, w których produkt był w domu; nowsze ważą więcej.
+                        {% if forecast.model == 'intermittent' %}Produkt jest używany co jakiś czas, więc liczę, jak często i ile naraz go ubywa.{% endif %}
+                        Zakup uzupełnia zapas do minimum plus zużycie do kolejnych zakupów (co ok. {{ forecast.review_days|pl:"dzień,dni,dni" }}) i zapas bezpieczeństwa, w pełnych opakowaniach.
+                    </p>
+                </details>
+            {% endif %}
+        </section>
+    {% endwith %}
+
+    <details class="pantry-product-manual" id="manual-{{ product.id }}">
+        <summary>
+            <span><i class="bi bi-sliders" aria-hidden="true"></i> Operacje ręczne</span>
+            <small>gdy nie możesz skanować</small>
+        </summary>
+        <div class="pantry-product-manual-body">
+            <form method="post" action="{% url 'cooking:pantry-movement' product.id %}" class="pantry-inline-form" data-manual-movement-form
+                  data-partial="#product-{{ product.id }}, #pantry-metrics, [data-panel-badges]{% if product.group_id %}, [data-group-id=&quot;{{ product.group_id }}&quot;]{% endif %}"
+                  data-optimistic="pantry-movement">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <input type="hidden" name="movement_type" value="consume">
+                <input type="hidden" name="operation_id" value="{{ card.manual_consume_id }}">
+                <label class="visually-hidden" for="consume-{{ product.id }}">Ilość do zużycia</label>
+                <div class="input-group">
+                    <span class="input-group-text">−</span>
+                    {% if product.tracks_packages %}
+                        <input id="consume-{{ product.id }}" type="number" name="package_count"
+                               step="1" min="1" max="9999"
+                               class="form-control" inputmode="numeric" placeholder="Liczba opakowań" required>
+                        <span class="input-group-text">opak.</span>
+                    {% else %}
+                        <input id="consume-{{ product.id }}" type="number" name="quantity"
+                               step="0.01" min="0.01" max="99999999.99"
+                               class="form-control" inputmode="decimal" placeholder="Ilość" required>
+                        <span class="input-group-text">{{ product.display_unit }}</span>
+                    {% endif %}
+                    <button class="btn btn-outline-danger" type="submit" id="consume-submit-{{ product.id }}">Zużyj</button>
+                </div>
+            </form>
+            <form method="post" action="{% url 'cooking:pantry-movement' product.id %}" class="pantry-inline-form" data-manual-movement-form
+                  data-partial="#product-{{ product.id }}, #pantry-metrics, [data-panel-badges]{% if product.group_id %}, [data-group-id=&quot;{{ product.group_id }}&quot;]{% endif %}"
+                  data-optimistic="pantry-movement">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <input type="hidden" name="movement_type" value="purchase">
+                <input type="hidden" name="operation_id" value="{{ card.manual_purchase_id }}">
+                <label class="visually-hidden" for="purchase-{{ product.id }}">Ilość do dodania</label>
+                <div class="input-group">
+                    <span class="input-group-text">+</span>
+                    {% if product.tracks_packages %}
+                        <input id="purchase-{{ product.id }}" type="number" name="package_count"
+                               step="1" min="1" max="9999"
+                               class="form-control" inputmode="numeric" placeholder="Liczba opakowań" required>
+                        <span class="input-group-text">opak.</span>
+                    {% else %}
+                        <input id="purchase-{{ product.id }}" type="number" name="quantity"
+                               step="0.01" min="0.01" max="99999999.99"
+                               class="form-control" inputmode="decimal" placeholder="Ilość" required>
+                        <span class="input-group-text">{{ product.display_unit }}</span>
+                    {% endif %}
+                    <button class="btn btn-outline-success" type="submit" id="purchase-submit-{{ product.id }}">Dodaj</button>
+                </div>
+            </form>
+        </div>
+    </details>
+</article>

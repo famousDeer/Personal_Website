@@ -22,6 +22,9 @@
                 class="btn btn-outline-secondary btn-icon table-dropdown-btn"
                 data-edit-url="{% url 'cars:edit' car.id%}"
                 data-delete-url="{% url 'cars:delete' car.id%}"
+                data-delete-confirm="Usunąć {{ car.brand }} {{ car.model }}?"
+                data-delete-detail="Razem z autem znikną tankowania, serwisy i opony. Tego nie da się cofnąć."
+                data-delete-action="Usuń auto"
                 type="button" aria-label="Edytuj lub usuń samochód">
                 <i class="bi bi-three-dots-vertical"></i>
             </button>
@@ -484,39 +487,13 @@
     </button>
 </div>
 
-<div id="confirmDeletePopover"
-     class="shadow border rounded-4 bg-white p-3"
-     style="
-        position: fixed;
-        display: none;
-        z-index: 10000;
-        width: 260px;
-     ">
-
-    <div class="d-flex align-items-center mb-2">
-        <i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>
-        <strong>Usunąć element?</strong>
-    </div>
-
-    <p class="small text-muted mb-3">
-        Tej operacji nie można cofnąć.
-    </p>
-
-    <div class="d-flex justify-content-end gap-2">
-        <button id="cancelDeleteBtn"
-                class="btn btn-sm btn-light rounded-pill px-3">
-            Anuluj
-        </button>
-
-        <form id="confirmDeleteForm" method="post">
-            {% csrf_token %}
-            <button type="submit"
-                    class="btn btn-sm btn-danger rounded-pill px-3">
-                Usuń
-            </button>
-        </form>
-    </div>
-</div>
+{% comment %} Usuwanie z menu "⋮". Wpisy (tankowanie, serwis, opony) znikają od razu,
+   a dymek ma "Cofnij" (utils/undo.py). Samo auto potwierdza wspólny arkusz
+   (data-confirm), bo z nim znika cała historia. {% endcomment %}
+<form id="dropdownDeleteForm" method="post" hidden>
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+</form>
 
 <style>
     /* Dark mode fix dla Tabs Container */
@@ -540,7 +517,7 @@
     }
     
     /* Styl dla globalnego dropdowna - ważne żeby był na wierzchu */
-    #globalDropdown, #confirmDeletePopover {
+    #globalDropdown {
         position: fixed; /* Fixed względem okna przeglądarki, nie tabeli */
         z-index: 9999;
     }
@@ -560,18 +537,27 @@
 document.addEventListener("DOMContentLoaded", function () {
 
     const dropdown = document.getElementById("globalDropdown");
-    const confirmBox = document.getElementById("confirmDeletePopover");
 
     const editBtn = document.getElementById("dropdownEdit");
     const deleteBtn = document.getElementById("dropdownDelete");
+    const deleteForm = document.getElementById("dropdownDeleteForm");
 
-    const cancelBtn = document.getElementById("cancelDeleteBtn");
-    const deleteForm = document.getElementById("confirmDeleteForm");
+    // Zakładka w adresie (#tab=service): po usunięciu albo cofnięciu strona
+    // wraca do tej samej zakładki, a nie do "Tankowania".
+    const tabFromHash = (window.location.hash.match(/tab=(\w+)/) || [])[1];
+    const initialTab = tabFromHash && document.getElementById(`${tabFromHash}-tab`);
+    if (initialTab && window.bootstrap) {
+        bootstrap.Tab.getOrCreateInstance(initialTab).show();
+    }
+    document.querySelectorAll('#carTabs [data-bs-toggle="tab"]').forEach((tab) => {
+        tab.addEventListener('shown.bs.tab', () => {
+            const name = tab.id.replace(/-tab$/, '');
+            history.replaceState(null, '', `${window.location.pathname}${window.location.search}#tab=${name}`);
+        });
+    });
 
-    // Funkcja pomocnicza do ukrywania wszystkiego
     function hideAll() {
         dropdown.style.display = "none";
-        confirmBox.style.display = "none";
     }
 
     document.querySelectorAll(".table-dropdown-btn").forEach(btn => {
@@ -626,54 +612,31 @@ document.addEventListener("DOMContentLoaded", function () {
             
             newDeleteBtn.addEventListener("click", (ev) => {
                 ev.stopPropagation();
-                dropdown.style.display = "none"; // Schowaj menu
-
-                // Pozycjonowanie okienka potwierdzenia (podobnie jak menu)
-                confirmBox.style.visibility = "hidden";
-                confirmBox.style.display = "block";
-                
-                const confirmWidth = confirmBox.offsetWidth;
-                const confirmHeight = confirmBox.offsetHeight;
-                
-                // Pozycjonowanie ConfirmBox (centrowanie względem przycisku lub ekranu na mobile)
-                let confirmLeft = rect.right - confirmWidth;
-                if (confirmLeft < 10) confirmLeft = 10; // Zabezpieczenie lewej krawędzi
-                
-                // Flip dla ConfirmBox
-                let confirmTop = rect.bottom + 5;
-                if ((windowHeight - rect.bottom) < confirmHeight) {
-                     confirmTop = rect.top - confirmHeight - 5;
-                }
-
-                // Na bardzo małych ekranach wycentruj na środku ekranu
-                if (windowWidth < 400) {
-                    confirmBox.style.left = "50%";
-                    confirmBox.style.top = "50%";
-                    confirmBox.style.transform = "translate(-50%, -50%)";
-                } else {
-                    confirmBox.style.left = confirmLeft + "px";
-                    confirmBox.style.top = confirmTop + "px";
-                    confirmBox.style.transform = "none";
-                }
-
-                confirmBox.style.visibility = "visible";
+                dropdown.style.display = "none";
                 deleteForm.action = btn.dataset.deleteUrl;
+                if (btn.dataset.deleteConfirm) {
+                    deleteForm.dataset.confirm = btn.dataset.deleteConfirm;
+                    deleteForm.dataset.confirmDetail = btn.dataset.deleteDetail || '';
+                    deleteForm.dataset.confirmAction = btn.dataset.deleteAction || 'Usuń';
+                } else {
+                    delete deleteForm.dataset.confirm;
+                    delete deleteForm.dataset.confirmDetail;
+                    delete deleteForm.dataset.confirmAction;
+                }
+                if (typeof deleteForm.requestSubmit === 'function') {
+                    deleteForm.requestSubmit();
+                } else {
+                    deleteForm.submit();
+                }
             });
-            
+
             // Zaktualizuj referencję do przycisku delete (bo go sklonowaliśmy)
             // (W tym prostym skrypcie nie jest to konieczne, bo pobieramy go po ID ponownie przy następnym kliknięciu w 3 kropki, ale dla porządku warto wiedzieć)
         });
     });
 
-    // Anuluj usuwanie
-    cancelBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        hideAll();
-    });
-
     // Kliknięcie wewnątrz nie zamyka
     dropdown.addEventListener("click", e => e.stopPropagation());
-    confirmBox.addEventListener("click", e => e.stopPropagation());
 
     // Kliknięcie gdziekolwiek indziej zamyka
     document.addEventListener("click", () => {

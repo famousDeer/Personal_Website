@@ -6,12 +6,29 @@ from django.http import HttpResponse
 from django.utils import timezone
 from django.utils.text import slugify
 from decimal import Decimal
-from .models import Cars, CarService
+from django.urls import reverse
+
+from .models import CarFuelConsumption, Cars, CarService
 from .forms import CarForm, FuelForm, ServiceForm, ServicePartFormSet, TyreForm, TyreUsageForm
 from .pdf_utils import build_service_history_pdf
+from utils.navigation import redirect_back
+from utils.undo import delete_with_undo
 
 
 SERVICE_FORM_TEMPLATE = 'cars/service_form.html'
+
+
+def recalculate_after_restore(objects):
+    """Po „Cofnij” (utils/undo.py): spalanie liczy się od nowa z przywróconym tankowaniem."""
+    car_ids = {obj.car_id for obj in objects if isinstance(obj, CarFuelConsumption)}
+    for car in Cars.objects.filter(pk__in=car_ids):
+        recalculate_fuel_consumptions(car)
+
+
+def dashboard_redirect_back(request, car, tab):
+    """Powrót na kartę auta w tej samej zakładce (#tab=...) i w tym samym miejscu."""
+    dashboard_url = reverse('cars:dashboard', kwargs={'car_id': car.pk})
+    return redirect_back(request, dashboard_url, anchor=f'tab={tab}', prefix=dashboard_url)
 
 
 def recalculate_fuel_consumptions(car):
@@ -235,8 +252,12 @@ class DeleteServiceView(LoginRequiredMixin, View):
     def post(self, request, car_id, service_id):
         car = get_object_or_404(Cars, id=car_id, user=request.user)
         service = get_object_or_404(car.services, id=service_id)
-        service.delete()
-        return redirect('cars:dashboard', car_id=car.id)
+        label = service.service_type or 'serwis'
+        delete_with_undo(
+            request, service, f'Usunięto wpis: {label}.',
+            restored_message=f'Przywrócono wpis: {label}.', anchor='tab=service',
+        )
+        return dashboard_redirect_back(request, car, 'service')
 
 # 10. DODAWANIE OPON
 class AddTyresView(LoginRequiredMixin, View):
@@ -277,8 +298,12 @@ class DeleteTyresView(LoginRequiredMixin, View):
     def post(self, request, car_id, tyre_id):
         car = get_object_or_404(Cars, id=car_id, user=request.user)
         tyre = get_object_or_404(car.tyres, id=tyre_id)
-        tyre.delete()
-        return redirect('cars:dashboard', car_id=car.id)
+        label = tyre.brand or 'komplet opon'
+        delete_with_undo(
+            request, tyre, f'Usunięto opony: {label}.',
+            restored_message=f'Przywrócono opony: {label}.', anchor='tab=tyres',
+        )
+        return dashboard_redirect_back(request, car, 'tyres')
 
 
 class AddTyreUsageView(LoginRequiredMixin, View):
@@ -334,8 +359,11 @@ class DeleteTyreUsageView(LoginRequiredMixin, View):
         car = get_object_or_404(Cars, id=car_id, user=request.user)
         tyre = get_object_or_404(car.tyres, id=tyre_id)
         usage = get_object_or_404(tyre.usage_periods, id=usage_id)
-        usage.delete()
-        return redirect('cars:dashboard', car_id=car.id)
+        delete_with_undo(
+            request, usage, 'Usunięto sezon opon.',
+            restored_message='Przywrócono sezon opon.', anchor='tab=tyres',
+        )
+        return dashboard_redirect_back(request, car, 'tyres')
 
 # 13. EDYTOWANIE WPISU O PALIWIE
 class EditFuelView(LoginRequiredMixin, View):
@@ -366,9 +394,13 @@ class DeleteFuelView(LoginRequiredMixin, View):
     def post(self, request, car_id, fuel_id):
         car = get_object_or_404(Cars, id=car_id, user=request.user)
         fuel_log = get_object_or_404(car.fuel_consumptions, id=fuel_id)
-        fuel_log.delete()
+        delete_with_undo(
+            request, fuel_log, f'Usunięto tankowanie z {fuel_log.date:%d.%m.%Y}.',
+            after_restore='cars.views.recalculate_after_restore',
+            restored_message='Przywrócono tankowanie.', anchor='tab=fuel',
+        )
         recalculate_fuel_consumptions(car)
-        return redirect('cars:dashboard', car_id=car.id)
+        return dashboard_redirect_back(request, car, 'fuel')
 
 
 class ServiceHistoryPdfView(LoginRequiredMixin, View):

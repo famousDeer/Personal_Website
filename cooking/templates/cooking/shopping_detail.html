@@ -5,7 +5,12 @@
 {% block title %}{{ shopping_list.title }}{% endblock %}
 
 {% block content_cooking %}
-<div class="shopping-detail-shell animate-fade-in">
+{% comment %} Akcje na pozycjach (odhaczenie, zmiana, usunięcie, dodanie) wysyłają się
+   w tle i podmieniają tylko te fragmenty strony - bez przeładowania i powrotu
+   na górę (data-partial, static/js/app-actions.js). Bez JavaScriptu działają
+   zwyczajnie i wracają pod kotwicę pozycji. {% endcomment %}
+<div class="shopping-detail-shell animate-fade-in"
+     data-partial-default="#shopping-summary, #shopping-complete, #shopping-items, #shopping-pantry-rows">
     <header class="u-page-head">
         <div class="u-page-head-main">
             <a class="u-back" href="{% url 'cooking:shopping-list' %}" aria-label="Wróć do list" title="Wróć do list">
@@ -37,7 +42,10 @@
             <a href="{% url 'cooking:edit-shopping-list' shopping_list.id %}" class="btn btn-outline-secondary btn-icon" title="Edytuj nazwę i sklep" aria-label="Edytuj nazwę i sklep">
                 <i class="bi bi-pencil"></i>
             </a>
-            <form method="post" action="{% url 'cooking:delete-shopping-list' shopping_list.id %}" onsubmit="return confirm('Usunąć tę listę zakupów?');" class="u-page-actions-icon">
+            <form method="post" action="{% url 'cooking:delete-shopping-list' shopping_list.id %}" class="u-page-actions-icon"
+                  data-confirm="Usunąć listę „{{ shopping_list.title }}”?"
+                  data-confirm-detail="Znikną też wszystkie jej pozycje. Spiżarni to nie zmieni."
+                  data-confirm-action="Usuń listę">
                 {% csrf_token %}
                 <button type="submit" class="btn btn-outline-danger btn-icon" title="Usuń listę" aria-label="Usuń listę">
                     <i class="bi bi-trash"></i>
@@ -46,7 +54,7 @@
         </div>
     </header>
 
-    <section class="shopping-summary-panel animate-fade-in-up">
+    <section class="shopping-summary-panel animate-fade-in-up" id="shopping-summary">
         <div class="shopping-summary-main">
             <div>
                 <span class="small text-uppercase fw-bold text-muted">Postęp</span>
@@ -81,7 +89,7 @@
                     <button class="btn btn-sm btn-outline-success" type="button" data-bs-toggle="collapse" data-bs-target="#shopping-add-item" aria-expanded="{% if not items %}true{% else %}false{% endif %}">
                         <i class="bi bi-plus-lg me-1"></i> Dodaj
                     </button>
-                    <form method="post" action="{% url 'cooking:complete-shopping-list' shopping_list.id %}">
+                    <form method="post" action="{% url 'cooking:complete-shopping-list' shopping_list.id %}" id="shopping-complete">
                         {% csrf_token %}
                         <button class="btn btn-sm btn-primary" type="submit" {% if purchased_count == 0 %}disabled{% endif %}>
                             <i class="bi bi-bag-check me-1"></i> Do spiżarni
@@ -91,8 +99,10 @@
             </div>
 
             <div class="collapse {% if not items %}show{% endif %}" id="shopping-add-item">
-                <form method="post" action="{% url 'cooking:add-shopping-item' shopping_list.id %}" class="shopping-add-form shopping-add-form-compact">
+                <form method="post" action="{% url 'cooking:add-shopping-item' shopping_list.id %}" class="shopping-add-form shopping-add-form-compact"
+                      data-partial="auto" data-partial-reset>
                     {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
                     <div>
                         <label class="form-label small text-uppercase fw-bold text-muted">Produkt</label>
                         <input type="text" name="name" class="form-control" list="shopping-product-suggestions" required>
@@ -147,7 +157,7 @@
                            aria-label="Szukaj w spiżarni" data-pantry-filter>
                 </div>
 
-                <div class="shopping-pantry-grid" data-pantry-rows>
+                <div class="shopping-pantry-grid" id="shopping-pantry-rows" data-pantry-rows>
                     {% for row in pantry_rows %}
                         <div class="shopping-pantry-row {% if row.on_list %}is-on-list{% endif %}" data-pantry-name="{{ row.product.name|lower }}">
                             <div class="shopping-pantry-body">
@@ -171,8 +181,10 @@
                             {% if row.on_list %}
                                 <span class="shopping-pantry-tag"><i class="bi bi-cart-check me-1"></i>na liście</span>
                             {% else %}
-                                <form method="post" action="{% url 'cooking:add-pantry-product-to-shopping-list' shopping_list.id row.product.id %}">
+                                <form method="post" action="{% url 'cooking:add-pantry-product-to-shopping-list' shopping_list.id row.product.id %}"
+                                      data-partial="auto">
                                     {% csrf_token %}
+                                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
                                     <button class="btn btn-sm btn-success shopping-pantry-add" type="submit"
                                             title="Dopisz do listy: {{ row.add_name }}">
                                         <i class="bi bi-cart-plus"></i>
@@ -206,14 +218,17 @@
         {% endfor %}
     </datalist>
 
+    <div id="shopping-items">
     {% if items %}
         <section class="shopping-detail-list animate-fade-in-up">
             {% for item in items %}
-                <article class="shopping-item-card {% if item.is_purchased %}is-purchased{% endif %}">
+                <article class="shopping-item-card {% if item.is_purchased %}is-purchased{% endif %}" id="shopping-item-{{ item.id }}" data-flip>
                     <div class="shopping-item-view">
                         {% if shopping_list.status == 'active' %}
-                            <form method="post" action="{% url 'cooking:toggle-shopping-item' item.id %}" class="shopping-toggle-form">
+                            <form method="post" action="{% url 'cooking:toggle-shopping-item' item.id %}" class="shopping-toggle-form"
+                                  data-partial="auto" data-optimistic="shopping-toggle">
                                 {% csrf_token %}
+                                <input type="hidden" name="next" value="{{ request.get_full_path }}">
                                 <button type="submit" class="shopping-check-button {% if item.is_purchased %}is-checked{% endif %}" title="{% if item.is_purchased %}Oznacz jako niekupione{% elif item.pantry_product_id %}Oznacz jako kupione – zapas w spiżarni uzupełni się od razu{% else %}Oznacz jako kupione{% endif %}">
                                     <i class="bi {% if item.is_purchased %}bi-check-lg{% else %}bi-circle{% endif %}"></i>
                                 </button>
@@ -242,9 +257,11 @@
                                 <button class="btn btn-sm btn-soft-neutral" type="button" data-bs-toggle="collapse" data-bs-target="#shopping-edit-item-{{ item.id }}" aria-expanded="false" title="Edytuj pozycję">
                                     <i class="bi bi-pencil"></i>
                                 </button>
-                                <form method="post" action="{% url 'cooking:delete-shopping-item' item.id %}" class="shopping-delete-form">
+                                <form method="post" action="{% url 'cooking:delete-shopping-item' item.id %}" class="shopping-delete-form"
+                                      data-partial="auto" data-optimistic="shopping-remove">
                                     {% csrf_token %}
-                                    <button class="btn btn-sm btn-outline-danger" type="submit" title="Usuń pozycję">
+                                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                    <button class="btn btn-sm btn-outline-danger" type="submit" title="Usuń pozycję" aria-label="Usuń pozycję: {{ item.name }}">
                                         <i class="bi bi-trash"></i>
                                     </button>
                                 </form>
@@ -254,8 +271,10 @@
 
                     {% if shopping_list.status == 'active' %}
                         <div class="collapse shopping-edit-collapse" id="shopping-edit-item-{{ item.id }}">
-                            <form method="post" action="{% url 'cooking:update-shopping-item' item.id %}" class="shopping-item-edit">
+                            <form method="post" action="{% url 'cooking:update-shopping-item' item.id %}" class="shopping-item-edit"
+                                  data-partial="auto" data-partial-close="#shopping-edit-item-{{ item.id }}">
                                 {% csrf_token %}
+                                <input type="hidden" name="next" value="{{ request.get_full_path }}">
                                 <div>
                                     <label class="form-label small text-uppercase fw-bold text-muted">Produkt</label>
                                     <input type="text" name="name" class="form-control" list="shopping-product-suggestions" value="{{ item.name }}" required>
@@ -303,6 +322,7 @@
             </div>
         </div>
     {% endif %}
+    </div>
 </div>
 {% endblock %}
 
@@ -331,10 +351,10 @@
         // Wyszukiwarka w panelu spiżarni - to samo, co na telefonie.
         const pantryFilter = document.querySelector('[data-pantry-filter]');
         if (pantryFilter) {
-            const rows = [...document.querySelectorAll('[data-pantry-name]')];
             const nothing = document.querySelector('[data-pantry-empty]');
             pantryFilter.addEventListener('input', () => {
                 const needle = pantryFilter.value.trim().toLocaleLowerCase('pl');
+                const rows = [...document.querySelectorAll('[data-pantry-name]')];
                 let shown = 0;
                 rows.forEach((row) => {
                     const match = !needle || row.dataset.pantryName.includes(needle);
@@ -345,6 +365,58 @@
                     nothing.classList.toggle('d-none', shown > 0);
                 }
             });
+        }
+
+        // Po odświeżeniu fragmentów: kroki ilości w nowych formularzach
+        // i ten sam filtr spiżarni co przed zmianą.
+        document.addEventListener('partial:swapped', () => {
+            document.querySelectorAll('.shopping-item-edit').forEach((form) => {
+                const unitSelect = form.querySelector('[data-shopping-unit-select]');
+                if (unitSelect && !unitSelect.dataset.bound) {
+                    unitSelect.dataset.bound = '1';
+                    unitSelect.addEventListener('change', () => syncQuantityStep(form));
+                }
+                syncQuantityStep(form);
+            });
+            if (pantryFilter && pantryFilter.value) {
+                pantryFilter.dispatchEvent(new Event('input'));
+            }
+        });
+
+        // Natychmiastowa odpowiedź, zanim serwer potwierdzi zmianę.
+        if (window.AppPartial) {
+            window.AppPartial.optimistic['shopping-toggle'] = (form) => {
+                const card = form.closest('.shopping-item-card');
+                const button = form.querySelector('.shopping-check-button');
+                const icon = button && button.querySelector('i');
+                if (!card || !button || !icon) {
+                    return null;
+                }
+                const purchased = !card.classList.contains('is-purchased');
+                const apply = (value) => {
+                    card.classList.toggle('is-purchased', value);
+                    button.classList.toggle('is-checked', value);
+                    icon.className = `bi ${value ? 'bi-check-lg' : 'bi-circle'}`;
+                };
+                apply(purchased);
+                if (navigator.vibrate) {
+                    navigator.vibrate(12);
+                }
+                return () => apply(!purchased);
+            };
+            window.AppPartial.optimistic['shopping-remove'] = (form) => {
+                const card = form.closest('.shopping-item-card');
+                if (!card) {
+                    return null;
+                }
+                card.style.height = `${card.offsetHeight}px`;
+                card.getBoundingClientRect();
+                card.classList.add('is-removing');
+                return () => {
+                    card.classList.remove('is-removing');
+                    card.style.height = '';
+                };
+            };
         }
     });
 </script>

@@ -861,6 +861,58 @@ button:disabled { cursor: not-allowed; }
 .sa-add[hidden] { display: none; }
 .sa-app.is-adding .sa-footer { display: none; }
 
+/* Arkusz jest przesuwany przez skrypt (transform), więc przeglądarka nie może
+   przejąć gestu na uchwycie i nagłówku jako przewijania strony. */
+.sa-add { will-change: transform; }
+.sa-sheet-grip,
+.sa-add-head { touch-action: none; }
+
+/* Pas pod arkuszem: przy lekkim odbiciu w górę albo pociągnięciu ponad pełną
+   wysokość spod arkusza nie wychodzi pusta szczelina. */
+.sa-add::after {
+    content: "";
+    position: absolute;
+    left: -1px;
+    right: -1px;
+    top: 100%;
+    height: 160px;
+    background: var(--surface-1);
+    border-inline: 1px solid var(--line-1);
+}
+
+.sa-sheet-grip {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 22px;
+    margin: calc(-1 * var(--sp-3)) 0 var(--sp-1);
+    cursor: grab;
+}
+
+.sa-sheet-grip span {
+    width: 38px;
+    height: 5px;
+    border-radius: var(--r-pill);
+    background: var(--ink-4);
+    opacity: 0.45;
+}
+
+.sa-add-head { cursor: grab; }
+.sa-add-head button { cursor: pointer; }
+
+/* Przyciemnienie pod arkuszem: dodawanie jest zadaniem modalnym, lista pod
+   spodem schodzi na dalszy plan. Jasność zależy od tego, jak wysoko jest
+   arkusz, więc podąża za palcem przy zsuwaniu. */
+.sa-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 35;
+    background: rgba(15, 23, 42, 0.38);
+    opacity: 0;
+}
+
+.sa-scrim[hidden] { display: none; }
+
 .sa-add-form { display: grid; gap: var(--sp-3); }
 
 .sa-add-head { display: flex; align-items: center; justify-content: space-between; }
@@ -930,6 +982,29 @@ button:disabled { cursor: not-allowed; }
     animation: sa-toast-in var(--dur) var(--ease);
     transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
 }
+
+/* Dymek z przyciskiem "Cofnij" po usunięciu pozycji. */
+.sa-toast.has-action {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: 4px 4px 4px 16px;
+    pointer-events: auto;
+}
+
+.sa-toast.has-action > span { flex: 1 1 auto; }
+
+.sa-toast-action {
+    min-height: 40px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: var(--r-pill);
+    background: transparent;
+    color: #6fdcb2;
+    font-weight: 750;
+}
+
+.sa-toast-action:active { background: rgba(255, 255, 255, 0.12); }
 
 .sa-toast.is-warning { background: #a52a1f; color: #fff; }  /* stały kolor: 7:1 z bielą w obu motywach */
 .sa-toast.is-success { background: var(--brand-800); color: #fff; }

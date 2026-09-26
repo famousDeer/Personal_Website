@@ -708,6 +708,33 @@ button, and whatever is inside the block becomes the action buttons
 - *Reduce transparency* makes the bars solid; *Increase contrast* darkens
   borders and secondary text. No text is smaller than 11 px
   (`var(--fs-eyebrow)`).
+- Moving between pages cross-fades the content while the top bar and the
+  bottom navigation stay put (View Transitions; off with *Reduce motion*).
+
+**Actions that keep your place** (`static/js/app-actions.js`, `utils/navigation.py`):
+
+- Action forms send a hidden `next` field with the current address. The view
+  returns with `redirect_back(request, fallback, anchor=..., prefix=...)`, so
+  filters, the pantry view and the scroll position survive (`#product-12`,
+  `#shopping-item-5`, `#tab=service`). `next` is only accepted as a local path.
+- `data-partial="#a, #b"` on a form sends it in the background and swaps only
+  those fragments of the page with the server's response, showing the message
+  as a toast. `data-partial="auto"` uses the page's `data-partial-default`.
+  `data-optimistic="name"` updates the screen before the server answers
+  (`AppPartial.optimistic[name] = (form) => revertFunction`); `data-flip`
+  items glide to their new place when the server re-orders them. Without
+  JavaScript the same forms work as plain POSTs.
+
+**Deleting**
+
+| Case | How |
+|---|---|
+| Frequent (shopping item, expense, income, fuel log, service, tyres, product group) | Delete at once with `utils.undo.delete_with_undo(request, obj, message, after_restore=...)`. The toast has *Cofnij* for 10 minutes; it restores the rows (and cascaded ones) exactly as they were. |
+| Rare and irreversible (shopping list, pantry product, recipe, trip, brokerage records, shared account, car) | `data-confirm="Question?" data-confirm-detail="..." data-confirm-action="Usuń ..."` on the form opens the shared confirmation sheet. Never `confirm()`. |
+
+In the offline shopping mode, *Dodaj produkt* is a sheet you can drag down
+by its handle, and deleting an item shows *Cofnij* for 5 seconds before the
+change is sent.
 
 ## Environment variables
 Required at minimum:

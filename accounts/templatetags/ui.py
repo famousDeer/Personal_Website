@@ -64,3 +64,11 @@ def pl_word(value, forms):
     if count is None:
         return forms.split(',')[-1].strip()
     return _plural_form(abs(count), forms)
+
+
+@register.filter
+def undo_token(message):
+    """Token „Cofnij” z komunikatu utworzonego przez ``utils.undo.delete_with_undo``."""
+    from utils.undo import undo_token as _undo_token
+
+    return _undo_token(message)

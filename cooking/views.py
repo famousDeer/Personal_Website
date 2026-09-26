@@ -19,6 +19,9 @@ from django.contrib.auth.mixins import LoginRequiredMixin # Ważne dla bezpiecze
 from django.utils import timezone
 from PIL import Image, UnidentifiedImageError
 
+from utils.navigation import redirect_back
+from utils.undo import delete_with_undo
+
 from .constants import (
     PANTRY_CATEGORIES,
     PANTRY_CATEGORY_OTHER,
@@ -1720,7 +1723,7 @@ class DeletePantryProductView(LoginRequiredMixin, View):
     def post(self, request, product_id):
         product = get_object_or_404(PantryProduct, pk=product_id)
         if request.POST.get('confirm') != '1':
-            messages.error(request, 'Zaznacz potwierdzenie, żeby usunąć produkt.')
+            messages.error(request, 'Potwierdź usunięcie produktu.')
             return redirect('cooking:edit-pantry-product', product_id=product.pk)
 
         forget_barcode = request.POST.get('forget_barcode') == '1'
@@ -1802,7 +1805,7 @@ class PantryMovementView(LoginRequiredMixin, View):
                     ):
                         raise ValueError('Identyfikator operacji został już użyty dla innej zmiany.')
                     messages.info(request, 'Ta operacja została już zapisana.')
-                    return redirect('cooking:pantry')
+                    return pantry_redirect_back(request, product)
             if product.current_package_count == 0 and product.current_quantity > 0:
                 sync_package_count_from_quantity(product)
             requested_quantity = quantity
@@ -1868,7 +1871,21 @@ class PantryMovementView(LoginRequiredMixin, View):
         except Exception as exc:
             messages.error(request, f'Nie udało się zapisać zmiany: {exc}')
 
-        return redirect('cooking:pantry')
+        return pantry_redirect_back(request, product)
+
+
+def pantry_redirect_back(request, product):
+    """Powrót do spiżarni w tym samym widoku (filtry, grupy) i przy tym produkcie.
+
+    Wcześniej każda operacja ręczna wracała na /cooking/pantry/ bez filtrów,
+    na samą górę - na długiej liście trzeba było szukać produktu od nowa.
+    """
+    return redirect_back(
+        request,
+        reverse('cooking:pantry'),
+        anchor=f'product-{product.pk}',
+        prefix=reverse('cooking:pantry'),
+    )
 
 
 class ShoppingListView(LoginRequiredMixin, View):
@@ -1971,6 +1988,24 @@ class GenerateShoppingListView(LoginRequiredMixin, View):
         return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
 
 
+def shopping_redirect_back(request, shopping_list, item_id=None):
+    """Powrót na stronę listy przy tej pozycji (kotwica), a nie na górę strony."""
+    detail_url = reverse('cooking:shopping-list-detail', kwargs={'list_id': shopping_list.pk})
+    return redirect_back(
+        request,
+        detail_url,
+        anchor=f'shopping-item-{item_id}' if item_id else None,
+        prefix=detail_url,
+    )
+
+
+def touch_restored_shopping_lists(objects):
+    """Po „Cofnij”: lista dostaje nowy czas zmiany, żeby telefon ją pobrał."""
+    list_ids = {obj.shopping_list_id for obj in objects if isinstance(obj, ShoppingListItem)}
+    for shopping_list in ShoppingList.objects.filter(pk__in=list_ids):
+        shopping_list.save(update_fields=['updated_at'])
+
+
 class ShoppingListDetailView(LoginRequiredMixin, View):
     def get(self, request, list_id):
         shopping_list = get_object_or_404(
@@ -2050,8 +2085,9 @@ class AddShoppingListItemView(LoginRequiredMixin, View):
         shopping_list = get_object_or_404(ShoppingList, id=list_id)
         if shopping_list.status == ShoppingList.COMPLETED:
             messages.info(request, 'Ta lista została już zakończona.')
-            return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+            return shopping_redirect_back(request, shopping_list)
 
+        new_item = None
         try:
             name = request.POST.get('name', '').strip()
             if not name:
@@ -2062,7 +2098,7 @@ class AddShoppingListItemView(LoginRequiredMixin, View):
                 raise ValueError('Ilość musi być większa od zera.')
             validate_pantry_quantity_for_unit(quantity, unit)
             product = find_pantry_product(name)
-            ShoppingListItem.objects.create(
+            new_item = ShoppingListItem.objects.create(
                 shopping_list=shopping_list,
                 pantry_product=product,
                 name=name,
@@ -2076,7 +2112,7 @@ class AddShoppingListItemView(LoginRequiredMixin, View):
         except Exception as exc:
             messages.error(request, f'Nie udało się dodać pozycji: {exc}')
 
-        return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+        return shopping_redirect_back(request, shopping_list, new_item.pk if new_item else None)
 
 
 GROUPS_VIEW_URL = 'grupy'
@@ -2170,9 +2206,18 @@ class DeleteProductGroupView(LoginRequiredMixin, View):
         group = get_object_or_404(ProductGroup, pk=group_id)
         name = group.name
         # Marki zostają w spiżarni, tracą tylko przynależność do grupy.
-        group.delete()
-        messages.success(request, f'Usunięto grupę „{name}”. Produkty zostały w spiżarni.')
-        return groups_redirect()
+        # „Cofnij” przywraca grupę razem z przypisaniem marek.
+        delete_with_undo(
+            request,
+            group,
+            f'Usunięto grupę „{name}”. Produkty zostały w spiżarni.',
+            restored_message=f'Przywrócono grupę „{name}”.',
+        )
+        return redirect_back(
+            request,
+            f"{reverse('cooking:pantry')}?widok={GROUPS_VIEW_URL}",
+            prefix=reverse('cooking:pantry'),
+        )
 
 
 class AddPantryProductToShoppingListView(LoginRequiredMixin, View):
@@ -2187,15 +2232,15 @@ class AddPantryProductToShoppingListView(LoginRequiredMixin, View):
         product = get_object_or_404(PantryProduct, id=product_id)
         if shopping_list.status == ShoppingList.COMPLETED:
             messages.info(request, 'Ta lista została już zakończona.')
-            return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+            return shopping_redirect_back(request, shopping_list)
 
         add = shopping_item_for_product(product)
         already = shopping_list.items.filter(name__iexact=add['name']).first()
         if already is not None:
             messages.info(request, f'{add["name"]} już jest na liście.')
-            return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+            return shopping_redirect_back(request, shopping_list, already.pk)
 
-        ShoppingListItem.objects.create(
+        new_item = ShoppingListItem.objects.create(
             shopping_list=shopping_list,
             pantry_product=None if add['group'] else product,
             pantry_group=add['group'],
@@ -2206,7 +2251,7 @@ class AddPantryProductToShoppingListView(LoginRequiredMixin, View):
         )
         shopping_list.save(update_fields=['updated_at'])
         messages.success(request, f'Dodano do listy: {add["name"]}.')
-        return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+        return shopping_redirect_back(request, shopping_list, new_item.pk)
 
 
 class UpdateShoppingListItemView(LoginRequiredMixin, View):
@@ -2215,7 +2260,7 @@ class UpdateShoppingListItemView(LoginRequiredMixin, View):
         shopping_list = item.shopping_list
         if shopping_list.status == ShoppingList.COMPLETED:
             messages.info(request, 'Ta lista została już zakończona.')
-            return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+            return shopping_redirect_back(request, shopping_list, item.pk)
 
         try:
             name = request.POST.get('name', '').strip()
@@ -2258,7 +2303,7 @@ class UpdateShoppingListItemView(LoginRequiredMixin, View):
         except Exception as exc:
             messages.error(request, f'Nie udało się zapisać pozycji: {exc}')
 
-        return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+        return shopping_redirect_back(request, shopping_list, item.pk)
 
 
 class ToggleShoppingListItemView(LoginRequiredMixin, View):
@@ -2266,7 +2311,7 @@ class ToggleShoppingListItemView(LoginRequiredMixin, View):
         item = get_object_or_404(ShoppingListItem, id=item_id)
         if item.shopping_list.status == ShoppingList.COMPLETED:
             messages.info(request, 'Ta lista została już zakończona.')
-            return redirect('cooking:shopping-list-detail', list_id=item.shopping_list.id)
+            return shopping_redirect_back(request, item.shopping_list, item.pk)
 
         with transaction.atomic():
             item = ShoppingListItem.objects.select_for_update(of=('self',)).select_related(
@@ -2277,7 +2322,7 @@ class ToggleShoppingListItemView(LoginRequiredMixin, View):
             item.shopping_list.save(update_fields=['updated_at'])
         if warning:
             messages.warning(request, warning)
-        return redirect('cooking:shopping-list-detail', list_id=item.shopping_list.id)
+        return shopping_redirect_back(request, item.shopping_list, item.pk)
 
 
 class DeleteShoppingListItemView(LoginRequiredMixin, View):
@@ -2286,13 +2331,21 @@ class DeleteShoppingListItemView(LoginRequiredMixin, View):
         shopping_list = item.shopping_list
         if shopping_list.status == ShoppingList.COMPLETED:
             messages.info(request, 'Ta lista została już zakończona.')
-            return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+            return shopping_redirect_back(request, shopping_list, item.pk)
 
         item_name = item.name
-        item.delete()
+        item_id = item.pk
+        # Bez pytania "Na pewno?" - pozycja znika od razu, a dymek ma "Cofnij".
+        delete_with_undo(
+            request,
+            item,
+            f'Usunięto pozycję: {item_name}.',
+            after_restore='cooking.views.touch_restored_shopping_lists',
+            restored_message=f'Przywrócono pozycję: {item_name}.',
+            anchor=f'shopping-item-{item_id}',
+        )
         shopping_list.save(update_fields=['updated_at'])
-        messages.success(request, f'Usunięto pozycję: {item_name}.')
-        return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+        return shopping_redirect_back(request, shopping_list)
 
 
 class CompleteShoppingListView(LoginRequiredMixin, View):

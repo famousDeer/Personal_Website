@@ -178,7 +178,6 @@
         syncing: false,
         syncAgain: false,
         openItem: null,          // uuid pozycji z otwartym edytorem
-        confirmDelete: null,     // uuid pozycji czekającej na drugie dotknięcie "Usuń"
         confirmComplete: false,
         renderDeferred: false,
         storageOk: true,
@@ -514,10 +513,17 @@
         state.syncing = true;
         setStatus('syncing');
         try {
-            const batch = state.outbox.slice(0, MAX_BATCH);
+            // Usunięcie czeka kilka sekund na "Cofnij" - dopiero potem idzie na serwer.
+            const now = Date.now();
+            const batch = state.outbox.filter((entry) => !(entry.op.hold_until > now)).slice(0, MAX_BATCH);
             let data;
             if (batch.length) {
-                data = await postJson(config.syncUrl, { ops: batch.map((entry) => entry.op) });
+                data = await postJson(config.syncUrl, {
+                    ops: batch.map((entry) => {
+                        const { hold_until: _held, ...op } = entry.op;
+                        return op;
+                    }),
+                });
                 reportResults(data.results || []);
                 const sent = new Set(batch.map((entry) => entry.seq));
                 await store.outboxDelete(batch.map((entry) => entry.seq).filter((seq) => typeof seq === 'number'));
@@ -527,7 +533,7 @@
             }
             await acceptServerData(data);
             setStatus('online');
-            if (state.outbox.length) {
+            if (state.outbox.some((entry) => !(entry.op.hold_until > Date.now()))) {
                 state.syncAgain = true;
             }
         } catch (error) {
@@ -555,7 +561,16 @@
         }
     }
 
+    function releaseHeldOps() {
+        state.outbox.forEach((entry) => {
+            if (entry.op.hold_until) {
+                entry.op.hold_until = 0;
+            }
+        });
+    }
+
     async function completeList(list) {
+        releaseHeldOps();
         await waitForSync();
         if (state.outbox.length) {
             await sync();
@@ -729,9 +744,9 @@
                     <span class="sa-unit">${escapeHtml(item.unit_label || item.unit)}</span>
                     <button type="button" class="sa-step" data-action="inc" data-step="${step}" aria-label="Więcej"><i class="bi bi-plus-lg" aria-hidden="true"></i></button>
                 </div>
-                <button type="button" class="sa-delete ${state.confirmDelete === item.uuid ? 'is-confirm' : ''}" data-action="delete">
+                <button type="button" class="sa-delete" data-action="delete">
                     <i class="bi bi-trash3" aria-hidden="true"></i>
-                    ${state.confirmDelete === item.uuid ? 'Na pewno usunąć?' : 'Usuń z listy'}
+                    Usuń z listy
                 </button>
                 ${item.is_purchased && item.added_to_pantry ? '<p class="sa-editor-hint">Usunięcie z listy zostawia zakup w spiżarni. Aby go cofnąć, odznacz pozycję.</p>' : ''}
             </div>` : '';
@@ -1515,15 +1530,62 @@
         render();
     }
 
-    function toast(message, kind = 'info') {
+    function toast(message, kind = 'info', action = null, duration = 4200) {
         const container = el('[data-toasts]');
         const node = document.createElement('div');
-        node.className = `sa-toast is-${kind}`;
+        node.className = `sa-toast is-${kind}${action ? ' has-action' : ''}`;
         node.setAttribute('role', kind === 'warning' ? 'alert' : 'status');
-        node.textContent = message;
+        const text = document.createElement('span');
+        text.textContent = message;
+        node.appendChild(text);
+        const leave = () => {
+            node.classList.add('is-leaving');
+            setTimeout(() => node.remove(), 500);
+        };
+        if (action) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'sa-toast-action';
+            button.textContent = action.label;
+            button.addEventListener('click', () => {
+                leave();
+                action.onClick();
+            });
+            node.appendChild(button);
+        }
         container.appendChild(node);
-        setTimeout(() => node.classList.add('is-leaving'), 4200);
-        setTimeout(() => node.remove(), 4700);
+        setTimeout(leave, duration);
+    }
+
+    // Usunięcie pozycji: znika od razu, a dymek przez 5 s pozwala je cofnąć.
+    // Operacja trafia do kolejki od razu (przetrwa zamknięcie aplikacji),
+    // ale na serwer idzie dopiero po tym czasie.
+    const UNDO_MS = 5000;
+
+    async function deleteWithUndo(item) {
+        const op = { type: OP_DELETE, item: item.uuid, hold_until: Date.now() + UNDO_MS };
+        await enqueue(op);
+        const entry = state.outbox.find((candidate) => candidate.op.op_id === op.op_id);
+        toast(`Usunięto: ${item.name}`, 'info', {
+            label: 'Cofnij',
+            onClick: async () => {
+                if (!entry || !state.outbox.includes(entry) || !(entry.op.hold_until > Date.now())) {
+                    toast('Usunięcie zostało już zapisane.', 'warning');
+                    return;
+                }
+                state.outbox = state.outbox.filter((candidate) => candidate !== entry);
+                try {
+                    if (typeof entry.seq === 'number') {
+                        await store.outboxDelete([entry.seq]);
+                    }
+                } catch (error) {
+                    state.storageOk = false;
+                }
+                render();
+                toast(`Przywrócono: ${item.name}`, 'success');
+            },
+        }, UNDO_MS);
+        setTimeout(() => scheduleSync(0), UNDO_MS + 50);
     }
 
     // ------------------------------------------------------------------
@@ -1548,18 +1610,228 @@
         addQuantity.step = addUnit.value === 'szt' ? '1' : '0.01';
     }
 
-    function openAddPanel() {
-        addPanel.hidden = false;
-        app.classList.add('is-adding');
-        addError.hidden = true;
-        // Fokus od razu, w obsłudze dotknięcia - iOS otwiera klawiaturę tylko wtedy.
-        addName.focus();
+    // ------------------------------------------------------------------
+    // Arkusz dodawania: sprężyna, gest i przyciemnienie tła
+    // ------------------------------------------------------------------
+    // Arkusz wyjeżdża od dołu, spod przycisku "Dodaj produkt", i tą samą
+    // drogą wraca. Ruch liczy sprężyna (tłumienie i czas odpowiedzi jak
+    // w arkuszach iOS), więc arkusz można złapać w trakcie ruchu - staje
+    // pod palcem tam, gdzie akurat jest. Przeciąganie za uchwyt albo
+    // nagłówek idzie 1:1 z palcem; po puszczeniu o zamknięciu decyduje
+    // kierunek i prędkość ruchu, nie sama pozycja. Przy "ogranicz ruch"
+    // arkusz tylko się przenika.
+    const addScrim = el('[data-add-scrim]');
+    const sheet = { y: 0, height: 0, open: false, closing: false, stop: null, drag: null };
+    const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    function renderSheet(y) {
+        sheet.y = y;
+        addPanel.style.transform = `translate3d(0, ${y}px, 0)`;
+        const progress = sheet.height ? 1 - y / sheet.height : 1;
+        addScrim.style.opacity = String(Math.min(1, Math.max(0, progress)));
     }
 
-    function closeAddPanel() {
+    function stopSheet() {
+        if (sheet.stop) {
+            sheet.stop();
+        }
+    }
+
+    // Sprężyna: "response" to czas dojścia do celu (s), "damping" 1 bez
+    // przeskoku, poniżej 1 z lekkim odbiciem. Startuje z bieżącej pozycji
+    // i prędkości palca.
+    function springSheet(to, velocity, { damping = 1, response = 0.32 } = {}, onDone = null) {
+        stopSheet();
+        const stiffness = (2 * Math.PI / response) ** 2;
+        const friction = (4 * Math.PI * damping) / response;
+        let offset = sheet.y - to;
+        let speed = velocity;
+        let last = performance.now();
+        let frame = 0;
+        const step = (now) => {
+            const dt = Math.min((now - last) / 1000, 1 / 30);
+            last = now;
+            for (let i = 0; i < 4; i += 1) {
+                const h = dt / 4;
+                speed += (-stiffness * offset - friction * speed) * h;
+                offset += speed * h;
+            }
+            if (Math.abs(offset) < 0.5 && Math.abs(speed) < 20) {
+                sheet.stop = null;
+                renderSheet(to);
+                if (onDone) {
+                    onDone();
+                }
+                return;
+            }
+            renderSheet(to + offset);
+            frame = requestAnimationFrame(step);
+        };
+        frame = requestAnimationFrame(step);
+        sheet.stop = () => {
+            cancelAnimationFrame(frame);
+            sheet.stop = null;
+        };
+    }
+
+    function fadeSheet(show, onDone = null) {
+        stopSheet();
+        renderSheet(0);
+        const keyframes = show ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 1 }, { opacity: 0 }];
+        const options = { duration: 200, easing: 'ease', fill: 'forwards' };
+        addScrim.animate(keyframes, options);
+        const animation = addPanel.animate(keyframes, options);
+        sheet.stop = () => {
+            animation.cancel();
+            sheet.stop = null;
+        };
+        animation.onfinish = () => {
+            sheet.stop = null;
+            animation.cancel();
+            if (onDone) {
+                onDone();
+            }
+        };
+    }
+
+    function finishClose() {
+        sheet.open = false;
+        sheet.closing = false;
         addPanel.hidden = true;
+        addScrim.hidden = true;
+        addPanel.style.transform = '';
+        addScrim.getAnimations().forEach((animation) => animation.cancel());
         app.classList.remove('is-adding');
     }
+
+    function openAddPanel() {
+        addError.hidden = true;
+        // Fokus od razu, w obsłudze dotknięcia - iOS otwiera klawiaturę tylko wtedy.
+        if (sheet.open && !sheet.closing) {
+            addName.focus({ preventScroll: true });
+            return;
+        }
+        const interrupted = sheet.closing;
+        sheet.open = true;
+        sheet.closing = false;
+        addPanel.hidden = false;
+        addScrim.hidden = false;
+        app.classList.add('is-adding');
+        sheet.height = addPanel.offsetHeight;
+        addName.focus({ preventScroll: true });
+        if (reducedMotion()) {
+            fadeSheet(true);
+            return;
+        }
+        // Zamykany arkusz łapiemy tam, gdzie jest - bez skoku na dół.
+        if (!interrupted) {
+            renderSheet(sheet.height);
+        }
+        springSheet(0, 0, { damping: 1, response: 0.32 });
+    }
+
+    function closeAddPanel(velocity = 0) {
+        if (!sheet.open || sheet.closing) {
+            return;
+        }
+        sheet.closing = true;
+        if (addPanel.contains(document.activeElement)) {
+            document.activeElement.blur();
+        }
+        if (reducedMotion()) {
+            fadeSheet(false, finishClose);
+            return;
+        }
+        sheet.height = addPanel.offsetHeight;
+        springSheet(sheet.height, Math.max(0, velocity), { damping: 1, response: 0.3 }, finishClose);
+    }
+
+    // Gumka ponad pełną wysokość: im dalej, tym mniej arkusz idzie za palcem.
+    const rubberband = (overshoot, dimension, constant = 0.55) =>
+        (overshoot * dimension * constant) / (dimension + constant * Math.abs(overshoot));
+    // Gdzie arkusz by się zatrzymał, gdyby toczył się dalej z tą prędkością.
+    const projectMomentum = (velocity, rate = 0.998) => ((velocity / 1000) * rate) / (1 - rate);
+
+    addPanel.addEventListener('pointerdown', (event) => {
+        if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) {
+            return;
+        }
+        if (!event.target.closest('[data-sheet-grip], .sa-add-head')
+            || event.target.closest('button, input, select, textarea, a')) {
+            return;
+        }
+        stopSheet();
+        if (sheet.closing) {
+            // Złapany w trakcie zamykania - arkusz zostaje otwarty pod palcem.
+            sheet.closing = false;
+        }
+        sheet.height = addPanel.offsetHeight;
+        sheet.drag = {
+            id: event.pointerId,
+            startY: event.clientY,
+            originY: sheet.y,
+            moved: false,
+            samples: [{ y: event.clientY, t: event.timeStamp }],
+        };
+        try {
+            addPanel.setPointerCapture(event.pointerId);
+        } catch (error) {
+            // Wskaźnik już nieaktywny - przeciąganie i tak działa w obrębie arkusza.
+        }
+    });
+
+    addPanel.addEventListener('pointermove', (event) => {
+        const drag = sheet.drag;
+        if (!drag || event.pointerId !== drag.id) {
+            return;
+        }
+        const delta = event.clientY - drag.startY;
+        if (!drag.moved && Math.abs(delta) < 6) {
+            return;
+        }
+        drag.moved = true;
+        let y = drag.originY + delta;
+        if (y < 0) {
+            y = -rubberband(-y, sheet.height);
+        }
+        renderSheet(y);
+        drag.samples.push({ y: event.clientY, t: event.timeStamp });
+        while (drag.samples.length > 2 && event.timeStamp - drag.samples[0].t > 100) {
+            drag.samples.shift();
+        }
+    });
+
+    function endSheetDrag(event) {
+        const drag = sheet.drag;
+        if (!drag || event.pointerId !== drag.id) {
+            return;
+        }
+        sheet.drag = null;
+        if (!drag.moved) {
+            if (sheet.y !== 0) {
+                springSheet(0, 0);
+            }
+            return;
+        }
+        const first = drag.samples[0];
+        const last = drag.samples[drag.samples.length - 1];
+        const seconds = (last.t - first.t) / 1000;
+        const velocity = seconds > 0 && event.timeStamp - last.t < 80 ? (last.y - first.y) / seconds : 0;
+        const projected = sheet.y + projectMomentum(velocity);
+        const close = Math.abs(velocity) > 80
+            ? velocity > 0 && projected > sheet.height * 0.25
+            : sheet.y > sheet.height * 0.5;
+        if (close) {
+            closeAddPanel(velocity);
+        } else {
+            // Odbicie tylko wtedy, gdy palec rzucił arkusz w górę.
+            springSheet(0, velocity, { damping: velocity < -300 ? 0.8 : 1, response: 0.3 });
+        }
+    }
+
+    addPanel.addEventListener('pointerup', endSheetDrag);
+    addPanel.addEventListener('pointercancel', endSheetDrag);
+    addScrim.addEventListener('click', () => closeAddPanel());
 
     addQuantity.addEventListener('input', () => { addQuantity.dataset.touched = '1'; });
     addName.addEventListener('input', () => {
@@ -1644,11 +1916,9 @@
             if (navigator.vibrate) {
                 navigator.vibrate(12);
             }
-            state.confirmDelete = null;
             await enqueue({ type: OP_SET_PURCHASED, item: uuid, purchased: !item.is_purchased });
         } else if (action === 'edit') {
             state.openItem = state.openItem === uuid ? null : uuid;
-            state.confirmDelete = null;
             render();
         } else if (action === 'inc' || action === 'dec') {
             const step = Number(button.dataset.step);
@@ -1662,15 +1932,8 @@
                 await enqueue({ type: OP_SET_QUANTITY, item: uuid, quantity });
             }
         } else if (action === 'delete') {
-            if (state.confirmDelete !== uuid) {
-                state.confirmDelete = uuid;
-                render();
-                return;
-            }
-            state.confirmDelete = null;
             state.openItem = null;
-            await enqueue({ type: OP_DELETE, item: uuid });
-            toast(`Usunięto: ${item.name}`, 'info');
+            await deleteWithUndo(item);
         }
     });
 
@@ -1898,7 +2161,7 @@
     });
 
     el('[data-add-open]').addEventListener('click', openAddPanel);
-    el('[data-add-close]').addEventListener('click', closeAddPanel);
+    el('[data-add-close]').addEventListener('click', () => closeAddPanel());
     document.addEventListener('keydown', (event) => {
         if (event.key === 'Escape' && !addPanel.hidden) {
             closeAddPanel();

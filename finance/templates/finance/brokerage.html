@@ -356,7 +356,10 @@
                                     <a href="{% url 'finance:edit_brokerage_account' item.account.id %}" class="btn btn-sm btn-outline-primary rounded-pill" title="Edytuj konto">
                                         <i class="bi bi-pencil"></i><span class="visually-hidden">Edytuj konto</span>
                                     </a>
-                                    <form method="post" action="{% url 'finance:delete_brokerage_account' item.account.id %}" onsubmit="return confirm('Usunąć konto maklerskie wraz z jego transakcjami i dywidendami?');">
+                                    <form method="post" action="{% url 'finance:delete_brokerage_account' item.account.id %}"
+                                          data-confirm="Usunąć konto maklerskie „{{ item.account }}”?"
+                                          data-confirm-detail="Razem z nim znikną jego transakcje, dywidendy i historia wartości. Tego nie da się cofnąć."
+                                          data-confirm-action="Usuń konto">
                                         {% csrf_token %}
                                         <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill" title="Usuń konto">
                                             <i class="bi bi-trash"></i><span class="visually-hidden">Usuń konto</span>
@@ -424,7 +427,10 @@
                                 <a href="{% url 'finance:edit_brokerage_instrument' instrument.id %}" class="btn btn-sm btn-outline-primary rounded-pill" title="Edytuj instrument" data-instrument-action>
                                     <i class="bi bi-pencil"></i><span class="visually-hidden">Edytuj instrument</span>
                                 </a>
-                                <form method="post" action="{% url 'finance:delete_brokerage_instrument' instrument.id %}" onsubmit="return confirm('Usunąć instrument wraz z jego transakcjami i dywidendami?');" data-instrument-action>
+                                <form method="post" action="{% url 'finance:delete_brokerage_instrument' instrument.id %}" data-instrument-action
+                                      data-confirm="Usunąć instrument {{ instrument.ticker|default:instrument.name }}?"
+                                      data-confirm-detail="Razem z nim znikną jego transakcje, dywidendy i zapisane ceny. Tego nie da się cofnąć."
+                                      data-confirm-action="Usuń instrument">
                                     {% csrf_token %}
                                     <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill" title="Usuń instrument">
                                         <i class="bi bi-trash"></i><span class="visually-hidden">Usuń instrument</span>
@@ -745,7 +751,10 @@
                                     <a href="{% url 'finance:edit_brokerage_transaction' transaction.id %}" class="btn btn-sm btn-outline-primary rounded-pill" title="Edytuj transakcję">
                                         <i class="bi bi-pencil"></i><span class="visually-hidden">Edytuj transakcję</span>
                                     </a>
-                                    <form method="post" action="{% url 'finance:delete_brokerage_transaction' transaction.id %}" onsubmit="return confirm('Usunąć transakcję?');">
+                                    <form method="post" action="{% url 'finance:delete_brokerage_transaction' transaction.id %}"
+                                          data-confirm="Usunąć transakcję?"
+                                          data-confirm-detail="Pozycje i wynik portfela przeliczą się bez niej."
+                                          data-confirm-action="Usuń transakcję">
                                         {% csrf_token %}
                                         <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill" title="Usuń transakcję">
                                             <i class="bi bi-trash"></i><span class="visually-hidden">Usuń transakcję</span>
@@ -799,7 +808,10 @@
                                     <a href="{% url 'finance:edit_brokerage_dividend' item.dividend.id %}" class="btn btn-sm btn-outline-primary rounded-pill" title="Edytuj dywidendę">
                                         <i class="bi bi-pencil"></i><span class="visually-hidden">Edytuj dywidendę</span>
                                     </a>
-                                    <form method="post" action="{% url 'finance:delete_brokerage_dividend' item.dividend.id %}" onsubmit="return confirm('Usunąć dywidendę?');">
+                                    <form method="post" action="{% url 'finance:delete_brokerage_dividend' item.dividend.id %}"
+                                          data-confirm="Usunąć dywidendę?"
+                                          data-confirm-detail="Wynik portfela przeliczy się bez niej."
+                                          data-confirm-action="Usuń dywidendę">
                                         {% csrf_token %}
                                         <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill" title="Usuń dywidendę">
                                             <i class="bi bi-trash"></i><span class="visually-hidden">Usuń dywidendę</span>

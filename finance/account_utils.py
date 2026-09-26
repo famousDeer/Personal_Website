@@ -69,6 +69,16 @@ def recalculate_monthly_record(monthly_record):
     monthly_record.save(update_fields=['total_income', 'total_expense'])
 
 
+def recalculate_months_after_restore(objects):
+    """Po „Cofnij” (utils/undo.py): sumy miesięcy przywróconych wydatków i przychodów."""
+    months = {
+        obj.month_id for obj in objects
+        if isinstance(obj, (Daily, Income)) and obj.month_id
+    }
+    for monthly_record in Monthly.objects.filter(pk__in=months):
+        recalculate_monthly_record(monthly_record)
+
+
 def sync_shared_account_transfer(expense):
     should_transfer = (
         expense.account.account_type == FinanceAccount.PERSONAL

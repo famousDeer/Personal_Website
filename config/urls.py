@@ -20,8 +20,12 @@ from django.views.generic import TemplateView
 from django.views.static import serve
 from django.conf import settings
 
+from utils.undo import UndoView
+
 urlpatterns = [
     path('', TemplateView.as_view(template_name='home.html'), name='index'),
+    # „Cofnij” w dymku po usunięciu (utils/undo.py).
+    path('cofnij/<str:token>/', UndoView.as_view(), name='undo'),
     path('admin/', admin.site.urls),
     path('finance/', include('finance.urls')),
     path('accounts/', include('accounts.urls')),

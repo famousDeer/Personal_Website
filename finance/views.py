@@ -21,7 +21,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from utils.navigation import redirect_back
 from utils.tools import month_start, parse_date_input, parse_decimal
+from utils.undo import delete_with_undo
 
 from .account_utils import (
     TRANSFER_INCOME_SOURCE,
@@ -1820,14 +1822,22 @@ class DeleteExpenseView(View):
         linked_income = getattr(expense, 'linked_shared_income', None)
         target_month = linked_income.month if linked_income else None
         expense_title = expense.title
-        expense.delete()
+        # Bez pytania "Na pewno?": wydatek znika od razu, a dymek ma "Cofnij"
+        # (przywraca też zasilenie konta wspólnego i powiązanie z maklerem).
+        delete_with_undo(
+            request,
+            expense,
+            f'Usunięto wydatek „{expense_title}”.',
+            after_restore='finance.account_utils.recalculate_months_after_restore',
+            restored_message=f'Przywrócono wydatek „{expense_title}”.',
+        )
 
         recalculate_monthly_record(monthly_record)
         if target_month:
             recalculate_monthly_record(target_month)
 
-        messages.success(request, f'Wydatek "{expense_title}" został usunięty!')
-        return redirect('finance:expense_list')
+        # Powrót na tę samą stronę listy, z tymi samymi filtrami.
+        return redirect_back(request, 'finance:expense_list', prefix=reverse('finance:expense_list'))
 
 
 @method_decorator(login_required, name='dispatch')
@@ -1991,15 +2001,20 @@ class DeleteIncomeView(View):
         income = get_object_or_404(Income, id=income_id, account=active_account)
         if income.linked_expense_id:
             messages.warning(request, 'Ten przychód jest zasileniem konta wspólnego. Usuń lub edytuj wydatek źródłowy.')
-            return redirect('finance:income_list')
+            return redirect_back(request, 'finance:income_list', prefix=reverse('finance:income_list'))
 
         monthly_record = income.month
         income_title = income.title
-        income.delete()
+        delete_with_undo(
+            request,
+            income,
+            f'Usunięto przychód „{income_title}”.',
+            after_restore='finance.account_utils.recalculate_months_after_restore',
+            restored_message=f'Przywrócono przychód „{income_title}”.',
+        )
         recalculate_monthly_record(monthly_record)
 
-        messages.success(request, f'Przychód "{income_title}" został usunięty!')
-        return redirect('finance:income_list')
+        return redirect_back(request, 'finance:income_list', prefix=reverse('finance:income_list'))
 
 
 @method_decorator(login_required, name='dispatch')
@@ -2214,7 +2229,7 @@ class DeleteTravelView(View):
         travel.delete()
 
         messages.success(request, f'Podróż "{travel_name}" została usunięta!')
-        return redirect('finance:travels')
+        return redirect_back(request, 'finance:travels', prefix=reverse('finance:travels'))
 
 
 class DailyRecordAPI(APIView):
