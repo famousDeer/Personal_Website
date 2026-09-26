@@ -72,3 +72,28 @@ def undo_token(message):
     from utils.undo import undo_token as _undo_token
 
     return _undo_token(message)
+
+
+@register.filter
+def zl(value):
+    """Kwota na kafelku: pełne złote, jak w podpisach wykresów.
+
+    ``54377.4`` → ``54 377 zł``, ``5432`` → ``5432 zł`` (w polskim zapisie
+    liczby czterocyfrowe nie mają odstępu), ``-120`` → ``−120 zł``.
+    Dokładne kwoty z groszami zostają na listach i w tabelach.
+    """
+    from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+
+    try:
+        amount = Decimal(str(value)).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, ValueError, TypeError):
+        return value
+    digits = str(abs(int(amount)))
+    if len(digits) > 4:
+        groups = []
+        while digits:
+            groups.insert(0, digits[-3:])
+            digits = digits[:-3]
+        digits = ' '.join(groups)
+    sign = '−' if amount < 0 else ''
+    return f'{sign}{digits} zł'

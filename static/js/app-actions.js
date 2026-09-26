@@ -581,4 +581,134 @@
     document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('#app-toasts .app-toast').forEach(armToast);
     });
+
+    // ---------------------------------------------------------------------
+    // Krawędź pasków
+    // ---------------------------------------------------------------------
+    // Dwa niewidoczne znaczniki: na początku i na końcu strony. Gdy górny
+    // zniknie z ekranu, treść jest pod górnym paskiem (linia pod paskiem).
+    // Gdy dolny jest poza ekranem, treść ciągnie się pod dolną nawigacją
+    // (linia nad nią). IntersectionObserver zamiast nasłuchu przewijania:
+    // nic nie liczy się przy każdej klatce.
+    function watchBarEdges() {
+        const nav = document.querySelector('.app-nav');
+        const tabbar = document.querySelector('.app-tabbar');
+        if (!('IntersectionObserver' in global) || (!nav && !tabbar)) return;
+        // Znaczniki mają zerową wysokość i stoją w zwykłym przepływie: nie
+        // zmieniają układu, a obserwator liczy przecięcie włącznie z krawędzią.
+        const sentinel = () => {
+            const el = document.createElement('div');
+            el.setAttribute('aria-hidden', 'true');
+            el.className = 'app-edge-sentinel';
+            return el;
+        };
+        const top = sentinel();
+        const bottom = sentinel();
+        document.body.prepend(top);
+        document.body.append(bottom);
+        if (nav) {
+            new IntersectionObserver(([entry]) => {
+                nav.classList.toggle('is-scrolled', !entry.isIntersecting);
+            }).observe(top);
+        }
+        if (tabbar) {
+            // Koniec treści musi wyjść nad dolną nawigację, żeby pod nią nic
+            // nie zostało; na komputerze pasek jest ukryty i ma wysokość 0.
+            new IntersectionObserver(([entry]) => {
+                tabbar.classList.toggle('has-content-below', !entry.isIntersecting);
+            }, { rootMargin: `0px 0px -${tabbar.offsetHeight}px 0px` }).observe(bottom);
+        }
+        document.documentElement.classList.add('edge-aware');
+    }
+    document.addEventListener('DOMContentLoaded', watchBarEdges);
+
+    // ---------------------------------------------------------------------
+    // Przełącznik segmentowy z przesuwanym wskaźnikiem
+    // ---------------------------------------------------------------------
+    // [data-segmented]: tło zaznaczenia to osobny element, który jedzie na
+    // sprężynie pod kliknięty segment. Segmenty bywają linkami (spiżarnia:
+    // "Kategorie" / "Grupy"): wskaźnik rusza od razu po dotknięciu, a nowa
+    // strona ładuje się w tym czasie i przejmuje go w tym samym miejscu.
+    function setupSegmented(group) {
+        const items = () => Array.from(group.children).filter((child) => child.matches('a, button'));
+        const indicator = document.createElement('span');
+        indicator.className = 'seg-indicator';
+        indicator.setAttribute('aria-hidden', 'true');
+        group.prepend(indicator);
+        const place = (item, animate) => {
+            if (!item) return;
+            group.classList.toggle('is-measuring', !animate);
+            group.style.setProperty('--seg-x', `${item.offsetLeft}px`);
+            group.style.setProperty('--seg-y', `${item.offsetTop}px`);
+            group.style.setProperty('--seg-w', `${item.offsetWidth}px`);
+            group.style.setProperty('--seg-h', `${item.offsetHeight}px`);
+            if (!animate) {
+                void indicator.offsetWidth;
+                group.classList.remove('is-measuring');
+            }
+        };
+        const active = () => items().find((item) => item.classList.contains('is-active'));
+        const initial = active();
+        const hadCurrent = Boolean(initial && initial.hasAttribute('aria-current'));
+        place(initial, false);
+        group.classList.add('has-indicator');
+        group.addEventListener('click', (event) => {
+            const item = event.target.closest('a, button');
+            if (!item || item.parentElement !== group || item.classList.contains('is-active')) return;
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button > 0) return;
+            items().forEach((other) => {
+                other.classList.toggle('is-active', other === item);
+                if (hadCurrent) {
+                    if (other === item) other.setAttribute('aria-current', 'page');
+                    else other.removeAttribute('aria-current');
+                }
+            });
+            place(item, true);
+        });
+        if ('ResizeObserver' in global) {
+            new ResizeObserver(() => place(active(), false)).observe(group);
+        }
+        // Powrót "Wstecz" z pamięci podręcznej: zaznaczenie wraca do tego,
+        // co pokazuje strona.
+        global.addEventListener('pageshow', (event) => {
+            if (!event.persisted || !initial) return;
+            items().forEach((other) => {
+                other.classList.toggle('is-active', other === initial);
+                if (hadCurrent) {
+                    if (other === initial) other.setAttribute('aria-current', 'page');
+                    else other.removeAttribute('aria-current');
+                }
+            });
+            place(initial, false);
+        });
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('[data-segmented]').forEach(setupSegmented);
+    });
+
+    // ---------------------------------------------------------------------
+    // Kotwica do zwiniętej sekcji
+    // ---------------------------------------------------------------------
+    // Link do "#brokerage-data" albo do czegoś w środku zamkniętego <details>
+    // otwiera najpierw tę sekcję (i wszystkie nad nią), a dopiero potem
+    // przeglądarka przewija - cel jest widoczny, a nie schowany w zwiniętym bloku.
+    function revealHashTarget(hash) {
+        if (!hash || hash.length < 2) return;
+        let target = null;
+        try {
+            target = document.getElementById(decodeURIComponent(hash.slice(1)));
+        } catch (error) {
+            return;
+        }
+        for (let el = target; el; el = el.parentElement) {
+            if (el.tagName === 'DETAILS' && !el.open) el.open = true;
+        }
+    }
+
+    document.addEventListener('click', (event) => {
+        const link = event.target.closest && event.target.closest('a[href^="#"]');
+        if (link) revealHashTarget(link.getAttribute('href'));
+    }, true);
+    global.addEventListener('hashchange', () => revealHashTarget(global.location.hash));
+    document.addEventListener('DOMContentLoaded', () => revealHashTarget(global.location.hash));
 })(window);

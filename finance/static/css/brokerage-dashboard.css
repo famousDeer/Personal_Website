@@ -26,16 +26,16 @@
 .brokerage-instrument-chart-section h3,
 .brokerage-info-list h3 {
     margin: 0;
-    font-size: 1rem;
+    font-size: var(--fs-callout);
     font-weight: 850;
 }
 
 .brokerage-page h2,
 .brokerage-section-heading h2 {
     margin: 0;
-    font-size: 1.02rem;
+    font-size: var(--fs-callout);
     font-weight: 850;
-    letter-spacing: -0.015em;
+    letter-spacing: var(--tracking-title);
 }
 
 .brokerage-command-header {
@@ -70,7 +70,7 @@
     color: #fff;
     font-size: clamp(2rem, 4vw, 3rem);
     font-weight: 900;
-    letter-spacing: -0.05em;
+    letter-spacing: var(--tracking-display);
     line-height: 1;
 }
 
@@ -97,7 +97,7 @@
 .brokerage-command-header .brokerage-hero-copy > p {
     max-width: 610px;
     color: rgba(226, 232, 240, 0.82);
-    font-size: 0.96rem;
+    font-size: var(--fs-base);
 }
 
 .brokerage-hero-status {
@@ -112,7 +112,7 @@
     align-items: center;
     gap: 0.38rem;
     color: rgba(226, 232, 240, 0.78);
-    font-size: 0.76rem;
+    font-size: var(--fs-caption);
     font-weight: 700;
 }
 
@@ -165,7 +165,7 @@
 
 .brokerage-command-menu .dropdown-item small {
     color: var(--text-muted);
-    font-size: 0.72rem;
+    font-size: var(--fs-caption);
 }
 
 .brokerage-context-bar {
@@ -190,7 +190,7 @@
     color: var(--text-muted);
     font-size: var(--fs-eyebrow);
     font-weight: 850;
-    letter-spacing: 0.11em;
+    letter-spacing: var(--tracking-eyebrow);
     text-transform: uppercase;
 }
 
@@ -214,7 +214,7 @@
     border-color: rgba(37, 99, 235, 0.22);
     border-radius: 12px;
     background-color: var(--surface-subtle);
-    font-size: 0.86rem;
+    font-size: var(--fs-md);
     font-weight: 780;
 }
 
@@ -240,12 +240,12 @@
 }
 
 .brokerage-context-summary strong {
-    font-size: 0.87rem;
+    font-size: var(--fs-md);
 }
 
 .brokerage-context-summary small {
     color: var(--text-muted);
-    font-size: 0.74rem;
+    font-size: var(--fs-caption);
 }
 
 .brokerage-context-icon {
@@ -264,7 +264,7 @@
     align-items: center;
     gap: 0.4rem;
     color: var(--text-muted);
-    font-size: 0.78rem;
+    font-size: var(--fs-caption);
     font-weight: 750;
     white-space: nowrap;
 }
@@ -338,13 +338,13 @@
 
 .brokerage-kpi-details strong {
     overflow: visible;
-    font-size: 0.86rem;
+    font-size: var(--fs-md);
     text-overflow: clip;
     white-space: normal;
 }
 
 .brokerage-kpi-details strong small {
-    font-size: 0.72rem;
+    font-size: var(--fs-caption);
 }
 
 .brokerage-summary-note,
@@ -356,7 +356,7 @@
     align-items: center;
     margin-top: 0.85rem;
     color: var(--text-muted);
-    font-size: 0.75rem;
+    font-size: var(--fs-caption);
 }
 
 .brokerage-summary-note i,
@@ -400,7 +400,7 @@
     grid-template-columns: 1fr auto;
     gap: 0.25rem 0.75rem;
     margin-bottom: 0.75rem;
-    font-size: 0.73rem;
+    font-size: var(--fs-caption);
 }
 
 .brokerage-market-coverage > span {
@@ -496,7 +496,7 @@
     border: 1px solid var(--surface-border);
     border-radius: 999px;
     color: var(--text-muted);
-    font-size: 0.75rem;
+    font-size: var(--fs-caption);
     font-weight: 750;
     list-style: none;
     cursor: pointer;
@@ -528,7 +528,7 @@
 .brokerage-custom-range > label {
     align-self: center;
     color: var(--text-muted);
-    font-size: 0.72rem;
+    font-size: var(--fs-caption);
     font-weight: 750;
 }
 
@@ -645,7 +645,7 @@
 
 .brokerage-attention-heading h2 {
     margin: 0;
-    font-size: 0.95rem;
+    font-size: var(--fs-base);
     font-weight: 850;
 }
 
@@ -676,12 +676,12 @@
     border-radius: 10px;
     background: var(--surface-card);
     color: var(--text-main);
-    font-size: 0.75rem;
+    font-size: var(--fs-caption);
 }
 
 .brokerage-attention-items strong {
     color: var(--brokerage-warning);
-    font-size: 0.95rem;
+    font-size: var(--fs-base);
 }
 
 .brokerage-instrument-row {
@@ -710,7 +710,7 @@
 .brokerage-ledger-main small,
 .brokerage-funding-main > span,
 .brokerage-funding-main > small {
-    font-size: 0.75rem;
+    font-size: var(--fs-caption);
 }
 
 [data-theme="dark"] .brokerage-command-header {
@@ -910,6 +910,121 @@
         display: grid;
         grid-template-columns: minmax(0, 1fr);
     }
+}
+
+/* Dane i uzgodnienia: zwinięta sekcja porządkowa na końcu głównej
+   kolumny. Na wierzchu tylko nazwa i licznik. */
+.brokerage-disclosure {
+    border: 1px solid var(--surface-border);
+    border-radius: var(--brokerage-panel-radius);
+    background: var(--surface-card);
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+}
+
+.brokerage-disclosure-summary {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 64px;
+    padding: 0.85rem 1rem;
+    border-radius: inherit;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+    transition: background-color var(--dur-fast) var(--ease);
+}
+
+.brokerage-disclosure-summary::-webkit-details-marker { display: none; }
+.brokerage-disclosure-summary::marker { content: ""; }
+.brokerage-disclosure-summary:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+@media (hover: hover) and (pointer: fine) {
+    .brokerage-disclosure-summary:hover { background: var(--surface-subtle); }
+}
+
+.brokerage-disclosure[open] > .brokerage-disclosure-summary {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.brokerage-disclosure-icon {
+    display: grid;
+    width: 2.35rem;
+    height: 2.35rem;
+    place-items: center;
+    border-radius: 11px;
+    background: var(--surface-subtle);
+    color: var(--text-muted);
+}
+
+.brokerage-disclosure-icon.is-warning {
+    background: rgba(217, 119, 6, 0.13);
+    color: var(--brokerage-warning);
+}
+
+.brokerage-disclosure-text strong {
+    display: block;
+    color: var(--text-main);
+    font-size: var(--fs-callout);
+    font-weight: 750;
+    letter-spacing: var(--tracking-title);
+}
+
+.brokerage-disclosure-text small {
+    display: block;
+    margin-top: 0.1rem;
+    color: var(--text-muted);
+    font-size: var(--fs-caption);
+}
+
+.brokerage-disclosure-chevron {
+    color: var(--text-muted);
+    transition: rotate var(--dur) var(--ease);
+}
+
+.brokerage-disclosure[open] .brokerage-disclosure-chevron { rotate: 180deg; }
+
+.brokerage-disclosure-body {
+    display: grid;
+    gap: 1rem;
+    padding: 0.25rem 1rem 1rem;
+}
+
+.brokerage-disclosure-body > .brokerage-panel { box-shadow: none; }
+
+.brokerage-check-panel .brokerage-attention-items {
+    justify-content: flex-start;
+    padding: 0 1rem 1rem;
+}
+
+/* Licznik przy statusie portfela w nagłówku: skrót do zwiniętej sekcji. */
+.brokerage-data-chip {
+    background: rgba(255, 193, 7, 0.14);
+    color: #8f5a00;
+    text-decoration: none;
+}
+
+[data-theme="dark"] .brokerage-data-chip { color: #f1ca78; }
+
+@media (max-width: 575.98px) {
+    .brokerage-disclosure-summary {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        row-gap: 0.4rem;
+    }
+
+    .brokerage-disclosure-summary .brokerage-count-pill {
+        grid-column: 2;
+        grid-row: 2;
+        justify-self: start;
+    }
+
+    .brokerage-disclosure-chevron {
+        grid-column: 3;
+        grid-row: 1 / span 2;
+    }
+
+    .brokerage-disclosure-body { padding: 0.25rem 0.65rem 0.65rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

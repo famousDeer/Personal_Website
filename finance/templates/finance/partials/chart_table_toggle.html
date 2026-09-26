@@ -1,0 +1,10 @@
+{% comment %} Bliźniacza tabela wykresu (AppCharts.twinTable wypełnia ją przy
+   pierwszym otwarciu). Parametr: id - ten sam, który dostaje twinTable. {% endcomment %}
+<details class="u-chart-data" id="{{ id }}">
+    <summary class="u-chart-data-toggle">
+        <i class="bi bi-table" aria-hidden="true"></i>
+        <span class="u-chart-data-show">Pokaż jako tabelę</span>
+        <span class="u-chart-data-hide">Ukryj tabelę</span>
+    </summary>
+    <div class="u-chart-data-body u-table-wrap"></div>
+</details>

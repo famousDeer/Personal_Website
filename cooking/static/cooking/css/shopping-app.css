@@ -79,7 +79,7 @@ button:disabled { cursor: not-allowed; }
     background: transparent;
     color: var(--ink-3);
     text-decoration: none;
-    font-size: 1.1rem;
+    font-size: var(--fs-h3);
 }
 
 .sa-icon-link:hover,
@@ -115,7 +115,7 @@ button:disabled { cursor: not-allowed; }
     min-width: 0;
 }
 
-.sa-title-chevron { display: none; color: var(--ink-3); font-size: 0.85rem; }
+.sa-title-chevron { display: none; color: var(--ink-3); font-size: var(--fs-md); }
 .sa-title-line.is-switchable .sa-title-chevron { display: inline; }
 
 .sa-title-select {
@@ -217,7 +217,7 @@ button:disabled { cursor: not-allowed; }
     padding: 0;
 }
 
-.sa-footer .sa-secondary.is-icon i { font-size: 1.15rem; }
+.sa-footer .sa-secondary.is-icon i { font-size: var(--fs-h3); }
 
 .sa-shop-options {
     display: grid;
@@ -256,7 +256,7 @@ button:disabled { cursor: not-allowed; }
     border-radius: var(--r-md);
     background: var(--surface-2);
     color: var(--ink-1);
-    font-size: 1rem;
+    font-size: var(--fs-callout);
 }
 
 .sa-shop-new .sa-secondary { flex: none; height: 44px; padding: 0 var(--sp-3); }
@@ -398,6 +398,47 @@ button:disabled { cursor: not-allowed; }
     box-shadow: var(--sh-1);
 }
 
+/* Przesuwany wskaźnik (audyt §2.3): białe tło zaznaczenia jedzie na
+   sprężynie spod "Lista" pod "Spiżarnia" i z powrotem, zamiast skakać.
+   Dwa przyciski mają równą szerokość, więc wystarcza CSS i :has(). */
+.sa-screen-indicator { display: none; }
+
+@supports selector(:has(*)) {
+    .sa-screen-switch {
+        position: relative;
+        isolation: isolate;
+    }
+
+    .sa-screen-indicator {
+        display: block;
+        position: absolute;
+        z-index: -1;
+        top: 4px;
+        bottom: 4px;
+        left: 4px;
+        width: calc((100% - 12px) / 2);
+        border-radius: var(--r-pill);
+        background: var(--surface-1);
+        box-shadow: var(--sh-1);
+        transition: transform var(--dur-spring) var(--ease-spring);
+    }
+
+    .sa-screen-switch:has([data-screen="spizarnia"].is-active) .sa-screen-indicator {
+        transform: translateX(calc(100% + 4px));
+    }
+
+    .sa-screen-switch button { transition: color var(--dur) var(--ease); }
+
+    .sa-screen-switch button.is-active {
+        background: transparent;
+        box-shadow: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sa-screen-indicator { transition: none; }
+}
+
 /* --- Spiżarnia --------------------------------------------------------- */
 .sa-pantry-search {
     display: flex;
@@ -418,7 +459,7 @@ button:disabled { cursor: not-allowed; }
     border: 0;
     background: transparent;
     color: var(--ink-1);
-    font-size: 1rem;
+    font-size: var(--fs-callout);
 }
 
 .sa-pantry-item .sa-item-body { padding-left: var(--sp-4); cursor: default; }
@@ -501,14 +542,14 @@ button:disabled { cursor: not-allowed; }
     font-size: var(--fs-sm);
 }
 
-.sa-banner > i { font-size: 1.15rem; color: var(--invest); margin-top: 1px; }
+.sa-banner > i { font-size: var(--fs-h3); color: var(--invest); margin-top: 1px; }
 /* Tekst dostaje całą szerokość; przycisk schodzi pod spód, gdy jest ciasno. */
 .sa-banner > div { flex: 1 1 220px; }
 .sa-banner strong { color: var(--ink-1); }
 .sa-banner.is-warning { border-color: var(--expense-bg); background: color-mix(in srgb, var(--expense-bg) 45%, var(--surface-1)); }
 .sa-banner.is-warning > i { color: var(--expense); }
 .sa-banner.is-install > i { color: var(--brand-500); }
-.sa-banner .sa-icon-button { width: 32px; height: 32px; margin: -4px -4px 0 0; font-size: 0.9rem; }
+.sa-banner .sa-icon-button { width: 32px; height: 32px; margin: -4px -4px 0 0; font-size: var(--fs-md); }
 
 .sa-banner-action {
     flex: none;
@@ -590,7 +631,7 @@ button:disabled { cursor: not-allowed; }
     border: 2px solid var(--ink-4);
     border-radius: 50%;
     color: transparent;
-    font-size: 1.05rem;
+    font-size: var(--fs-lead);
     transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
 }
 
@@ -617,7 +658,7 @@ button:disabled { cursor: not-allowed; }
 
 .sa-item-name {
     color: var(--ink-1);
-    font-size: 1rem;
+    font-size: var(--fs-callout);
     font-weight: 600;
     line-height: var(--lh-tight);
     overflow-wrap: anywhere;
@@ -686,7 +727,7 @@ button:disabled { cursor: not-allowed; }
     border: 0;
     background: transparent;
     color: var(--ink-1);
-    font-size: 1.05rem;
+    font-size: var(--fs-lead);
 }
 
 .sa-step:active { background: var(--surface-3); }
@@ -799,7 +840,7 @@ button:disabled { cursor: not-allowed; }
         flex: 1;
         gap: 6px;
         padding: 0 var(--sp-3);
-        font-size: 0.9rem;
+        font-size: var(--fs-md);
     }
 }
 
@@ -937,7 +978,7 @@ button:disabled { cursor: not-allowed; }
     border-radius: var(--r-md);
     background: var(--surface-2);
     color: var(--ink-1);
-    font-size: 1rem;  /* 16px: iOS nie powiększa strony przy wpisywaniu */
+    font-size: var(--fs-callout);  /* 16px: iOS nie powiększa strony przy wpisywaniu */
 }
 
 .sa-add-hint {
@@ -1019,7 +1060,7 @@ button:disabled { cursor: not-allowed; }
 /* Link do strony z certyfikatem pod „Stanem aplikacji”. */
 .sa-details-note {
     margin: 12px 0 0;
-    font-size: 0.85rem;
+    font-size: var(--fs-md);
     color: var(--ink-3);
 }
 

@@ -685,13 +685,17 @@ button, and whatever is inside the block becomes the action buttons
 | Other actions | `btn btn-outline-secondary` |
 | Icon-only button | `btn btn-light btn-icon` + `aria-label` |
 | Tiles linking to sections | `.u-tile-grid` > `a.u-tile` (`.is-3` for three columns) |
-| Numbers at a glance | `.u-metric-grid` (two per row on a phone) |
+| Numbers at a glance | `.u-metric-grid` > `.u-metric`: label in sentence case, value in whole złoty with `{{ value|zl }}` (54 377 zł; the exact amount goes in `title`), optional change line `{% include 'finance/partials/metric_delta.html' with change=... label=... %}`, optional `.u-metric-note` |
 | Nothing to show yet | `.u-empty` inside a `.card` |
 | Long form's save bar | `.u-form-actions` (sticks to the bottom of the screen) |
 | Money | `.u-amount.is-income` / `.is-expense` / `.is-invest` |
 | Quantities | `{{ value|qty }}` from `pantry_extras`: 900 ml, 1,5 kg (same format as the JS) |
 | Counted nouns | `{{ n|pl:"rachunek,rachunki,rachunków" }}` from `ui`: 1 rachunek, 2 rachunki, 5 rachunków (`pl_word` gives the noun alone) |
-| Chart on the page | `AppCharts` from `static/js/charts.js`: colours from tokens, repainted on theme change (`register` for fixed data, `slot` for data that changes) |
+| Chart on the page | `AppCharts` from `static/js/charts.js`: colours from tokens, repainted on theme change (`register` for fixed data, `slot` for data that changes). Give the `<canvas>` `role="img"` and a one-sentence `aria-label` (or `AppCharts.describe`), and add the twin table: `{% include 'finance/partials/chart_table_toggle.html' with id='...' %}` + `AppCharts.twinTable(details, build)` |
+| Text size and letter spacing | Only the scale in `tokens.css`: `--fs-eyebrow` 11, `--fs-caption` 12, `--fs-sm` 13, `--fs-md` 14, `--fs-base` 15, `--fs-callout` 16, `--fs-lead` 17, `--fs-h3` 18, `--fs-h2` 22 px; tracking `--tracking-display` / `-title` for large text, `-caps` / `-eyebrow` for small capitals, nothing for body text. Body text is 16 px on touch screens. Tabular digits in tables and axes (`.u-num`), proportional digits in big standalone numbers |
+| Motion | Colour, background, border: `var(--dur-fast)` / `var(--dur)` with `var(--ease)`. Something appearing: `var(--ease-out)`. Something moving between two places: `var(--dur-spring) var(--ease-spring)` (critically damped spring). Never `transition: all` |
+| Two or three views of the same thing | Segmented control with `data-segmented` (links or buttons, `.is-active` on the current one): the selection slides between segments |
+| Housekeeping sections | `<details>` with a counter in the `<summary>` (see *Dane i uzgodnienia* in the brokerage). A link to `#id` inside a closed `<details>` opens it first |
 
 **Behaviour you get for free** (`app.css` and the script in `base.html`):
 
@@ -710,6 +714,9 @@ button, and whatever is inside the block becomes the action buttons
   (`var(--fs-eyebrow)`).
 - Moving between pages cross-fades the content while the top bar and the
   bottom navigation stay put (View Transitions; off with *Reduce motion*).
+- The line under the top bar and above the bottom navigation only shows
+  while content is actually under the bar (it stays with *Increase contrast*).
+- Drop-down menus grow out of the button that opened them.
 
 **Actions that keep your place** (`static/js/app-actions.js`, `utils/navigation.py`):
 

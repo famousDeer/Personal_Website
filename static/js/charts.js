@@ -19,6 +19,31 @@
         return (value && value.trim()) || fallback;
     }
 
+    /**
+     * Celownik: pionowa linia 1 px w kolorze osi pod wskazanym punktem.
+     * Rysowana pod seriami, żeby nie przecinała punktów, i tylko wtedy,
+     * gdy widać podpowiedź - po zjechaniu kursorem znika razem z nią.
+     */
+    var crosshair = {
+        id: 'appCrosshair',
+        beforeDatasetsDraw: function (chart, args, options) {
+            var tooltip = chart.tooltip;
+            var active = tooltip && tooltip.getActiveElements ? tooltip.getActiveElements() : [];
+            if (!active.length) { return; }
+            var area = chart.chartArea;
+            var x = Math.round(active[0].element.x) + 0.5;
+            var ctx = chart.ctx;
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(x, area.top);
+            ctx.lineTo(x, area.bottom);
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = (options && options.color) || '#94a3b8';
+            ctx.stroke();
+            ctx.restore();
+        }
+    };
+
     var AppCharts = {
         registry: [],
 
@@ -125,6 +150,81 @@
             };
         },
 
+        crosshair: crosshair,
+
+        /** "16 wrz" - dzień z miesiącem do tytułu podpowiedzi i tabeli. */
+        dayLabel: function (year, month, day) {
+            return new Intl.DateTimeFormat('pl-PL', { day: 'numeric', month: 'short' })
+                .format(new Date(year, month - 1, day));
+        },
+
+        /**
+         * Opis wykresu dla czytnika ekranu. Canvas sam w sobie jest dla
+         * niego pustym obrazkiem, więc dostaje rolę "img" i jedno zdanie
+         * z tym, co z wykresu wynika.
+         */
+        describe: function (canvas, text) {
+            canvas.setAttribute('role', 'img');
+            canvas.setAttribute('aria-label', text);
+        },
+
+        /**
+         * Bliźniacza tabela pod wykresem: <details> z pustym ciałem, które
+         * wypełnia się przy pierwszym otwarciu tymi samymi danymi co wykres.
+         * build() zwraca { caption, columns: [...], rows: [[...]], foot: [...] };
+         * pierwsza kolumna to etykieta wiersza, pozostałe to kwoty.
+         */
+        twinTable: function (details, build) {
+            if (!details) { return; }
+            var body = details.querySelector('.u-chart-data-body');
+            var render = function () {
+                var spec = build();
+                var table = document.createElement('table');
+                table.className = 'u-table';
+                if (spec.caption) {
+                    var caption = document.createElement('caption');
+                    caption.className = 'visually-hidden';
+                    caption.textContent = spec.caption;
+                    table.appendChild(caption);
+                }
+                var addRow = function (section, cells, header) {
+                    var tr = document.createElement('tr');
+                    cells.forEach(function (cell, index) {
+                        var el = document.createElement(header || index === 0 ? 'th' : 'td');
+                        if (header) { el.scope = 'col'; } else if (index === 0) { el.scope = 'row'; }
+                        if (index > 0) { el.className = 'u-amount'; }
+                        el.textContent = cell;
+                        tr.appendChild(el);
+                    });
+                    section.appendChild(tr);
+                };
+                var head = table.createTHead();
+                addRow(head, spec.columns, true);
+                var tbody = table.createTBody();
+                spec.rows.forEach(function (row) { addRow(tbody, row); });
+                if (spec.foot) { addRow(table.createTFoot(), spec.foot); }
+                body.replaceChildren(table);
+            };
+            details.addEventListener('toggle', function () {
+                if (details.open && !body.firstChild) { render(); }
+            });
+            if (details.open) { render(); }
+        },
+
+        /**
+         * Do którego dnia rysować przebieg miesiąca: do dziś, bo dalej linia
+         * byłaby płaska i wyglądała jak "reszta miesiąca bez wydatków".
+         * Wpis z datą w przyszłości (np. zaplanowany rachunek) przesuwa
+         * koniec do swojego dnia, żeby wykres zgadzał się z kafelkami.
+         */
+        monthCutoff: function (data) {
+            var cutoff = data.daysPassed == null ? data.days.length : data.daysPassed;
+            [data.incomes, data.expenses, data.investments].forEach(function (arr) {
+                (arr || []).forEach(function (v, i) { if (v && i + 1 > cutoff) { cutoff = i + 1; } });
+            });
+            return Math.min(cutoff, data.days.length);
+        },
+
         /**
          * Skumulowany przebieg miesiąca.
          *
@@ -141,34 +241,59 @@
                 return arr.map(function (v) { total += (v || 0); return total; });
             };
 
+            var passed = AppCharts.monthCutoff(data);
+            var untilToday = function (arr) {
+                return arr.map(function (v, i) { return i < passed ? v : null; });
+            };
+
             var series = [
-                { label: 'Przychody', values: running(data.incomes), color: p.income },
-                { label: 'Wydatki', values: running(data.expenses), color: p.expense },
-                { label: 'Inwestycje', values: running(data.investments), color: p.invest }
+                { label: 'Przychody', values: untilToday(running(data.incomes)), color: p.income },
+                { label: 'Wydatki', values: untilToday(running(data.expenses)), color: p.expense },
+                { label: 'Inwestycje', values: untilToday(running(data.investments)), color: p.invest }
             ].filter(function (s) { return s.values.some(function (v) { return v > 0; }); });
+
+            var options = AppCharts.baseOptions();
+            options.plugins.appCrosshair = { color: p.axis };
+            options.plugins.tooltip.callbacks.title = function (items) {
+                if (!items.length || !data.year) { return items.length ? items[0].label : ''; }
+                return AppCharts.dayLabel(data.year, data.month, Number(items[0].label));
+            };
 
             return new global.Chart(canvas, {
                 type: 'line',
                 data: {
                     labels: data.days,
                     datasets: series.map(function (s) {
+                        // Wypełnienie tylko pod wydatkami: dwa półprzezroczyste
+                        // pola (wydatki i inwestycje) nakładały się w trzeci,
+                        // fioletowy kolor, którego nie ma w legendzie.
+                        var filled = s.label === 'Wydatki';
                         return {
                             label: s.label,
                             data: s.values,
                             borderColor: s.color,
-                            backgroundColor: s.color + '22',
+                            backgroundColor: filled ? s.color + '1f' : s.color,
+                            // Legenda i podpowiedź biorą kolor z punktu, nie
+                            // z wypełnienia - bez tego kwadracik "Wydatki"
+                            // byłby blady, a pozostałe pełne.
+                            pointBackgroundColor: s.color,
+                            pointBorderColor: s.color,
                             borderWidth: 2,
                             pointRadius: 0,
                             pointHoverRadius: 5,
                             pointHoverBorderWidth: 2,
                             pointHoverBorderColor: p.surface,
                             pointHoverBackgroundColor: s.color,
-                            tension: 0.25,
-                            fill: s.label === 'Przychody' ? false : 'origin'
+                            // Suma narastająca nigdy nie maleje; zwykłe wygładzenie
+                            // (tension) potrafiło narysować przestrzał nad 8400 zł
+                            // i dołek, którego w danych nie ma.
+                            cubicInterpolationMode: 'monotone',
+                            fill: filled ? 'origin' : false
                         };
                     })
                 },
-                options: AppCharts.baseOptions()
+                options: options,
+                plugins: [crosshair]
             });
         },
 

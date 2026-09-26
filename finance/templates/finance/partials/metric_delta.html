@@ -1,0 +1,10 @@
+{% comment %} Zmiana względem poprzedniego okresu pod liczbą w kafelku.
+   Kierunek niesie strzałka i słowo dla czytnika, kolor tylko wzmacnia
+   ocenę (więcej wydatków = źle, więcej przychodów = dobrze).
+   Parametry: change (wynik _period_change albo None), label ("vs sie"). {% endcomment %}
+{% if change %}
+<div class="u-metric-delta{% if change.good %} is-good{% elif change.good is False %} is-bad{% endif %}">
+    <span class="u-metric-delta-value"><span aria-hidden="true">{% if change.direction == 'up' %}↑{% elif change.direction == 'down' %}↓{% else %}→{% endif %}</span><span class="visually-hidden">{% if change.direction == 'up' %}wzrost o{% elif change.direction == 'down' %}spadek o{% else %}bez zmian,{% endif %}</span> {{ change.percent|floatformat:0 }}%</span>
+    <span class="u-metric-delta-label">{{ label }}</span>
+</div>
+{% endif %}

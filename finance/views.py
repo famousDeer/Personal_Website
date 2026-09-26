@@ -745,7 +745,24 @@ class BrokeragePortfolioView(View):
         )
 
         summary = build_portfolio_summary(request.user, selected_account=selected_account)
+        unassigned_investments = (
+            Daily.objects
+            .filter(user=request.user, category=INVESTMENT_CATEGORY, brokerage_account__isnull=True)
+            .select_related('account')
+            .order_by('-date', '-id')
+        )
+        # Licznik zwiniętej sekcji "Dane i uzgodnienia": ile rzeczy czeka na
+        # człowieka. Szczegóły są poziom głębiej, liczba zostaje na wierzchu.
+        health = summary.get('portfolio_health') or {}
+        data_checks = {
+            'missing_prices': health.get('missing_price_count') or 0,
+            'history_errors': health.get('history_error_count') or 0,
+            'unassigned': unassigned_investments.count(),
+            'needs_review': investment_fundings.filter(status=InvestmentFunding.NEEDS_REVIEW).count(),
+        }
+        data_checks['total'] = sum(data_checks.values())
         summary.update({
+            'data_checks': data_checks,
             'brokerage_accounts': brokerage_accounts,
             'selected_brokerage_account': selected_account,
             'selected_brokerage_account_id': selected_account.id if selected_account else None,
@@ -773,12 +790,7 @@ class BrokeragePortfolioView(View):
                 .select_related('account', 'expense', 'cash_operation')
                 .order_by('-occurred_on', '-id')[:20]
             ),
-            'unassigned_investments': (
-                Daily.objects
-                .filter(user=request.user, category=INVESTMENT_CATEGORY, brokerage_account__isnull=True)
-                .select_related('account')
-                .order_by('-date', '-id')[:12]
-            ),
+            'unassigned_investments': unassigned_investments[:12],
         })
         return render(request, 'finance/brokerage.html', summary)
 
@@ -1341,6 +1353,55 @@ class DeleteBrokerageDividendView(View):
         return redirect('finance:brokerage')
 
 
+MONTH_ABBR = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru']
+
+
+def _period_change(current, previous, higher_is_better):
+    """Zmiana względem poprzedniego okresu do kafelka liczby.
+
+    Zwraca None, gdy nie ma z czym porównać (brak danych albo zero -
+    procent od zera nic nie mówi).
+    """
+    current = Decimal(current or 0)
+    previous = Decimal(previous or 0)
+    if previous <= 0:
+        return None
+    percent = (current - previous) / previous * 100
+    if abs(percent) < Decimal('0.5'):
+        direction = 'flat'
+    else:
+        direction = 'up' if percent > 0 else 'down'
+    good = None if direction == 'flat' else (direction == 'up') == higher_is_better
+    return {'percent': abs(percent), 'direction': direction, 'good': good}
+
+
+def _previous_month_totals(account, month_date, days_passed):
+    """Przychody, wydatki i inwestycje poprzedniego miesiąca do tego samego dnia.
+
+    Bieżący miesiąc porównujemy z tym samym odcinkiem poprzedniego
+    (1-26 sierpnia, gdy dziś jest 26 września), a nie z całym miesiącem -
+    inaczej każdy miesiąc w trakcie wyglądałby na "tańszy".
+    """
+    previous_start = (month_date - timedelta(days=1)).replace(day=1)
+    previous_record = Monthly.objects.filter(account=account, date=previous_start).first()
+    if previous_record is None or days_passed <= 0:
+        return None
+    last_day = calendar.monthrange(previous_start.year, previous_start.month)[1]
+    month_complete = days_passed >= calendar.monthrange(month_date.year, month_date.month)[1]
+    cutoff = previous_start.replace(day=last_day if month_complete else min(days_passed, last_day))
+    expenses = Daily.objects.filter(account=account, month=previous_record, date__lte=cutoff)
+    investment = expenses.filter(category=INVESTMENT_CATEGORY).aggregate(total=Sum('cost'))['total'] or 0
+    spending = expenses.exclude(category=INVESTMENT_CATEGORY).aggregate(total=Sum('cost'))['total'] or 0
+    income = Income.objects.filter(
+        account=account, month=previous_record, date__lte=cutoff,
+    ).aggregate(total=Sum('amount'))['total'] or 0
+    if cutoff.day == last_day:
+        label = f'vs {MONTH_ABBR[previous_start.month - 1]}'
+    else:
+        label = f'vs 1–{cutoff.day} {MONTH_ABBR[previous_start.month - 1]}'
+    return {'income': income, 'spending': spending, 'investment': investment, 'label': label}
+
+
 @method_decorator(login_required, name='dispatch')
 class DashboardView(View):
     def get(self, request):
@@ -1488,6 +1549,17 @@ class DashboardView(View):
 
         projected_expense = float(spending_total) + (adjusted_daily_avg * (days_in_month_count - days_passed))
 
+        previous = _previous_month_totals(active_account, current_month_date, days_passed)
+        if previous:
+            changes = {
+                'income': _period_change(monthly_record.total_income, previous['income'], higher_is_better=True),
+                'spending': _period_change(spending_total, previous['spending'], higher_is_better=False),
+                'investment': _period_change(investment_total, previous['investment'], higher_is_better=True),
+                'label': previous['label'],
+            }
+        else:
+            changes = {}
+
         context = {
             'current_month': monthly_record.date,
             'current_month_filter': current_month_date.strftime('%Y-%m'),
@@ -1516,6 +1588,12 @@ class DashboardView(View):
             'selected_category_total': selected_category_total,
             'available_expense_categories': available_expense_categories,
             'selected_cost_categories': selected_cost_categories,
+            'changes': changes,
+            'chart_meta': {
+                'year': current_month_date.year,
+                'month': current_month_date.month,
+                'daysPassed': days_passed,
+            },
         }
         return render(request, 'finance/dashboard.html', context)
 

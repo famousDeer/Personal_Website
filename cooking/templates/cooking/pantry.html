@@ -134,7 +134,7 @@
             </p>
         </div>
         <div class="pantry-view-tools">
-            <div class="pantry-view-switch" role="group" aria-label="Widok spiżarni">
+            <div class="pantry-view-switch" role="group" aria-label="Widok spiżarni" data-segmented>
                 <a href="{% url 'cooking:pantry' %}{% if query_without_view %}?{{ query_without_view }}{% endif %}"
                    class="{% if view_mode != 'grupy' %}is-active{% endif %}"
                    {% if view_mode != 'grupy' %}aria-current="page"{% endif %}>
@@ -783,7 +783,7 @@
                                            aria-label="Powiększenie zdjęcia" data-crop-zoom>
                                     <i class="bi bi-image-fill" aria-hidden="true"></i>
                                 </div>
-                                <p class="small text-muted text-center mb-0">Przesuń zdjęcie palcem i ustaw produkt wewnątrz ramki.</p>
+                                <p class="small text-muted text-center mb-0">Przesuń zdjęcie palcem i ustaw produkt wewnątrz ramki. Dwoma palcami powiększysz.</p>
                             </div>
 
                             <button class="btn btn-primary btn-lg w-100 mt-3" type="button" data-crop-confirm disabled>

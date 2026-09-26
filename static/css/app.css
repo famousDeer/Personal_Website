@@ -100,7 +100,7 @@ body {
 main h1, main h2, main h3, main h4, main h5, main h6,
 .recipe-title {
     font-family: var(--font-ui) !important;
-    letter-spacing: -0.01em;
+    letter-spacing: var(--tracking-title);
 }
 
 .recipe-title {
@@ -149,7 +149,7 @@ a:hover { color: var(--accent-hover); }
     font-size: var(--fs-h1);
     font-weight: 750;
     line-height: var(--lh-tight);
-    letter-spacing: -0.015em;
+    letter-spacing: var(--tracking-title);
     overflow-wrap: anywhere;
 }
 
@@ -257,7 +257,8 @@ a:hover { color: var(--accent-hover); }
    --bs-heading-color (ciemny atrament), więc w jasnym motywie tytuł
    "Jeden skan. Aktualny stan." był ciemnozielony na zielonym.              */
 .u-hero :is(h1, h2, h3, h4),
-.pantry-scan-hero :is(h1, h2, h3, h4) {
+.pantry-scan-hero :is(h1, h2, h3, h4),
+.pantry-scanner-header :is(h1, h2, h3, h4) {
     color: #fff !important;
 }
 
@@ -785,7 +786,7 @@ textarea.form-control {
     /* Bootstrap: 0,75em. W drobnym tekście dawało to 10,4 px. */
     font-size: max(0.75em, var(--fs-eyebrow));
     font-weight: 650;
-    letter-spacing: 0.01em;
+    letter-spacing: var(--tracking-caption);
 }
 
 .badge.rounded-pill, .badge { border-radius: var(--r-pill); }
@@ -879,13 +880,36 @@ textarea.form-control {
 
 /* --- Nawigacja ------------------------------------------------------------ */
 .app-brand > span:not(.app-brand-mark) .bi { display: none; }
-.app-brand { gap: 0.6rem; letter-spacing: -0.01em; }
+.app-brand { gap: 0.6rem; letter-spacing: var(--tracking-title); }
 
 .dropdown-menu {
     padding: 0.35rem;
     border: 1px solid var(--line-1);
     border-radius: var(--r-md);
     box-shadow: var(--sh-3);
+    /* Stara animacja (fadeIn z translateY i "forwards") nadpisywała
+       transform, którym Popper ustawia menu pod przyciskiem - menu
+       lądowało na przycisku zamiast pod nim. */
+    animation: none;
+    transform-origin: top left;
+}
+
+/* Menu wyrasta z przycisku, który je otworzył: skala 0,96 -> 1 i krycie,
+   od rogu przy przycisku. Właściwość "scale" składa się z transformem
+   Poppera, zamiast go zastępować. */
+.dropdown-menu-end { transform-origin: top right; }
+.dropdown-menu[data-popper-placement^="top"] { transform-origin: bottom left; }
+.dropdown-menu-end[data-popper-placement^="top"] { transform-origin: bottom right; }
+
+.dropdown-menu.show { animation: app-menu-in var(--dur) var(--ease-out) both; }
+
+@keyframes app-menu-in {
+    from { opacity: 0; scale: 0.96; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dropdown-menu.show { animation-name: app-menu-fade; }
+    @keyframes app-menu-fade { from { opacity: 0; } }
 }
 
 .dropdown-item {
@@ -912,7 +936,7 @@ textarea.form-control {
     }
 
     .u-metric { padding: var(--sp-3); }
-    .u-metric-value { font-size: 1.35rem; }
+    .u-metric-value { font-size: var(--fs-h2); }
 
     /* Kafelek podróży: ikona nad liczbą, żeby "15 000 zł" mieściło się
        w jednej linii przy dwóch kafelkach w rzędzie. */
@@ -957,7 +981,7 @@ textarea.form-control {
 }
 
 /* Formularz przepisu: podgląd zdjęcia i wiersze składników */
-.image-upload-container { background: var(--surface-2) !important; transition: background-color 0.2s; }
+.image-upload-container { background: var(--surface-2) !important; transition: background-color var(--dur) var(--ease); }
 .image-upload-container:hover { background: var(--surface-3) !important; }
 
 .recipe-step-card { background: var(--surface-2); border-color: var(--line-1); border-radius: var(--r-md); }
@@ -1003,7 +1027,7 @@ hr { border-color: var(--line-2); opacity: 1; }
    a kwota zostaje w jednej linii obok niego. */
 .u-list-card-title {
     display: block;
-    font-size: 1.05rem;
+    font-size: var(--fs-lead);
     font-weight: 700;
     line-height: 1.3;
     color: var(--ink-1);
@@ -1048,8 +1072,8 @@ hr { border-color: var(--line-2); opacity: 1; }
 .pantry-scan-launch-button:active,
 #pantry-scanner .pantry-scan-launch-button:active {
     transform: scale(0.97);
-    transition-duration: 90ms;
-    transition-timing-function: ease-out;
+    transition-duration: var(--dur-press);
+    transition-timing-function: var(--ease-out);
 }
 
 /* Szerokie przyciski i kafelki: ten sam ruch, mniejsza skala - przy
@@ -1058,8 +1082,8 @@ hr { border-color: var(--line-2); opacity: 1; }
 .u-tile:active, a.home-module:active,
 .brokerage-instrument-row:active:not(:has(button:active, a:active, input:active, select:active)) {
     transform: scale(0.98);
-    transition-duration: 90ms;
-    transition-timing-function: ease-out;
+    transition-duration: var(--dur-press);
+    transition-timing-function: var(--ease-out);
 }
 
 .u-back, .app-icon-btn {
@@ -1166,6 +1190,65 @@ hr { border-color: var(--line-2); opacity: 1; }
 }
 
 /* =========================================================================
+   Przełącznik segmentowy z przesuwanym wskaźnikiem (audyt §2.3)
+   =========================================================================
+   Tło zaznaczenia to .seg-indicator (dodaje go app-actions.js), a nie tło
+   aktywnego segmentu - dlatego może przejechać z jednego miejsca w drugie. */
+[data-segmented].has-indicator {
+    position: relative;
+    isolation: isolate;
+}
+
+[data-segmented] .seg-indicator {
+    position: absolute;
+    z-index: -1;
+    top: 0;
+    left: 0;
+    width: var(--seg-w, 0);
+    height: var(--seg-h, 0);
+    border-radius: 999px;
+    background: var(--surface-card);
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+    transform: translate(var(--seg-x, 0), var(--seg-y, 0));
+    transition: transform var(--dur-spring) var(--ease-spring), width var(--dur-spring) var(--ease-spring);
+    pointer-events: none;
+}
+
+[data-segmented].is-measuring .seg-indicator { transition: none; }
+
+[data-segmented].has-indicator > a.is-active,
+[data-segmented].has-indicator > button.is-active {
+    background: transparent;
+    box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    [data-segmented] .seg-indicator { transition: none; }
+}
+
+/* =========================================================================
+   Krawędź pasków (audyt §4.2)
+   =========================================================================
+   Linia pod górnym paskiem i nad dolną nawigacją pojawia się dopiero wtedy,
+   gdy treść faktycznie pod nie wchodzi. Na samej górze strony pasek zlewa
+   się z tłem; przy końcu strony dolna nawigacja też. Klasę .edge-aware
+   ustawia app-actions.js - bez JS linie zostają jak dawniej. */
+.app-nav,
+.app-tabbar {
+    transition: border-color var(--dur) var(--ease);
+}
+
+.app-edge-sentinel { height: 0; margin: 0; padding: 0; pointer-events: none; }
+
+.edge-aware .app-nav:not(.is-scrolled) { border-bottom-color: transparent; }
+.edge-aware .app-tabbar:not(.has-content-below) { border-top-color: transparent; }
+
+@media (prefers-contrast: more) {
+    .edge-aware .app-nav:not(.is-scrolled) { border-bottom-color: var(--line-1); }
+    .edge-aware .app-tabbar:not(.has-content-below) { border-top-color: var(--line-1); }
+}
+
+/* =========================================================================
    Preferencje dostępności systemu (audyt §5)
    ========================================================================= */
 
@@ -1262,7 +1345,7 @@ hr { border-color: var(--line-2); opacity: 1; }
     line-height: 1.35;
     opacity: 0;
     transform: translateY(16px) scale(0.98);
-    transition: opacity var(--dur) var(--ease), transform 320ms cubic-bezier(0.32, 0.72, 0, 1);
+    transition: opacity var(--dur) var(--ease), transform 320ms var(--ease-sheet);
 }
 
 .app-toast.is-visible { opacity: 1; transform: none; }
@@ -1282,7 +1365,7 @@ hr { border-color: var(--line-2); opacity: 1; }
     background: transparent;
     color: var(--toast-action);
     font-weight: 750;
-    transition: background-color var(--dur-fast) var(--ease), transform 90ms ease-out;
+    transition: background-color var(--dur-fast) var(--ease), transform var(--dur-press) var(--ease-out);
 }
 
 .app-toast-close {
@@ -1321,7 +1404,7 @@ hr { border-color: var(--line-2); opacity: 1; }
     background: var(--surface-1);
     color: var(--ink-2);
     box-shadow: 0 -12px 40px rgba(15, 23, 42, 0.2);
-    transition: transform 340ms cubic-bezier(0.32, 0.72, 0, 1), opacity var(--dur) var(--ease);
+    transition: transform 340ms var(--ease-sheet), opacity var(--dur) var(--ease);
 }
 
 .app-confirm.is-closing { transform: translateY(100%); }
@@ -1420,13 +1503,13 @@ hr { border-color: var(--line-2); opacity: 1; }
 .pantry-product-card.is-stock-changed .pantry-product-stock-primary strong {
     background: var(--accent-soft);
     color: var(--accent-soft-ink);
-    transition-duration: 90ms;
+    transition-duration: var(--dur-press);
 }
 
 /* Lista zakupów: usunięta pozycja zwija się w miejscu, lista się domyka. */
 .shopping-item-card {
-    transition: height 240ms cubic-bezier(0.32, 0.72, 0, 1), opacity 180ms var(--ease),
-                margin 240ms cubic-bezier(0.32, 0.72, 0, 1), padding 240ms cubic-bezier(0.32, 0.72, 0, 1);
+    transition: height 240ms var(--ease-sheet), opacity 180ms var(--ease),
+                margin 240ms var(--ease-sheet), padding 240ms var(--ease-sheet);
 }
 
 .shopping-item-card.is-removing {
@@ -1466,3 +1549,7 @@ hr { border-color: var(--line-2); opacity: 1; }
         navigation: none;
     }
 }
+
+/* Skok do kotwicy (np. "16 do sprawdzenia" w maklerze, #product-N w spiżarni)
+   zatrzymuje cel pod przyklejonym górnym paskiem, a nie pod nim schowany. */
+html { scroll-padding-top: calc(var(--nav-h) + var(--sp-3)); }

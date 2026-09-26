@@ -33,6 +33,9 @@
                         Brak bieżącej wyceny
                     {% endif %}
                 </span>
+                {% if data_checks.total %}
+                    <a href="#brokerage-data" class="u-chip brokerage-data-chip"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i> {{ data_checks.total }} do sprawdzenia</a>
+                {% endif %}
             </div>
         </div>
         <div class="u-page-actions brokerage-actions">
@@ -447,28 +450,6 @@
         </aside>
 
         <section class="brokerage-main">
-            {% if portfolio_health.missing_price_count or portfolio_health.history_error_count or unassigned_investments %}
-                <section class="brokerage-attention-panel" aria-labelledby="brokerageAttentionTitle">
-                    <div class="brokerage-attention-heading">
-                        <span class="brokerage-attention-icon"><i class="bi bi-exclamation-triangle"></i></span>
-                        <div>
-                            <span class="brokerage-section-kicker">Kontrola danych</span>
-                            <h2 id="brokerageAttentionTitle">Wymaga uwagi</h2>
-                        </div>
-                    </div>
-                    <div class="brokerage-attention-items">
-                        {% if portfolio_health.missing_price_count %}
-                            <a href="#brokerage-data-management"><strong>{{ portfolio_health.missing_price_count }}</strong><span>pozycji bez wyceny</span><i class="bi bi-chevron-right"></i></a>
-                        {% endif %}
-                        {% if portfolio_health.history_error_count %}
-                            <a href="#brokerage-data-management"><strong>{{ portfolio_health.history_error_count }}</strong><span>instrumentów z błędem historii</span><i class="bi bi-chevron-right"></i></a>
-                        {% endif %}
-                        {% if unassigned_investments %}
-                            <a href="#brokerage-unassigned-investments"><strong>{{ unassigned_investments|length }}</strong><span>wpłat bez przypisanego konta</span><i class="bi bi-chevron-right"></i></a>
-                        {% endif %}
-                    </div>
-                </section>
-            {% endif %}
             <section class="brokerage-panel brokerage-main-panel">
                 <div class="brokerage-table-toolbar">
                     <div class="brokerage-section-heading mb-0">
@@ -604,105 +585,41 @@
                 </div>
             </section>
 
-            <div class="brokerage-flow-grid">
-                <section class="brokerage-panel brokerage-flow-panel">
-                    <div class="brokerage-section-heading">
-                        <div>
-                            <h2>Aktywność na rachunkach</h2>
-                            <p>Operacje gotówkowe odtworzone z historii brokera.</p>
-                        </div>
-                        <span class="brokerage-count-pill">{{ brokerage_cash_operations|length }}</span>
+            <section class="brokerage-panel brokerage-flow-panel">
+                <div class="brokerage-section-heading">
+                    <div>
+                        <h2>Aktywność na rachunkach</h2>
+                        <p>Operacje gotówkowe odtworzone z historii brokera.</p>
                     </div>
-                    <div class="brokerage-ledger-list">
-                        {% for operation in brokerage_cash_operations %}
-                            <article class="brokerage-ledger-row">
-                                <span class="brokerage-operation-icon operation-{{ operation.operation_type }}">
-                                    {% if operation.operation_type == 'deposit' %}<i class="bi bi-arrow-down-left"></i>
-                                    {% elif operation.operation_type == 'withdrawal' %}<i class="bi bi-arrow-up-right"></i>
-                                    {% elif operation.operation_type == 'buy' %}<i class="bi bi-cart-plus"></i>
-                                    {% elif operation.operation_type == 'sell' %}<i class="bi bi-cash-stack"></i>
-                                    {% elif operation.operation_type == 'dividend' %}<i class="bi bi-coin"></i>
-                                    {% elif operation.operation_type == 'internal_transfer' %}<i class="bi bi-arrow-left-right"></i>
-                                    {% else %}<i class="bi bi-receipt"></i>{% endif %}
-                                </span>
-                                <div class="brokerage-ledger-main">
-                                    <strong>{{ operation.get_operation_type_display }}{% if operation.instrument %} · {{ operation.instrument.ticker }}{% endif %}</strong>
-                                    <span>{{ operation.account.name }} · {{ operation.occurred_at|date:"d.m.Y H:i" }}</span>
-                                    {% if operation.description %}<small title="{{ operation.description }}">{{ operation.description|truncatechars:72 }}</small>{% endif %}
-                                </div>
-                                <div class="brokerage-ledger-amount {% if operation.amount > 0 %}is-positive{% elif operation.amount < 0 %}is-negative{% endif %}">
-                                    <strong>{% if operation.amount > 0 %}+{% endif %}{{ operation.amount|floatformat:2|intcomma }}</strong>
-                                    <span>{{ operation.currency }}</span>
-                                </div>
-                            </article>
-                        {% empty %}
-                            <div class="brokerage-empty-state">Brak operacji. Import raportu XTB uzupełni wpłaty, transakcje, dywidendy i podatki.</div>
-                        {% endfor %}
-                    </div>
-                </section>
-
-                <section class="brokerage-panel brokerage-flow-panel">
-                    <div class="brokerage-section-heading">
-                        <div>
-                            <h2>Uzgodnienie wpłat</h2>
-                            <p>Połączenie wydatków „Inwestycje” z wpłatami widocznymi u brokera.</p>
-                        </div>
-                        <span class="brokerage-count-pill">{{ investment_fundings|length }}</span>
-                    </div>
-                    <div class="brokerage-reconciliation-summary">
-                        <span><i class="bi bi-link-45deg"></i> Dopasowanie wymaga tego samego konta, kwoty i zbliżonej daty.</span>
-                    </div>
-                    <div class="brokerage-ledger-list">
-                        {% for funding in investment_fundings %}
-                            <article class="brokerage-funding-row">
-                                <div class="brokerage-funding-main">
-                                    <div class="brokerage-funding-title">
-                                        <strong>{{ funding.expense.title }}</strong>
-                                        <span class="brokerage-status-badge status-{{ funding.status }}">
-                                            {% if funding.status == 'matched' %}<i class="bi bi-check-circle-fill"></i>
-                                            {% elif funding.status == 'needs_review' %}<i class="bi bi-exclamation-triangle-fill"></i>
-                                            {% else %}<i class="bi bi-hourglass-split"></i>{% endif %}
-                                            {{ funding.get_status_display }}
-                                        </span>
-                                    </div>
-                                    <span>{{ funding.account.name }} · {{ funding.occurred_on|date:"d.m.Y" }}</span>
-                                    {% if funding.cash_operation %}<small>Wpłata brokera: {{ funding.cash_operation.amount|floatformat:2|intcomma }} {{ funding.cash_operation.currency }}</small>{% else %}<small>Brak jednoznacznej wpłaty w historii brokera.</small>{% endif %}
-                                </div>
-                                <div class="brokerage-funding-side">
-                                    <strong>{{ funding.source_amount|floatformat:2|intcomma }} {{ funding.source_currency }}</strong>
-                                    <a href="{% url 'finance:edit_expense' funding.expense.id %}" aria-label="Edytuj wydatek {{ funding.expense.title }}"><i class="bi bi-pencil"></i></a>
-                                </div>
-                            </article>
-                        {% empty %}
-                            <div class="brokerage-empty-state">Przypisz konto maklerskie do wydatku w kategorii „Inwestycje”, aby rozpocząć uzgadnianie.</div>
-                        {% endfor %}
-                    </div>
-                </section>
-            </div>
-
-            {% if unassigned_investments %}
-                <section class="brokerage-panel brokerage-review-panel" id="brokerage-unassigned-investments">
-                    <div class="brokerage-section-heading">
-                        <div>
-                            <h2>Wpłaty wymagające przypisania</h2>
-                            <p>Te wydatki mają kategorię „Inwestycje”, ale nie wskazują docelowego rachunku maklerskiego.</p>
-                        </div>
-                        <span class="brokerage-count-pill brokerage-count-warning">{{ unassigned_investments|length }}</span>
-                    </div>
-                    <div class="brokerage-review-list">
-                        {% for expense in unassigned_investments %}
-                            <article>
-                                <div>
-                                    <strong>{{ expense.title }}</strong>
-                                    <span>{{ expense.date|date:"d.m.Y" }} · {{ expense.account.display_name|default:"Konto finansowe" }}</span>
-                                </div>
-                                <strong>{{ expense.cost|floatformat:2|intcomma }} PLN</strong>
-                                <a href="{% url 'finance:edit_expense' expense.id %}" class="btn btn-sm btn-outline-warning rounded-pill fw-bold">Przypisz konto</a>
-                            </article>
-                        {% endfor %}
-                    </div>
-                </section>
-            {% endif %}
+                    <span class="brokerage-count-pill">{{ brokerage_cash_operations|length }}</span>
+                </div>
+                <div class="brokerage-ledger-list">
+                    {% for operation in brokerage_cash_operations %}
+                        <article class="brokerage-ledger-row">
+                            <span class="brokerage-operation-icon operation-{{ operation.operation_type }}">
+                                {% if operation.operation_type == 'deposit' %}<i class="bi bi-arrow-down-left"></i>
+                                {% elif operation.operation_type == 'withdrawal' %}<i class="bi bi-arrow-up-right"></i>
+                                {% elif operation.operation_type == 'buy' %}<i class="bi bi-cart-plus"></i>
+                                {% elif operation.operation_type == 'sell' %}<i class="bi bi-cash-stack"></i>
+                                {% elif operation.operation_type == 'dividend' %}<i class="bi bi-coin"></i>
+                                {% elif operation.operation_type == 'internal_transfer' %}<i class="bi bi-arrow-left-right"></i>
+                                {% else %}<i class="bi bi-receipt"></i>{% endif %}
+                            </span>
+                            <div class="brokerage-ledger-main">
+                                <strong>{{ operation.get_operation_type_display }}{% if operation.instrument %} · {{ operation.instrument.ticker }}{% endif %}</strong>
+                                <span>{{ operation.account.name }} · {{ operation.occurred_at|date:"d.m.Y H:i" }}</span>
+                                {% if operation.description %}<small title="{{ operation.description }}">{{ operation.description|truncatechars:72 }}</small>{% endif %}
+                            </div>
+                            <div class="brokerage-ledger-amount {% if operation.amount > 0 %}is-positive{% elif operation.amount < 0 %}is-negative{% endif %}">
+                                <strong>{% if operation.amount > 0 %}+{% endif %}{{ operation.amount|floatformat:2|intcomma }}</strong>
+                                <span>{{ operation.currency }}</span>
+                            </div>
+                        </article>
+                    {% empty %}
+                        <div class="brokerage-empty-state">Brak operacji. Import raportu XTB uzupełni wpłaty, transakcje, dywidendy i podatki.</div>
+                    {% endfor %}
+                </div>
+            </section>
 
             <div class="brokerage-bottom-grid">
                 <section class="brokerage-panel">
@@ -825,6 +742,108 @@
                     </div>
                 </section>
             </div>
+
+            {% comment %} Dane i uzgodnienia: kontrola wycen, uzgodnienie wpłat i wpłaty
+               bez konta to praca porządkowa, nie to, po co się tu wchodzi. Są poziom
+               głębiej, a na wierzchu zostaje licznik (tu i przy statusie portfela
+               w nagłówku). Link z kotwicą do środka otwiera sekcję sam. {% endcomment %}
+            <details class="brokerage-disclosure" id="brokerage-data">
+                <summary class="brokerage-disclosure-summary">
+                    <span class="brokerage-disclosure-icon{% if data_checks.total %} is-warning{% endif %}" aria-hidden="true"><i class="bi {% if data_checks.total %}bi-exclamation-triangle{% else %}bi-clipboard-check{% endif %}"></i></span>
+                    <span class="brokerage-disclosure-text">
+                        <strong>Dane i uzgodnienia</strong>
+                        <small>Kontrola wycen, uzgodnienie wpłat{% if unassigned_investments %}, wpłaty bez konta{% endif %}</small>
+                    </span>
+                    {% if data_checks.total %}
+                        <span class="brokerage-count-pill brokerage-count-warning">{{ data_checks.total }} do sprawdzenia</span>
+                    {% else %}
+                        <span class="brokerage-count-pill"><i class="bi bi-check2" aria-hidden="true"></i> W porządku</span>
+                    {% endif %}
+                    <i class="bi bi-chevron-down brokerage-disclosure-chevron" aria-hidden="true"></i>
+                </summary>
+                <div class="brokerage-disclosure-body">
+                    {% if data_checks.missing_prices or data_checks.history_errors %}
+                        <section class="brokerage-panel brokerage-check-panel" aria-labelledby="brokerageChecksTitle">
+                            <div class="brokerage-section-heading">
+                                <div>
+                                    <h2 id="brokerageChecksTitle">Kontrola danych</h2>
+                                    <p>Wyceny i historia notowań instrumentów.</p>
+                                </div>
+                            </div>
+                            <div class="brokerage-attention-items">
+                                {% if data_checks.missing_prices %}
+                                    <a href="#brokerage-data-management"><strong>{{ data_checks.missing_prices }}</strong><span>{{ data_checks.missing_prices|pl_word:"pozycja,pozycje,pozycji" }} bez wyceny</span><i class="bi bi-chevron-right"></i></a>
+                                {% endif %}
+                                {% if data_checks.history_errors %}
+                                    <a href="#brokerage-data-management"><strong>{{ data_checks.history_errors }}</strong><span>{{ data_checks.history_errors|pl_word:"instrument,instrumenty,instrumentów" }} z błędem historii</span><i class="bi bi-chevron-right"></i></a>
+                                {% endif %}
+                            </div>
+                        </section>
+                    {% endif %}
+
+                        <section class="brokerage-panel brokerage-flow-panel">
+                            <div class="brokerage-section-heading">
+                                <div>
+                                    <h2>Uzgodnienie wpłat</h2>
+                                    <p>Połączenie wydatków „Inwestycje” z wpłatami widocznymi u brokera.</p>
+                                </div>
+                                <span class="brokerage-count-pill">{{ investment_fundings|length }}</span>
+                            </div>
+                            <div class="brokerage-reconciliation-summary">
+                                <span><i class="bi bi-link-45deg"></i> Dopasowanie wymaga tego samego konta, kwoty i zbliżonej daty.</span>
+                            </div>
+                            <div class="brokerage-ledger-list">
+                                {% for funding in investment_fundings %}
+                                    <article class="brokerage-funding-row">
+                                        <div class="brokerage-funding-main">
+                                            <div class="brokerage-funding-title">
+                                                <strong>{{ funding.expense.title }}</strong>
+                                                <span class="brokerage-status-badge status-{{ funding.status }}">
+                                                    {% if funding.status == 'matched' %}<i class="bi bi-check-circle-fill"></i>
+                                                    {% elif funding.status == 'needs_review' %}<i class="bi bi-exclamation-triangle-fill"></i>
+                                                    {% else %}<i class="bi bi-hourglass-split"></i>{% endif %}
+                                                    {{ funding.get_status_display }}
+                                                </span>
+                                            </div>
+                                            <span>{{ funding.account.name }} · {{ funding.occurred_on|date:"d.m.Y" }}</span>
+                                            {% if funding.cash_operation %}<small>Wpłata brokera: {{ funding.cash_operation.amount|floatformat:2|intcomma }} {{ funding.cash_operation.currency }}</small>{% else %}<small>Brak jednoznacznej wpłaty w historii brokera.</small>{% endif %}
+                                        </div>
+                                        <div class="brokerage-funding-side">
+                                            <strong>{{ funding.source_amount|floatformat:2|intcomma }} {{ funding.source_currency }}</strong>
+                                            <a href="{% url 'finance:edit_expense' funding.expense.id %}" aria-label="Edytuj wydatek {{ funding.expense.title }}"><i class="bi bi-pencil"></i></a>
+                                        </div>
+                                    </article>
+                                {% empty %}
+                                    <div class="brokerage-empty-state">Przypisz konto maklerskie do wydatku w kategorii „Inwestycje”, aby rozpocząć uzgadnianie.</div>
+                                {% endfor %}
+                            </div>
+                        </section>
+
+                    {% if unassigned_investments %}
+                        <section class="brokerage-panel brokerage-review-panel" id="brokerage-unassigned-investments">
+                            <div class="brokerage-section-heading">
+                                <div>
+                                    <h2>Wpłaty wymagające przypisania</h2>
+                                    <p>Te wydatki mają kategorię „Inwestycje”, ale nie wskazują docelowego rachunku maklerskiego.{% if data_checks.unassigned > unassigned_investments|length %} Poniżej {{ unassigned_investments|length }} najnowszych.{% endif %}</p>
+                                </div>
+                                <span class="brokerage-count-pill brokerage-count-warning">{{ data_checks.unassigned }}</span>
+                            </div>
+                            <div class="brokerage-review-list">
+                                {% for expense in unassigned_investments %}
+                                    <article>
+                                        <div>
+                                            <strong>{{ expense.title }}</strong>
+                                            <span>{{ expense.date|date:"d.m.Y" }} · {{ expense.account.display_name|default:"Konto finansowe" }}</span>
+                                        </div>
+                                        <strong>{{ expense.cost|floatformat:2|intcomma }} PLN</strong>
+                                        <a href="{% url 'finance:edit_expense' expense.id %}" class="btn btn-sm btn-outline-warning rounded-pill fw-bold">Przypisz konto</a>
+                                    </article>
+                                {% endfor %}
+                            </div>
+                        </section>
+                    {% endif %}
+                </div>
+            </details>
         </section>
     </div>
 </div>

@@ -3,7 +3,7 @@
 {% block title %}Raporty{% endblock %}
 
 {% block content_finance %}
-{% load humanize %}
+{% load humanize ui %}
 <div class="u-page-head">
     <div>
         <span class="u-eyebrow"><i class="bi bi-wallet2" aria-hidden="true"></i>Finanse</span>
@@ -22,23 +22,23 @@
 <div class="u-metric-grid mb-4">
     <div class="u-metric is-income">
         <div class="u-metric-label"><i class="bi bi-arrow-up-circle"></i> Całkowite przychody</div>
-        <div class="u-metric-value is-income u-num">{{ total_income_all|floatformat:2|intcomma }} zł</div>
+        <div class="u-metric-value is-income" title="{{ total_income_all|floatformat:2|intcomma }} zł">{{ total_income_all|zl }}</div>
     </div>
 
     <div class="u-metric is-expense">
         <div class="u-metric-label"><i class="bi bi-arrow-down-circle"></i> Całkowite wydatki</div>
-        <div class="u-metric-value is-expense u-num">{{ total_spending_all|floatformat:2|intcomma }} zł</div>
+        <div class="u-metric-value is-expense" title="{{ total_spending_all|floatformat:2|intcomma }} zł">{{ total_spending_all|zl }}</div>
         <div class="u-metric-note">Bez kategorii inwestycje</div>
     </div>
 
     <div class="u-metric is-invest">
         <div class="u-metric-label"><i class="bi bi-piggy-bank"></i> Całkowite inwestycje</div>
-        <div class="u-metric-value is-invest u-num">{{ total_investment_all|floatformat:2|intcomma }} zł</div>
+        <div class="u-metric-value is-invest" title="{{ total_investment_all|floatformat:2|intcomma }} zł">{{ total_investment_all|zl }}</div>
     </div>
 
     <div class="u-metric">
         <div class="u-metric-label"><i class="bi bi-wallet2"></i> Bilans całkowity</div>
-        <div class="u-metric-value u-num {% if balance_all >= 0 %}is-income{% else %}is-expense{% endif %}">{{ balance_all|floatformat:2|intcomma }} zł</div>
+        <div class="u-metric-value {% if balance_all >= 0 %}is-income{% else %}is-expense{% endif %}" title="{{ balance_all|floatformat:2|intcomma }} zł">{{ balance_all|zl }}</div>
         <div class="u-metric-note">Uwzględnia także inwestycje</div>
     </div>
 </div>
@@ -61,8 +61,9 @@
                 <button id="closeFullscreenBtn" class="u-btn u-btn-ghost position-absolute top-0 end-0 m-3 d-none" onclick="toggleChartFullscreen()" style="z-index: 10000;">
                     <i class="bi bi-x-lg"></i> Zamknij
                 </button>
-                <canvas id="incomeExpenseChart"></canvas>
+                <canvas id="incomeExpenseChart" role="img" aria-label="Przychody, wydatki i inwestycje w sześciu ostatnich miesiącach"></canvas>
             </div>
+            {% include 'finance/partials/chart_table_toggle.html' with id='incomeExpenseChartTable' %}
         </div>
     </div>
 </div>
@@ -227,13 +228,33 @@
                 data: {
                     labels: labels,
                     datasets: [
-                        { label: 'Przychody', data: income, backgroundColor: p.income, borderRadius: 4, borderSkipped: false },
-                        { label: 'Wydatki', data: expense, backgroundColor: p.expense, borderRadius: 4, borderSkipped: false },
-                        { label: 'Inwestycje', data: investments, backgroundColor: p.invest, borderRadius: 4, borderSkipped: false }
+                        { label: 'Przychody', data: income, backgroundColor: p.income, borderRadius: 4, borderSkipped: 'start' },
+                        { label: 'Wydatki', data: expense, backgroundColor: p.expense, borderRadius: 4, borderSkipped: 'start' },
+                        { label: 'Inwestycje', data: investments, backgroundColor: p.invest, borderRadius: 4, borderSkipped: 'start' }
                     ]
                 },
                 options: options
             });
+        });
+
+        const sum = function (arr) { return arr.reduce(function (a, b) { return a + (b || 0); }, 0); };
+        if (labels.length) {
+            AppCharts.describe(canvas,
+                'Sześć ostatnich miesięcy (' + labels[0] + ' – ' + labels[labels.length - 1] + '): średnio '
+                + AppCharts.money(sum(income) / labels.length) + ' przychodów, '
+                + AppCharts.money(sum(expense) / labels.length) + ' wydatków i '
+                + AppCharts.money(sum(investments) / labels.length) + ' inwestycji miesięcznie.');
+        }
+
+        AppCharts.twinTable(document.getElementById('incomeExpenseChartTable'), function () {
+            return {
+                caption: 'Przychody, wydatki i inwestycje w sześciu ostatnich miesiącach',
+                columns: ['Miesiąc', 'Przychody', 'Wydatki', 'Inwestycje'],
+                rows: labels.map(function (label, i) {
+                    return [label, AppCharts.money(income[i]), AppCharts.money(expense[i]), AppCharts.money(investments[i])];
+                }),
+                foot: ['Razem', AppCharts.money(sum(income)), AppCharts.money(sum(expense)), AppCharts.money(sum(investments))]
+            };
         });
     }
 </script>

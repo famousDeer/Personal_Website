@@ -483,9 +483,12 @@
 
     function cleanupCrop() {
         const crop = state.crop;
-        if (crop?.drag?.pointerId != null && elements.cropViewport?.hasPointerCapture?.(crop.drag.pointerId)) {
-            elements.cropViewport.releasePointerCapture(crop.drag.pointerId);
-        }
+        crop?.settle?.cancel();
+        crop?.pointers?.forEach((point, pointerId) => {
+            if (elements.cropViewport?.hasPointerCapture?.(pointerId)) {
+                elements.cropViewport.releasePointerCapture(pointerId);
+            }
+        });
         if (crop?.sourceUrl) {
             URL.revokeObjectURL(crop.sourceUrl);
         }
@@ -551,25 +554,205 @@
         return Math.min(maximum, Math.max(minimum, value));
     }
 
-    function renderCrop() {
+    const CROP_MIN_ZOOM = 1;
+    const CROP_MAX_ZOOM = 3;
+
+    // Gumka jak w iOS: im dalej za krawędź, tym mniej zdjęcie idzie za palcem
+    // (stała 0,55 i wymiar ramki jako skala), a nie twardy mur.
+    function rubberband(overshoot, dimension, constant = 0.55) {
+        if (!overshoot || !dimension) {
+            return 0;
+        }
+        const distance = Math.abs(overshoot);
+        return Math.sign(overshoot) * (1 - 1 / ((distance * constant) / dimension + 1)) * dimension;
+    }
+
+    function elasticClamp(value, minimum, maximum, dimension) {
+        if (value > maximum) {
+            return maximum + rubberband(value - maximum, dimension);
+        }
+        if (value < minimum) {
+            return minimum + rubberband(value - minimum, dimension);
+        }
+        return value;
+    }
+
+    // Odwrotność gumki: z tego, co widać, pozycja palca, która by to dała.
+    // Potrzebna, gdy gest zaczyna się poza ramką (chwycenie w trakcie
+    // powrotu) - bez niej zdjęcie przeskoczyłoby pod palcem.
+    function inverseRubberband(displacement, dimension, constant = 0.55) {
+        if (!displacement || !dimension) {
+            return 0;
+        }
+        const ratio = Math.min(Math.abs(displacement) / dimension, 0.999);
+        return Math.sign(displacement) * (dimension / constant) * (1 / (1 - ratio) - 1);
+    }
+
+    function inverseElasticClamp(value, minimum, maximum, dimension) {
+        if (value > maximum) {
+            return maximum + inverseRubberband(value - maximum, dimension);
+        }
+        if (value < minimum) {
+            return minimum + inverseRubberband(value - minimum, dimension);
+        }
+        return value;
+    }
+
+    // Powiększenie ponad 3× albo poniżej 1× też stawia opór i wraca.
+    function elasticZoom(rawZoom) {
+        if (rawZoom > CROP_MAX_ZOOM) {
+            return CROP_MAX_ZOOM + rubberband(rawZoom - CROP_MAX_ZOOM, 0.6);
+        }
+        if (rawZoom < CROP_MIN_ZOOM) {
+            return CROP_MIN_ZOOM + rubberband(rawZoom - CROP_MIN_ZOOM, 0.25);
+        }
+        return rawZoom;
+    }
+
+    function inverseElasticZoom(zoom) {
+        if (zoom > CROP_MAX_ZOOM) {
+            return CROP_MAX_ZOOM + inverseRubberband(zoom - CROP_MAX_ZOOM, 0.6);
+        }
+        if (zoom < CROP_MIN_ZOOM) {
+            return CROP_MIN_ZOOM + inverseRubberband(zoom - CROP_MIN_ZOOM, 0.25);
+        }
+        return zoom;
+    }
+
+    // Surowa (sprzed gumki) pozycja odpowiadająca temu, co jest na ekranie.
+    function rawCropOffset(crop) {
+        const geometry = cropGeometry();
+        const x = crop.drawX ?? crop.offsetX;
+        const y = crop.drawY ?? crop.offsetY;
+        if (!geometry) {
+            return { x, y };
+        }
+        return {
+            x: inverseElasticClamp(x, -geometry.maxOffsetX, geometry.maxOffsetX, geometry.frameSize),
+            y: inverseElasticClamp(y, -geometry.maxOffsetY, geometry.maxOffsetY, geometry.frameSize),
+        };
+    }
+
+    /**
+     * mode "clamp" (domyślnie): przesunięcie przycięte do ramki.
+     * mode "elastic": w trakcie gestu - poza ramką zdjęcie idzie z oporem;
+     *   crop.offsetX/Y zostają surową pozycją palca, rysowana jest pozycja
+     *   z gumką (crop.drawX/Y).
+     * mode "free": rysuje dokładnie crop.offsetX/Y (powrót na sprężynie).
+     */
+    function renderCrop({ mode = 'clamp' } = {}) {
         const crop = state.crop;
         const geometry = cropGeometry();
         if (!crop || !geometry) {
             return;
         }
-        crop.offsetX = clamp(crop.offsetX, -geometry.maxOffsetX, geometry.maxOffsetX);
-        crop.offsetY = clamp(crop.offsetY, -geometry.maxOffsetY, geometry.maxOffsetY);
+        let drawX = crop.offsetX;
+        let drawY = crop.offsetY;
+        if (mode === 'elastic') {
+            drawX = elasticClamp(crop.offsetX, -geometry.maxOffsetX, geometry.maxOffsetX, geometry.frameSize);
+            drawY = elasticClamp(crop.offsetY, -geometry.maxOffsetY, geometry.maxOffsetY, geometry.frameSize);
+        } else if (mode === 'clamp') {
+            crop.offsetX = clamp(crop.offsetX, -geometry.maxOffsetX, geometry.maxOffsetX);
+            crop.offsetY = clamp(crop.offsetY, -geometry.maxOffsetY, geometry.maxOffsetY);
+            drawX = crop.offsetX;
+            drawY = crop.offsetY;
+        }
+        crop.drawX = drawX;
+        crop.drawY = drawY;
         crop.geometry = geometry;
         elements.cropImage.style.width = `${geometry.scaledWidth}px`;
         elements.cropImage.style.height = `${geometry.scaledHeight}px`;
-        elements.cropImage.style.left = `${(geometry.viewportWidth - geometry.scaledWidth) / 2 + crop.offsetX}px`;
-        elements.cropImage.style.top = `${(geometry.viewportHeight - geometry.scaledHeight) / 2 + crop.offsetY}px`;
+        elements.cropImage.style.left = `${(geometry.viewportWidth - geometry.scaledWidth) / 2 + drawX}px`;
+        elements.cropImage.style.top = `${(geometry.viewportHeight - geometry.scaledHeight) / 2 + drawY}px`;
+    }
+
+    // Sprężyna krytycznie tłumiona (tłumienie 1,0, odpowiedź 0,3 s) na
+    // postępie 0 → 1. Zwraca cancel() - chwycenie zdjęcia w trakcie powrotu
+    // zatrzymuje je tam, gdzie akurat jest - i finish() (skok do końca).
+    function springProgress(onFrame, onDone, response = 0.3) {
+        const omega = (2 * Math.PI) / response;
+        const start = performance.now();
+        let frame = 0;
+        let done = false;
+        const end = () => {
+            if (done) {
+                return;
+            }
+            done = true;
+            cancelAnimationFrame(frame);
+            onFrame(1);
+            onDone();
+        };
+        const step = (now) => {
+            const t = (now - start) / 1000;
+            const progress = 1 - (1 + omega * t) * Math.exp(-omega * t);
+            if (progress >= 0.999) {
+                end();
+                return;
+            }
+            onFrame(progress);
+            frame = requestAnimationFrame(step);
+        };
+        frame = requestAnimationFrame(step);
+        return {
+            cancel() {
+                done = true;
+                cancelAnimationFrame(frame);
+            },
+            finish: end,
+        };
+    }
+
+    const prefersReducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+    // Po puszczeniu: zdjęcie wraca w ramkę, a powiększenie w zakres 1-3×.
+    // Punkt pod palcami (anchor) zostaje na miejscu, gdy powiększenie wraca.
+    function settleCrop(anchor = { x: 0, y: 0 }) {
+        const crop = state.crop;
+        if (!crop?.ready) {
+            return;
+        }
+        crop.settle?.cancel();
+        crop.offsetX = crop.drawX ?? crop.offsetX;
+        crop.offsetY = crop.drawY ?? crop.offsetY;
+        const from = { zoom: crop.zoom, x: crop.offsetX, y: crop.offsetY };
+        const toZoom = clamp(from.zoom, CROP_MIN_ZOOM, CROP_MAX_ZOOM);
+        const ratio = toZoom / from.zoom;
+        crop.zoom = toZoom;
+        const target = cropGeometry();
+        crop.zoom = from.zoom;
+        if (!target) {
+            return;
+        }
+        const toX = clamp(anchor.x - (anchor.x - from.x) * ratio, -target.maxOffsetX, target.maxOffsetX);
+        const toY = clamp(anchor.y - (anchor.y - from.y) * ratio, -target.maxOffsetY, target.maxOffsetY);
+        const apply = (progress) => {
+            crop.zoom = from.zoom + (toZoom - from.zoom) * progress;
+            crop.offsetX = from.x + (toX - from.x) * progress;
+            crop.offsetY = from.y + (toY - from.y) * progress;
+            renderCrop({ mode: 'free' });
+        };
+        const finish = () => {
+            crop.settle = null;
+            crop.zoom = toZoom;
+            elements.cropZoom.value = String(toZoom);
+            renderCrop();
+        };
+        const moved = Math.abs(toZoom - from.zoom) > 0.001 || Math.abs(toX - from.x) > 0.5 || Math.abs(toY - from.y) > 0.5;
+        if (!moved || prefersReducedMotion()) {
+            apply(1);
+            finish();
+            return;
+        }
+        crop.settle = springProgress(apply, finish);
     }
 
     function resetCropPosition() {
         if (!state.crop?.ready) {
             return;
         }
+        state.crop.settle?.cancel();
+        state.crop.settle = null;
         state.crop.zoom = 1;
         state.crop.offsetX = 0;
         state.crop.offsetY = 0;
@@ -838,6 +1021,7 @@
         if (!crop?.ready) {
             return;
         }
+        crop.settle?.finish();
         setCropBusy(true);
         showCropError();
         try {
@@ -2097,53 +2281,148 @@
         });
     });
 
+    // Kadrowanie: jeden palec przesuwa, dwa palce powiększają (szczypanie)
+    // wokół punktu między palcami. Poza ramką i zakresem powiększenia gest
+    // stawia opór (gumka), a po puszczeniu wszystko wraca na sprężynie.
+    function cropPointerPoint(event) {
+        const rect = elements.cropViewport.getBoundingClientRect();
+        return {
+            x: event.clientX - (rect.left + rect.width / 2),
+            y: event.clientY - (rect.top + rect.height / 2),
+        };
+    }
+
+    function startCropDrag(crop, pointerId) {
+        const point = crop.pointers.get(pointerId);
+        const raw = rawCropOffset(crop);
+        crop.pinch = null;
+        crop.drag = {
+            pointerId,
+            startX: point.x,
+            startY: point.y,
+            offsetX: raw.x,
+            offsetY: raw.y,
+        };
+    }
+
+    function startCropPinch(crop) {
+        const [first, second] = Array.from(crop.pointers.values());
+        const midpoint = { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 };
+        const raw = rawCropOffset(crop);
+        crop.drag = null;
+        crop.pinch = {
+            distance: Math.max(1, Math.hypot(second.x - first.x, second.y - first.y)),
+            zoom: crop.zoom,
+            rawZoom: inverseElasticZoom(crop.zoom),
+            midpoint,
+            offsetX: raw.x,
+            offsetY: raw.y,
+        };
+        crop.anchor = midpoint;
+    }
+
     elements.cropViewport?.addEventListener('pointerdown', (event) => {
         const crop = state.crop;
         if (!crop?.ready || (event.pointerType === 'mouse' && event.button !== 0)) {
             return;
         }
         event.preventDefault();
-        elements.cropViewport.setPointerCapture?.(event.pointerId);
-        crop.drag = {
-            pointerId: event.pointerId,
-            startX: event.clientX,
-            startY: event.clientY,
-            offsetX: crop.offsetX,
-            offsetY: crop.offsetY,
-        };
+        try {
+            elements.cropViewport.setPointerCapture?.(event.pointerId);
+        } catch (error) {
+            // Wskaźnik mógł już zniknąć (np. szybkie dotknięcie) - gest i tak działa.
+        }
+        // Chwycenie w trakcie powrotu: zdjęcie staje pod palcem, bez skoku.
+        crop.settle?.cancel();
+        crop.settle = null;
+        crop.pointers = crop.pointers || new Map();
+        crop.pointers.set(event.pointerId, cropPointerPoint(event));
+        if (crop.pointers.size === 1) {
+            crop.anchor = { x: 0, y: 0 };
+            startCropDrag(crop, event.pointerId);
+        } else if (crop.pointers.size === 2) {
+            startCropPinch(crop);
+        }
         elements.cropViewport.classList.add('is-dragging');
     });
 
     elements.cropViewport?.addEventListener('pointermove', (event) => {
         const crop = state.crop;
-        if (!crop?.ready || crop.drag?.pointerId !== event.pointerId) {
+        if (!crop?.ready || !crop.pointers?.has(event.pointerId)) {
             return;
         }
         event.preventDefault();
-        crop.offsetX = crop.drag.offsetX + event.clientX - crop.drag.startX;
-        crop.offsetY = crop.drag.offsetY + event.clientY - crop.drag.startY;
-        renderCrop();
+        crop.pointers.set(event.pointerId, cropPointerPoint(event));
+        if (crop.pinch && crop.pointers.size >= 2) {
+            const [first, second] = Array.from(crop.pointers.values());
+            const midpoint = { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 };
+            const distance = Math.hypot(second.x - first.x, second.y - first.y);
+            const zoom = elasticZoom(crop.pinch.rawZoom * (distance / crop.pinch.distance));
+            const ratio = zoom / crop.pinch.zoom;
+            // Punkt zdjęcia, który był między palcami, zostaje między palcami.
+            crop.zoom = zoom;
+            crop.offsetX = midpoint.x - (crop.pinch.midpoint.x - crop.pinch.offsetX) * ratio;
+            crop.offsetY = midpoint.y - (crop.pinch.midpoint.y - crop.pinch.offsetY) * ratio;
+            crop.anchor = midpoint;
+            elements.cropZoom.value = String(clamp(zoom, CROP_MIN_ZOOM, CROP_MAX_ZOOM));
+            renderCrop({ mode: 'elastic' });
+        } else if (crop.drag?.pointerId === event.pointerId) {
+            const point = crop.pointers.get(event.pointerId);
+            crop.offsetX = crop.drag.offsetX + point.x - crop.drag.startX;
+            crop.offsetY = crop.drag.offsetY + point.y - crop.drag.startY;
+            renderCrop({ mode: 'elastic' });
+        }
     });
 
     const finishCropDrag = (event) => {
         const crop = state.crop;
-        if (!crop || crop.drag?.pointerId !== event.pointerId) {
+        if (!crop?.pointers?.has(event.pointerId)) {
             return;
         }
-        crop.drag = null;
-        elements.cropViewport.classList.remove('is-dragging');
+        crop.pointers.delete(event.pointerId);
         if (elements.cropViewport.hasPointerCapture?.(event.pointerId)) {
             elements.cropViewport.releasePointerCapture(event.pointerId);
+        }
+        if (crop.pointers.size === 1) {
+            // Z dwóch palców został jeden: dalej przesuwa, od miejsca, w którym jest zdjęcie.
+            startCropDrag(crop, crop.pointers.keys().next().value);
+            return;
+        }
+        if (crop.pointers.size === 0) {
+            crop.drag = null;
+            crop.pinch = null;
+            elements.cropViewport.classList.remove('is-dragging');
+            settleCrop(crop.anchor);
         }
     };
     elements.cropViewport?.addEventListener('pointerup', finishCropDrag);
     elements.cropViewport?.addEventListener('pointercancel', finishCropDrag);
+
+    // Gładzik na komputerze: szczypanie przychodzi jako kółko z ctrlKey.
+    elements.cropViewport?.addEventListener('wheel', (event) => {
+        const crop = state.crop;
+        if (!crop?.ready || !event.ctrlKey) {
+            return;
+        }
+        event.preventDefault();
+        crop.settle?.cancel();
+        crop.settle = null;
+        const anchor = cropPointerPoint(event);
+        const zoom = clamp(crop.zoom * Math.exp(-event.deltaY * 0.01), CROP_MIN_ZOOM, CROP_MAX_ZOOM);
+        const ratio = zoom / crop.zoom;
+        crop.offsetX = anchor.x - (anchor.x - crop.offsetX) * ratio;
+        crop.offsetY = anchor.y - (anchor.y - crop.offsetY) * ratio;
+        crop.zoom = zoom;
+        elements.cropZoom.value = String(zoom);
+        renderCrop();
+    }, { passive: false });
 
     elements.cropZoom?.addEventListener('input', () => {
         const crop = state.crop;
         if (!crop?.ready) {
             return;
         }
+        crop.settle?.finish();
         const nextZoom = Number(elements.cropZoom.value || 1);
         const ratio = nextZoom / crop.zoom;
         crop.offsetX *= ratio;

@@ -37,13 +37,14 @@ body {
 h1, h2, h3, h4, h5, h6 {
     color: var(--ink-1);
     line-height: var(--lh-tight);
-    letter-spacing: -0.011em;
+    letter-spacing: var(--tracking-title);
 }
 
-/* Liczby w tabelach i kafelkach mają równą szerokość cyfr, żeby kolumna
-   kwot nie "drgała" między wierszami. */
+/* Liczby w tabelach i na osiach mają równą szerokość cyfr, żeby kolumna
+   kwot nie "drgała" między wierszami. Duże, samodzielne liczby w kafelkach
+   (.u-metric-value) zostają przy cyfrach proporcjonalnych: nie stoją
+   w kolumnie, a "1" o szerokości "8" robi w nich dziury. */
 .u-num,
-.u-metric-value,
 .u-table td.u-amount,
 .u-kpi-value {
     font-variant-numeric: tabular-nums;
@@ -98,7 +99,7 @@ h1, h2, h3, h4, h5, h6 {
     border-radius: var(--r-sm);
     background: var(--brand-gradient);
     color: #fff;
-    font-size: 0.9rem;
+    font-size: var(--fs-md);
     box-shadow: 0 4px 12px var(--brand-ring);
 }
 
@@ -296,16 +297,17 @@ h1, h2, h3, h4, h5, h6 {
 .u-metric.is-expense { --metric-accent: var(--expense); }
 .u-metric.is-invest { --metric-accent: var(--invest); }
 
+/* Kontrakt kafelka: etykieta zwykłą wielkością liter, wartość w pełnych
+   złotych, opcjonalnie zmiana względem poprzedniego okresu, opcjonalnie
+   notka. */
 .u-metric-label {
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    font-size: var(--fs-eyebrow);
-    font-weight: 700;
-    letter-spacing: var(--tracking-eyebrow);
-    text-transform: uppercase;
-    color: var(--ink-4);
-    margin-bottom: 0.4rem;
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--ink-3);
+    margin-bottom: 0.3rem;
 }
 
 .u-metric-value {
@@ -313,6 +315,8 @@ h1, h2, h3, h4, h5, h6 {
     font-weight: 700;
     color: var(--ink-1);
     line-height: 1.1;
+    letter-spacing: var(--tracking-title);
+    font-variant-numeric: proportional-nums lining-nums;
 }
 
 .u-metric-value.is-income { color: var(--income-ink); }
@@ -324,6 +328,25 @@ h1, h2, h3, h4, h5, h6 {
     font-size: var(--fs-caption);
     color: var(--ink-3);
 }
+
+.u-metric-delta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 0.35rem;
+    margin-top: 0.35rem;
+    font-size: var(--fs-caption);
+    color: var(--ink-3);
+}
+
+.u-metric-delta-value {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-2);
+}
+
+.u-metric-delta.is-good .u-metric-delta-value { color: var(--income-ink); }
+.u-metric-delta.is-bad .u-metric-delta-value { color: var(--expense-ink); }
 
 /* Pasek postępu (stopa oszczędności) */
 .u-meter {
@@ -595,6 +618,85 @@ h1, h2, h3, h4, h5, h6 {
 
 .u-chart-sm { height: clamp(180px, 26vw, 240px); }
 
+/* Bliźniacza tabela wykresu: te same liczby co na wykresie, dla czytnika
+   ekranu i dla kogoś, kto chce odczytać dokładną wartość. */
+.u-chart-data { margin-top: var(--sp-3); }
+
+.u-chart-data-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-height: 44px;
+    padding: 0 var(--sp-2);
+    margin-left: calc(var(--sp-2) * -1);
+    border-radius: var(--r-sm);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--ink-3);
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+    transition: color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+
+.u-chart-data-toggle::-webkit-details-marker { display: none; }
+.u-chart-data-toggle::marker { content: ""; }
+
+@media (hover: hover) and (pointer: fine) {
+    .u-chart-data-toggle:hover { color: var(--ink-1); background: var(--surface-2); }
+}
+
+.u-chart-data-toggle:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+.u-chart-data-hide,
+.u-chart-data[open] .u-chart-data-show { display: none; }
+.u-chart-data[open] .u-chart-data-hide { display: inline; }
+
+.u-chart-data-body {
+    margin-top: var(--sp-2);
+    overflow-x: auto;
+}
+
+.u-chart-data .u-table thead th,
+.u-chart-data .u-table tbody th,
+.u-chart-data .u-table tbody td,
+.u-chart-data .u-table tfoot th,
+.u-chart-data .u-table tfoot td {
+    padding: 0.5rem clamp(0.5rem, 2.5vw, var(--sp-4));
+}
+
+/* Nagłówki kolumn zwykłą wielkością liter: wersaliki z rozstrzeleniem
+   nie mieściły czterech kolumn na telefonie. */
+.u-chart-data .u-table thead th {
+    font-size: var(--fs-caption);
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--ink-3);
+}
+
+.u-chart-data .u-table thead th + th { text-align: right; }
+
+.u-chart-data .u-table tbody th,
+.u-chart-data .u-table tfoot th {
+    font-weight: 600;
+    color: var(--ink-2);
+    text-align: left;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--line-2);
+}
+
+.u-chart-data .u-table tbody tr:last-child th { border-bottom: 0; }
+
+.u-chart-data .u-table tfoot th,
+.u-chart-data .u-table tfoot td {
+    border-top: 1px solid var(--line-1);
+    font-weight: 700;
+    color: var(--ink-1);
+}
+
+.u-chart-data .u-table .u-amount { font-variant-numeric: tabular-nums; }
+
 .u-legend {
     display: flex;
     flex-wrap: wrap;
@@ -688,7 +790,7 @@ h1, h2, h3, h4, h5, h6 {
     justify-content: center;
 }
 
-.app-tab i { font-size: 1.15rem; line-height: 1; }
+.app-tab i { font-size: var(--fs-h3); line-height: 1; }
 
 .app-tab.is-active { color: var(--brand-600); }
 
@@ -1251,7 +1353,7 @@ input:focus-visible,
     margin: -2px auto 0 -0.25rem;
     border-radius: var(--r-pill);
     color: var(--ink-4);
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
     text-decoration: none;
     transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }

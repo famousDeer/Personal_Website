@@ -121,24 +121,51 @@
     --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --font-num: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, monospace;
 
-    --fs-eyebrow: 0.6875rem;   /* wersalikowa etykietka nad tytułem */
-    --fs-caption: 0.75rem;
-    --fs-sm: 0.8125rem;
-    --fs-body: 0.9375rem;
-    --fs-lead: 1.0625rem;
-    --fs-h3: 1.125rem;
+    /* Skala tekstu. Każdy rozmiar w arkuszach to jeden z tych stopni -
+       nic "prawie 12 px". Poniżej 11 px tekst nie schodzi.              */
+    --fs-eyebrow: 0.6875rem;   /* 11 px: wersalikowa etykietka nad tytułem */
+    --fs-caption: 0.75rem;     /* 12 px: podpisy, odznaki, osie */
+    --fs-sm: 0.8125rem;        /* 13 px: tekst pomocniczy */
+    --fs-md: 0.875rem;         /* 14 px: gęsty tekst w tabelach i kartach */
+    --fs-base: 0.9375rem;      /* 15 px: tekst interfejsu (przyciski, listy) */
+    --fs-body: 0.9375rem;      /* 15 px: treść; 16 px na ekranach dotykowych */
+    --fs-callout: 1rem;        /* 16 px: pola formularzy, wyróżniony tekst */
+    --fs-lead: 1.0625rem;      /* 17 px */
+    --fs-h3: 1.125rem;         /* 18 px */
     --fs-h2: 1.375rem;
     --fs-h1: clamp(1.5rem, 1.1rem + 1.6vw, 2rem);
     --fs-metric: clamp(1.5rem, 1.2rem + 1.2vw, 1.875rem);
 
     --lh-tight: 1.2;
     --lh-normal: 1.5;
-    --tracking-eyebrow: 0.08em;
 
-    /* --- Ruch ---------------------------------------------------------- */
+    /* Odstępy między literami zależą od rozmiaru: duże litery się
+       zagęszcza, drobne wersaliki rozsuwa, treść zostaje bez zmian.     */
+    --tracking-display: -0.03em;  /* liczby i tytuły od 28 px */
+    --tracking-title: -0.015em;   /* nagłówki 17-27 px */
+    --tracking-caption: 0.01em;   /* drobny tekst 11-12 px */
+    --tracking-caps: 0.06em;      /* WERSALIKI 12-13 px */
+    --tracking-eyebrow: 0.08em;   /* WERSALIKI 11 px */
+
+    /* --- Ruch ----------------------------------------------------------
+       Kolor, tło, obwódka, cień: --dur-fast albo --dur na --ease.
+       To, co się pojawia (menu, dymek): --ease-out - wchodzi szybko
+       i hamuje przy celu. Reakcja na wciśnięcie: --dur-press, żeby było
+       ją widać, zanim palec się podniesie. Ruchu prowadzonego palcem
+       (arkusz, kadrowanie) nie opisuje krzywa - liczy go sprężyna w JS.
+       Nigdy "transition: all": animowałby też wymiary i układ.          */
     --ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-out: cubic-bezier(0.2, 0, 0, 1);
+    --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1); /* arkusz i dymek bez gestu */
+    --dur-press: 90ms;
     --dur-fast: 120ms;
     --dur: 200ms;
+    --dur-slow: 320ms;
+    /* Sprężyna krytycznie tłumiona (tłumienie 1,0, odpowiedź 0,3 s) zapisana
+       jako krzywa: dojeżdża bez przestrzału i bez twardego hamowania.
+       Do wskaźników, które przesuwają się między miejscami. */
+    --ease-spring: linear(0, 0.114 6%, 0.32 12%, 0.515 19%, 0.67 25%, 0.782 31%, 0.859 38%, 0.911 44%, 0.944 50%, 0.965 56%, 0.979 62%, 0.987 69%, 0.992 75%, 0.995 81%, 0.997 88%, 1);
+    --dur-spring: 440ms;
 
     /* --- Układ ---------------------------------------------------------- */
     --shell-max: 1180px;
@@ -252,4 +279,11 @@
         --chart-tooltip-ink: #f0f4f8;
         --chart-tooltip-line: rgba(255, 255, 255, 0.14);
     }
+}
+
+/* Treść na telefonie: 16 px zamiast 15 px. iOS używa 17 pt dla treści;
+   16 px czyta się wyraźnie lepiej, a układ kart dalej się mieści.
+   Tekst interfejsu (--fs-base) zostaje 15 px. */
+@media (pointer: coarse) {
+    :root { --fs-body: 1rem; }
 }

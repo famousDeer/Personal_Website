@@ -3,7 +3,7 @@
 
 {% block content %}
 
-{% load l10n %}
+{% load l10n ui %}
 <header class="u-page-head is-inline-actions" style="position: relative; z-index: 10;">
     <div class="u-page-head-main">
         <a class="u-back" href="{% url 'cars:garage' %}" aria-label="Wróć do garażu" title="Wróć do garażu">
@@ -37,19 +37,19 @@
 <div class="u-metric-grid car-metric-grid mb-4 animate-fade-in-up">
     <div class="u-metric">
         <div class="u-metric-label"><i class="bi bi-speedometer2"></i> Przebieg</div>
-        <div class="u-metric-value u-num">{{ car.odometer|intcomma }} km</div>
+        <div class="u-metric-value">{{ car.odometer|intcomma }} km</div>
     </div>
     <div class="u-metric">
         <div class="u-metric-label"><i class="bi bi-fuel-pump"></i> Śr. spalanie</div>
-        <div class="u-metric-value u-num {% if avg_consumption > 10 %}text-warning{% endif %}">{{ avg_consumption|floatformat:1 }} l/100 km</div>
+        <div class="u-metric-value {% if avg_consumption > 10 %}text-warning{% endif %}">{{ avg_consumption|floatformat:1 }} l/100 km</div>
     </div>
     <div class="u-metric">
         <div class="u-metric-label"><i class="bi bi-signpost"></i> Koszt / km</div>
-        <div class="u-metric-value u-num">{{ cost_per_km|floatformat:2 }} zł</div>
+        <div class="u-metric-value">{{ cost_per_km|floatformat:2 }} zł</div>
     </div>
     <div class="u-metric is-expense">
         <div class="u-metric-label"><i class="bi bi-wallet2"></i> Łączne koszty</div>
-        <div class="u-metric-value u-num is-expense">{{ total_cost|floatformat:2|intcomma }} zł</div>
+        <div class="u-metric-value is-expense" title="{{ total_cost|floatformat:2|intcomma }} zł">{{ total_cost|zl }}</div>
     </div>
 </div>
 
@@ -165,7 +165,7 @@
                                 <td>
                                     <div class="d-flex flex-column">
                                         <span class="fw-medium">{{ log.fuel_station }}</span>
-                                        <small class="text-muted" style="font-size: 0.75rem;">
+                                        <small class="text-muted" style="font-size: var(--fs-caption);">
                                             {{ log.odometer|intcomma }} km
                                             {% if log.distance_since_last_refuel %}
                                                 • +{{ log.distance_since_last_refuel|intcomma }} km od ostatniego
@@ -176,7 +176,7 @@
                                 <td class="text-end">
                                     {{ log.liters }} L
                                     {% if log.consumption %}
-                                    <span class="d-block text-muted small" style="font-size: 0.7rem;">{{ log.consumption }} l/100</span>
+                                    <span class="d-block text-muted small" style="font-size: var(--fs-eyebrow);">{{ log.consumption }} l/100</span>
                                     {% endif %}
                                 </td>
                                 <td class="text-end text-muted">{{ log.price_per_liter|floatformat:2 }} zł</td>
@@ -294,7 +294,7 @@
 
                             <div class="d-flex align-items-center gap-2 ms-auto">
                                 <div class="text-end">
-                                    <div class="text-muted small text-uppercase fw-bold" style="font-size: 0.7rem;">Cena usługi</div>
+                                    <div class="text-muted small text-uppercase fw-bold" style="font-size: var(--fs-eyebrow);">Cena usługi</div>
                                     <div class="fw-bold fs-4 text-danger">-{{ service.cost|floatformat:2 }} zł</div>
                                 </div>
                                 <button
@@ -308,13 +308,13 @@
                         </div>
 
                         <div class="mb-3">
-                            <div class="text-muted small text-uppercase fw-bold mb-2" style="font-size: 0.7rem;">Opis naprawy</div>
+                            <div class="text-muted small text-uppercase fw-bold mb-2" style="font-size: var(--fs-eyebrow);">Opis naprawy</div>
                             <p class="mb-0 ">{{ service.description|linebreaksbr }}</p>
                         </div>
 
                         <div class="border rounded-4 p-3">
                             <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-                                <div class="text-muted small text-uppercase fw-bold" style="font-size: 0.7rem;">Wymienione części</div>
+                                <div class="text-muted small text-uppercase fw-bold" style="font-size: var(--fs-eyebrow);">Wymienione części</div>
                                 <div class="small text-muted">
                                     Suma części: <span class="fw-semibold">{{ service.parts_total|floatformat:2 }} zł</span>
                                 </div>
@@ -504,7 +504,7 @@
     /* Nieaktywna zakladka miala 4,0:1 wzgledem tla - ponizej progu dla
        tekstu. Kolor tekstu podstawowego daje ponad 9:1. Aktywna zakladka
        przechodzi na kolor marki, spojnie z reszta interfejsu. */
-    .nav-pills .nav-link { color: var(--ink-2); transition: all 0.2s; }
+    .nav-pills .nav-link { color: var(--ink-2); transition: color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease); }
     .nav-pills .nav-link.active {
         background-color: var(--brand-700);
         color: #fff !important;
