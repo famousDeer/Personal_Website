@@ -259,7 +259,7 @@
                                 <td class="border-bottom-0">
                                     <div class="d-flex flex-column">
                                         <span class="fw-medium small">{{ expense.title|truncatechars:20 }}</span>
-                                        <span class="badge bg-danger-subtle text-danger rounded-pill mt-1" style="width: fit-content; font-size: 0.65rem;">{{ expense.category }}</span>
+                                        <span class="badge bg-danger-subtle text-danger rounded-pill mt-1" style="width: fit-content; font-size: var(--fs-eyebrow);">{{ expense.category }}</span>
                                     </div>
                                 </td>
                                 <td class="pe-4 text-end fw-bold text-danger small border-bottom-0">-{{ expense.cost|floatformat:2 }} zł</td>
@@ -297,7 +297,7 @@
                                 <td class="border-bottom-0">
                                     <div class="d-flex flex-column">
                                         <span class="fw-medium small">{{ investment.title|truncatechars:20 }}</span>
-                                        <span class="badge bg-info-subtle text-info rounded-pill mt-1" style="width: fit-content; font-size: 0.65rem;">{{ investment.category }}</span>
+                                        <span class="badge bg-info-subtle text-info rounded-pill mt-1" style="width: fit-content; font-size: var(--fs-eyebrow);">{{ investment.category }}</span>
                                     </div>
                                 </td>
                                 <td class="pe-4 text-end fw-bold text-info small border-bottom-0">-{{ investment.cost|floatformat:2 }} zł</td>

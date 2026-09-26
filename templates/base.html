@@ -20,7 +20,7 @@
          [document.querySelector('meta[name=app-build]').content,
           getComputedStyle(document.documentElement).getPropertyValue('--ui-build')]
     {% endcomment %}
-    <meta name="app-build" content="2026-09-23-a">
+    <meta name="app-build" content="2026-09-25-a">
 
     <title>{% block title %}Finanse{% endblock %}</title>
 
@@ -35,12 +35,21 @@
     <script>
         (function () {
             var theme = 'light';
+            var saved = null;
             try {
-                var saved = localStorage.getItem('theme');
+                saved = localStorage.getItem('theme');
                 theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
             } catch (e) { /* tryb prywatny */ }
             document.documentElement.setAttribute('data-theme', theme);
             document.documentElement.setAttribute('data-bs-theme', theme);
+            // Kolor paska przeglądarki (i paska stanu aplikacji z ekranu
+            // głównego). Znaczniki theme-color wyżej idą za motywem systemu,
+            // więc przy motywie wybranym ręcznie pasek miał zły kolor.
+            if (saved) {
+                var color = theme === 'dark' ? '#0d1117' : '#f4f6f8';
+                var metas = document.querySelectorAll('meta[name="theme-color"]');
+                for (var i = 0; i < metas.length; i++) { metas[i].setAttribute('content', color); }
+            }
         })();
     </script>
 
@@ -210,20 +219,95 @@
 
         syncIcon(root.getAttribute('data-theme'));
 
+        function applyTheme(next) {
+            // Bez przejść na czas przełączenia: body miało 0,3 s, a karty
+            // i paski zmieniały się od razu, więc zmiana szła "falami".
+            root.classList.add('theme-switching');
+            root.setAttribute('data-theme', next);
+            // Bootstrap czyta własny atrybut - musi iść w parze,
+            // inaczej jego komponenty zostaną w poprzednim wariancie.
+            root.setAttribute('data-bs-theme', next);
+            try { localStorage.setItem('theme', next); } catch (e) { /* tryb prywatny */ }
+            syncIcon(next);
+            var color = next === 'dark' ? '#0d1117' : '#f4f6f8';
+            document.querySelectorAll('meta[name="theme-color"]').forEach(function (meta) {
+                meta.setAttribute('content', color);
+            });
+            // Wykresy czytają kolory z tokenów, więc po zmianie motywu
+            // trzeba je przemalować.
+            document.dispatchEvent(new CustomEvent('themechange', { detail: { theme: next } }));
+            void root.offsetWidth;  // nowe kolory policzone, zanim przejścia wrócą
+            requestAnimationFrame(function () { root.classList.remove('theme-switching'); });
+        }
+
         if (button) {
             button.addEventListener('click', function () {
                 var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-                root.setAttribute('data-theme', next);
-                // Bootstrap czyta własny atrybut - musi iść w parze,
-                // inaczej jego komponenty zostaną w poprzednim wariancie.
-                root.setAttribute('data-bs-theme', next);
-                try { localStorage.setItem('theme', next); } catch (e) { /* tryb prywatny */ }
-                syncIcon(next);
-                // Wykresy czytają kolory z tokenów, więc po zmianie motywu
-                // trzeba je przemalować.
-                document.dispatchEvent(new CustomEvent('themechange', { detail: { theme: next } }));
+                var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                // Cała strona przenika się ze starego motywu w nowy (View
+                // Transitions). Przeglądarki bez tej funkcji i ustawienie
+                // "ogranicz ruch" dostają zmianę natychmiastową.
+                if (document.startViewTransition && !reduceMotion) {
+                    document.startViewTransition(function () { applyTheme(next); });
+                } else {
+                    applyTheme(next);
+                }
             });
         }
+
+        // Safari na iOS włącza styl :active przy dotyku dopiero wtedy, gdy
+        // strona nasłuchuje touchstart. Bez tego przyciski nie reagują na
+        // wciśnięcie (app.css, "Reakcja na dotyk").
+        document.addEventListener('touchstart', function () {}, { passive: true });
+
+        // Stan "w toku" po wysłaniu formularza. Na Raspberry Pi odpowiedź
+        // trwa niecałą sekundę i w tym czasie nic się nie działo, więc
+        // drugie dotknięcie "Zapisz" dodawało duplikat. Formularz jest
+        // teraz zajęty do przejścia na nową stronę, a przycisk po 150 ms
+        // pokazuje kółko. Formularze wysyłane przez fetch (preventDefault)
+        // obsługują się same; data-no-busy wyłącza to dla wybranego.
+        function clearBusy(form) {
+            delete form.dataset.submitting;
+            form.removeAttribute('aria-busy');
+            form.querySelectorAll('.is-busy').forEach(function (el) {
+                el.classList.remove('is-busy', 'is-busy-icon');
+                el.removeAttribute('aria-disabled');
+            });
+        }
+
+        document.addEventListener('submit', function (event) {
+            var form = event.target;
+            if (!(form instanceof HTMLFormElement) || form.hasAttribute('data-no-busy')) { return; }
+            if (form.target && form.target !== '_self') { return; }
+            if (form.dataset.submitting) {
+                event.preventDefault();
+                return;
+            }
+            var submitter = event.submitter;
+            // Po zakończeniu obsługi zdarzenia wiadomo, czy ktoś je anulował
+            // (confirm(), walidacja w skrypcie, wysyłka przez fetch).
+            setTimeout(function () {
+                if (event.defaultPrevented) { return; }
+                form.dataset.submitting = '1';
+                form.setAttribute('aria-busy', 'true');
+                if (submitter && submitter.tagName === 'BUTTON' && form.contains(submitter)) {
+                    submitter.classList.add('is-busy');
+                    if (!submitter.textContent.trim()) { submitter.classList.add('is-busy-icon'); }
+                    submitter.setAttribute('aria-disabled', 'true');
+                }
+                // Odpowiedź, która nie otwiera nowej strony (np. plik do
+                // pobrania), nie może zablokować formularza na zawsze.
+                setTimeout(function () { clearBusy(form); }, 15000);
+            }, 0);
+        });
+
+        // Powrót przyciskiem "Wstecz" pokazuje stronę z pamięci podręcznej
+        // w stanie sprzed wysłania - razem z kółkiem. Czyścimy je.
+        window.addEventListener('pageshow', function (event) {
+            if (event.persisted) {
+                document.querySelectorAll('form[data-submitting]').forEach(clearBusy);
+            }
+        });
 
         document.addEventListener('DOMContentLoaded', function () {
             if (typeof flatpickr !== 'undefined') {

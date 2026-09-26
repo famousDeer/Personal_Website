@@ -19,11 +19,21 @@
     <script>
         (function () {
             var theme = 'light';
+            var saved = null;
             try {
-                var saved = localStorage.getItem('theme');
+                saved = localStorage.getItem('theme');
                 theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
             } catch (e) { /* tryb prywatny */ }
             document.documentElement.setAttribute('data-theme', theme);
+            // Pasek stanu w aplikacji z ekranu głównego w kolorze wybranego
+            // motywu, nie motywu systemu.
+            if (saved) {
+                var color = theme === 'dark' ? '#0d1117' : '#f4f6f8';
+                var metas = document.querySelectorAll('meta[name="theme-color"]');
+                for (var i = 0; i < metas.length; i++) { metas[i].setAttribute('content', color); }
+            }
+            // Safari na iOS włącza :active przy dotyku tylko ze słuchaczem touchstart.
+            document.addEventListener('touchstart', function () {}, { passive: true });
         })();
     </script>
     <link rel="stylesheet" href="{% static 'css/tokens.css' %}">

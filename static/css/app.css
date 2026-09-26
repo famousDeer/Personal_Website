@@ -437,7 +437,7 @@ a:hover { color: var(--accent-hover); }
     text-align: center;
 }
 
-.btn:active, .u-btn:active { transform: translateY(1px); }
+/* Wciśnięcie: patrz "Reakcja na dotyk" na końcu arkusza. */
 .btn:focus-visible, .u-btn:focus-visible { box-shadow: var(--focus-ring) !important; outline: none; }
 
 .btn-sm, .u-btn-sm {
@@ -782,6 +782,8 @@ textarea.form-control {
    Miękkie odznaki Bootstrapa miały tekst w kolorze tła (np. żółte "Aktywna"
    na żółtym, 1,47:1). Tekst jest teraz ciemniejszym stopniem tej barwy.    */
 .badge {
+    /* Bootstrap: 0,75em. W drobnym tekście dawało to 10,4 px. */
+    font-size: max(0.75em, var(--fs-eyebrow));
     font-weight: 650;
     letter-spacing: 0.01em;
 }
@@ -1007,4 +1009,197 @@ hr { border-color: var(--line-2); opacity: 1; }
     color: var(--ink-1);
     overflow-wrap: break-word;
     word-break: normal;
+}
+
+/* =========================================================================
+   Reakcja na dotyk (audyt apple-design §1.1)
+   -------------------------------------------------------------------------
+   1. Odpowiedź przychodzi w chwili wciśnięcia, nie po puszczeniu: przycisk
+      lekko się zmniejsza, wiersz ciemnieje. Wciśnięcie jest szybkie (90 ms),
+      powrót spokojniejszy (czas z reguły bazowej elementu).
+   2. "Unoszenie" przy najechaniu ma sens tylko z kursorem. Na telefonie
+      przeglądarka zostawia :hover po dotknięciu, więc kafelek wisiał
+      uniesiony, dopóki nie dotknęło się czegoś innego.
+   iOS włącza :active dopiero, gdy strona słucha touchstart - pusty
+   nasłuch jest w base.html i w trybie zakupów.
+   ========================================================================= */
+@media (hover: none), (pointer: coarse) {
+    .u-card-hover:hover, .u-tile:hover, .action-card:hover, .home-module:hover,
+    .brokerage-scope-button:hover, .brokerage-instrument-row:hover,
+    .brokerage-account-card:not(.is-selected):hover, .shopping-list-card:hover,
+    .pantry-scan-launch-button:hover, .pantry-scan-launch-button:focus,
+    #pantry-scanner .pantry-scan-launch-button:hover,
+    #pantry-scanner .pantry-scan-launch-button:focus-visible,
+    #pantry-scanner .pantry-product-card:hover {
+        transform: none;
+    }
+    .u-tile:hover .u-tile-arrow, .action-card:hover .icon-box,
+    .custom-table .btn-light:hover {
+        transform: none;
+    }
+}
+
+/* Po dotknięciu przycisk skanera zostaje w stanie :focus - bez unoszenia,
+   chyba że fokus przyszedł z klawiatury. */
+.pantry-scan-launch-button:focus:not(:focus-visible) { transform: none; }
+
+/* Przyciski i okrągłe ikony. */
+.btn:active, .u-btn:active, .u-back:active, .app-icon-btn:active,
+.pantry-scan-launch-button:active,
+#pantry-scanner .pantry-scan-launch-button:active {
+    transform: scale(0.97);
+    transition-duration: 90ms;
+    transition-timing-function: ease-out;
+}
+
+/* Szerokie przyciski i kafelki: ten sam ruch, mniejsza skala - przy
+   szerokości ekranu 3% to już wyraźny skok. */
+.btn.w-100:active, .d-grid > .btn:active, .btn-lg:active,
+.u-tile:active, a.home-module:active,
+.brokerage-instrument-row:active:not(:has(button:active, a:active, input:active, select:active)) {
+    transform: scale(0.98);
+    transition-duration: 90ms;
+    transition-timing-function: ease-out;
+}
+
+.u-back, .app-icon-btn {
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+                transform var(--dur-fast) var(--ease);
+}
+
+/* Wiersze, które otwierają coś po dotknięciu: podświetlenie jak w iOS. */
+.pantry-product-manual > summary {
+    transition: background-color var(--dur-fast) var(--ease);
+}
+.pantry-product-manual > summary:active { background: var(--surface-3); }
+
+/* Dolna nawigacja: przygaszenie zakładki pod palcem. */
+.app-tab { transition: opacity var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.app-tab:active { opacity: 0.55; transition-duration: 60ms; }
+
+/* Ograniczony ruch: zamiast zmniejszania - przygaszenie. */
+@media (prefers-reduced-motion: reduce) {
+    .btn:active, .u-btn:active, .u-back:active, .app-icon-btn:active,
+    .pantry-scan-launch-button:active, #pantry-scanner .pantry-scan-launch-button:active,
+    .btn.w-100:active, .d-grid > .btn:active, .btn-lg:active,
+    .u-tile:active, a.home-module:active,
+    .brokerage-instrument-row:active:not(:has(button:active, a:active, input:active, select:active)) {
+        transform: none;
+        opacity: 0.7;
+    }
+}
+
+/* =========================================================================
+   Pola formularzy na telefonie (audyt §1.2)
+   -------------------------------------------------------------------------
+   Safari na iOS przybliża stronę przy dotknięciu pola z tekstem mniejszym
+   niż 16 px i nie oddala jej po wpisaniu. Na ekranach dotykowych każde pole
+   ma więc co najmniej 16 px. Z myszą zostaje dotychczasowy, gęstszy rozmiar.
+   Duże pola (kwota w .input-group-lg, nazwa z .fs-*) mają więcej niż 16 px
+   i zostają bez zmian.
+   ========================================================================= */
+@media (pointer: coarse) {
+    /* Uwaga: między :is(...) a :not(...) nie może być spacji - spacja to
+       selektor potomka i reguła przestałaby działać. */
+    :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]),
+        select, textarea, .form-control, .form-select):not(.input-group-lg > *,
+        .fs-1, .fs-2, .fs-3, .fs-4, .fs-5) {
+        font-size: max(1rem, 16px) !important;
+    }
+}
+
+/* =========================================================================
+   Stan "w toku" po wysłaniu formularza (audyt §1.3, skrypt w base.html)
+   -------------------------------------------------------------------------
+   Kółko pojawia się dopiero po 150 ms: szybka odpowiedź nie miga.
+   ========================================================================= */
+.is-busy {
+    position: relative;
+    pointer-events: none;
+    cursor: progress;
+}
+
+.is-busy::after {
+    content: "";
+    flex: none;
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    opacity: 0;
+    animation: u-busy-in 1ms linear 150ms forwards, u-spin 0.7s linear infinite;
+}
+
+/* Przycisk z samą ikoną: kółko zajmuje miejsce ikony. */
+.is-busy-icon::after {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+}
+
+.is-busy-icon > .bi { animation: u-busy-out 1ms linear 150ms forwards; }
+
+@keyframes u-busy-in { to { opacity: 1; } }
+@keyframes u-busy-out { to { opacity: 0; } }
+@keyframes u-spin { to { transform: rotate(360deg); } }
+
+/* =========================================================================
+   Zmiana motywu (audyt §4.3, skrypt w base.html)
+   -------------------------------------------------------------------------
+   Strona przenika się ze starego motywu w nowy jednym ruchem. Na czas
+   przełączenia wyłączone są zwykłe przejścia kolorów, żeby tło, karty
+   i paski nie zmieniały się w różnym tempie.
+   ========================================================================= */
+.theme-switching,
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+    transition: none !important;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+    animation-duration: var(--dur);
+    animation-timing-function: var(--ease);
+}
+
+/* =========================================================================
+   Preferencje dostępności systemu (audyt §5)
+   ========================================================================= */
+
+/* Ograniczona przezroczystość: paski i menu są pełne, bez rozmycia. */
+@media (prefers-reduced-transparency: reduce) {
+    .app-nav, .app-tabbar, .modern-navbar, .dropdown-menu {
+        background: var(--surface-1) !important;
+        -webkit-backdrop-filter: none !important;
+        backdrop-filter: none !important;
+    }
+    .pantry-camera-status {
+        background: #07120d;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+    }
+    .u-form-actions { background: var(--surface-0); }
+}
+
+/* Wyższy kontrast: wyraźniejsze obrysy kart, pól i separatorów oraz
+   ciemniejszy tekst pomocniczy. Kolory kwot i akcji zostają. */
+@media (prefers-contrast: more) {
+    :root {
+        --ink-3: #3b4a5f;
+        --ink-4: #46556b;
+        --line-1: rgba(15, 23, 42, 0.34);
+        --line-2: rgba(15, 23, 42, 0.22);
+        --line-input: rgba(15, 23, 42, 0.55);
+    }
+    :root[data-theme="dark"] {
+        --ink-3: #c3cedb;
+        --ink-4: #aebccc;
+        --line-1: rgba(255, 255, 255, 0.36);
+        --line-2: rgba(255, 255, 255, 0.22);
+        --line-input: rgba(255, 255, 255, 0.55);
+    }
+    .btn-outline-secondary, .btn-soft-neutral, .u-btn-ghost { border-color: var(--line-input) !important; }
 }

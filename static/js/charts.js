@@ -45,6 +45,13 @@
             };
         },
 
+        /** Skrót dużych liczb na osi: "12,5 tys.", "1,2 mln" (z polskim przecinkiem). */
+        compact: function (value) {
+            return new Intl.NumberFormat('pl-PL', {
+                notation: 'compact', maximumFractionDigits: 1
+            }).format(value || 0);
+        },
+
         money: function (value) {
             return new Intl.NumberFormat('pl-PL', {
                 style: 'currency', currency: 'PLN', maximumFractionDigits: 0
@@ -109,7 +116,7 @@
                             font: { size: 11 },
                             padding: 8,
                             callback: function (value) {
-                                if (Math.abs(value) >= 1000) { return (value / 1000) + ' tys.'; }
+                                if (Math.abs(value) >= 1000) { return AppCharts.compact(value); }
                                 return value + ' zł';
                             }
                         }
@@ -173,11 +180,43 @@
             return entry.instance;
         },
 
+        /**
+         * Miejsce na wykres, którego dane się zmieniają (np. po wyborze
+         * zakresu dat). redraw() rysuje go od nowa z bieżącymi danymi,
+         * a zmiana motywu przemalowuje go razem z pozostałymi. Fabryka może
+         * zwrócić null, gdy nie ma czego rysować.
+         */
+        slot: function (factory) {
+            var entry = { factory: factory, instance: null };
+            AppCharts.registry.push(entry);
+            return {
+                redraw: function () {
+                    if (entry.instance) { entry.instance.destroy(); }
+                    entry.instance = entry.factory();
+                    return entry.instance;
+                },
+                clear: function () {
+                    if (entry.instance) { entry.instance.destroy(); }
+                    entry.instance = null;
+                },
+                instance: function () { return entry.instance; }
+            };
+        },
+
         repaintAll: function () {
-            AppCharts.registry.forEach(function (entry) {
-                if (entry.instance) { entry.instance.destroy(); }
-                entry.instance = entry.factory();
-            });
+            // Po zmianie motywu wykres ma tylko zmienić kolory. Bez tego
+            // słupki i linie rosłyby od zera jak przy pierwszym wejściu.
+            var Chart = global.Chart;
+            var saved = Chart && Chart.defaults.animation;
+            if (Chart) { Chart.defaults.animation = false; }
+            try {
+                AppCharts.registry.forEach(function (entry) {
+                    if (entry.instance) { entry.instance.destroy(); }
+                    entry.instance = entry.factory();
+                });
+            } finally {
+                if (Chart) { Chart.defaults.animation = saved; }
+            }
         }
     };
 

@@ -691,6 +691,23 @@ button, and whatever is inside the block becomes the action buttons
 | Money | `.u-amount.is-income` / `.is-expense` / `.is-invest` |
 | Quantities | `{{ value|qty }}` from `pantry_extras`: 900 ml, 1,5 kg (same format as the JS) |
 | Counted nouns | `{{ n|pl:"rachunek,rachunki,rachunków" }}` from `ui`: 1 rachunek, 2 rachunki, 5 rachunków (`pl_word` gives the noun alone) |
+| Chart on the page | `AppCharts` from `static/js/charts.js`: colours from tokens, repainted on theme change (`register` for fixed data, `slot` for data that changes) |
+
+**Behaviour you get for free** (`app.css` and the script in `base.html`):
+
+- Buttons, tiles and rows react the moment they are pressed (slight shrink or
+  highlight); the hover lift only happens with a real mouse pointer.
+- On touch screens every form field is at least 16 px, so iOS does not zoom in
+  when it is tapped.
+- After a form is submitted it is marked busy until the next page loads: a
+  second tap or Enter does not send it again, and the button shows a spinner
+  after 150 ms. Forms sent with `fetch` (`preventDefault`) are not affected;
+  add `data-no-busy` to a form to opt out.
+- The theme switch cross-fades the page and sets the browser's bar colour
+  (`theme-color`) to the chosen theme. With *Reduce motion* it switches at once.
+- *Reduce transparency* makes the bars solid; *Increase contrast* darkens
+  borders and secondary text. No text is smaller than 11 px
+  (`var(--fs-eyebrow)`).
 
 ## Environment variables
 Required at minimum:

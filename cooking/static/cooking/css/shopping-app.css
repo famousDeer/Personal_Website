@@ -951,3 +951,39 @@ button:disabled { cursor: not-allowed; }
 .sa-details-note a {
     font-weight: 700;
 }
+
+/* --- Reakcja na dotyk (audyt apple-design §1.1) ---------------------------
+   Dotknięcie nazwy produktu podświetla cały wiersz od razu, jak w iOS.
+   Systemowe mignięcie jest wyłączone (body), więc bez tego wiersz nie dawał
+   żadnego sygnału, dopóki nie otworzyła się edycja.                       */
+.sa-item-row { transition: background-color var(--dur-fast) var(--ease); }
+.sa-item-row:has(> button.sa-item-body:active) {
+    background: var(--surface-3);
+    transition-duration: 60ms;
+}
+.sa-icon-link:active, .sa-secondary:active { background: var(--surface-3); }
+
+/* --- Ograniczona przezroczystość: pełne paski bez rozmycia ---------------- */
+@media (prefers-reduced-transparency: reduce) {
+    .sa-header, .sa-footer {
+        background: var(--surface-0);
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+    }
+}
+
+/* --- Wyższy kontrast: wyraźniejsze obrysy i tekst pomocniczy -------------- */
+@media (prefers-contrast: more) {
+    :root {
+        --ink-3: #3b4a5f;
+        --ink-4: #46556b;
+        --line-1: rgba(15, 23, 42, 0.34);
+        --line-2: rgba(15, 23, 42, 0.22);
+    }
+    :root[data-theme="dark"] {
+        --ink-3: #c3cedb;
+        --ink-4: #aebccc;
+        --line-1: rgba(255, 255, 255, 0.36);
+        --line-2: rgba(255, 255, 255, 0.22);
+    }
+}

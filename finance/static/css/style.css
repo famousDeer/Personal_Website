@@ -2157,7 +2157,7 @@ a { text-decoration: none; }
 
 .brokerage-chart-account-picker > span {
     color: var(--text-muted);
-    font-size: 0.68rem;
+    font-size: var(--fs-eyebrow);
     font-weight: 850;
     letter-spacing: 0.03em;
     text-transform: uppercase;
@@ -2613,7 +2613,7 @@ a { text-decoration: none; }
 .brokerage-kpi-delta small {
     flex-basis: 100%;
     color: var(--text-muted);
-    font-size: 0.68rem;
+    font-size: var(--fs-eyebrow);
     font-weight: 650;
 }
 
@@ -2739,7 +2739,7 @@ a { text-decoration: none; }
 
 .brokerage-mover-column-title small {
     color: var(--text-muted);
-    font-size: 0.68rem;
+    font-size: var(--fs-eyebrow);
 }
 
 .brokerage-mover-list {
@@ -2877,7 +2877,7 @@ a { text-decoration: none; }
 
 .brokerage-account-card-foot > span {
     color: var(--text-muted);
-    font-size: 0.68rem;
+    font-size: var(--fs-eyebrow);
 }
 
 .brokerage-flow-panel {
@@ -2952,7 +2952,7 @@ a { text-decoration: none; }
 
 .brokerage-ledger-amount span {
     color: var(--text-muted);
-    font-size: 0.67rem;
+    font-size: var(--fs-eyebrow);
     font-weight: 800;
 }
 
@@ -2983,7 +2983,7 @@ a { text-decoration: none; }
     border-radius: 999px;
     background: rgba(108, 117, 125, 0.11);
     color: var(--text-muted);
-    font-size: 0.64rem;
+    font-size: var(--fs-eyebrow);
     font-weight: 850;
 }
 
@@ -4984,7 +4984,7 @@ a { text-decoration: none; }
 
 .pantry-scan-steps > i {
     opacity: 0.5;
-    font-size: 0.65rem;
+    font-size: var(--fs-eyebrow);
 }
 
 .pantry-scan-launch-button {
@@ -5068,7 +5068,7 @@ a { text-decoration: none; }
 .pantry-metric small {
     overflow: hidden;
     color: var(--text-muted);
-    font-size: 0.65rem;
+    font-size: var(--fs-eyebrow);
     font-weight: 750;
     line-height: 1.15;
     text-overflow: ellipsis;
@@ -5357,7 +5357,7 @@ a { text-decoration: none; }
     flex: 0 0 auto;
     padding: 0.25rem 0.45rem;
     border-radius: 999px;
-    font-size: 0.62rem;
+    font-size: var(--fs-eyebrow);
     font-weight: 800;
     white-space: nowrap;
 }
@@ -5403,7 +5403,7 @@ a { text-decoration: none; }
     display: block;
     overflow: hidden;
     color: var(--text-muted);
-    font-size: 0.65rem;
+    font-size: var(--fs-eyebrow);
     line-height: 1.25;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -5438,7 +5438,7 @@ a { text-decoration: none; }
     gap: 0.35rem 0.85rem;
     padding: 0 0.85rem 0.75rem 1rem;
     color: var(--text-muted);
-    font-size: 0.68rem;
+    font-size: var(--fs-eyebrow);
     font-weight: 650;
 }
 
@@ -5486,7 +5486,7 @@ a { text-decoration: none; }
 
 .pantry-product-manual > summary small {
     margin-left: auto;
-    font-size: 0.65rem;
+    font-size: var(--fs-eyebrow);
     font-weight: 600;
 }
 
@@ -5590,7 +5590,7 @@ a { text-decoration: none; }
 
 .pantry-known-stock-summary > div > span {
     color: var(--text-muted);
-    font-size: 0.62rem;
+    font-size: var(--fs-eyebrow);
     font-weight: 750;
     text-transform: uppercase;
 }
@@ -5605,7 +5605,7 @@ a { text-decoration: none; }
 
 .pantry-known-stock-summary strong small {
     display: inline;
-    font-size: 0.65rem;
+    font-size: var(--fs-eyebrow);
 }
 
 .pantry-photo-capture,
@@ -5654,7 +5654,7 @@ a { text-decoration: none; }
 .pantry-register-photo-copy small {
     margin-top: 0.08rem;
     color: var(--text-muted);
-    font-size: 0.66rem;
+    font-size: var(--fs-eyebrow);
 }
 
 .pantry-photo-source-actions {
@@ -6144,7 +6144,7 @@ a { text-decoration: none; }
     background: rgba(255, 255, 255, 0.09);
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 999px;
-    font-size: 0.68rem;
+    font-size: var(--fs-eyebrow);
     letter-spacing: 0.075em;
 }
 
@@ -6475,7 +6475,7 @@ a { text-decoration: none; }
     align-items: center;
     gap: 0.35rem;
     color: var(--pantry-accent);
-    font-size: 0.68rem;
+    font-size: var(--fs-eyebrow);
     font-weight: 800;
     letter-spacing: 0.055em;
     text-transform: uppercase;
@@ -6489,7 +6489,7 @@ a { text-decoration: none; }
     flex: 0 0 auto;
     padding: 0.24rem 0.45rem;
     border-radius: 999px;
-    font-size: 0.66rem;
+    font-size: var(--fs-eyebrow);
     font-weight: 750;
     white-space: nowrap;
 }
@@ -6587,7 +6587,7 @@ a { text-decoration: none; }
     background: var(--surface-card);
     border: 1px solid var(--surface-border);
     border-radius: 999px;
-    font-size: 0.68rem;
+    font-size: var(--fs-eyebrow);
     font-weight: 700;
 }
 
@@ -6604,7 +6604,7 @@ a { text-decoration: none; }
     padding-top: 0.5rem;
     border-top: 1px solid rgba(8, 122, 82, 0.12);
     color: var(--text-muted);
-    font-size: 0.68rem;
+    font-size: var(--fs-eyebrow);
 }
 
 #pantry-scanner .pantry-forecast-details > summary {
@@ -6659,7 +6659,7 @@ a { text-decoration: none; }
 #pantry-scanner .pantry-known-count > small {
     grid-column: 1 / -1;
     color: var(--text-muted);
-    font-size: 0.68rem;
+    font-size: var(--fs-eyebrow);
 }
 
 #pantry-scanner .pantry-empty-state {
@@ -6792,7 +6792,7 @@ a { text-decoration: none; }
     }
 
     #pantry-scanner .pantry-scan-modes small {
-        font-size: 0.66rem;
+        font-size: var(--fs-eyebrow);
     }
 
     #pantry-scanner .pantry-metric {
@@ -6806,7 +6806,7 @@ a { text-decoration: none; }
     }
 
     #pantry-scanner .pantry-metric small {
-        font-size: 0.62rem;
+        font-size: var(--fs-eyebrow);
     }
 
     #pantry-scanner .pantry-section-heading p {

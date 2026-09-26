@@ -17,7 +17,7 @@
 
    Jeśli zwróci inną wartość niż poniżej, arkusz jest z cache. */
 :root {
-    --ui-build: "2026-09-19-d";
+    --ui-build: "2026-09-25-a";
 }
 
 /* --- Podstawa ---------------------------------------------------------- */
@@ -554,7 +554,7 @@ h1, h2, h3, h4, h5, h6 {
                 background var(--dur-fast) var(--ease);
 }
 
-.u-btn:active { transform: translateY(1px); }
+.u-btn:active { transform: scale(0.97); }
 
 .u-btn-primary {
     background: var(--brand-gradient);
@@ -681,7 +681,7 @@ h1, h2, h3, h4, h5, h6 {
     padding: 0.35rem 0.2rem;
     border-radius: var(--r-sm);
     color: var(--ink-4);
-    font-size: 0.625rem;
+    font-size: var(--fs-eyebrow);
     font-weight: 650;
     text-decoration: none;
     min-height: 48px;          /* cel dotykowy */

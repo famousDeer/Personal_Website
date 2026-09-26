@@ -986,6 +986,7 @@
 {% block extra_js %}
 {{ block.super }}
 <script src="{% static 'vendor/chart/chart.umd.js' %}"></script>
+<script src="{% static 'js/charts.js' %}"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('[data-brokerage-filter]').forEach((input) => {
@@ -1024,7 +1025,10 @@
             ? JSON.parse(initialPortfolioHistoryElement.textContent)
             : null;
         let instrumentChart = null;
-        let portfolioValueChart = null;
+        // Wykres wartości portfela rysuje się z bieżących danych i przemalowuje
+        // po zmianie motywu razem z resztą wykresów (AppCharts, static/js/charts.js).
+        let portfolioChartData = null;
+        const portfolioChart = window.AppCharts ? AppCharts.slot(() => buildPortfolioChart()) : null;
         let activeInstrumentUrl = '';
         let activePortfolioRangeParams = initialPortfolioHistory && initialPortfolioHistory.range
             ? (
@@ -1312,17 +1316,19 @@
                 ? 'all'
                 : String(scope.account_id);
 
-            if (portfolioValueChart) {
-                portfolioValueChart.destroy();
-                portfolioValueChart = null;
+            portfolioChartData = null;
+            if (portfolioChart) {
+                portfolioChart.clear();
             }
 
             const latestTotalValue = summary.latest_total_value ?? summary.latest_value;
             const totalChange = summary.total_change ?? summary.change;
             const totalChangePercent = summary.total_change_percent ?? summary.change_percent;
             document.getElementById('brokeragePortfolioLatestValue').textContent = formatMoney(latestTotalValue, currency);
+            // Procent przez ten sam formatter co reszta strony: "19,02%", nie "141.02%".
+            const changePercentText = formatPercent(totalChangePercent, true);
             document.getElementById('brokeragePortfolioValueChange').textContent = totalChange !== null && totalChange !== undefined
-                ? `${formatMoney(totalChange, currency)} (${totalChangePercent || '0.00'}%)`
+                ? `${formatSignedMoney(totalChange, currency)}${changePercentText !== '-' ? ` (${changePercentText})` : ''}`
                 : '-';
 
             const priceSources = data.price_sources && data.price_sources.length ? data.price_sources.join(', ') : 'brak cen';
@@ -1363,106 +1369,129 @@
             });
             setPortfolioWarning(data.warnings || []);
 
-            if (!points.length || typeof Chart === 'undefined') {
+            if (!points.length || typeof Chart === 'undefined' || !portfolioChart) {
                 emptyState.textContent = `Brak danych do wykresu dla: ${accountName}.`;
                 emptyState.classList.remove('d-none');
                 return;
             }
 
             emptyState.classList.add('d-none');
-            const styles = getComputedStyle(document.documentElement);
-            const mutedColor = styles.getPropertyValue('--text-muted').trim() || '#6c757d';
-            const borderColor = styles.getPropertyValue('--surface-border').trim() || 'rgba(0,0,0,0.08)';
+            portfolioChartData = { points, currency };
+            portfolioChart.redraw();
+        };
 
-            portfolioValueChart = new Chart(portfolioChartCanvas, {
+        const shortDateFormatter = new Intl.DateTimeFormat('pl-PL', { day: 'numeric', month: 'short' });
+        const monthYearFormatter = new Intl.DateTimeFormat('pl-PL', { month: 'short', year: 'numeric' });
+        const axisNumberFormatter = new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 0 });
+
+        /*
+         * Wartość portfela jako warstwy: papiery na dole, gotówka na nich.
+         * Górna krawędź to łączna wartość, więc osobna linia "Razem" nie jest
+         * potrzebna (leżała dokładnie na papierach, gdy gotówki nie było).
+         * Suma jest w podpowiedzi. Kolory z tokenów: --invest i --cat-2,
+         * sprawdzone walidatorem palety w obu motywach.
+         */
+        const buildPortfolioChart = () => {
+            if (!portfolioChartData || !portfolioChartCanvas || typeof Chart === 'undefined') {
+                return null;
+            }
+            const { points, currency } = portfolioChartData;
+            const palette = AppCharts.palette();
+            const options = AppCharts.baseOptions();
+            const toNumber = (value) => (value === null || value === undefined || value === '' ? null : Number(value));
+            const securities = points.map((point) => toNumber(point.securities_value));
+            const cash = points.map((point) => toNumber(point.cash_value));
+            const totals = points.map((point) => toNumber(point.total_value));
+            const cashColor = palette.categories[1];
+            const hasCash = cash.some((value) => value !== null && value !== 0);
+            // Ujemnego salda (debet) nie da się położyć jako warstwy -
+            // wtedy trzy osobne linie, jak wcześniej.
+            const stacked = hasCash && cash.every((value) => value === null || value >= 0);
+            const line = (color) => ({
+                borderColor: color,
+                borderWidth: 2,
+                pointRadius: 0,
+                pointHoverRadius: 4,
+                pointHoverBorderWidth: 2,
+                pointHoverBorderColor: palette.surface,
+                pointHoverBackgroundColor: color,
+                tension: 0.22,
+                spanGaps: false,
+            });
+
+            const datasets = [{
+                label: 'Papiery',
+                data: securities,
+                ...line(palette.invest),
+                backgroundColor: palette.invest + '38',
+                fill: stacked || !hasCash ? 'origin' : false,
+            }];
+            if (hasCash) {
+                datasets.push({
+                    label: 'Gotówka',
+                    data: cash,
+                    ...line(cashColor),
+                    backgroundColor: cashColor + '38',
+                    fill: stacked ? '-1' : false,
+                });
+            }
+            if (hasCash && !stacked) {
+                datasets.push({
+                    label: 'Razem',
+                    data: totals,
+                    ...line(palette.ink1),
+                    borderDash: [5, 4],
+                    fill: false,
+                });
+            }
+
+            const firstDate = new Date(points[0].date);
+            const lastDate = new Date(points[points.length - 1].date);
+            const longRange = (lastDate - firstDate) / 86400000 > 300;
+            const axisDate = (value) => (longRange ? monthYearFormatter : shortDateFormatter).format(new Date(value));
+            const axisMoney = (value) => {
+                if (value === 0) {
+                    return '0';
+                }
+                return Math.abs(value) >= 1000
+                    ? AppCharts.compact(value)
+                    : `${axisNumberFormatter.format(value)} ${currency}`;
+            };
+
+            options.plugins.legend.display = datasets.length > 1;
+            options.plugins.tooltip.callbacks = {
+                title: (items) => formatDate(items[0].label),
+                label: (item) => ` ${item.dataset.label}: ${formatMoney(item.raw, currency)}`,
+                footer: (items) => {
+                    if (!stacked || !items.length) {
+                        return '';
+                    }
+                    const total = totals[items[0].dataIndex];
+                    return total === null ? '' : `Razem: ${formatMoney(total, currency)}`;
+                },
+            };
+            // Kolejność w podpowiedzi jak na wykresie: górna warstwa pierwsza.
+            options.plugins.tooltip.itemSort = (a, b) => b.datasetIndex - a.datasetIndex;
+            options.plugins.tooltip.footerColor = palette.tooltipInk;
+            options.scales.x.ticks = {
+                ...options.scales.x.ticks,
+                maxTicksLimit: window.innerWidth < 576 ? 4 : 7,
+                callback(value) {
+                    return axisDate(this.getLabelForValue(value));
+                },
+            };
+            options.scales.y.stacked = stacked;
+            // Pole pod wykresem musi zaczynać się od zera, inaczej zmyśla skalę.
+            options.scales.y.beginAtZero = stacked || !hasCash;
+            options.scales.y.ticks = { ...options.scales.y.ticks, callback: axisMoney };
+
+            return new Chart(portfolioChartCanvas, {
                 type: 'line',
                 data: {
                     labels: points.map((point) => point.date),
-                    datasets: [
-                        {
-                            label: 'Papiery',
-                            data: points.map((point) => point.securities_value === null || point.securities_value === undefined ? null : Number(point.securities_value)),
-                            borderColor: '#0f766e',
-                            backgroundColor: 'transparent',
-                            borderWidth: 2,
-                            pointRadius: 0,
-                            pointHoverRadius: 3,
-                            tension: 0.22,
-                            spanGaps: false,
-                            fill: false,
-                        },
-                        {
-                            label: 'Gotówka',
-                            data: points.map((point) => point.cash_value === null || point.cash_value === undefined ? null : Number(point.cash_value)),
-                            borderColor: '#d97706',
-                            backgroundColor: 'transparent',
-                            borderDash: [5, 4],
-                            borderWidth: 2,
-                            pointRadius: 0,
-                            pointHoverRadius: 3,
-                            tension: 0.15,
-                            spanGaps: false,
-                            fill: false,
-                        },
-                        {
-                            label: 'Razem',
-                            data: points.map((point) => point.total_value === null || point.total_value === undefined ? null : Number(point.total_value)),
-                            borderColor: '#2563eb',
-                            backgroundColor: 'rgba(37, 99, 235, 0.09)',
-                            borderWidth: 3,
-                            pointRadius: 0,
-                            pointHoverRadius: 4,
-                            tension: 0.22,
-                            spanGaps: false,
-                            fill: true,
-                        },
-                    ],
+                    datasets,
                 },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: {
-                        mode: 'index',
-                        intersect: false,
-                    },
-                    plugins: {
-                        legend: {
-                            display: true,
-                            labels: {
-                                color: mutedColor,
-                                usePointStyle: true,
-                                boxWidth: 8,
-                            },
-                        },
-                        tooltip: {
-                            callbacks: {
-                                title: (items) => formatDate(items[0].label),
-                                label: (item) => `${item.dataset.label}: ${formatMoney(item.raw, currency)}`,
-                            },
-                        },
-                    },
-                    scales: {
-                        x: {
-                            ticks: {
-                                color: mutedColor,
-                                maxTicksLimit: window.innerWidth < 576 ? 4 : 8,
-                                maxRotation: 0,
-                            },
-                            grid: {
-                                color: borderColor,
-                            },
-                        },
-                        y: {
-                            ticks: {
-                                color: mutedColor,
-                                callback: (value) => formatMoney(value, currency),
-                            },
-                            grid: {
-                                color: borderColor,
-                            },
-                        },
-                    },
-                },
+                options,
             });
         };
 
@@ -1507,9 +1536,9 @@
                 }
                 renderPortfolioValueChart(data);
             } catch (error) {
-                if (portfolioValueChart) {
-                    portfolioValueChart.destroy();
-                    portfolioValueChart = null;
+                portfolioChartData = null;
+                if (portfolioChart) {
+                    portfolioChart.clear();
                 }
                 emptyState.textContent = error.message || 'Nie udało się pobrać historii wartości portfela.';
                 emptyState.classList.remove('d-none');
@@ -1570,12 +1599,14 @@
             container.appendChild(row);
         };
 
+        let lastInstrumentChartArgs = null;
         const renderChart = (history, instrument, transactions = []) => {
             const emptyState = document.getElementById('brokerageInstrumentChartEmpty');
             if (instrumentChart) {
                 instrumentChart.destroy();
                 instrumentChart = null;
             }
+            lastInstrumentChartArgs = [history, instrument, transactions];
 
             if ((!history.length && !transactions.length) || typeof Chart === 'undefined') {
                 emptyState.classList.remove('d-none');
@@ -1583,10 +1614,17 @@
             }
 
             emptyState.classList.add('d-none');
-            const styles = getComputedStyle(document.documentElement);
-            const mutedColor = styles.getPropertyValue('--text-muted').trim() || '#6c757d';
-            const borderColor = styles.getPropertyValue('--surface-border').trim() || 'rgba(0,0,0,0.08)';
-            const surfaceColor = styles.getPropertyValue('--surface-card').trim() || '#ffffff';
+            // Kolory z tokenów, żeby wykres pasował do motywu. Kupno i sprzedaż
+            // różnią się też kształtem (trójkąt w górę / w dół), nie tylko
+            // zielonym i czerwonym, których nie odróżnia część osób.
+            const palette = window.AppCharts ? AppCharts.palette() : null;
+            const baseOptions = window.AppCharts ? AppCharts.baseOptions() : null;
+            const priceColor = palette ? palette.invest : '#2a78d6';
+            const buyColor = palette ? palette.income : '#14a374';
+            const sellColor = palette ? palette.expense : '#d93a2b';
+            const surfaceColor = palette ? palette.surface : '#ffffff';
+            const axisColor = palette ? palette.axis : '#94a3b8';
+            const gridColor = palette ? palette.grid : 'rgba(15,23,42,.08)';
             const labels = [...new Set([
                 ...history.map((point) => point.date),
                 ...transactions.map((transaction) => transaction.date),
@@ -1611,8 +1649,8 @@
                 datasets.push({
                     label: `${instrument.ticker} · zamknięcie`,
                     data: history.map((point) => ({x: point.date, y: Number(point.close)})),
-                    borderColor: '#0d6efd',
-                    backgroundColor: 'rgba(13, 110, 253, 0.10)',
+                    borderColor: priceColor,
+                    backgroundColor: priceColor + '1a',
                     borderWidth: 2,
                     pointRadius: 0,
                     pointHoverRadius: 4,
@@ -1628,8 +1666,8 @@
                     label: 'Kupno',
                     data: buyPoints,
                     borderColor: surfaceColor,
-                    backgroundColor: '#198754',
-                    pointStyle: 'circle',
+                    backgroundColor: buyColor,
+                    pointStyle: 'triangle',
                     pointRadius: 8,
                     pointHoverRadius: 8,
                     pointBorderWidth: 2,
@@ -1643,8 +1681,9 @@
                     label: 'Sprzedaż',
                     data: sellPoints,
                     borderColor: surfaceColor,
-                    backgroundColor: '#dc3545',
-                    pointStyle: 'circle',
+                    backgroundColor: sellColor,
+                    pointStyle: 'triangle',
+                    rotation: 180,
                     pointRadius: 8,
                     pointHoverRadius: 8,
                     pointBorderWidth: 2,
@@ -1669,12 +1708,13 @@
                         legend: {
                             display: true,
                             labels: {
-                                color: mutedColor,
+                                color: palette ? palette.ink3 : axisColor,
                                 usePointStyle: true,
                                 boxWidth: 8,
                             },
                         },
                         tooltip: {
+                            ...(baseOptions ? baseOptions.plugins.tooltip : {}),
                             callbacks: {
                                 title: (items) => {
                                     const raw = items[0].raw || {};
@@ -1693,27 +1733,41 @@
                     scales: {
                         x: {
                             ticks: {
-                                color: mutedColor,
+                                color: axisColor,
                                 maxTicksLimit: window.innerWidth < 576 ? 4 : 8,
                                 maxRotation: 0,
                             },
                             grid: {
-                                color: borderColor,
+                                display: false,
+                            },
+                            border: {
+                                color: gridColor,
                             },
                         },
                         y: {
                             ticks: {
-                                color: mutedColor,
+                                color: axisColor,
                                 callback: (value) => formatMoney(value, instrument.currency),
                             },
                             grid: {
-                                color: borderColor,
+                                color: gridColor,
+                                drawTicks: false,
+                            },
+                            border: {
+                                display: false,
                             },
                         },
                     },
                 },
             });
         };
+
+        // Otwarty wykres instrumentu też przemalowuje się po zmianie motywu.
+        document.addEventListener('themechange', () => {
+            if (instrumentChart && lastInstrumentChartArgs) {
+                setTimeout(() => renderChart(...lastInstrumentChartArgs), 30);
+            }
+        });
 
         const renderInstrument = (data) => {
             const instrument = data.instrument;
