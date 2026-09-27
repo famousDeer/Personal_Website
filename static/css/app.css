@@ -1222,6 +1222,20 @@ hr { border-color: var(--line-2); opacity: 1; }
     box-shadow: none;
 }
 
+/* Górna nawigacja na komputerze: wskaźnik ma kolor zaznaczonego modułu. */
+.app-nav-links .seg-indicator {
+    border-radius: var(--r-pill);
+    background: var(--brand-100);
+    box-shadow: none;
+}
+
+:root[data-theme="dark"] .app-nav-links .seg-indicator { background: rgba(30, 170, 107, 0.16); }
+
+.app-nav-links.has-indicator > .app-nav-link.is-active,
+:root[data-theme="dark"] .app-nav-links.has-indicator > .app-nav-link.is-active {
+    background: transparent;
+}
+
 @media (prefers-reduced-motion: reduce) {
     [data-segmented] .seg-indicator { transition: none; }
 }

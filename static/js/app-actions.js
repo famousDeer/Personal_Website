@@ -649,9 +649,13 @@
         };
         const active = () => items().find((item) => item.classList.contains('is-active'));
         const initial = active();
-        const hadCurrent = Boolean(initial && initial.hasAttribute('aria-current'));
+        const initialCurrent = initial ? initial.getAttribute('aria-current') : null;
+        const hadCurrent = initialCurrent !== null;
+        let placed = Boolean(initial);
+        // Najpierw klasa (position: relative), potem pomiar - offsetLeft
+        // liczy się od najbliższego pozycjonowanego przodka.
+        group.classList.toggle('has-indicator', placed);
         place(initial, false);
-        group.classList.add('has-indicator');
         group.addEventListener('click', (event) => {
             const item = event.target.closest('a, button');
             if (!item || item.parentElement !== group || item.classList.contains('is-active')) return;
@@ -663,7 +667,11 @@
                     else other.removeAttribute('aria-current');
                 }
             });
-            place(item, true);
+            // Bez zaznaczenia na starcie (np. strona konta) wskaźnik nie ma
+            // skąd jechać - pojawia się od razu pod klikniętym.
+            group.classList.add('has-indicator');
+            place(item, placed);
+            placed = true;
         });
         if ('ResizeObserver' in global) {
             new ResizeObserver(() => place(active(), false)).observe(group);
@@ -671,11 +679,18 @@
         // Powrót "Wstecz" z pamięci podręcznej: zaznaczenie wraca do tego,
         // co pokazuje strona.
         global.addEventListener('pageshow', (event) => {
-            if (!event.persisted || !initial) return;
+            if (!event.persisted) return;
+            if (!initial) {
+                items().forEach((other) => other.classList.remove('is-active'));
+                group.classList.remove('has-indicator');
+                placed = false;
+                return;
+            }
+            group.classList.add('has-indicator');
             items().forEach((other) => {
                 other.classList.toggle('is-active', other === initial);
                 if (hadCurrent) {
-                    if (other === initial) other.setAttribute('aria-current', 'page');
+                    if (other === initial) other.setAttribute('aria-current', initialCurrent);
                     else other.removeAttribute('aria-current');
                 }
             });
@@ -684,6 +699,24 @@
     }
     document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('[data-segmented]').forEach(setupSegmented);
+    });
+
+    // ---------------------------------------------------------------------
+    // Zakładka, na której już jesteś
+    // ---------------------------------------------------------------------
+    // Jak w iOS: dotknięcie zakładki modułu, gdy jesteś na jego stronie
+    // głównej, nie przeładowuje strony, tylko przewija ją na górę.
+    // Z podstrony modułu ta sama zakładka prowadzi na stronę główną modułu.
+    document.addEventListener('click', (event) => {
+        const link = event.target.closest && event.target.closest('a.app-tab, a.app-nav-link');
+        if (!link || event.defaultPrevented || event.button > 0) return;
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        const target = new URL(link.href, global.location.href);
+        const here = global.location;
+        if (target.origin !== here.origin || target.pathname !== here.pathname || target.search !== here.search) return;
+        event.preventDefault();
+        const reduce = global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        global.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
     });
 
     // ---------------------------------------------------------------------

@@ -697,6 +697,14 @@ button, and whatever is inside the block becomes the action buttons
 | Two or three views of the same thing | Segmented control with `data-segmented` (links or buttons, `.is-active` on the current one): the selection slides between segments |
 | Housekeeping sections | `<details>` with a counter in the `<summary>` (see *Dane i uzgodnienia* in the brokerage). A link to `#id` inside a closed `<details>` opens it first |
 
+**Navigation.** The same places on every screen size: *Start*, *Finanse*,
+*Kuchnia*, *Garaż* (and *Nawyki* on a computer). On a phone they are the
+bottom tab bar (plus *Konto*), on a computer the links in the top bar. Each
+module goes to its own home page (`finance:index`, `cooking:index`,
+`cars:garage`), whose tiles open the module's pages; a new page in a module
+gets a tile there. Tapping the tab of the home page you are already on
+scrolls it to the top instead of reloading.
+
 **Behaviour you get for free** (`app.css` and the script in `base.html`):
 
 - Buttons, tiles and rows react the moment they are pressed (slight shrink or

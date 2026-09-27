@@ -79,54 +79,35 @@
         </a>
 
         {% if user.is_authenticated %}
-        <nav class="app-nav-links d-none d-lg-flex" aria-label="Główna nawigacja">
-            <div class="dropdown">
-                <a class="app-nav-link {% if request.resolver_match.namespace == 'finance' %}is-active{% endif %}"
-                   href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="bi bi-cash-coin"></i> Finanse <i class="bi bi-chevron-down" style="font-size:.7em"></i>
-                </a>
-                <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="{% url 'finance:dashboard' %}"><i class="bi bi-speedometer2 me-2"></i>Panel finansowy</a></li>
-                    <li><a class="dropdown-item" href="{% url 'finance:expense_list' %}"><i class="bi bi-arrow-down-circle me-2"></i>Wydatki</a></li>
-                    <li><a class="dropdown-item" href="{% url 'finance:income_list' %}"><i class="bi bi-arrow-up-circle me-2"></i>Przychody</a></li>
-                    <li><a class="dropdown-item" href="{% url 'finance:reports' %}"><i class="bi bi-graph-up me-2"></i>Raporty</a></li>
-                    <li><a class="dropdown-item" href="{% url 'finance:brokerage' %}"><i class="bi bi-graph-up-arrow me-2"></i>Konta maklerskie</a></li>
-                    <li><a class="dropdown-item" href="{% url 'finance:travels' %}"><i class="bi bi-airplane me-2"></i>Podróże</a></li>
-                    <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item" href="{% url 'finance:index' %}">Strona główna finansów</a></li>
-                </ul>
-            </div>
-
-            <div class="dropdown">
-                <a class="app-nav-link {% if request.resolver_match.namespace == 'cooking' %}is-active{% endif %}"
-                   href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="bi bi-egg-fried"></i> Kuchnia <i class="bi bi-chevron-down" style="font-size:.7em"></i>
-                </a>
-                <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="{% url 'cooking:pantry' %}"><i class="bi bi-box-seam me-2"></i>Spiżarnia</a></li>
-                    <li><a class="dropdown-item" href="{% url 'cooking:shopping-list' %}"><i class="bi bi-cart-check me-2"></i>Listy zakupów</a></li>
-                    <li><a class="dropdown-item" href="{% url 'cooking:recipe-list' %}"><i class="bi bi-receipt me-2"></i>Przepisy</a></li>
-                    <li><a class="dropdown-item" href="{% url 'cooking:cook' %}"><i class="bi bi-play-circle me-2"></i>Gotuj</a></li>
-                    <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item" href="{% url 'cooking:index' %}">Strona główna kuchni</a></li>
-                </ul>
-            </div>
-
-            <div class="dropdown">
-                <a class="app-nav-link {% if request.resolver_match.namespace == 'cars' %}is-active{% endif %}"
-                   href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="bi bi-car-front-fill"></i> Garaż <i class="bi bi-chevron-down" style="font-size:.7em"></i>
-                </a>
-                <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="{% url 'cars:garage' %}"><i class="bi bi-car-front me-2"></i>Mój garaż</a></li>
-                    <li><a class="dropdown-item" href="{% url 'cars:add_car' %}"><i class="bi bi-plus-lg me-2"></i>Dodaj samochód</a></li>
-                </ul>
-            </div>
-
-            <a class="app-nav-link {% if request.resolver_match.namespace == 'habits' %}is-active{% endif %}"
-               href="{% url 'habits:list' %}">
-                <i class="bi bi-check2-circle"></i> Nawyki
+        {% comment %} Na komputerze te same miejsca co w dolnej nawigacji telefonu:
+           Start i moduły. Każdy prowadzi na stronę główną modułu, skąd kafelki
+           otwierają jego części - zamiast rozwijanych list, które chowały
+           stronę główną modułu na samym dole. Tło zaznaczenia przejeżdża pod
+           kliknięty moduł (data-segmented, static/js/app-actions.js). {% endcomment %}
+        <nav class="app-nav-links d-none d-lg-flex" aria-label="Główna nawigacja" data-segmented>
+            {% with ns=request.resolver_match.namespace url_name=request.resolver_match.url_name %}
+            {% url 'index' as home_url %}{% url 'finance:index' as finance_url %}{% url 'cooking:index' as cooking_url %}{% url 'cars:garage' as cars_url %}
+            <a class="app-nav-link {% if request.path == home_url %}is-active{% endif %}" href="{{ home_url }}"
+               {% if request.path == home_url %}aria-current="page"{% endif %}>
+                <i class="bi bi-house-door-fill" aria-hidden="true"></i> Start
             </a>
+            <a class="app-nav-link {% if ns == 'finance' %}is-active{% endif %}" href="{{ finance_url }}"
+               {% if request.path == finance_url %}aria-current="page"{% elif ns == 'finance' %}aria-current="true"{% endif %}>
+                <i class="bi bi-cash-coin" aria-hidden="true"></i> Finanse
+            </a>
+            <a class="app-nav-link {% if ns == 'cooking' %}is-active{% endif %}" href="{{ cooking_url }}"
+               {% if request.path == cooking_url %}aria-current="page"{% elif ns == 'cooking' %}aria-current="true"{% endif %}>
+                <i class="bi bi-egg-fried" aria-hidden="true"></i> Kuchnia
+            </a>
+            <a class="app-nav-link {% if ns == 'cars' %}is-active{% endif %}" href="{{ cars_url }}"
+               {% if request.path == cars_url %}aria-current="page"{% elif ns == 'cars' %}aria-current="true"{% endif %}>
+                <i class="bi bi-car-front-fill" aria-hidden="true"></i> Garaż
+            </a>
+            <a class="app-nav-link {% if ns == 'habits' %}is-active{% endif %}" href="{% url 'habits:list' %}"
+               {% if ns == 'habits' %}aria-current="true"{% endif %}>
+                <i class="bi bi-check2-circle" aria-hidden="true"></i> Nawyki
+            </a>
+            {% endwith %}
 
             {% block navbar %}{% endblock %}
         </nav>
@@ -181,26 +162,37 @@
 </main>
 
 {% if user.is_authenticated %}
-{% comment %} Dolna nawigacja na telefonie: cztery moduły w zasięgu kciuka zamiast
-   rozwijanego menu hamburgera. Na desktopie ukryta. {% endcomment %}
+{% comment %} Dolna nawigacja na telefonie: Start, moduły i konto w zasięgu kciuka.
+   Moduł prowadzi na swoją stronę główną (kafelki z jego częściami), tak jak
+   górna nawigacja na komputerze. Dotknięcie zakładki, na której stronie
+   głównej już jesteś, przewija na górę (static/js/app-actions.js).
+   Na komputerze ukryta. {% endcomment %}
 <nav class="app-tabbar" aria-label="Nawigacja mobilna">
+    {% with ns=request.resolver_match.namespace url_name=request.resolver_match.url_name %}
+    {% url 'index' as home_url %}{% url 'finance:index' as finance_url %}{% url 'cooking:index' as cooking_url %}{% url 'cars:garage' as cars_url %}{% url 'profile' as profile_url %}
     <div class="app-tabbar-inner">
-        <a class="app-tab {% if request.path == '/' %}is-active{% endif %}" href="{% url 'index' %}">
-            <i class="bi bi-house-door-fill"></i><span>Start</span>
+        <a class="app-tab {% if request.path == home_url %}is-active{% endif %}" href="{{ home_url }}"
+           {% if request.path == home_url %}aria-current="page"{% endif %}>
+            <i class="bi bi-house-door-fill" aria-hidden="true"></i><span>Start</span>
         </a>
-        <a class="app-tab {% if request.resolver_match.namespace == 'finance' %}is-active{% endif %}" href="{% url 'finance:dashboard' %}">
-            <i class="bi bi-cash-coin"></i><span>Finanse</span>
+        <a class="app-tab {% if ns == 'finance' %}is-active{% endif %}" href="{{ finance_url }}"
+           {% if request.path == finance_url %}aria-current="page"{% elif ns == 'finance' %}aria-current="true"{% endif %}>
+            <i class="bi bi-cash-coin" aria-hidden="true"></i><span>Finanse</span>
         </a>
-        <a class="app-tab {% if request.resolver_match.namespace == 'cooking' %}is-active{% endif %}" href="{% url 'cooking:pantry' %}">
-            <i class="bi bi-box-seam"></i><span>Kuchnia</span>
+        <a class="app-tab {% if ns == 'cooking' %}is-active{% endif %}" href="{{ cooking_url }}"
+           {% if request.path == cooking_url %}aria-current="page"{% elif ns == 'cooking' %}aria-current="true"{% endif %}>
+            <i class="bi bi-egg-fried" aria-hidden="true"></i><span>Kuchnia</span>
         </a>
-        <a class="app-tab {% if request.resolver_match.namespace == 'cars' %}is-active{% endif %}" href="{% url 'cars:garage' %}">
-            <i class="bi bi-car-front-fill"></i><span>Garaż</span>
+        <a class="app-tab {% if ns == 'cars' %}is-active{% endif %}" href="{{ cars_url }}"
+           {% if request.path == cars_url %}aria-current="page"{% elif ns == 'cars' %}aria-current="true"{% endif %}>
+            <i class="bi bi-car-front-fill" aria-hidden="true"></i><span>Garaż</span>
         </a>
-        <a class="app-tab {% if request.resolver_match.url_name == 'profile' %}is-active{% endif %}" href="{% url 'profile' %}">
-            <i class="bi bi-person"></i><span>Konto</span>
+        <a class="app-tab {% if url_name == 'profile' or url_name == 'edit_shared_account' %}is-active{% endif %}" href="{{ profile_url }}"
+           {% if request.path == profile_url %}aria-current="page"{% elif url_name == 'edit_shared_account' %}aria-current="true"{% endif %}>
+            <i class="bi bi-person" aria-hidden="true"></i><span>Konto</span>
         </a>
     </div>
+    {% endwith %}
 </nav>
 {% endif %}
 
