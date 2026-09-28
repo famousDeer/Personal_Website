@@ -2485,53 +2485,195 @@
         button.addEventListener('click', startScanner);
     });
 
-    // Operacje ręczne wysyłają się w tle (data-partial, static/js/app-actions.js).
-    // Stan na kafelku zmienia się od razu, zanim serwer odpowie; odpowiedź
-    // podmienia kafelek na dokładny (prognoza, znacznik stanu, grupa).
+    // Operacje ręczne: stepper "− [ilość] +" wysyłany w tle (data-partial,
+    // static/js/app-actions.js). Stan na kafelku zmienia się od razu, zanim
+    // serwer odpowie; odpowiedź podmienia kafelek na dokładny (prognoza,
+    // znacznik stanu, grupa).
     if (window.AppPartial) {
         const numberFormat = new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 2 });
-        window.AppPartial.optimistic['pantry-movement'] = (form) => {
-            const card = form.closest('.pantry-product-card');
-            if (!card) {
-                return null;
-            }
-            const type = select('input[name="movement_type"]', form)?.value;
-            const packagesInput = select('input[name="package_count"]', form);
-            const quantityInput = select('input[name="quantity"]', form);
+        const readAmount = (input) => Number(String(input?.value ?? '').replace(',', '.'));
+
+        // Zmiana na ekranie liczona od tego, co kafelek już pokazuje (dataset),
+        // więc kilka dotknięć pod rząd sumuje się, a cofnięcie wraca krok wstecz.
+        const showStockChange = (card, type, amount, isPackages) => {
             const sign = type === 'consume' ? -1 : 1;
             const size = Number(card.dataset.scanSize) || 0;
-            let packages = Number(card.dataset.stockPackages) || 0;
-            let quantity = Number(card.dataset.stockQuantity) || 0;
-            if (packagesInput) {
-                const count = Number(packagesInput.value) || 0;
-                packages = Math.max(0, packages + sign * count);
-                quantity = Math.max(0, quantity + sign * count * size);
-            } else if (quantityInput) {
-                quantity = Math.max(0, quantity + sign * (Number(String(quantityInput.value).replace(',', '.')) || 0));
+            const before = {
+                packages: card.dataset.stockPackages,
+                quantity: card.dataset.stockQuantity,
+            };
+            let packages = Number(before.packages) || 0;
+            let quantity = Number(before.quantity) || 0;
+            if (isPackages) {
+                packages = Math.max(0, packages + sign * amount);
+                quantity = Math.max(0, quantity + sign * amount * size);
+            } else {
+                quantity = Math.max(0, Math.round((quantity + sign * amount) * 100) / 100);
             }
             if (quantity === 0) {
                 packages = 0;
             }
             const packageEl = select('[data-product-package-stock]', card);
             const quantityEl = select('[data-product-stock]', card);
-            const before = [packageEl?.textContent, quantityEl?.textContent];
-            if (packageEl && packagesInput && packageEl.textContent.trim() !== '—') {
+            const texts = [packageEl?.textContent, quantityEl?.textContent];
+            if (packageEl && isPackages && packageEl.textContent.trim() !== '—') {
                 packageEl.textContent = numberFormat.format(packages);
             }
             if (quantityEl) {
                 quantityEl.textContent = numberFormat.format(quantity);
             }
+            card.dataset.stockPackages = String(packages);
+            card.dataset.stockQuantity = String(quantity);
+            card.classList.remove('is-stock-changed');
+            void card.offsetWidth;
             card.classList.add('is-stock-changed');
             return () => {
                 if (packageEl) {
-                    packageEl.textContent = before[0];
+                    packageEl.textContent = texts[0];
                 }
                 if (quantityEl) {
-                    quantityEl.textContent = before[1];
+                    quantityEl.textContent = texts[1];
                 }
+                card.dataset.stockPackages = before.packages;
+                card.dataset.stockQuantity = before.quantity;
                 card.classList.remove('is-stock-changed');
             };
         };
+
+        window.AppPartial.optimistic['pantry-movement'] = (form, submitter) => {
+            const card = form.closest('.pantry-product-card');
+            const input = select('[data-stepper-amount]', form);
+            const type = submitter?.value || select('input[name="movement_type"]', form)?.value;
+            const amount = readAmount(input);
+            if (!card || !input || !type || !(amount > 0)) {
+                return null;
+            }
+            // Zmiana dotknięta w trakcie wysyłki była już pokazana na kafelku.
+            if (form.dataset.alreadyShown === '1') {
+                delete form.dataset.alreadyShown;
+                return null;
+            }
+            return showStockChange(card, type, amount, input.name === 'package_count');
+        };
+
+        // --- Stepper -------------------------------------------------------
+        // Kilka szybkich dotknięć: pierwsze idzie od razu, kolejne w trakcie
+        // wysyłki zbierają się w jedną zmianę netto (+1 +1 −1 = +1) i idą
+        // zaraz po odpowiedzi. Wpisana ilość zostaje w polu po podmianie
+        // kafelka, dopóki strona jest otwarta.
+        const pending = new Map();      // id produktu -> suma zmian ze znakiem
+        const chosenAmount = new Map(); // id produktu -> ilość wpisana w pole
+
+        const cardFormFor = (productId) => document.querySelector(`#product-${CSS.escape(productId)} [data-manual-movement-form]`);
+        const productIdOf = (form) => form.closest('.pantry-product-card')?.id.replace('product-', '');
+
+        const labelButtons = (form) => {
+            const input = select('[data-stepper-amount]', form);
+            input.style.setProperty('--len', String(Math.max(1, input.value.length)));
+            const unit = select('.pantry-stepper-unit', form)?.textContent.trim() || '';
+            const amount = readAmount(input);
+            const shown = amount > 0 ? numberFormat.format(amount) : '';
+            selectAll('[data-stepper-label]', form).forEach((button) => {
+                button.setAttribute('aria-label', `${button.dataset.stepperLabel} ${shown} ${unit}`.replace(/\s+/g, ' ').trim());
+            });
+        };
+
+        const flushPending = (productId) => {
+            const net = pending.get(productId);
+            const form = cardFormFor(productId);
+            if (!net || !form || form.dataset.submitting) {
+                if (!net) {
+                    pending.delete(productId);
+                }
+                return;
+            }
+            pending.delete(productId);
+            const input = select('[data-stepper-amount]', form);
+            const button = select(`.pantry-stepper-btn[value="${net < 0 ? 'consume' : 'purchase'}"]`, form);
+            const typed = input.value;
+            input.value = String(Math.round(Math.abs(net) * 100) / 100);
+            form.dataset.alreadyShown = '1';
+            form.requestSubmit(button);
+            // Dane poszły (FormData powstaje od razu) - w polu wraca wpisana ilość.
+            input.value = typed;
+        };
+
+        // Kafelek po odpowiedzi serwera: pokaż jeszcze niewysłane dotknięcia
+        // i wyślij je; przywróć wpisaną ilość.
+        document.addEventListener('partial:swapped', () => {
+            chosenAmount.forEach((value, productId) => {
+                const input = document.querySelector(`#product-${CSS.escape(productId)} [data-stepper-amount]`);
+                if (input && input.value !== value) {
+                    input.value = value;
+                    labelButtons(input.form);
+                }
+            });
+            pending.forEach((net, productId) => {
+                const form = cardFormFor(productId);
+                const card = form?.closest('.pantry-product-card');
+                const input = select('[data-stepper-amount]', form);
+                if (card && input) {
+                    showStockChange(card, net < 0 ? 'consume' : 'purchase', Math.abs(net), input.name === 'package_count');
+                }
+                flushPending(productId);
+            });
+        });
+
+        document.addEventListener('click', (event) => {
+            const button = event.target.closest('.pantry-stepper-btn');
+            const form = button?.form;
+            if (!form || !form.matches('[data-manual-movement-form]')) {
+                return;
+            }
+            const input = select('[data-stepper-amount]', form);
+            const amount = readAmount(input);
+            if (!(amount > 0) || !input.checkValidity()) {
+                event.preventDefault();
+                input.reportValidity();
+                return;
+            }
+            if (!form.dataset.submitting && !pending.has(productIdOf(form))) {
+                return; // zwykła wysyłka w tle przez app-actions.js
+            }
+            // Wysyłka trwa: pokaż zmianę od razu i dołóż ją do kolejki.
+            event.preventDefault();
+            const productId = productIdOf(form);
+            const sign = button.value === 'consume' ? -1 : 1;
+            pending.set(productId, (pending.get(productId) || 0) + sign * amount);
+            const card = form.closest('.pantry-product-card');
+            showStockChange(card, button.value, amount, input.name === 'package_count');
+            if (!form.dataset.submitting) {
+                flushPending(productId);
+            }
+        });
+
+        // Po nieudanej wysyłce (brak odpowiedzi) kafelek zostaje ten sam -
+        // kolejka rusza, gdy formularz znów jest wolny.
+        setInterval(() => {
+            pending.forEach((net, productId) => {
+                const form = cardFormFor(productId);
+                if (form && !form.dataset.submitting) {
+                    flushPending(productId);
+                }
+            });
+        }, 250);
+
+        document.addEventListener('input', (event) => {
+            const input = event.target.closest?.('[data-stepper-amount]');
+            if (!input || !input.form?.matches('[data-manual-movement-form]')) {
+                return;
+            }
+            chosenAmount.set(productIdOf(input.form), input.value);
+            labelButtons(input.form);
+        });
+
+        // Dotknięcie pola zaznacza ilość - wpisanie nowej liczby ją zastępuje.
+        document.addEventListener('focusin', (event) => {
+            const input = event.target.closest?.('[data-stepper-amount]');
+            if (input) {
+                requestAnimationFrame(() => input.select());
+            }
+        });
     }
 
     elements.retryButton.addEventListener('click', () => {

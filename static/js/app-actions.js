@@ -429,7 +429,11 @@
 
         form.dataset.submitting = '1';
         form.setAttribute('aria-busy', 'true');
-        const busyTimer = submitter ? setTimeout(() => submitter.classList.add('is-busy'), 150) : null;
+        // data-no-busy: formularz, który sam pokazuje wynik od razu (np. stepper
+        // w spiżarni), nie dostaje kółka ani blokady przycisku.
+        const busyTimer = submitter && !form.hasAttribute('data-no-busy')
+            ? setTimeout(() => submitter.classList.add('is-busy'), 150)
+            : null;
         try {
             const response = await fetch(form.action, {
                 method: 'POST',

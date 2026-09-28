@@ -5496,15 +5496,6 @@ a { text-decoration: none; }
     padding: 0 0.85rem 0.85rem 1rem;
 }
 
-.pantry-product-manual-body .pantry-inline-form,
-.pantry-product-manual-body .input-group {
-    width: 100%;
-}
-
-.pantry-product-manual-body .form-control {
-    min-width: 4rem;
-}
-
 .pantry-empty-state {
     display: grid;
     justify-items: center;
@@ -6021,25 +6012,6 @@ a { text-decoration: none; }
 
     .pantry-filter-panel {
         margin-bottom: 1rem !important;
-    }
-
-    .pantry-product-manual-body .input-group {
-        display: grid;
-        grid-template-columns: auto minmax(0, 1fr) auto;
-    }
-
-    .pantry-product-manual-body .input-group > .input-group-text:first-child {
-        border-radius: var(--bs-border-radius) 0 0 var(--bs-border-radius);
-    }
-
-    .pantry-product-manual-body .input-group > .input-group-text:nth-last-child(2) {
-        border-radius: 0 var(--bs-border-radius) var(--bs-border-radius) 0;
-    }
-
-    .pantry-product-manual-body .input-group > .btn {
-        grid-column: 1 / -1;
-        margin-top: 0.4rem;
-        border-radius: var(--bs-border-radius) !important;
     }
 
     .pantry-photo-source-actions .btn {

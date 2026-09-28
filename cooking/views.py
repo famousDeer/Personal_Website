@@ -1765,12 +1765,17 @@ class PantryMovementView(LoginRequiredMixin, View):
             id=product_id,
         )
         movement_type = request.POST.get('movement_type')
+        # Jeden formularz z dwoma przyciskami (minus zużywa, plus dodaje) niesie
+        # osobny identyfikator dla każdego kierunku - ponowne wysłanie tego
+        # samego przycisku nie zapisze zmiany dwa razy, a drugi przycisk jest
+        # osobną operacją. Stare pole operation_id nadal działa.
+        raw_operation_id = (
+            request.POST.get(f'operation_id_{movement_type}')
+            if movement_type in (PantryMovement.CONSUME, PantryMovement.PURCHASE)
+            else None
+        ) or request.POST.get('operation_id')
         try:
-            operation_id = (
-                parse_scan_id(request.POST.get('operation_id'))
-                if request.POST.get('operation_id')
-                else None
-            )
+            operation_id = parse_scan_id(raw_operation_id) if raw_operation_id else None
             raw_package_count = request.POST.get('package_count')
             packages_were_explicit = raw_package_count not in [None, '']
             if packages_were_explicit:

@@ -1567,3 +1567,127 @@ hr { border-color: var(--line-2); opacity: 1; }
 /* Skok do kotwicy (np. "16 do sprawdzenia" w maklerze, #product-N w spiżarni)
    zatrzymuje cel pod przyklejonym górnym paskiem, a nie pod nim schowany. */
 html { scroll-padding-top: calc(var(--nav-h) + var(--sp-3)); }
+
+/* =========================================================================
+   Spiżarnia: operacje ręczne jako stepper  − [ ilość ] +
+   =========================================================================
+   Minus zużywa wpisaną ilość, plus tyle dodaje (domyślnie 1). Przyciski
+   48 px w zasięgu kciuka, kolor mówi, w którą stronę zmienia się stan:
+   zużycie jak wydatek, dodanie jak przychód. */
+.pantry-product-manual > summary .pantry-manual-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    white-space: nowrap;
+}
+
+.pantry-product-manual > summary small {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pantry-stepper-form {
+    display: grid;
+    gap: 0.35rem;
+}
+
+.pantry-stepper {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr) 48px;
+    align-items: center;
+    gap: var(--sp-2);
+}
+
+.pantry-stepper-btn {
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--r-md);
+    font-size: var(--fs-h3);
+    line-height: 1;
+    cursor: pointer;
+    transition: transform var(--dur-press) var(--ease-out), background-color var(--dur-fast) var(--ease);
+    -webkit-tap-highlight-color: transparent;
+}
+
+.pantry-stepper-btn.is-consume { background: var(--expense-bg); color: var(--expense-ink); }
+.pantry-stepper-btn.is-purchase { background: var(--income-bg); color: var(--income-ink); }
+
+.pantry-stepper-btn:active { transform: scale(0.92); }
+
+@media (hover: hover) and (pointer: fine) {
+    .pantry-stepper-btn.is-consume:hover { background: color-mix(in srgb, var(--expense) 20%, transparent); }
+    .pantry-stepper-btn.is-purchase:hover { background: color-mix(in srgb, var(--income) 20%, transparent); }
+}
+
+.pantry-stepper-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+.pantry-stepper-field {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    height: 48px;
+    margin: 0;
+    padding: 0 var(--sp-3);
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-md);
+    background: var(--surface-1);
+    cursor: text;
+    transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+
+.pantry-stepper-field:focus-within {
+    border-color: var(--brand-500);
+    box-shadow: var(--focus-ring);
+}
+
+/* Pole ma szerokość wpisanej liczby (--len ustawia pantry-scanner.js),
+   więc "1 opak." stoi razem na środku, a nie z dziurą w środku. */
+.pantry-stepper-field input {
+    width: calc((var(--len, 1) + 0.6) * 1ch);
+    min-width: 1.6ch;
+    max-width: 10ch;
+    padding: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--ink-1);
+    font-size: var(--fs-lead);
+    font-weight: 700;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.pantry-stepper-field input::-webkit-outer-spin-button,
+.pantry-stepper-field input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.pantry-stepper-unit {
+    color: var(--ink-3);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.pantry-stepper-hint {
+    display: flex;
+    justify-content: space-between;
+    margin: 0;
+    padding-inline: 0.15rem;
+    color: var(--ink-3);
+    font-size: var(--fs-caption);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pantry-stepper-btn:active { transform: none; opacity: 0.7; }
+}

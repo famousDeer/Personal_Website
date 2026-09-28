@@ -448,12 +448,63 @@ class PantryTests(TestCase):
 
         self.assertContains(
             response,
-            f'<input id="consume-{product.id}" type="number" name="quantity" '
-            'step="0.01" min="0.01" max="99999999.99" '
-            'class="form-control" inputmode="decimal" placeholder="Ilość" required>',
+            f'<input id="manual-amount-{product.id}" type="number" name="quantity" value="1" '
+            'step="0.01" min="0.01" max="99999999.99" inputmode="decimal" required data-stepper-amount>',
             html=True,
         )
-        self.assertContains(response, '<span class="input-group-text">kg</span>', html=True)
+        self.assertContains(response, '<span class="pantry-stepper-unit" aria-hidden="true">kg</span>', html=True)
+        self.assertContains(response, 'aria-label="Zużyj 1 kg"')
+
+    def test_manual_stepper_has_minus_amount_plus(self):
+        product = PantryProduct.objects.create(
+            created_by=self.user,
+            name='Jogurt stepper',
+            barcode='5900000000912',
+            unit=PantryProduct.UNIT_GRAM,
+            quantity_per_scan=Decimal('400.00'),
+            current_quantity=Decimal('800.00'),
+            current_package_count=2,
+        )
+
+        response = self.client.get(reverse('cooking:pantry'))
+
+        self.assertContains(
+            response,
+            f'<input id="manual-amount-{product.id}" type="number" name="package_count" value="1" '
+            'step="1" min="1" max="9999" inputmode="numeric" required data-stepper-amount>',
+            html=True,
+        )
+        self.assertContains(response, 'name="movement_type" value="consume"')
+        self.assertContains(response, 'name="movement_type" value="purchase"')
+        self.assertContains(response, 'name="operation_id_consume"')
+        self.assertContains(response, 'name="operation_id_purchase"')
+        # Enter w polu nie wysyła formularza (domyślny przycisk jest wyłączony).
+        self.assertContains(response, '<button type="submit" disabled hidden aria-hidden="true" tabindex="-1"></button>', html=True)
+
+    def test_manual_stepper_operation_ids_are_per_direction(self):
+        product = PantryProduct.objects.create(
+            created_by=self.user,
+            name='Jogurt kierunki',
+            barcode='5900000000929',
+            unit=PantryProduct.UNIT_GRAM,
+            quantity_per_scan=Decimal('400.00'),
+            current_quantity=Decimal('800.00'),
+            current_package_count=2,
+        )
+        url = reverse('cooking:pantry-movement', args=[product.id])
+        consume_id, purchase_id = str(uuid4()), str(uuid4())
+        base = {'package_count': '3', 'operation_id_consume': consume_id, 'operation_id_purchase': purchase_id}
+
+        self.client.post(url, {**base, 'movement_type': PantryMovement.PURCHASE})
+        self.client.post(url, {**base, 'movement_type': PantryMovement.PURCHASE})  # ponowna wysyłka
+        self.client.post(url, {**base, 'movement_type': PantryMovement.CONSUME, 'package_count': '1'})
+
+        product.refresh_from_db()
+        self.assertEqual(product.current_package_count, 4)       # 2 + 3 - 1
+        self.assertEqual(product.current_quantity, Decimal('1600.00'))
+        self.assertEqual(product.movements.count(), 2)
+        self.assertEqual(str(product.movements.get(movement_type=PantryMovement.PURCHASE).scan_id), purchase_id)
+        self.assertEqual(str(product.movements.get(movement_type=PantryMovement.CONSUME).scan_id), consume_id)
 
     def test_pantry_list_shows_products_of_all_household_members(self):
         PantryProduct.objects.create(

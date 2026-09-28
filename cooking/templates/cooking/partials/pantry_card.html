@@ -173,59 +173,50 @@ Kontekst: card (słownik z PantryListView), product = card.product.
         </section>
     {% endwith %}
 
+    {% comment %} Operacje ręczne: jedno pole z ilością (domyślnie 1) między
+       przyciskami. Minus zużywa tyle, plus tyle dodaje. Z JavaScriptem stan na
+       kafelku zmienia się od razu, a kilka szybkich dotknięć składa się
+       w jedną zmianę (pantry-scanner.js). Bez JavaScriptu to zwykły formularz:
+       wysyła się przyciskiem, którym go wysłano (movement_type). {% endcomment %}
     <details class="pantry-product-manual" id="manual-{{ product.id }}">
         <summary>
-            <span><i class="bi bi-sliders" aria-hidden="true"></i> Operacje ręczne</span>
-            <small>gdy nie możesz skanować</small>
+            <span class="pantry-manual-title"><i class="bi bi-sliders" aria-hidden="true"></i> Operacje ręczne</span>
+            <small>bez skanowania</small>
         </summary>
         <div class="pantry-product-manual-body">
-            <form method="post" action="{% url 'cooking:pantry-movement' product.id %}" class="pantry-inline-form" data-manual-movement-form
+            <form method="post" action="{% url 'cooking:pantry-movement' product.id %}" class="pantry-stepper-form"
+                  data-manual-movement-form data-no-busy
                   data-partial="#product-{{ product.id }}, #pantry-metrics, [data-panel-badges]{% if product.group_id %}, [data-group-id=&quot;{{ product.group_id }}&quot;]{% endif %}"
                   data-optimistic="pantry-movement">
                 {% csrf_token %}
                 <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                <input type="hidden" name="movement_type" value="consume">
-                <input type="hidden" name="operation_id" value="{{ card.manual_consume_id }}">
-                <label class="visually-hidden" for="consume-{{ product.id }}">Ilość do zużycia</label>
-                <div class="input-group">
-                    <span class="input-group-text">−</span>
-                    {% if product.tracks_packages %}
-                        <input id="consume-{{ product.id }}" type="number" name="package_count"
-                               step="1" min="1" max="9999"
-                               class="form-control" inputmode="numeric" placeholder="Liczba opakowań" required>
-                        <span class="input-group-text">opak.</span>
-                    {% else %}
-                        <input id="consume-{{ product.id }}" type="number" name="quantity"
-                               step="0.01" min="0.01" max="99999999.99"
-                               class="form-control" inputmode="decimal" placeholder="Ilość" required>
-                        <span class="input-group-text">{{ product.display_unit }}</span>
-                    {% endif %}
-                    <button class="btn btn-outline-danger" type="submit" id="consume-submit-{{ product.id }}">Zużyj</button>
+                <input type="hidden" name="operation_id_consume" value="{{ card.manual_consume_id }}">
+                <input type="hidden" name="operation_id_purchase" value="{{ card.manual_purchase_id }}">
+                {# Enter w polu niczego nie wysyła: domyślny przycisk formularza jest wyłączony. #}
+                <button type="submit" disabled hidden aria-hidden="true" tabindex="-1"></button>
+                <div class="pantry-stepper" role="group" aria-label="Zmień stan: {{ product.name }}">
+                    <button class="pantry-stepper-btn is-consume" type="submit" name="movement_type" value="consume"
+                            aria-label="Zużyj 1 {% if product.tracks_packages %}opak.{% else %}{{ product.display_unit }}{% endif %}" data-stepper-label="Zużyj">
+                        <i class="bi bi-dash-lg" aria-hidden="true"></i>
+                    </button>
+                    <label class="pantry-stepper-field" for="manual-amount-{{ product.id }}">
+                        <span class="visually-hidden">{% if product.tracks_packages %}Liczba opakowań{% else %}Ilość w {{ product.display_unit }}{% endif %}</span>
+                        {% if product.tracks_packages %}
+                            <input id="manual-amount-{{ product.id }}" type="number" name="package_count" value="1"
+                                   step="1" min="1" max="9999" inputmode="numeric" required data-stepper-amount>
+                            <span class="pantry-stepper-unit" aria-hidden="true">opak.</span>
+                        {% else %}
+                            <input id="manual-amount-{{ product.id }}" type="number" name="quantity" value="1"
+                                   step="0.01" min="0.01" max="99999999.99" inputmode="decimal" required data-stepper-amount>
+                            <span class="pantry-stepper-unit" aria-hidden="true">{{ product.display_unit }}</span>
+                        {% endif %}
+                    </label>
+                    <button class="pantry-stepper-btn is-purchase" type="submit" name="movement_type" value="purchase"
+                            aria-label="Dodaj 1 {% if product.tracks_packages %}opak.{% else %}{{ product.display_unit }}{% endif %}" data-stepper-label="Dodaj">
+                        <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                    </button>
                 </div>
-            </form>
-            <form method="post" action="{% url 'cooking:pantry-movement' product.id %}" class="pantry-inline-form" data-manual-movement-form
-                  data-partial="#product-{{ product.id }}, #pantry-metrics, [data-panel-badges]{% if product.group_id %}, [data-group-id=&quot;{{ product.group_id }}&quot;]{% endif %}"
-                  data-optimistic="pantry-movement">
-                {% csrf_token %}
-                <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                <input type="hidden" name="movement_type" value="purchase">
-                <input type="hidden" name="operation_id" value="{{ card.manual_purchase_id }}">
-                <label class="visually-hidden" for="purchase-{{ product.id }}">Ilość do dodania</label>
-                <div class="input-group">
-                    <span class="input-group-text">+</span>
-                    {% if product.tracks_packages %}
-                        <input id="purchase-{{ product.id }}" type="number" name="package_count"
-                               step="1" min="1" max="9999"
-                               class="form-control" inputmode="numeric" placeholder="Liczba opakowań" required>
-                        <span class="input-group-text">opak.</span>
-                    {% else %}
-                        <input id="purchase-{{ product.id }}" type="number" name="quantity"
-                               step="0.01" min="0.01" max="99999999.99"
-                               class="form-control" inputmode="decimal" placeholder="Ilość" required>
-                        <span class="input-group-text">{{ product.display_unit }}</span>
-                    {% endif %}
-                    <button class="btn btn-outline-success" type="submit" id="purchase-submit-{{ product.id }}">Dodaj</button>
-                </div>
+                <p class="pantry-stepper-hint"><span>− zużywa</span><span>+ dodaje</span></p>
             </form>
         </div>
     </details>
