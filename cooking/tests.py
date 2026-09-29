@@ -4884,3 +4884,132 @@ class QuantityFilterTests(SimpleTestCase):
     def test_empty_values(self):
         self.assertEqual(self.render(None), '')
         self.assertEqual(self.render(''), '')
+
+
+class PantryOneOffTests(TestCase):
+    """„Nie kupuję ponownie”: produkt zostaje w bazie z historią, ale bez
+    prognozy, progu i listy zakupów."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='dawid-jednorazowe', password='pass12345')
+        self.client.login(username='dawid-jednorazowe', password='pass12345')
+        self.gift = PantryProduct.objects.create(
+            created_by=self.user, name='Herbata z prezentu', category='Napoje',
+            unit=PantryProduct.UNIT_PIECE, quantity_per_scan=Decimal('1.00'),
+            current_quantity=Decimal('0.00'), minimum_quantity=Decimal('1.00'), one_off=True,
+        )
+        self.milk = PantryProduct.objects.create(
+            created_by=self.user, name='Mleko codzienne', category='Nabiał',
+            unit=PantryProduct.UNIT_PIECE, quantity_per_scan=Decimal('1.00'),
+            current_quantity=Decimal('0.00'), minimum_quantity=Decimal('1.00'),
+        )
+
+    def suggestion_names(self):
+        from cooking.views import build_shopping_suggestions
+
+        return [suggestion['name'] for suggestion in build_shopping_suggestions()]
+
+    def test_one_off_product_never_reaches_the_shopping_list(self):
+        names = self.suggestion_names()
+
+        self.assertNotIn('Herbata z prezentu', names)
+        self.assertIn('Mleko codzienne', names)
+
+    def test_one_off_below_minimum_is_not_low(self):
+        self.gift.current_quantity = Decimal('1.00')
+        self.gift.save(update_fields=['current_quantity'])
+
+        self.assertEqual(self.gift.stock_status, 'ok')
+        self.gift.one_off = False
+        self.assertEqual(self.gift.stock_status, 'low')
+
+    def test_flag_is_ignored_inside_a_group(self):
+        group = ProductGroup.objects.create(name='Herbata', minimum_packages=1, created_by=self.user)
+        self.gift.group = group
+        self.gift.save(update_fields=['group'])
+
+        self.assertFalse(self.gift.skips_restock)
+        self.assertIn('Herbata', self.suggestion_names())
+
+    def test_pantry_card_shows_state_and_counts_skip_it(self):
+        response = self.client.get(reverse('cooking:pantry'))
+
+        self.assertContains(response, 'is-one-off')
+        self.assertContains(response, 'Kupuję ponownie')
+        self.assertContains(response, 'pantry-stock-badge is-finished')
+        self.assertEqual(response.context['low_stock_count'], 1)  # tylko mleko
+        cards = {card['product'].name: card for card in response.context['product_cards']}
+        self.assertFalse(cards['Herbata z prezentu']['needs_restock'])
+        self.assertTrue(cards['Mleko codzienne']['needs_restock'])
+
+    def test_filter_lists_only_one_off_products(self):
+        response = self.client.get(reverse('cooking:pantry'), {'status': 'jednorazowe'})
+
+        names = [card['product'].name for card in response.context['product_cards']]
+        self.assertEqual(names, ['Herbata z prezentu'])
+
+    def test_quick_toggle_from_the_card(self):
+        url = reverse('cooking:pantry-restock-toggle', args=[self.milk.pk])
+
+        response = self.client.post(url, {'one_off': '1', 'next': '/cooking/pantry/?q=Mleko'})
+
+        self.assertRedirects(response, f'/cooking/pantry/?q=Mleko#product-{self.milk.pk}',
+                             fetch_redirect_response=False)
+        self.milk.refresh_from_db()
+        self.assertTrue(self.milk.one_off)
+        self.assertNotIn('Mleko codzienne', self.suggestion_names())
+        # Historia i stan zostają - zmienia się tylko flaga.
+        self.assertEqual(PantryProduct.objects.filter(pk=self.milk.pk).count(), 1)
+
+        self.client.post(url, {'one_off': '0'})
+        self.milk.refresh_from_db()
+        self.assertFalse(self.milk.one_off)
+
+    def test_regular_card_offers_the_toggle_but_grouped_one_does_not(self):
+        group = ProductGroup.objects.create(name='Mleko', minimum_packages=1, created_by=self.user)
+        PantryProduct.objects.create(
+            created_by=self.user, name='Mleko Łaciate', group=group,
+            unit=PantryProduct.UNIT_PIECE, current_quantity=Decimal('2.00'),
+        )
+        response = self.client.get(reverse('cooking:pantry'))
+        content = response.content.decode()
+
+        self.assertIn(f'id="restock-toggle-{self.milk.pk}"', content)
+        grouped = PantryProduct.objects.get(name='Mleko Łaciate')
+        self.assertNotIn(f'id="restock-toggle-{grouped.pk}"', content)
+
+    def test_edit_form_sets_and_clears_the_flag(self):
+        url = reverse('cooking:edit-pantry-product', args=[self.milk.pk])
+        page = self.client.get(url)
+        self.assertContains(page, 'name="one_off_field"')
+
+        self.client.post(url, {'name': 'Mleko codzienne', 'one_off_field': '1', 'one_off': '1'})
+        self.milk.refresh_from_db()
+        self.assertTrue(self.milk.one_off)
+
+        self.client.post(url, {'name': 'Mleko codzienne', 'one_off_field': '1'})
+        self.milk.refresh_from_db()
+        self.assertFalse(self.milk.one_off)
+
+        # Formularz bez pola nie rusza flagi.
+        self.milk.one_off = True
+        self.milk.save(update_fields=['one_off'])
+        self.client.post(url, {'name': 'Mleko codzienne'})
+        self.milk.refresh_from_db()
+        self.assertTrue(self.milk.one_off)
+
+    def test_add_form_can_create_a_one_off_product(self):
+        self.client.post(reverse('cooking:add-pantry-product'), {
+            'name': 'Wino na prezent', 'unit': PantryProduct.UNIT_PIECE, 'quantity_per_scan': '1',
+            'current_quantity': '1', 'minimum_quantity': '0', 'restock_lead_days': '3', 'one_off': '1',
+        })
+
+        self.assertTrue(PantryProduct.objects.get(name='Wino na prezent').one_off)
+
+    def test_offline_shopping_mode_gets_no_minimum(self):
+        from cooking.services.shopping_sync import pantry_product_json
+
+        payload = pantry_product_json(self.gift)
+
+        self.assertEqual(payload['minimum'], '0.00')
+        self.assertTrue(payload['one_off'])

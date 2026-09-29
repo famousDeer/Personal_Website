@@ -187,6 +187,15 @@ class PantryProduct(models.Model):
     current_package_count = models.PositiveIntegerField(default=0)
     minimum_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
     restock_lead_days = models.PositiveSmallIntegerField(default=3)
+    # Produkt, którego po skończeniu się nie kupuje (prezent, jednorazowy
+    # zakup, próbka). Stan, ruchy i historia zostają w bazie, ale nie ma
+    # prognozy, progu minimalnego ani miejsca na liście zakupów. Produkt
+    # w grupie słucha grupy - tam flaga nie działa (patrz skips_restock).
+    one_off = models.BooleanField(
+        default=False,
+        verbose_name='Nie kupuję ponownie',
+        help_text='Bez prognozy zakupu i bez listy zakupów; stan i historia zostają.',
+    )
     notes = models.TextField(blank=True)
     image = models.ImageField(
         upload_to='pantry_product_images',
@@ -222,10 +231,23 @@ class PantryProduct(models.Model):
         return dict(self.UNIT_CHOICES).get(self.unit, self.unit)
 
     @property
+    def skips_restock(self):
+        """Nie kupuje się go ponownie: bez prognozy i bez listy zakupów.
+
+        O produkcie w grupie („ten sam produkt, inna firma”) decyduje grupa,
+        więc flaga działa tylko dla produktu, który liczy się sam.
+        """
+        return self.one_off and not self.group_id
+
+    @property
     def stock_status(self):
         if self.current_quantity <= 0:
             return 'empty'
-        if self.minimum_quantity and self.current_quantity <= self.minimum_quantity:
+        if (
+            not self.skips_restock
+            and self.minimum_quantity
+            and self.current_quantity <= self.minimum_quantity
+        ):
             return 'low'
         return 'ok'
 

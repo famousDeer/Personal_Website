@@ -49,9 +49,9 @@ class RecipeStepIngredientAdmin(admin.ModelAdmin):
 
 @admin.register(PantryProduct)
 class PantryProductAdmin(admin.ModelAdmin):
-    list_display = ('name', 'barcode', 'quantity_per_scan', 'created_by', 'category', 'current_package_count', 'current_quantity', 'unit', 'minimum_quantity', 'restock_lead_days')
+    list_display = ('name', 'barcode', 'quantity_per_scan', 'created_by', 'category', 'current_package_count', 'current_quantity', 'unit', 'minimum_quantity', 'restock_lead_days', 'one_off')
     search_fields = ('name', 'barcode', 'category', 'created_by__username')
-    list_filter = ('category', 'unit')
+    list_filter = ('category', 'unit', 'one_off')
 
 
 @admin.register(PantryMovement)

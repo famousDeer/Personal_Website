@@ -316,6 +316,10 @@ def build_shopping_suggestions():
     unit_labels = dict(PantryProduct.UNIT_CHOICES)
 
     for product in loose:
+        # "Nie kupuję ponownie": produkt zostaje w spiżarni z całą historią,
+        # ale nigdy nie trafia na listę - także gdy się skończy.
+        if product.skips_restock:
+            continue
         forecast = forecasts[product.pk]
         if product.stock_status not in ['empty', 'low'] and not forecast.is_due:
             continue
@@ -904,14 +908,18 @@ class PantryListView(LoginRequiredMixin, View):
                 'group_covered': covered_by_group(product),
                 'group_packages': group_packages.get(product.group_id, 0),
             }
-            needs_restock = not card['group_covered'] and (
-                product.stock_status in ['low', 'empty'] or forecast.is_due
+            needs_restock = (
+                not card['group_covered']
+                and not product.skips_restock
+                and (product.stock_status in ['low', 'empty'] or forecast.is_due)
             )
             card['needs_restock'] = needs_restock
             if status_filter == 'low':
                 matches_status = needs_restock
             elif status_filter == 'ok':
                 matches_status = not needs_restock
+            elif status_filter == 'jednorazowe':
+                matches_status = product.skips_restock
             else:
                 matches_status = not status_filter or product.stock_status == status_filter
             if matches_status:
@@ -1415,6 +1423,7 @@ class AddPantryProductView(LoginRequiredMixin, View):
                     current_package_count=current_package_count,
                     minimum_quantity=minimum_quantity,
                     restock_lead_days=restock_lead_days,
+                    one_off=request.POST.get('one_off') == '1',
                     notes=request.POST.get('notes', '').strip(),
                     image=image,
                 )
@@ -1460,6 +1469,7 @@ class EditPantryProductView(LoginRequiredMixin, View):
     editable_fields = [
         'name', 'barcode', 'category', 'unit', 'quantity_per_scan', 'current_quantity',
         'current_package_count', 'minimum_quantity', 'restock_lead_days', 'notes', 'group_id',
+        'one_off',
     ]
 
     def _initial_values(self, product):
@@ -1473,6 +1483,10 @@ class EditPantryProductView(LoginRequiredMixin, View):
                 for field in self.editable_fields
                 if field in form_values
             })
+            # Niezaznaczony checkbox nie przychodzi w POST - o tym, że był
+            # w formularzu, mówi pole one_off_field.
+            if 'one_off_field' in form_values:
+                values['one_off'] = form_values.get('one_off') == '1'
         remembered = household_catalog_entry(product.barcode) if product.barcode else None
         return get_pantry_form_context(
             product=product,
@@ -1644,6 +1658,8 @@ class EditPantryProductView(LoginRequiredMixin, View):
         product.current_package_count = package_count
         product.minimum_quantity = minimum_quantity
         product.restock_lead_days = restock_lead_days
+        if 'one_off_field' in post:
+            product.one_off = post.get('one_off') == '1'
         if 'notes' in post:
             product.notes = post.get('notes', '').strip()
         if 'group' in post:
@@ -1876,6 +1892,29 @@ class PantryMovementView(LoginRequiredMixin, View):
         except Exception as exc:
             messages.error(request, f'Nie udało się zapisać zmiany: {exc}')
 
+        return pantry_redirect_back(request, product)
+
+
+class PantryRestockToggleView(LoginRequiredMixin, View):
+    """„Nie kupuję ponownie” jednym dotknięciem z kafelka spiżarni.
+
+    one_off=1 wyłącza prognozę i listę zakupów dla produktu, one_off=0
+    przywraca. Stan i historia zostają bez zmian.
+    """
+
+    def post(self, request, product_id):
+        product = get_object_or_404(PantryProduct, id=product_id)
+        one_off = request.POST.get('one_off') == '1'
+        if product.one_off != one_off:
+            product.one_off = one_off
+            product.save(update_fields=['one_off', 'updated_at'])
+        if one_off:
+            messages.success(
+                request,
+                f'„{product.name}” nie trafi już na listę zakupów. Stan i historia zostają.',
+            )
+        else:
+            messages.success(request, f'„{product.name}” znów ma prognozę zakupu.')
         return pantry_redirect_back(request, product)
 
 

@@ -1691,3 +1691,76 @@ html { scroll-padding-top: calc(var(--nav-h) + var(--sp-3)); }
 @media (prefers-reduced-motion: reduce) {
     .pantry-stepper-btn:active { transform: none; opacity: 0.7; }
 }
+
+/* =========================================================================
+   Spiżarnia: „Nie kupuję ponownie”
+   =========================================================================
+   Produkt bez prognozy i bez listy zakupów. Kolory neutralne: skończony
+   produkt jednorazowy to informacja, nie alarm. */
+#pantry-scanner .pantry-product-card.is-one-off::before { background: var(--ink-4); }
+
+#pantry-scanner .pantry-stock-badge.is-finished,
+.pantry-stock-badge.is-finished {
+    color: var(--ink-3);
+    background: var(--neutral-bg);
+}
+
+#pantry-scanner .pantry-product-forecast.is-one-off {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-2) var(--sp-3);
+    background: var(--surface-2);
+    border-color: var(--line-1);
+}
+
+#pantry-scanner .pantry-product-forecast.is-one-off .pantry-forecast-learning { flex: 1 1 14rem; min-width: 0; }
+
+#pantry-scanner .is-one-off .pantry-forecast-state-icon {
+    color: var(--ink-3);
+    background: var(--neutral-bg);
+}
+
+.pantry-restock-form {
+    display: flex;
+    justify-content: flex-end;
+    margin: 0;
+}
+
+.pantry-product-forecast:not(.is-one-off) .pantry-restock-form { margin-top: var(--sp-2); }
+
+.pantry-restock-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 36px;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-pill);
+    background: var(--surface-1);
+    color: var(--ink-3);
+    font-size: var(--fs-caption);
+    font-weight: 650;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease),
+                transform var(--dur-press) var(--ease-out);
+}
+
+@media (pointer: coarse) {
+    .pantry-restock-toggle { min-height: 44px; }
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .pantry-restock-toggle:hover { color: var(--ink-1); background: var(--surface-3); }
+}
+
+.pantry-restock-toggle:active { transform: scale(0.97); }
+.pantry-restock-toggle:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* Formularz produktu: przy „Nie kupuję ponownie” próg i wyprzedzenie nic
+   nie zmieniają, więc przygasają (dalej można je wpisać - wrócą do gry po
+   wyłączeniu przełącznika). */
+.pantry-restock-fields { transition: opacity var(--dur) var(--ease); }
+form:has(#one-off:checked) .pantry-restock-fields { opacity: 0.45; }

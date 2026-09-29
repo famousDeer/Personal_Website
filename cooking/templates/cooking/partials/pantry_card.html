@@ -8,7 +8,7 @@ produktu zamiast na górę strony.
 
 Kontekst: card (słownik z PantryListView), product = card.product.
 {% endcomment %}
-<article class="pantry-product-card is-{{ product.stock_status }}"
+<article class="pantry-product-card is-{{ product.stock_status }}{% if product.skips_restock %} is-one-off{% endif %}"
          id="product-{{ product.id }}"
          data-pantry-product-id="{{ product.id }}"
          data-group-id="{{ product.group_id|default_if_none:'' }}"
@@ -40,7 +40,9 @@ Kontekst: card (słownik z PantryListView), product = card.product.
                    title="Edytuj lub usuń produkt" aria-label="Edytuj lub usuń {{ product.name }}">
                     <i class="bi bi-pencil" aria-hidden="true"></i>
                 </a>
-                {% if product.stock_status == 'empty' %}
+                {% if product.skips_restock and product.stock_status == 'empty' %}
+                    <span class="pantry-stock-badge is-finished">Zużyty</span>
+                {% elif product.stock_status == 'empty' %}
                     <span class="pantry-stock-badge is-empty">Brak</span>
                 {% elif product.stock_status == 'low' %}
                     <span class="pantry-stock-badge is-low">Niski stan</span>
@@ -82,6 +84,34 @@ Kontekst: card (słownik z PantryListView), product = card.product.
         </div>
     </div>
 
+    {% comment %} „Nie kupuję ponownie”: zamiast prognozy krótka informacja
+       i przycisk powrotu. Zwykły produkt ma na dole prognozy przycisk
+       w drugą stronę (PantryRestockToggleView). Oba przyciski mają ten sam
+       id, więc fokus zostaje na nim po podmianie kafelka. Produkt w grupie
+       go nie ma - o zakupach decyduje grupa. {% endcomment %}
+    {% if product.skips_restock %}
+        <section class="pantry-product-forecast is-one-off" aria-label="Zakupy produktu {{ product.name }}">
+            <div class="pantry-forecast-learning">
+                <span class="pantry-forecast-state-icon"><i class="bi bi-bag-x" aria-hidden="true"></i></span>
+                <span>
+                    <strong>Nie kupuję ponownie</strong>
+                    <small>
+                        Bez prognozy i bez listy zakupów.
+                        {% if product.stock_status == 'empty' %}Produkt się skończył, ale zostaje w spiżarni razem z historią.{% else %}Stan i historia zapisują się jak zwykle.{% endif %}
+                    </small>
+                </span>
+            </div>
+            <form method="post" action="{% url 'cooking:pantry-restock-toggle' product.id %}" class="pantry-restock-form"
+                  data-partial="#product-{{ product.id }}, #pantry-metrics, [data-panel-badges]">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <input type="hidden" name="one_off" value="0">
+                <button type="submit" class="pantry-restock-toggle" id="restock-toggle-{{ product.id }}">
+                    <i class="bi bi-arrow-repeat" aria-hidden="true"></i> Kupuję ponownie
+                </button>
+            </form>
+        </section>
+    {% else %}
     {% with forecast=card.forecast %}
         <section class="pantry-product-forecast is-{{ forecast.status|default:'no_history' }}{% if not card.group_covered %}{% if forecast.is_due or forecast.at_or_below_minimum %} is-due{% endif %}{% endif %}"
                  aria-label="Prognoza zakupu produktu {{ product.name }}">
@@ -170,8 +200,20 @@ Kontekst: card (słownik z PantryListView), product = card.product.
                     </p>
                 </details>
             {% endif %}
+            {% if not product.group_id %}
+            <form method="post" action="{% url 'cooking:pantry-restock-toggle' product.id %}" class="pantry-restock-form"
+                  data-partial="#product-{{ product.id }}, #pantry-metrics, [data-panel-badges]">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <input type="hidden" name="one_off" value="1">
+                <button type="submit" class="pantry-restock-toggle" id="restock-toggle-{{ product.id }}">
+                    <i class="bi bi-bag-x" aria-hidden="true"></i> Nie kupuję ponownie
+                </button>
+            </form>
+            {% endif %}
         </section>
     {% endwith %}
+    {% endif %}
 
     {% comment %} Operacje ręczne: jedno pole z ilością (domyślnie 1) między
        przyciskami. Minus zużywa tyle, plus tyle dodaje. Z JavaScriptem stan na

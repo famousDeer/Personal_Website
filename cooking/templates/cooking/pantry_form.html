@@ -94,21 +94,38 @@
                         </div>
                     </div>
 
-                    <div class="row g-3 mt-1">
-                        <div class="col-md-6">
-                            <label class="form-label small text-uppercase fw-bold text-muted ms-1">Próg minimalny</label>
-                            <input type="number" step="1" min="0" class="form-control form-control-lg"
-                                   data-pantry-quantity-input
-                                   name="minimum_quantity" value="{{ form_values.minimum_quantity|default:'0' }}" required>
+                    {% comment %} „Nie kupuję ponownie”: produkt bez prognozy i bez listy zakupów.
+                       Próg i wyprzedzenie wtedy nic nie zmieniają, więc przygasają. {% endcomment %}
+                    <div class="pantry-one-off-option mt-3">
+                        <input type="hidden" name="one_off_field" value="1">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" role="switch" id="one-off" name="one_off" value="1"
+                                   aria-describedby="one-off-help" {% if form_values.one_off %}checked{% endif %}>
+                            <label class="form-check-label fw-bold" for="one-off">Nie kupuję ponownie</label>
                         </div>
+                        <p class="form-text mb-0" id="one-off-help">
+                            Bez prognozy zakupu i bez listy zakupów, także gdy produkt się skończy. Stan, zużycie
+                            i historia zapisują się dalej &ndash; dane zostają na przyszłość.
+                        </p>
                     </div>
 
-                    <div class="mt-3">
-                        <label class="form-label small text-uppercase fw-bold text-muted ms-1">Kup z wyprzedzeniem</label>
-                        <div class="input-group input-group-lg">
-                            <input type="number" min="0" class="form-control" name="restock_lead_days"
-                                   value="{{ form_values.restock_lead_days|default:'3' }}" required>
-                            <span class="input-group-text">dni</span>
+                    <div class="pantry-restock-fields">
+                        <div class="row g-3 mt-1">
+                            <div class="col-md-6">
+                                <label class="form-label small text-uppercase fw-bold text-muted ms-1">Próg minimalny</label>
+                                <input type="number" step="1" min="0" class="form-control form-control-lg"
+                                       data-pantry-quantity-input
+                                       name="minimum_quantity" value="{{ form_values.minimum_quantity|default:'0' }}" required>
+                            </div>
+                        </div>
+
+                        <div class="mt-3">
+                            <label class="form-label small text-uppercase fw-bold text-muted ms-1">Kup z wyprzedzeniem</label>
+                            <div class="input-group input-group-lg">
+                                <input type="number" min="0" class="form-control" name="restock_lead_days"
+                                       value="{{ form_values.restock_lead_days|default:'3' }}" required>
+                                <span class="input-group-text">dni</span>
+                            </div>
                         </div>
                     </div>
 

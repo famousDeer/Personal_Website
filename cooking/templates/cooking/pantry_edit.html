@@ -111,7 +111,30 @@
                         jej jak zużycia ani zakupu.
                     </p>
 
-                    <div class="row g-3 mt-1">
+                    {% if product.group %}
+                        <p class="form-text mt-3 mb-0">
+                            <i class="bi bi-collection" aria-hidden="true"></i>
+                            Produkt jest w grupie &bdquo;{{ product.group.name }}&rdquo;: o zakupach decyduje grupa,
+                            więc &bdquo;Nie kupuję ponownie&rdquo; ustawisz po wyjęciu go z grupy.
+                        </p>
+                    {% else %}
+                        {% comment %} „Nie kupuję ponownie”: produkt bez prognozy i bez listy zakupów.
+                           Próg i wyprzedzenie wtedy nic nie zmieniają, więc przygasają. {% endcomment %}
+                        <div class="pantry-one-off-option mt-3">
+                            <input type="hidden" name="one_off_field" value="1">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" role="switch" id="one-off" name="one_off" value="1"
+                                       aria-describedby="one-off-help" {% if form_values.one_off %}checked{% endif %}>
+                                <label class="form-check-label fw-bold" for="one-off">Nie kupuję ponownie</label>
+                            </div>
+                            <p class="form-text mb-0" id="one-off-help">
+                                Bez prognozy zakupu i bez listy zakupów, także gdy produkt się skończy. Stan, zużycie
+                                i historia zapisują się dalej &ndash; dane zostają na przyszłość.
+                            </p>
+                        </div>
+                    {% endif %}
+
+                    <div class="row g-3 mt-1 pantry-restock-fields">
                         <div class="col-sm-6">
                             <label class="form-label small fw-bold text-muted ms-1" for="minimum-quantity">Próg minimalny</label>
                             <div class="input-group input-group-lg">

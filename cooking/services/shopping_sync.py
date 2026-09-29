@@ -340,7 +340,10 @@ def pantry_product_json(product):
         'quantity': format(product.current_quantity, '.2f'),
         'packages': product.current_package_count,
         'tracks_packages': product.tracks_packages,
-        'minimum': format(product.minimum_quantity, '.2f'),
+        # Produkt „nie kupuję ponownie” nie ma progu - telefon nie pokaże
+        # mu „niskiego stanu” także po zmianach offline.
+        'minimum': format(Decimal('0') if product.skips_restock else product.minimum_quantity, '.2f'),
+        'one_off': product.skips_restock,
         'status': product.stock_status,
         # Co dopisać do listy jednym przyciskiem (serwer decyduje, nie telefon).
         'add_name': add['name'],

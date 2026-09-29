@@ -26,6 +26,7 @@ urlpatterns = [
     path('pantry/<int:product_id>/edit/', views.EditPantryProductView.as_view(), name='edit-pantry-product'),
     path('pantry/<int:product_id>/delete/', views.DeletePantryProductView.as_view(), name='delete-pantry-product'),
     path('pantry/<int:product_id>/movement/', views.PantryMovementView.as_view(), name='pantry-movement'),
+    path('pantry/<int:product_id>/restock/', views.PantryRestockToggleView.as_view(), name='pantry-restock-toggle'),
     path('shopping/', views.ShoppingListView.as_view(), name='shopping-list'),
     # Tryb zakupów offline (PWA). Service worker leży pod /shopping/app/,
     # więc kontroluje tylko tę część strony.

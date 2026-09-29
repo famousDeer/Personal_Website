@@ -451,6 +451,14 @@ run short before the next shopping trip. The forecast lives in
    the last 90 days (but never below the minimum), so a rising need grows 2 → 3 → 5 → 8
    instead of jumping.
 
+**Products you do not buy again** (a gift, a one-off purchase, a sample): tick *Nie kupuję
+ponownie* in the product form, or tap the button of the same name at the bottom of the
+card's forecast. `PantryProduct.one_off` keeps the stock, the movements and the history,
+but the product has no forecast, no low-stock state and never goes on the list, even
+when it runs out (the pantry filter *Nie kupuję ponownie* lists them). *Kupuję ponownie*
+on the card turns the forecast back on. A product in a group follows the group, so the
+flag only applies to products that count on their own (`skips_restock`).
+
 The parameters were tuned on a household simulation (weekly shopping for 36 weeks,
 40 random runs: yoghurt, milk, flour, toilet paper, ketchup, weekend-only beer and a
 product whose use doubles). The new model covers 98–100% of consumption, about the same
