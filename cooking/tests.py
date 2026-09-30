@@ -3169,6 +3169,67 @@ class ShoppingOfflineSyncTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content[:300])
         return response.json()
 
+    # --- nowa lista z telefonu (także offline) ---------------------------
+
+    def test_list_created_offline_arrives_with_its_items(self):
+        list_uuid = str(uuid4())
+        item_uuid = str(uuid4())
+        created_at = timezone.now() - timedelta(hours=2)
+
+        data = self.sync(
+            self.op('list.create', at=created_at, list=list_uuid, title='Targ w niedzielę'),
+            self.op('item.add', at=created_at, list=list_uuid, data={
+                'uuid': item_uuid, 'name': 'Truskawki', 'quantity': '2', 'unit': 'szt', 'category': '',
+            }),
+            self.op('list.set_shop', list=list_uuid, shop=''),
+        )
+
+        self.assertEqual([result['status'] for result in data['results']], ['applied'] * 3)
+        created = ShoppingList.objects.get(uuid=list_uuid)
+        self.assertEqual(created.title, 'Targ w niedzielę')
+        self.assertEqual(created.created_by, self.user)
+        self.assertEqual(created.source, ShoppingList.MANUAL)
+        self.assertEqual(created.status, ShoppingList.ACTIVE)
+        self.assertEqual(list(created.items.values_list('name', flat=True)), ['Truskawki'])
+        listed = next(item for item in data['snapshot']['lists'] if item['uuid'] == list_uuid)
+        self.assertEqual(listed['id'], created.id)
+
+    def test_list_create_is_idempotent_and_gets_a_default_title(self):
+        list_uuid = str(uuid4())
+        operation = self.op('list.create', list=list_uuid, title='  ')
+
+        self.sync(operation)
+        again = self.sync(self.op('list.create', list=list_uuid, title='Inna nazwa'))
+
+        self.assertEqual(ShoppingList.objects.filter(uuid=list_uuid).count(), 1)
+        self.assertEqual(again['results'][0]['message'], 'Lista już istnieje.')
+        title = ShoppingList.objects.get(uuid=list_uuid).title
+        self.assertEqual(title, f'Lista zakupów {timezone.localdate():%d.%m.%Y}')
+
+    def test_list_create_rejects_bad_data(self):
+        results = self.sync(
+            self.op('list.create', list='nie-uuid', title='X'),
+            self.op('list.create', list=str(uuid4()), title='x' * 181),
+        )['results']
+
+        self.assertEqual([result['status'] for result in results], ['rejected', 'rejected'])
+
+    def test_items_still_accept_the_numeric_list_id(self):
+        data = self.sync(self.op('item.add', list=self.list.id, data={
+            'uuid': str(uuid4()), 'name': 'Masło', 'quantity': '1', 'unit': 'szt',
+        }))
+
+        self.assertEqual(data['results'][0]['status'], 'applied')
+        self.assertTrue(self.list.items.filter(name='Masło').exists())
+        self.assertIn(str(self.list.uuid), [item['uuid'] for item in data['snapshot']['lists']])
+
+    def test_item_for_an_unknown_list_uuid_is_skipped(self):
+        data = self.sync(self.op('item.add', list=str(uuid4()), data={
+            'uuid': str(uuid4()), 'name': 'Masło', 'quantity': '1', 'unit': 'szt',
+        }))
+
+        self.assertEqual(data['results'][0]['status'], 'skipped')
+
     # --- powłoka, service worker, manifest ---------------------------------
 
     def test_shell_is_public_and_contains_no_list_data(self):

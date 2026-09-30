@@ -15,7 +15,10 @@ Zasady:
   a cofnięcie odhaczenia ten ruch usuwa; zmiana ilości odhaczonej pozycji
   poprawia ruch; usunięcie odhaczonej pozycji zostawia zakup w spiżarni;
 * pozycji z list zakończonych albo usuniętych nie zmieniamy - operacja
-  dostaje status "skipped" z wyjaśnieniem dla użytkownika.
+  dostaje status "skipped" z wyjaśnieniem dla użytkownika;
+* listę można założyć w telefonie bez połączenia: telefon nadaje jej UUID
+  (``list.create``), a kolejne operacje wskazują listę tym UUID albo, jak
+  dotąd, numerem z serwera.
 """
 import uuid as uuid_module
 from datetime import timedelta
@@ -61,10 +64,12 @@ OP_PANTRY_MOVEMENT = 'pantry.movement'
 OP_SHOP_ADD = 'shop.add'
 OP_SHOP_ORDER = 'shop.set_order'
 OP_LIST_SHOP = 'list.set_shop'
+OP_LIST_CREATE = 'list.create'
 OP_TYPES = (
     OP_ADD, OP_SET_PURCHASED, OP_SET_QUANTITY, OP_DELETE,
-    OP_PANTRY_MOVEMENT, OP_SHOP_ADD, OP_SHOP_ORDER, OP_LIST_SHOP,
+    OP_PANTRY_MOVEMENT, OP_SHOP_ADD, OP_SHOP_ORDER, OP_LIST_SHOP, OP_LIST_CREATE,
 )
+LIST_TITLE_MAX = 180
 
 STATUS_APPLIED = 'applied'
 STATUS_SKIPPED = 'skipped'
@@ -404,6 +409,7 @@ def shopping_snapshot():
         'lists': [
             {
                 'id': shopping_list.id,
+                'uuid': str(shopping_list.uuid),
                 'title': shopping_list.title,
                 'source': shopping_list.source,
                 'created_by': shopping_list.created_by.username if shopping_list.created_by else '',
@@ -481,6 +487,42 @@ def _touch_list(shopping_list):
     shopping_list.save(update_fields=['updated_at'])
 
 
+def default_list_title(day=None):
+    return f'Lista zakupów {(day or timezone.localdate()):%d.%m.%Y}'
+
+
+def _locked_list(raw_value):
+    """Lista wskazana numerem z serwera albo UUID z telefonu (lista założona offline)."""
+    if isinstance(raw_value, bool) or raw_value in (None, ''):
+        raise OperationRejected('Nieprawidłowa lista.')
+    lists = ShoppingList.objects.select_for_update()
+    if isinstance(raw_value, int) or (isinstance(raw_value, str) and raw_value.isdigit()):
+        shopping_list = lists.filter(pk=int(raw_value)).first()
+    else:
+        shopping_list = lists.filter(uuid=_parse_uuid(raw_value, 'Lista')).first()
+    if shopping_list is None:
+        raise OperationSkipped('Lista została usunięta na innym urządzeniu.')
+    return shopping_list
+
+
+def _op_list_create(raw, user, when):
+    list_uuid = _parse_uuid(raw.get('list'), 'Lista')
+    if ShoppingList.objects.filter(uuid=list_uuid).exists():
+        return 'Lista już istnieje.'
+    title = str(raw.get('title') or '').strip()
+    if len(title) > LIST_TITLE_MAX:
+        raise OperationRejected(f'Nazwa listy może mieć maksymalnie {LIST_TITLE_MAX} znaków.')
+    ShoppingList.objects.create(
+        uuid=list_uuid,
+        created_by=user,
+        # Bez nazwy: data z telefonu, a nie z chwili synchronizacji.
+        title=title or default_list_title(timezone.localtime(when).date()),
+        source=ShoppingList.MANUAL,
+        status=ShoppingList.ACTIVE,
+    )
+    return ''
+
+
 def _op_add(raw, user, when):
     data = raw.get('data') or {}
     if not isinstance(data, dict):
@@ -488,13 +530,7 @@ def _op_add(raw, user, when):
     item_uuid = _parse_uuid(data.get('uuid'), 'Pozycja')
     if ShoppingListItem.objects.filter(uuid=item_uuid).exists():
         return 'Pozycja już jest na liście.'
-    try:
-        list_id = int(raw.get('list'))
-    except (TypeError, ValueError):
-        raise OperationRejected('Nieprawidłowa lista.') from None
-    shopping_list = ShoppingList.objects.select_for_update().filter(pk=list_id).first()
-    if shopping_list is None:
-        raise OperationSkipped('Lista została usunięta na innym urządzeniu.')
+    shopping_list = _locked_list(raw.get('list'))
     if shopping_list.status == ShoppingList.COMPLETED:
         raise OperationSkipped(f'Lista „{shopping_list.title}” jest już zakończona.')
 
@@ -645,13 +681,7 @@ def _op_shop_order(raw, user, when):
 
 
 def _op_list_shop(raw, user, when):
-    try:
-        list_id = int(raw.get('list'))
-    except (TypeError, ValueError):
-        raise OperationRejected('Nieprawidłowa lista.') from None
-    shopping_list = ShoppingList.objects.select_for_update().filter(pk=list_id).first()
-    if shopping_list is None:
-        raise OperationSkipped('Lista została usunięta na innym urządzeniu.')
+    shopping_list = _locked_list(raw.get('list'))
     raw_shop = raw.get('shop')
     if raw_shop in (None, ''):
         shopping_list.shop = None
@@ -673,6 +703,7 @@ HANDLERS = {
     OP_SHOP_ADD: _op_shop_add,
     OP_SHOP_ORDER: _op_shop_order,
     OP_LIST_SHOP: _op_list_shop,
+    OP_LIST_CREATE: _op_list_create,
 }
 
 

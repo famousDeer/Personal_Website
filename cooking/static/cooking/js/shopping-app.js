@@ -29,6 +29,7 @@
     const OP_SHOP_ADD = 'shop.add';
     const OP_SHOP_ORDER = 'shop.set_order';
     const OP_LIST_SHOP = 'list.set_shop';
+    const OP_LIST_CREATE = 'list.create';
 
     const unitLabels = Object.fromEntries(config.units.map((unit) => [unit.value, unit.label]));
     const categoryOrder = config.categoryGroups.flatMap((group) => group.categories);
@@ -173,7 +174,7 @@
     const state = {
         snapshot: null,          // ostatni stan z serwera
         outbox: [],              // [{seq, op}] w kolejności wykonania
-        meta: { selectedListId: null, lastSyncAt: null, user: '', csrfToken: '' },
+        meta: { selectedListId: null, selectedListKey: null, lastSyncAt: null, user: '', csrfToken: '' },
         status: 'starting',      // starting | syncing | online | offline | auth | error
         syncing: false,
         syncAgain: false,
@@ -227,6 +228,24 @@
             return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
         });
 
+    // Lista założona w telefonie bez połączenia ma od razu UUID, a numer
+    // dostaje dopiero na serwerze - dlatego listy rozpoznajemy po UUID.
+    // Numer zostaje dla operacji zapisanych w kolejce przez starszą wersję.
+    const listKey = (list) => list.uuid || `id-${list.id}`;
+    const listRef = (list) => list.uuid || list.id;
+    const listMatches = (list, ref) => {
+        if (ref === undefined || ref === null || ref === '') {
+            return false;
+        }
+        if (list.uuid && list.uuid === ref) {
+            return true;
+        }
+        return list.id !== null && list.id !== undefined && String(list.id) === String(ref);
+    };
+    const defaultListTitle = (date = new Date()) => `Lista zakupów ${date.toLocaleDateString('pl-PL', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+    })}`;
+
     function currentView() {
         const view = state.snapshot
             ? JSON.parse(JSON.stringify(state.snapshot))
@@ -262,6 +281,22 @@
     }
 
     function applyOp(view, op) {
+        if (op.type === OP_LIST_CREATE) {
+            if (!view.lists.some((list) => list.uuid === op.list)) {
+                view.lists.unshift({
+                    id: null,
+                    uuid: op.list,
+                    title: op.title || defaultListTitle(new Date(op.at)),
+                    source: 'manual',
+                    created_by: state.meta.user,
+                    updated_at: op.at,
+                    shop: '',
+                    items: [],
+                    pending: true,
+                });
+            }
+            return;
+        }
         if (op.type === OP_PANTRY_MOVEMENT) {
             const product = (view.products || []).find((candidate) => candidate.id === op.product);
             if (!product) {
@@ -300,14 +335,14 @@
             return;
         }
         if (op.type === OP_LIST_SHOP) {
-            const list = view.lists.find((candidate) => candidate.id === op.list);
+            const list = view.lists.find((candidate) => listMatches(candidate, op.list));
             if (list) {
                 list.shop = op.shop || '';
             }
             return;
         }
         if (op.type === OP_ADD) {
-            const list = view.lists.find((candidate) => candidate.id === op.list);
+            const list = view.lists.find((candidate) => listMatches(candidate, op.list));
             if (!list || list.items.some((item) => item.uuid === op.data.uuid)) {
                 return;
             }
@@ -580,8 +615,14 @@
             toast('Zakończenie listy wymaga połączenia z domowym serwerem.', 'warning');
             return;
         }
+        // Lista założona offline dostaje numer dopiero po synchronizacji.
+        const saved = currentView().lists.find((candidate) => listKey(candidate) === listKey(list));
+        if (!saved || saved.id === null || saved.id === undefined) {
+            toast('Lista nie jest jeszcze zapisana w domu - spróbuj za chwilę.', 'warning');
+            return;
+        }
         try {
-            const data = await postJson(config.completeUrl.replace('/0/', `/${list.id}/`), {});
+            const data = await postJson(config.completeUrl.replace('/0/', `/${saved.id}/`), {});
             await acceptServerData(data);
             toast(data.message || 'Lista zakończona.', 'success');
         } catch (error) {
@@ -659,19 +700,27 @@
         app.classList.toggle('is-offline', state.status === 'offline');
     }
 
+    function rememberList(list) {
+        if (state.meta.selectedListKey === listKey(list) && state.meta.selectedListId === list.id) {
+            return;
+        }
+        state.meta.selectedListKey = listKey(list);
+        state.meta.selectedListId = list.id;
+        saveMeta();
+    }
+
     function selectedList(view) {
         if (!view.lists.length) {
             return null;
         }
-        const chosen = view.lists.find((list) => list.id === state.meta.selectedListId);
-        if (chosen) {
-            return chosen;
-        }
+        // Najpierw po kluczu, potem po numerze: lista zapamiętana przez starszą
+        // wersję (bez UUID) albo założona offline i już zapisana w domu.
+        const chosen = view.lists.find((list) => listKey(list) === state.meta.selectedListKey)
+            || view.lists.find((list) => list.id !== null && list.id === state.meta.selectedListId);
         // Zapamiętujemy wybór, żeby lista nie przeskakiwała, gdy inna lista
         // zostanie zmieniona na serwerze i wyjdzie na początek.
-        state.meta.selectedListId = view.lists[0].id;
-        saveMeta();
-        return view.lists[0];
+        rememberList(chosen || view.lists[0]);
+        return chosen || view.lists[0];
     }
 
     function currentShop(view, list) {
@@ -1032,7 +1081,8 @@
             : 'Lista zakupów';
         select.innerHTML = view.lists.map((candidate) => {
             const left = candidate.items.filter((item) => !item.is_purchased).length;
-            return `<option value="${candidate.id}" ${list && candidate.id === list.id ? 'selected' : ''}>${escapeHtml(candidate.title)} (${left})</option>`;
+            const key = listKey(candidate);
+            return `<option value="${escapeHtml(key)}" ${list && key === listKey(list) ? 'selected' : ''}>${escapeHtml(candidate.title)} (${left})</option>`;
         }).join('');
 
         const title = el('[data-list-title]');
@@ -1051,7 +1101,10 @@
                 <div class="sa-empty">
                     <i class="bi bi-cart-check" aria-hidden="true"></i>
                     <h2>Nie ma aktywnej listy</h2>
-                    <p>Utwórz listę w domu: <strong>Kuchnia → Lista zakupów</strong>. Pojawi się tu przy następnej synchronizacji.</p>
+                    <p>Załóż ją tutaj - działa też bez połączenia z domem. Zapisze się przy synchronizacji.</p>
+                    <button type="button" class="sa-primary sa-empty-action" data-new-list>
+                        <i class="bi bi-journal-plus" aria-hidden="true"></i> Nowa lista
+                    </button>
                 </div>` : (state.status === 'offline' ? '' : '<div class="sa-empty"><div class="sa-spinner" aria-hidden="true"></div><p>Pobieram listę…</p></div>');
             updateBadge(view);
             return;
@@ -1599,6 +1652,9 @@
     const addCategory = el('[data-add-category]');
     const addHint = el('[data-add-hint]');
     const addError = el('[data-add-error]');
+    const listForm = el('[data-list-form]');
+    const listName = el('[data-list-name]');
+    const listError = el('[data-list-error]');
 
     addUnit.innerHTML = config.units.map((unit) => `<option value="${escapeHtml(unit.value)}">${escapeHtml(unit.label)}</option>`).join('');
     addCategory.innerHTML = '<option value="">Bez kategorii</option>' + config.categoryGroups.map((group) => {
@@ -1704,11 +1760,25 @@
         app.classList.remove('is-adding');
     }
 
-    function openAddPanel() {
+    // Arkusz ma dwa tryby: „item” (Dodaj produkt) i „list” (Nowa lista).
+    function setSheetMode(mode) {
+        const isList = mode === 'list';
+        listForm.hidden = !isList;
+        addForm.hidden = isList;
+        addPanel.setAttribute('aria-labelledby', isList ? 'sa-list-form-title' : 'sa-add-title');
+        return isList ? listName : addName;
+    }
+
+    function openAddPanel(mode = 'item') {
         addError.hidden = true;
+        listError.hidden = true;
+        const focusTarget = setSheetMode(typeof mode === 'string' ? mode : 'item');
+        if (focusTarget === listName) {
+            listName.placeholder = defaultListTitle();
+        }
         // Fokus od razu, w obsłudze dotknięcia - iOS otwiera klawiaturę tylko wtedy.
         if (sheet.open && !sheet.closing) {
-            addName.focus({ preventScroll: true });
+            focusTarget.focus({ preventScroll: true });
             return;
         }
         const interrupted = sheet.closing;
@@ -1718,7 +1788,7 @@
         addScrim.hidden = false;
         app.classList.add('is-adding');
         sheet.height = addPanel.offsetHeight;
-        addName.focus({ preventScroll: true });
+        focusTarget.focus({ preventScroll: true });
         if (reducedMotion()) {
             fadeSheet(true);
             return;
@@ -1880,7 +1950,7 @@
         }
         const operation = {
             type: OP_ADD,
-            list: list.id,
+            list: listRef(list),
             data: { uuid: newId(), name, quantity, unit, category: addCategory.value, note: '' },
         };
         // Formularz czyścimy przed zapisem, żeby następny produkt można było
@@ -1893,6 +1963,47 @@
         addName.focus();
         await enqueue(operation);
         toast(`Dodano: ${name}`, 'success');
+    });
+
+    // ------------------------------------------------------------------
+    // Nowa lista (także bez połączenia)
+    // ------------------------------------------------------------------
+    // Lista dostaje UUID w telefonie i od razu jest wybrana; w domu zapisze
+    // się przy synchronizacji (list.create), a produkty dodane do niej
+    // wcześniej pójdą za nią w tej samej kolejce.
+    listForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const title = listName.value.trim() || defaultListTitle();
+        listError.hidden = true;
+        if (title.length > 180) {
+            listError.textContent = 'Nazwa listy może mieć maksymalnie 180 znaków.';
+            listError.hidden = false;
+            listName.focus();
+            return;
+        }
+        const uuid = newId();
+        state.meta.selectedListKey = uuid;
+        state.meta.selectedListId = null;
+        state.screen = 'lista';
+        state.openItem = null;
+        state.confirmComplete = false;
+        await saveMeta();
+        listForm.reset();
+        // Arkusz od razu przechodzi do dodawania produktów do nowej listy.
+        setSheetMode('item');
+        addName.focus({ preventScroll: true });
+        sheet.height = addPanel.offsetHeight;
+        await enqueue({ type: OP_LIST_CREATE, list: uuid, title });
+        const offline = state.status !== 'online' || navigator.onLine === false;
+        toast(offline
+            ? `Utworzono listę „${title}”. Zapisze się w domu przy synchronizacji.`
+            : `Utworzono listę „${title}”.`, 'success');
+    });
+
+    app.addEventListener('click', (event) => {
+        if (event.target.closest('[data-new-list]')) {
+            openAddPanel('list');
+        }
     });
 
     // ------------------------------------------------------------------
@@ -1978,7 +2089,9 @@
     });
 
     el('[data-list-select]').addEventListener('change', async (event) => {
-        state.meta.selectedListId = Number(event.target.value);
+        const chosen = currentView().lists.find((list) => listKey(list) === event.target.value);
+        state.meta.selectedListKey = event.target.value;
+        state.meta.selectedListId = chosen ? chosen.id : null;
         state.openItem = null;
         await saveMeta();
         render();
@@ -2032,7 +2145,7 @@
             // odhaczeniu na ilość w swojej jednostce.
             await enqueue({
                 type: OP_ADD,
-                list: list.id,
+                list: listRef(list),
                 data: {
                     uuid: newId(),
                     name: product.add_name || product.name,
@@ -2080,7 +2193,7 @@
         if (pick) {
             const list = selectedList(currentView());
             if (list) {
-                await enqueue({ type: OP_LIST_SHOP, list: list.id, shop: pick.value });
+                await enqueue({ type: OP_LIST_SHOP, list: listRef(list), shop: pick.value });
             }
             return;
         }
@@ -2121,7 +2234,7 @@
         const shopId = newId();
         input.value = '';
         await enqueue({ type: OP_SHOP_ADD, shop: shopId, name, order: [] });
-        await enqueue({ type: OP_LIST_SHOP, list: list.id, shop: shopId });
+        await enqueue({ type: OP_LIST_SHOP, list: listRef(list), shop: shopId });
         toast(`Dodano sklep: ${name}`, 'success');
     });
 
@@ -2160,8 +2273,10 @@
         sync();
     });
 
-    el('[data-add-open]').addEventListener('click', openAddPanel);
-    el('[data-add-close]').addEventListener('click', () => closeAddPanel());
+    el('[data-add-open]').addEventListener('click', () => openAddPanel('item'));
+    app.querySelectorAll('[data-add-close]').forEach((button) => {
+        button.addEventListener('click', () => closeAddPanel());
+    });
     document.addEventListener('keydown', (event) => {
         if (event.key === 'Escape' && !addPanel.hidden) {
             closeAddPanel();

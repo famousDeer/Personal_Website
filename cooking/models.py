@@ -458,6 +458,9 @@ class ShoppingList(models.Model):
         db_column='user_id',
         verbose_name='Utworzona przez',
     )
+    # Identyfikator nadawany także przez telefon: lista utworzona w trybie
+    # zakupów bez połączenia ma UUID od razu, a numer dostaje dopiero na serwerze.
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     title = models.CharField(max_length=180)
     source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default=MANUAL)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=ACTIVE)

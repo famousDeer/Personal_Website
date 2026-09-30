@@ -57,6 +57,11 @@
                     <select class="sa-title-select" data-list-select aria-label="Wybierz listę zakupów" hidden></select>
                 </div>
             </div>
+            {% comment %} Nowa lista działa także bez połączenia: telefon nadaje jej UUID
+               i zapisuje w domu przy synchronizacji (operacja list.create). {% endcomment %}
+            <button type="button" class="sa-icon-button sa-new-list" data-new-list aria-label="Nowa lista" title="Nowa lista">
+                <i class="bi bi-journal-plus" aria-hidden="true"></i>
+            </button>
         </div>
         <div class="sa-status-row">
             <button type="button" class="sa-sync" data-sync-button aria-live="polite">
@@ -97,6 +102,28 @@
     <div class="sa-scrim" data-add-scrim hidden></div>
     <section class="sa-add" data-add-panel hidden role="dialog" aria-modal="true" aria-labelledby="sa-add-title">
         <div class="sa-sheet-grip" data-sheet-grip aria-hidden="true"><span></span></div>
+        {% comment %} Ten sam arkusz ma dwa formularze: „Nowa lista” i „Dodaj produkt”.
+           Po utworzeniu listy arkusz od razu przechodzi do dodawania produktów. {% endcomment %}
+        <form class="sa-add-form" data-list-form autocomplete="off" novalidate hidden>
+            <div class="sa-add-head">
+                <strong id="sa-list-form-title">Nowa lista</strong>
+                <button type="button" class="sa-icon-button" data-add-close aria-label="Zamknij">
+                    <i class="bi bi-x-lg" aria-hidden="true"></i>
+                </button>
+            </div>
+            <label class="sa-field sa-field-name">
+                <span>Nazwa listy</span>
+                <input type="text" name="title" maxlength="180" enterkeyhint="done" data-list-name>
+            </label>
+            <p class="sa-add-hint" data-list-hint>
+                <i class="bi bi-wifi-off" aria-hidden="true"></i>
+                Działa też bez połączenia z domem - lista zapisze się przy synchronizacji.
+            </p>
+            <p class="sa-form-error" data-list-error role="alert" hidden></p>
+            <button type="submit" class="sa-primary">
+                <i class="bi bi-journal-plus" aria-hidden="true"></i> Utwórz listę
+            </button>
+        </form>
         <form class="sa-add-form" data-add-form autocomplete="off" novalidate>
             <div class="sa-add-head">
                 <strong id="sa-add-title">Dodaj produkt</strong>

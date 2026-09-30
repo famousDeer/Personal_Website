@@ -955,6 +955,15 @@ button:disabled { cursor: not-allowed; }
 .sa-scrim[hidden] { display: none; }
 
 .sa-add-form { display: grid; gap: var(--sp-3); }
+.sa-add-form[hidden] { display: none; }
+
+/* Nowa lista: przycisk w pustym stanie i w nagłówku (obok tytułu listy). */
+.sa-empty .sa-empty-action {
+    flex: none;
+    margin-top: var(--sp-4);
+}
+
+.sa-new-list { font-size: var(--fs-h3); }
 
 .sa-add-head { display: flex; align-items: center; justify-content: space-between; }
 .sa-add-head strong { color: var(--ink-1); font-size: var(--fs-h3); }
@@ -1103,3 +1112,5 @@ button:disabled { cursor: not-allowed; }
         --line-2: rgba(255, 255, 255, 0.22);
     }
 }
+
+.sa-add-hint[data-list-hint] { color: var(--ink-3); }

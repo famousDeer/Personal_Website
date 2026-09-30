@@ -503,7 +503,7 @@ whenever the server answers.
   (served with `Service-Worker-Allowed`), so an icon added to the home screen from any
   shopping page opens the saved app instead of a browser error when the server is out of
   reach; with a connection those pages load normally.
-- `cooking/services/shopping_sync.py`: each queued operation (`item.add`,
+- `cooking/services/shopping_sync.py`: each queued operation (`list.create`, `item.add`,
   `item.set_purchased`, `item.set_quantity`, `item.delete`) has a UUID, and the server
   stores the result (`ShoppingSyncOperation`), so a batch resent after a dropped
   connection changes nothing twice. Check-offs carry the state, not a toggle. The later
@@ -515,6 +515,13 @@ whenever the server answers.
   and creates missing products as before. Completing needs a connection.
 - Items get a stable `uuid`, generated on the phone for items added offline
   (migrations `0013` and `0014`).
+- **New list, also offline.** The journal-plus button in the header (and the empty state
+  when there is no active list) opens *Nowa lista*. The phone gives the list its own
+  `uuid` (`list.create`, migrations `0019` and `0020`) and selects it at once; the sheet
+  then switches to *Dodaj produkt*, and items added to the new list follow it in the same
+  queue. Operations name a list by that `uuid` or, as before, by its server id. Without a
+  name the list is called *Lista zakupów dd.mm.rrrr*, dated when it was created on the
+  phone. Completing a list created offline waits until it has been saved at home.
 
 iOS has no background sync, so the app syncs when opened, when brought back to the
 foreground, after each change and every 30 s while open.
