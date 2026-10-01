@@ -19,11 +19,24 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
+# --no-cache-dir: pip nie zostawia w obrazie kopii pobranych paczek.
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Pliki statyczne zbierane RAZ, przy buildzie, a nie przy każdym starcie
+# kontenera (liczenie skrótów i kompresja ~1000 plików trwały na Pi kilkanaście
+# sekund, w czasie których strona nie działała). Zmienne poniżej istnieją
+# tylko na czas tego polecenia: collectstatic nie łączy się z bazą i nie
+# potrzebuje prawdziwego SECRET_KEY. Plik .env nie trafia do obrazu
+# (.dockerignore), prawdziwe ustawienia dochodzą przy starcie z env_file.
+RUN SECRET_KEY=build-only-not-used-at-runtime \
+    ALLOWED_HOSTS=localhost \
+    DEBUG=0 \
+    python manage.py collectstatic --noinput
+
 EXPOSE 8000
 
-# Nie uruchamiamy manage.py podczas builda
+# Właściwe polecenie startowe (migracje + gunicorn) jest w docker-compose.yml.
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "config.wsgi:application"]

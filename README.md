@@ -66,8 +66,8 @@ shared household account management.
 - PostgreSQL 15
 - Bootstrap 5, Chart.js
 - Docker + Docker Compose
-- Gunicorn (prod-like run in Docker), WhiteNoise for static files
-- pandas / numpy (statement import), reportlab (PDF), pillow (images),
+- Gunicorn (prod-like run in Docker), WhiteNoise for static files (precompressed gzip/brotli)
+- reportlab (PDF), pillow (images),
   django-countries (travel), djangorestframework (two authenticated endpoints)
 - No Celery or Redis: scheduled work runs through `manage.py` commands and cron.
   All external API clients are written on the standard library (`urllib`).
@@ -132,10 +132,13 @@ docker compose up -d --build
 docker compose exec web python manage.py createsuperuser
 ```
 
-The web service runs:
+Static files are collected once, while the image is built (`Dockerfile`). On start
+the web service only runs:
 - Migrations: python manage.py migrate
-- Collect static: python manage.py collectstatic --noinput
-- Server: gunicorn --bind 0.0.0.0:8000 config.wsgi:application
+- Server: gunicorn, 2 workers × 4 threads (options explained in `docker-compose.yml`)
+
+`docker compose ps` shows `web` as *healthy* once Django answers `/healthz` and the
+database responds; Caddy starts only after that.
 
 ## Local development
 The `web-dev` service runs the Django dev server instead of Gunicorn:
@@ -617,6 +620,50 @@ Example crontab on the Pi:
 0 8 * * * cd /path/to/Website-Finance && docker compose exec -T web python manage.py send_reminders
 ```
 
+## Server maintenance (Raspberry Pi)
+Two scripts in `deploy/` replace hand-written cron scripts:
+
+- `deploy/update.sh` pulls new commits, rebuilds the app **only when something
+  changed**, waits until `/healthz` reports healthy, then deletes the previous image
+  and build cache older than a week. Each rebuild used to leave a few hundred MB
+  behind on the SD card. `--force` rebuilds without new commits. On failure it prints
+  the last log lines and the command that returns to the previous commit.
+  It refreshes the Caddy image only; PostgreSQL is upgraded deliberately, because a
+  new major version cannot read the old data directory without a migration.
+- `deploy/reboot.sh` only checks that the site came back after power-on. Containers
+  restart on their own (`restart: unless-stopped`); nothing is pulled or built at
+  boot, so the Pi starts quickly and works without internet.
+
+```cron
+# Update check every night
+30 4 * * * /home/dawid/Documents/Personal_Website/deploy/update.sh >> /home/dawid/logs/update.log 2>&1
+# Health check after power-on
+@reboot /home/dawid/Documents/Personal_Website/deploy/reboot.sh >> /home/dawid/logs/reboot.log 2>&1
+# Expired sessions (the table otherwise only grows)
+0 5 * * 0 cd /home/dawid/Documents/Personal_Website && docker compose exec -T web python manage.py clearsessions
+```
+Create the log directory once: `mkdir -p ~/logs`.
+
+What the configuration already takes care of:
+- **Container logs** are capped at 3 × 10 MB per service. Gunicorn writes errors only
+  (no access log); Django errors, including 500 tracebacks, go to
+  `docker compose logs web`.
+- **Database connections** are kept for 60 s (`DB_CONN_MAX_AGE`, `0` restores one
+  connection per request), at most 8 for gunicorn. PostgreSQL settings for 2 GB RAM and
+  an SD card are in the `db.command` section of `docker-compose.yml`.
+- **Sessions** are read from the file cache and stored in the database as the durable
+  copy (`cached_db`).
+- **Static files** carry a content hash in the name, are cached by browsers for good and
+  are served as ready-made `.br`/`.gz` files.
+
+Disk usage check and a manual cleanup, if the card fills up anyway:
+```bash
+df -h / && docker system df
+docker image prune -a -f      # images not used by any container
+docker builder prune -a -f    # whole build cache (next build is slower)
+```
+Neither command touches volumes (database, Caddy certificates). Never add `--volumes`.
+
 ## Project structure
 ```
 Website-Finance/
@@ -818,7 +865,9 @@ Push notifications:
 
 ## Troubleshooting
 - Page not loading: run docker compose logs -f web and docker compose logs -f db
-- Static files not styled: confirm collectstatic ran and DEBUG/WhiteNoise configuration is correct
+- Static files not styled: they are collected during the image build, so rebuild it
+  (`docker compose build web && docker compose up -d web`). With `DEBUG=0` a missing
+  file referenced from CSS makes the build itself fail and names the file
 - Cannot connect to DB: ensure DATABASE_HOST=db and DATABASE_PORT=5432 in .env when using Docker.
   If you changed DATABASE_PASSWORD on an existing volume, also run the `ALTER USER`
   command shown in the Quick start section — Postgres keeps the password it was
@@ -831,7 +880,7 @@ Push notifications:
 
 ## Deployment notes (Raspberry Pi)
 - This project runs on ARM via Docker (Postgres 15-alpine and Python slim images support ARM)
-- You can automate hourly updates using a cron job that runs git pull and docker compose up -d --build
+- Updates and start-up checks: see "Server maintenance (Raspberry Pi)" above
 - Set `DEBUG=0` in `.env`. Media files are served independently of that flag, so images
   keep working; leaving DEBUG on exposes tracebacks with your settings to anyone on the LAN
 - The database port is bound to `127.0.0.1` only. Keep it that way, or put the port behind
@@ -840,8 +889,8 @@ Push notifications:
   HTTPS reverse proxy, set `SESSION_COOKIE_SECURE=1`, `CSRF_COOKIE_SECURE=1` and add the
   `https://` origin to `CSRF_TRUSTED_ORIGINS`. This is also what the pantry camera needs
 - Prefer the `manage.py` commands above over the in-app refresh buttons for routine
-  updates. Market data calls are synchronous, and with two Gunicorn workers a slow
-  provider can occupy half the server's capacity
+  updates. Market data calls are synchronous, and with 2 workers × 4 threads a slow
+  provider occupies part of the server's capacity
 
 ## License
 MIT (or your preferred license)

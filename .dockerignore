@@ -1,63 +1,48 @@
-# .dockerignore
+# Co NIE trafia do obrazu (COPY . . w Dockerfile).
+#
+# Dane i sekrety nie mogą siedzieć w warstwach obrazu: .env dochodzi przez
+# env_file w docker-compose.yml, a media/ i private_media/ są montowane
+# z dysku. Kopie bazy i zrzuty SQL tylko powiększałyby obraz przy każdym
+# buildzie (i zostawały w starych warstwach na karcie SD).
+
+# Sekrety i konfiguracja maszyny
+.env
+.env.*
+docker-compose.override.yml
+
+# Dane użytkowników i kopie zapasowe
+media/
+private_media/
+db_backups/
+backups/
+*.sql
+*.sql.gz
+*.dump
+*.sqlite3
+
+# Generowane: collectstatic robi się w buildzie, na czysto
+staticfiles/
+static_cooking/
+
+# Narzędzia, repozytorium, środowiska lokalne
 .git
-__pycache__
-*.pyc
-*.pyc.*
-*.py~
-*.log
-*.csv
-*.sqlite3
-*.env
-*.env.*
-*.mo
-*.pot
-*.po
-*.pyo
-*.pyd
-*.db
-*.db-journal
-*.lock
-*.sock
-*.sqlite3
-*.pyc
-__pycache__
-env/
+.github
 venv/
-virtualenv/
-*.swp
-*.swo
-*.tmp
-*.temp
+.venv/
+env/
+**/__pycache__
+**/*.pyc
+**/.DS_Store
 *.log
-*.DS_Store
-*.git
-*.gitignore
-*.dockerignore
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Pliki niepotrzebne do działania aplikacji
+deploy/
+img/
+Dockerfile
+docker-compose*.yml
+docker-compose*.example
 *.md
-*.toml
-*.yml
-*.yaml
-*.sh
-*.env
-*.ini
-*.conf
-*.json
-*.xml
-*.bak
-*.old
-*.orig
-*.rej
-*.py~
-*.pyc
-*.pyo
-*.pyd
-*.db
-*.db-journal
-*.sqlite3
-*.log
-*.swp
-*.swo
-*.tmp
-*.temp
-*.lock
-*.sock
+LICENSE

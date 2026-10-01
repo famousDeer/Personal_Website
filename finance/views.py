@@ -748,7 +748,9 @@ class BrokeragePortfolioView(View):
         unassigned_investments = (
             Daily.objects
             .filter(user=request.user, category=INVESTMENT_CATEGORY, brokerage_account__isnull=True)
-            .select_related('account')
+            # account__owner: display_name konta osobistego czyta właściciela,
+            # bez tego każdy wiersz listy to osobne zapytanie o użytkownika.
+            .select_related('account', 'account__owner')
             .order_by('-date', '-id')
         )
         # Licznik zwiniętej sekcji "Dane i uzgodnienia": ile rzeczy czeka na

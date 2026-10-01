@@ -9,7 +9,18 @@ TRANSFER_TO_SHARED_CATEGORY = 'Wpłata do wspólnego z mBank'
 TRANSFER_INCOME_SOURCE = 'Wpłata na konto wspólne'
 
 
+# Konto osobiste i aktywne konto są potrzebne kilka razy w jednym żądaniu
+# (widok, nagłówek strony). Bez zapamiętania każde użycie to 3-4 zapytania.
+_PERSONAL_ACCOUNT_ATTR = '_personal_finance_account'
+_ACTIVE_ACCOUNT_ATTR = '_active_finance_account'
+
+
 def ensure_personal_finance_account(user):
+    # Zapamiętane na obiekcie użytkownika: request.user żyje tyle co żądanie,
+    # więc kolejne wywołania w tym samym żądaniu nie pytają bazy.
+    cached = getattr(user, _PERSONAL_ACCOUNT_ATTR, None)
+    if cached is not None:
+        return cached
     account, created = FinanceAccount.objects.get_or_create(
         owner=user,
         account_type=FinanceAccount.PERSONAL,
@@ -17,6 +28,7 @@ def ensure_personal_finance_account(user):
     )
     if created or not account.members.filter(id=user.id).exists():
         account.members.add(user)
+    setattr(user, _PERSONAL_ACCOUNT_ATTR, account)
     return account
 
 
@@ -30,20 +42,32 @@ def get_available_shared_accounts(user):
 
 
 def get_active_finance_account(request):
-    personal_account = ensure_personal_finance_account(request.user)
-    available_accounts = get_user_finance_accounts(request.user)
     account_id = request.session.get(ACTIVE_FINANCE_ACCOUNT_SESSION_KEY)
-    active_account = available_accounts.filter(id=account_id).first()
+    # Wynik zapamiętany w żądaniu, dopóki w sesji jest to samo konto
+    # (set_active_finance_account w trakcie żądania zmienia klucz).
+    cached = getattr(request, _ACTIVE_ACCOUNT_ATTR, None)
+    if cached is not None and cached[0] == (request.user.pk, account_id):
+        return cached[1]
+
+    personal_account = ensure_personal_finance_account(request.user)
+    if account_id == personal_account.id:
+        active_account = personal_account
+    else:
+        available_accounts = get_user_finance_accounts(request.user)
+        active_account = available_accounts.filter(id=account_id).first()
 
     if active_account is None:
         active_account = personal_account
         request.session[ACTIVE_FINANCE_ACCOUNT_SESSION_KEY] = personal_account.id
+        account_id = personal_account.id
 
+    setattr(request, _ACTIVE_ACCOUNT_ATTR, ((request.user.pk, account_id), active_account))
     return active_account
 
 
 def set_active_finance_account(request, account):
     request.session[ACTIVE_FINANCE_ACCOUNT_SESSION_KEY] = account.id
+    setattr(request, _ACTIVE_ACCOUNT_ATTR, None)
 
 
 def get_or_create_monthly_record(*, user, account, month_date, for_update=False):

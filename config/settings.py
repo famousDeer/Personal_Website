@@ -115,6 +115,8 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    # Pierwsze: /healthz dla Dockera, bez sprawdzania Host (config/health.py).
+    'config.health.HealthCheckMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -196,6 +198,17 @@ else:
     }
 
 
+# Połączenie z bazą żyje między żądaniami (domyślnie Django otwiera nowe przy
+# każdym). Nawiązanie połączenia z uwierzytelnianiem kosztuje ~100x więcej niż
+# typowe zapytanie, a na Raspberry Pi to kilkadziesiąt ms na każdej stronie.
+# Gunicorn ma 2 workery x 4 wątki, więc trzymanych połączeń jest najwyżej 8
+# (limit po stronie PostgreSQL: max_connections w docker-compose.yml).
+# CONN_HEALTH_CHECKS sprawdza połączenie przed użyciem, więc restart bazy
+# nie kończy się błędem pierwszego żądania.
+DATABASES['default']['CONN_MAX_AGE'] = int(os.environ.get('DB_CONN_MAX_AGE', '60'))
+DATABASES['default']['CONN_HEALTH_CHECKS'] = True
+
+
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 
@@ -251,10 +264,14 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # w LAN-ie ma działać bez internetu, a lokalne pliki ładują się szybciej
 # i nie ujawniają ruchu użytkowników zewnętrznym dostawcom.
 STATICFILES_DIRS = [BASE_DIR / 'static']
+# Compressed...: collectstatic (w buildzie obrazu) zapisuje obok każdego pliku
+# gotowe wersje .gz i .br, a WhiteNoise podaje je przeglądarce. Serwer nie
+# kompresuje więc tych samych plików od nowa przy każdym pobraniu, a brotli
+# jest o ok. 20% mniejsze od gzip.
 STATICFILES_STORAGE_BACKEND = (
     'django.contrib.staticfiles.storage.StaticFilesStorage'
     if RUNNING_TESTS
-    else 'django.contrib.staticfiles.storage.ManifestStaticFilesStorage'
+    else 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 )
 STORAGES = {
     'default': {
@@ -340,6 +357,29 @@ MESSAGE_TAGS = {
     messages.ERROR: 'danger',
 }
 
+# Błędy aplikacji na standardowe wyjście, czyli do `docker compose logs web`.
+# Domyślna konfiguracja Django z DEBUG=False wysyła je tylko mailem do ADMINS
+# (pustej listy), więc traceback błędu 500 przepadał bez śladu.
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'simple': {'format': '{asctime} {levelname} {name}: {message}', 'style': '{'},
+    },
+    'handlers': {
+        'console': {'class': 'logging.StreamHandler', 'formatter': 'simple'},
+    },
+    'root': {'handlers': ['console'], 'level': 'WARNING'},
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            # Testy celowo wywołują 403/404; ostrzeżenia tylko zaśmiecałyby wynik.
+            'level': 'CRITICAL' if RUNNING_TESTS else 'WARNING',
+            'propagate': False,
+        },
+    },
+}
+
 LOGIN_REDIRECT_URL = 'index'
 LOGOUT_REDIRECT_URL = '/'
 # Powiadomienia push (Web Push/VAPID). Klucze generuje
@@ -350,5 +390,9 @@ VAPID_SUBJECT = os.environ.get('VAPID_SUBJECT', 'mailto:dom@example.com')
 
 LOGIN_URL = 'login'
 
-SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+# Sesja czytana z cache (plikowy, wspólny dla workerów), a baza tylko jako
+# trwała kopia: zalogowanie przetrwa restart kontenera, a zwykłe żądanie nie
+# pyta bazy o sesję. Wygasłe sesje usuwa `manage.py clearsessions` (cron,
+# patrz README: "Server maintenance").
+SESSION_ENGINE = 'django.contrib.sessions.backends.cached_db'
 SESSION_COOKIE_AGE = 1209600  # 2 weeks in sec
