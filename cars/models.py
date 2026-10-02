@@ -146,6 +146,8 @@ class CarService(models.Model):
     date = models.DateField()
     service_type = models.CharField(max_length=100)
     workshop_name = models.CharField(max_length=150, blank=True)
+    # Opcjonalny: starsze wpisy i serwisy bez faktury często go nie mają.
+    odometer = models.PositiveIntegerField(blank=True, null=True)
     description = models.TextField()
     cost = models.DecimalField(max_digits=10, decimal_places=2)
 

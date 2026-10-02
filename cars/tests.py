@@ -99,6 +99,81 @@ class CarServiceViewsTests(TestCase):
         self.assertEqual(service.parts.count(), 1)
         self.assertEqual(service.parts.first().name, "Pompa wody")
 
+    def _service_payload(self, **overrides):
+        data = {
+            "date": "2026-04-01",
+            "service_type": "Wymiana oleju",
+            "workshop_name": "",
+            "description": "Olej i filtry.",
+            "cost": "420.00",
+            "parts-TOTAL_FORMS": "0",
+            "parts-INITIAL_FORMS": "0",
+            "parts-MIN_NUM_FORMS": "0",
+            "parts-MAX_NUM_FORMS": "1000",
+        }
+        data.update(overrides)
+        return data
+
+    def test_service_odometer_is_optional(self):
+        response = self.client.post(
+            reverse("cars:add_service", args=[self.car.id]), self._service_payload(odometer=""),
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIsNone(CarService.objects.get(car=self.car).odometer)
+        self.car.refresh_from_db()
+        self.assertEqual(self.car.odometer, 84500)
+
+    def test_service_odometer_higher_than_car_updates_car(self):
+        self.client.post(
+            reverse("cars:add_service", args=[self.car.id]), self._service_payload(odometer="90120"),
+        )
+        self.assertEqual(CarService.objects.get(car=self.car).odometer, 90120)
+        self.car.refresh_from_db()
+        self.assertEqual(self.car.odometer, 90120)
+
+    def test_older_service_odometer_does_not_lower_car(self):
+        service = CarService.objects.create(
+            car=self.car, date=date(2025, 1, 10), service_type="Opony",
+            description="", cost="100.00",
+        )
+        self.client.post(
+            reverse("cars:edit_service", args=[self.car.id, service.id]),
+            self._service_payload(date="2025-01-10", service_type="Opony", odometer="61000"),
+        )
+        service.refresh_from_db()
+        self.assertEqual(service.odometer, 61000)
+        self.car.refresh_from_db()
+        self.assertEqual(self.car.odometer, 84500)
+
+    def test_negative_service_odometer_is_rejected(self):
+        response = self.client.post(
+            reverse("cars:add_service", args=[self.car.id]), self._service_payload(odometer="-5"),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(CarService.objects.filter(car=self.car).exists())
+
+    def test_dashboard_shows_service_odometer_only_when_set(self):
+        CarService.objects.create(
+            car=self.car, date=date(2026, 5, 2), service_type="Przegląd",
+            description="", cost="200.00", odometer=86000,
+        )
+        CarService.objects.create(
+            car=self.car, date=date(2026, 1, 2), service_type="Żarówka",
+            description="", cost="20.00",
+        )
+        response = self.client.get(reverse("cars:dashboard", args=[self.car.id]))
+        # Odznaka tylko przy serwisie z przebiegiem; ostatni serwis w szybkich akcjach.
+        self.assertContains(response, 'bi-speedometer2 me-1"></i>86', count=1)
+        self.assertContains(response, "02.05.2026 · 86")
+
+    def test_pdf_meta_line_includes_odometer_when_set(self):
+        from cars.pdf_utils import _service_meta
+
+        service = CarService(date=date(2026, 5, 2), workshop_name="Warsztat", odometer=86000)
+        self.assertEqual(_service_meta(service), "02.05.2026 | 86 000 km | Warsztat")
+        service.odometer = None
+        self.assertEqual(_service_meta(service), "02.05.2026 | Warsztat")
+
     def test_service_history_pdf_returns_pdf_file(self):
         service = CarService.objects.create(
             car=self.car,

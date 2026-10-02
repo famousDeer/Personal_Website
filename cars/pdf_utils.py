@@ -225,6 +225,15 @@ def _date(value):
     return value.strftime("%d.%m.%Y")
 
 
+def _service_meta(service):
+    """Data | przebieg (jeśli podany) | warsztat - linia pod nazwą serwisu."""
+    items = [_date(service.date)]
+    if service.odometer is not None:
+        items.append(f"{_number(service.odometer)} km")
+    items.append(service.workshop_name or 'Nie podano warsztatu')
+    return " | ".join(items)
+
+
 def _parts_total(service):
     return service.parts_total or Decimal("0.00")
 
@@ -398,7 +407,7 @@ def _service_card(index, service):
         [
             [
                 _p(f"{index:02d}", "center_white"),
-                [_p(service.service_type, "body_bold"), _p(f"{_date(service.date)} | {service.workshop_name or 'Nie podano warsztatu'}", "small")],
+                [_p(service.service_type, "body_bold"), _p(_service_meta(service), "small")],
                 _p(_money(service.cost), "right"),
             ]
         ],

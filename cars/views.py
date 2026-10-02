@@ -87,6 +87,14 @@ def render_service_form(request, car, form, parts_formset, title):
     )
 
 
+def update_car_odometer_from_service(car, service):
+    """Serwis z przebiegiem wyższym niż zapisany w aucie podbija przebieg auta
+    (jak tankowanie). Starszy wpis historyczny niczego nie zmienia."""
+    if service.odometer and service.odometer > car.odometer:
+        car.odometer = service.odometer
+        car.save(update_fields=['odometer'])
+
+
 def update_car_odometer_from_tyre_usage(car, usage):
     odometers = [usage.mounted_odometer]
     if usage.removed_odometer:
@@ -224,6 +232,7 @@ class AddServiceView(LoginRequiredMixin, View):
             service.save()
             parts_formset.instance = service
             parts_formset.save()
+            update_car_odometer_from_service(car, service)
             return redirect('cars:dashboard', car_id=car.id)
         return render_service_form(request, car, form, parts_formset, 'Nowy serwis')
     
@@ -242,8 +251,9 @@ class EditServiceView(LoginRequiredMixin, View):
         form = ServiceForm(request.POST, instance=service)
         parts_formset = ServicePartFormSet(request.POST, instance=service, prefix='parts')
         if form.is_valid() and parts_formset.is_valid():
-            form.save()
+            service = form.save()
             parts_formset.save()
+            update_car_odometer_from_service(car, service)
             return redirect('cars:dashboard', car_id=car.id)
         return render_service_form(request, car, form, parts_formset, 'Edytuj serwis')
 

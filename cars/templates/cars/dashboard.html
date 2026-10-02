@@ -106,7 +106,7 @@
                 </div>
                 <div class="small text-muted mt-3">
                     Ostatni serwis:
-                    <span class="fw-semibold">{% if last_service %}{{ last_service.date|date:"d.m.Y" }}{% else %}brak wpisu{% endif %}</span>
+                    <span class="fw-semibold">{% if last_service %}{{ last_service.date|date:"d.m.Y" }}{% if last_service.odometer is not None %} · {{ last_service.odometer|intcomma }} km{% endif %}{% else %}brak wpisu{% endif %}</span>
                 </div>
                 <div class="small text-muted">
                     Ostatnie tankowanie:
@@ -279,6 +279,11 @@
                                     <span class="badge rounded-pill bg-primary-subtle text-primary">
                                         <i class="bi bi-calendar-event me-1"></i>{{ service.date|date:"d.m.Y" }}
                                     </span>
+                                    {% if service.odometer is not None %}
+                                        <span class="badge rounded-pill text-muted border">
+                                            <i class="bi bi-speedometer2 me-1"></i>{{ service.odometer|intcomma }} km
+                                        </span>
+                                    {% endif %}
                                     {% if service.parts.all %}
                                         <span class="badge rounded-pill text-muted border">
                                             <i class="bi bi-box-seam me-1"></i>{{ service.parts.count }} części

@@ -81,14 +81,19 @@ class ServiceForm(BootstrapFormMixin, forms.ModelForm):
 
     class Meta:
         model = CarService
-        fields = ['date', 'service_type', 'workshop_name', 'description', 'cost']
+        fields = ['date', 'odometer', 'service_type', 'workshop_name', 'description', 'cost']
         labels = {
+            'odometer': 'Przebieg przy serwisie (km)',
             'service_type': 'Rodzaj serwisu',
             'workshop_name': 'Nazwa warsztatu',
             'description': 'Opis naprawy',
             'cost': 'Cena całkowita usługi (PLN)',
         }
+        help_texts = {
+            'odometer': 'Opcjonalne. Wyższy niż obecny przebieg auta zaktualizuje go.',
+        }
         widgets = {
+            'odometer': forms.NumberInput(attrs={'min': 0, 'step': 1, 'inputmode': 'numeric'}),
             'description': forms.Textarea(attrs={'rows': 4, 'style': 'height: 130px;'}),
         }
 
