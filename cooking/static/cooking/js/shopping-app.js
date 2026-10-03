@@ -788,7 +788,7 @@
             <div class="sa-editor" data-editor="${escapeHtml(item.uuid)}">
                 <div class="sa-stepper" role="group" aria-label="Ilość">
                     <button type="button" class="sa-step" data-action="dec" data-step="${step}" aria-label="Mniej"><i class="bi bi-dash-lg" aria-hidden="true"></i></button>
-                    <input type="number" inputmode="decimal" min="0.01" step="${item.unit === 'szt' ? 1 : 0.01}"
+                    <input type="number" inputmode="decimal" min="${item.unit === 'szt' ? 1 : 0.01}" step="${item.unit === 'szt' ? 1 : 0.01}"
                            value="${escapeHtml(Number(item.quantity))}" data-quantity-input aria-label="Ilość w ${escapeHtml(item.unit_label || item.unit)}">
                     <span class="sa-unit">${escapeHtml(item.unit_label || item.unit)}</span>
                     <button type="button" class="sa-step" data-action="inc" data-step="${step}" aria-label="Więcej"><i class="bi bi-plus-lg" aria-hidden="true"></i></button>
@@ -1663,7 +1663,10 @@
     }).join('');
 
     function syncAddUnitStep() {
-        addQuantity.step = addUnit.value === 'szt' ? '1' : '0.01';
+        // min razem ze step: kroki liczą się od min (0.01 + 1 = 1.01, nie 1).
+        const integerOnly = addUnit.value === 'szt';
+        addQuantity.step = integerOnly ? '1' : '0.01';
+        addQuantity.min = integerOnly ? '1' : '0.01';
     }
 
     // ------------------------------------------------------------------

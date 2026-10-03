@@ -1627,6 +1627,7 @@
         elements.registerName.value = '';
         elements.registerQuantityPerScan.value = '1';
         elements.registerUnit.value = 'szt';
+        syncRegisterQuantityStep();
         elements.registerCount.value = '2';
         elements.registerCategory.value = '';
         resetProductPhoto();
@@ -1774,6 +1775,15 @@
         startCountdown('known', timeout, () => performKnownAction('consume'));
     }
 
+    // step i min zawsze razem: przeglądarka liczy dozwolone wartości od min.
+    // Przy min=0.01 i step=1 poprawne byłyby tylko 0,01 / 1,01 / 2,01..., więc
+    // "1 szt." blokowało formularz komunikatem o nieprawidłowej wartości.
+    function syncRegisterQuantityStep() {
+        const integerOnly = elements.registerUnit.value === 'szt';
+        elements.registerQuantityPerScan.step = integerOnly ? '1' : '0.01';
+        elements.registerQuantityPerScan.min = integerOnly ? '1' : '0.01';
+    }
+
     function applyCatalogSuggestion(catalog) {
         const catalogFound = ['found', 'found_incomplete'].includes(catalog?.status);
         if (!catalogFound) {
@@ -1782,7 +1792,7 @@
         elements.registerName.value = catalog.name || '';
         elements.registerQuantityPerScan.value = catalog.suggested_quantity_per_scan || '1';
         elements.registerUnit.value = catalog.suggested_unit || 'opak';
-        elements.registerQuantityPerScan.step = elements.registerUnit.value === 'szt' ? '1' : '0.01';
+        syncRegisterQuantityStep();
         elements.registerCategory.value = catalog.suggested_category || '';
     }
 
@@ -2465,8 +2475,7 @@
     });
 
     elements.registerUnit.addEventListener('change', () => {
-        const integerOnly = elements.registerUnit.value === 'szt';
-        elements.registerQuantityPerScan.step = integerOnly ? '1' : '0.01';
+        syncRegisterQuantityStep();
         updateRegisterTotalPreview();
     });
 

@@ -1,4 +1,5 @@
 import json
+import re
 import sys
 import tempfile
 import types
@@ -5074,3 +5075,39 @@ class PantryOneOffTests(TestCase):
 
         self.assertEqual(payload['minimum'], '0.00')
         self.assertTrue(payload['one_off'])
+
+
+class NumberInputStepBaseTests(TestCase):
+    """Przeglądarka liczy dozwolone wartości pola liczbowego od `min`.
+
+    Pole z min="0.01" i step="1" przyjmuje tylko 0,01 / 1,01 / 2,01..., więc
+    wpisana albo domyślna "1" blokuje formularz ("Wprowadź prawidłową wartość").
+    Tak było z ilością na skan w skanerze spiżarni.
+    """
+
+    STEP_ONE_WITH_FRACTION_MIN = re.compile(
+        r'<input[^>]*(?:min="0\.01"[^>]*step="1"|step="1"[^>]*min="0\.01")', re.S,
+    )
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='kroki', password='pass123')
+        self.client.force_login(self.user)
+
+    def test_integer_step_inputs_start_at_integer_min(self):
+        for name in ('cooking:pantry', 'cooking:add-pantry-product', 'cooking:shopping-app'):
+            with self.subTest(page=name):
+                response = self.client.get(reverse(name))
+                self.assertEqual(response.status_code, 200)
+                html = response.content.decode()
+                self.assertIsNone(self.STEP_ONE_WITH_FRACTION_MIN.search(html))
+        self.assertIn('data-register-quantity-per-scan', self.client.get(reverse('cooking:pantry')).content.decode())
+
+    def test_scripts_keep_min_in_sync_with_step(self):
+        from django.contrib.staticfiles import finders
+
+        for path in ('cooking/js/pantry-scanner.js', 'cooking/js/shopping-app.js'):
+            with self.subTest(script=path):
+                source = open(finders.find(path), encoding='utf-8').read()
+                self.assertNotIn('min="0.01" step="${', source)
+        scanner = open(finders.find('cooking/js/pantry-scanner.js'), encoding='utf-8').read()
+        self.assertIn("elements.registerQuantityPerScan.min = integerOnly ? '1' : '0.01'", scanner)

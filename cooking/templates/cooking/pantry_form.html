@@ -32,7 +32,7 @@
                         </div>
                         <div class="col-md-5">
                             <div class="form-floating">
-                                <input type="number" step="1" min="0.01" class="form-control"
+                                <input type="number" step="1" min="1" class="form-control"
                                        id="quantity-per-scan" name="quantity_per_scan"
                                        data-pantry-quantity-input
                                        value="{{ form_values.quantity_per_scan|default:'1' }}" required>
@@ -179,6 +179,11 @@
                 input.step = integerOnly ? '1' : '0.01';
                 input.placeholder = integerOnly ? '0' : '0.00';
             });
+            // Ilość na skan musi być > 0. Przeglądarka liczy kroki od min, więc
+            // min=0.01 przy step=1 odrzucałoby każdą pełną liczbę (1, 2, 3...).
+            if (quantityPerScanInput) {
+                quantityPerScanInput.min = integerOnly ? '1' : '0.01';
+            }
         }
 
         unitSelect.addEventListener('change', syncQuantityStep);
