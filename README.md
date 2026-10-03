@@ -308,9 +308,8 @@ the product's original language. When the suggestion is not Polish, the scanner 
 not offer one-tap adding; the form opens with the foreign name selected, so typing
 replaces it.
 
-**Categories** live in `cooking/constants.py` as `PANTRY_CATEGORY_GROUPS`. Existing
-names are stored as plain text on products, so renaming one needs a data migration;
-adding one does not. Mapping rules are in `cooking/services/product_catalog.py`: tag
+**Categories** are edited by the household on the *Kategorie* page of the pantry
+(see "Pantry categories and automatic rules" below). Category suggestions use tag
 rules keyed on Open Facts taxonomy nodes (the API returns every ancestor of a tag, so
 mid-level nodes are enough), then Polish/English/German/Czech keyword rules for
 products without usable tags.
@@ -326,6 +325,35 @@ It re-derives cached Open Food Facts suggestions with the current rules, moves
 products out of `Inne` (or no category) when a better category is found, and
 remembers every existing barcoded product for the whole household. Categories that
 were chosen deliberately, and existing household entries, are never overwritten.
+
+## Pantry categories and automatic rules
+
+*Spiżarnia → Kategorie* (`/cooking/pantry/categories/`) lets any signed-in household
+member manage categories and the rules that suggest a category for a new product.
+
+- **Categories** (`PantryCategory`): add, rename, move up/down, switch the group
+  (*Spożywcze* / *Dom*) and delete. The order is the order in forms and on shopping
+  lists without a shop layout. *Dom* means non-food: a product from Open Beauty/Products
+  Facts never gets a food category. `Inne` is a fixed fallback, not stored in the table.
+- Category names are stored as text on products, product groups, shopping-list items,
+  recipe ingredients, household catalog entries and shop layouts. Renaming rewrites all
+  of them; deleting moves them to a chosen category (or none) and deletes the
+  category's rules (`cooking/services/categories.py`).
+- **Rules** (`PantryCategoryRule`) are two ordered lists: Open Food Facts tags
+  (checked first) and keywords. The first matching rule wins, so specific words sit
+  above general ones (`herbatnik*` above `herbat*`). Keywords: comma separated, whole
+  words, `*` at the end for a word prefix, phrases must appear in full, case
+  insensitive but accent sensitive, punctuation counts as a space. The page explains
+  this to the user, warns about keywords already used by another rule and has a
+  *Sprawdź nazwę* tester.
+- *Przywróć domyślne reguły* restores the rules shipped in `cooking/category_defaults.py`
+  (also the source of migration `0022`). Built-in categories carry a `code`, so this
+  works after a rename and recreates deleted built-in categories.
+- Every worker caches categories and rules in memory; a change bumps a version key in
+  the shared cache and other workers reload within `PANTRY_CATEGORIES_RECHECK_SECONDS`
+  (2 s). The offline shopping mode receives the current list with every sync.
+- After changing rules, `manage.py learn_pantry_catalog` re-applies them to products
+  without a category or in `Inne`.
 
 ## Shared pantry
 
@@ -680,10 +708,12 @@ Website-Finance/
 │  ├─ templates/finance/
 │  └─ static/                 # css/style.css, js/
 ├─ cooking/                   # Recipes, pantry, shopping lists
-│  ├─ constants.py            # Pantry category list and groups
+│  ├─ category_defaults.py    # Default pantry categories and rules (seed/restore)
+│  ├─ constants.py            # Fixed "Inne" category, scanner flags
 │  ├─ management/commands/    # learn_pantry_catalog, preview_shared_pantry,
 │  │                          # generate_vapid_keys, send_reminders
 │  ├─ services/
+│  │  ├─ categories.py        # Editable categories and rules: cached reads, matching, rename/delete
 │  │  ├─ pantry_editing.py    # Full edit side effects: unit conversion, corrections, list items
 │  │  ├─ pantry_forecast.py   # Consumption forecasting
 │  │  ├─ pantry_quantities.py # Quantity, unit and package helpers shared by views and sync
@@ -694,6 +724,7 @@ Website-Finance/
 │  │  ├─ polish.py            # Polish plural forms in messages
 │  │  └─ product_catalog.py   # Household memory, Open Food Facts cache, category mapping
 │  ├─ shopping_app_views.py   # Offline shopping mode: shell, service worker, manifest, API
+│  ├─ views_categories.py     # Pantry "Kategorie" page: categories and automatic rules
 │  └─ storage.py              # Private media storage for user photos
 ├─ cars/                      # Fuel, services, tyres
 │  └─ pdf_utils.py            # Service history PDF

@@ -1,0 +1,56 @@
+{% extends 'cooking/index.html' %}
+{% load ui %}
+
+{% block title %}{{ category.name }} – kategoria{% endblock %}
+{% block cooking_editor_assets %}{% endblock %}
+
+{% block content_cooking %}
+{% url 'cooking:pantry-categories' as categories_url %}
+{% page_head title=category.name eyebrow="Kategorie" icon="bi-tags" sub="Nazwa, grupa i słowa kluczowe, po których nowe produkty trafiają tu same." back=categories_url back_label="Wróć do kategorii" %}{% endpage_head %}
+
+<div class="pc-page animate-fade-in-up">
+    <form method="post" class="pc-card pc-form">
+        {% csrf_token %}
+        <div class="mb-3">
+            <label class="form-label fw-bold" for="category-name">Nazwa</label>
+            <input class="form-control" id="category-name" name="name" maxlength="60" required
+                   value="{{ form_values.name }}" aria-describedby="category-name-help">
+            {% if product_count %}
+                <div class="form-text" id="category-name-help">Nowa nazwa trafi też do {{ product_count|pl:"produktu,produktów,produktów" }}, list zakupów i przepisów.</div>
+            {% endif %}
+        </div>
+        <fieldset class="mb-4">
+            <legend class="form-label fw-bold">Grupa</legend>
+            <div class="pc-radio-row">
+                {% for value, label in group_choices %}
+                    <label class="pc-radio">
+                        <input type="radio" name="group" value="{{ value }}" {% if form_values.group == value %}checked{% endif %}>
+                        <span>{{ label }}</span>
+                    </label>
+                {% endfor %}
+            </div>
+            <div class="form-text">„Dom” to produkty niejadalne – kosmetyki i chemia z bazy nie trafią do kategorii spożywczej.</div>
+        </fieldset>
+        <div class="pc-form-actions">
+            <a class="btn btn-outline-danger me-auto" href="{% url 'cooking:pantry-category-delete' category.pk %}">
+                <i class="bi bi-trash3" aria-hidden="true"></i> Usuń
+            </a>
+            <a class="btn btn-outline-secondary" href="{{ categories_url }}">Anuluj</a>
+            <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg" aria-hidden="true"></i> Zapisz</button>
+        </div>
+    </form>
+
+    <section class="pc-group" aria-labelledby="pc-category-rules">
+        <div class="pc-group-head">
+            <h2 class="pc-group-title" id="pc-category-rules">Słowa kluczowe <span>{{ rules|length }}</span></h2>
+            <a class="btn btn-primary btn-sm" href="{% url 'cooking:pantry-category-rule-add' %}?rodzaj=slowa&amp;kategoria={{ category.pk }}">
+                <i class="bi bi-plus-lg" aria-hidden="true"></i> Dodaj regułę
+            </a>
+        </div>
+        {% if rules %}
+            <p class="pc-hint">Numer to miejsce reguły na wspólnej liście – niższy numer sprawdzany jest wcześniej.</p>
+        {% endif %}
+        {% include 'cooking/partials/category_rule_list.html' with items=rules match=None empty="Ta kategoria nie ma jeszcze słów kluczowych, więc produkty trafią do niej tylko po ręcznym wyborze." %}
+    </section>
+</div>
+{% endblock %}

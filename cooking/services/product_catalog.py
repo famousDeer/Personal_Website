@@ -17,8 +17,9 @@ from django.db import transaction
 from django.utils import timezone
 from PIL import Image, UnidentifiedImageError
 
-from ..constants import PANTRY_CATEGORIES
+from ..constants import PANTRY_CATEGORY_OTHER
 from ..models import PantryProduct, ProductCatalogEntry, ProductCatalogQuota
+from . import categories as category_rules
 
 
 OPEN_FOOD_FACTS_ROOT = 'https://world.openfoodfacts.org'
@@ -70,229 +71,16 @@ PRODUCT_TYPE_HOSTS = {
 MAX_JSON_RESPONSE_BYTES = 128 * 1024
 REFRESH_LOCK_SECONDS = 30
 
-# Mapowanie kategorii z rodziny Open Facts na stałą listę kategorii spiżarni.
-#
-# `categories_tags` produktu zawiera tag kanoniczny RAZEM ze wszystkimi jego
-# przodkami w taksonomii (np. chleb tostowy niesie też `en:breads`
-# i `en:cereals-and-potatoes`), więc reguły wystarczy oprzeć na węzłach
-# pośrednich. Kolejność ma znaczenie - wygrywa pierwsza pasująca reguła:
-#   * produkty niespożywcze są rozpoznawane najpierw, bo ich tagi są
-#     najbardziej jednoznaczne,
-#   * forma przechowywania (mrożonka, konserwa) wygrywa z rodzajem
-#     produktu - mrożony szpinak to mrożonka, a nie warzywo,
-#   * chleb leży w taksonomii pod "zbożami", dlatego Pieczywo jest przed
-#     Produktami suchymi,
-#   * kawa nie leży pod `en:beverages`, więc ma własny tag w Napojach.
-#
-# Wszystkie tagi są zweryfikowane w taksonomiach openfoodfacts-server
-# (taxonomies/{food,beauty,product,petfood}/categories.txt). Kilka tagów
-# spoza taksonomii zostało celowo: pojawiają się w danych jako tagi
-# niekanoniczne, gdy produkt niespożywczy trafi do bazy żywności.
-NON_FOOD_CATEGORIES = frozenset({
-    'Chemia domowa',
-    'Kosmetyki i higiena',
-    'Artykuły papierowe',
-    'Dla zwierząt',
-    'Leki i apteczka',
-})
-
-CATEGORY_TAG_RULES = (
-    ('Leki i apteczka', frozenset({
-        'dietary-supplements', 'vitamins-supplements', 'medicine-drugs',
-        'medicines', 'first-aid', 'medical-tape-bandages', 'adhesive-bandages',
-        'medical-tests',
-    })),
-    ('Dla zwierząt', frozenset({
-        'animals-pet-supplies', 'pet-supplies', 'pet-food', 'cat-food',
-        'dog-food', 'dog-and-cat-food', 'dry-pet-food', 'wet-pet-food',
-        'cat-litter',
-    })),
-    ('Artykuły papierowe', frozenset({
-        'household-paper-products', 'toilet-papers', 'toilet-paper',
-        'paper-towels', 'facial-tissues', 'paper-napkins',
-    })),
-    ('Chemia domowa', frozenset({
-        'household-chemicals', 'household-cleaning-supplies',
-        'household-cleaning-products', 'all-purpose-cleaners',
-        'dish-detergent-soap', 'dishwasher-tablets', 'dishwasher-cleaners',
-        'detergents', 'laundry-detergent', 'laundry-detergents',
-        'liquid-detergent', 'bleach', 'fabric-softeners-dryer-sheets',
-        'fabric-stain-removers', 'fabric-refreshers', 'drain-cleaners',
-        'air-fresheners', 'pest-control', 'cleaning-products',
-        'dishwashing-products', 'household-cleaners',
-    })),
-    ('Kosmetyki i higiena', frozenset({
-        'personal-care', 'cosmetics', 'open-beauty-facts', 'hygiene',
-        'diapering', 'baby-wipes', 'soaps', 'bar-soaps', 'liquid-soaps',
-        'toothpastes', 'mouthwash', 'shampoos', 'shower-gels', 'deodorants',
-        'intimate-hygiene', 'tampons',
-    })),
-    ('Mrożonki', frozenset({
-        'frozen-foods', 'frozen-desserts', 'ice-creams-and-sorbets',
-    })),
-    ('Konserwy', frozenset({
-        'canned-foods', 'pickles', 'fruit-and-vegetable-preserves',
-    })),
-    # Bułka tarta leży w taksonomii pod pieczywem, a w kuchni stoi przy mące.
-    ('Produkty suche', frozenset({'bread-crumbs'})),
-    ('Pieczywo', frozenset({'breads', 'viennoiseries'})),
-    # Napoje roślinne i margaryna stoją w lodówce obok mleka i masła.
-    ('Nabiał', frozenset({
-        'dairies', 'eggs', 'dairy-substitutes', 'margarines',
-    })),
-    ('Mięso i ryby', frozenset({
-        'meats-and-their-products', 'meats', 'poultries', 'sausages', 'hams',
-        'seafood', 'fishes',
-    })),
-    ('Słodycze i przekąski', frozenset({
-        'snacks', 'sweet-snacks', 'salty-snacks', 'confectioneries',
-        'chocolates', 'candies', 'biscuits-and-cakes', 'biscuits-and-crackers',
-        'chips-and-fries', 'crisps', 'popcorn', 'desserts', 'sweet-spreads',
-    })),
-    ('Napoje', frozenset({
-        'beverages-and-beverages-preparations', 'beverages', 'waters',
-        'juices-and-nectars', 'alcoholic-beverages', 'plant-based-beverages',
-        'hot-beverages', 'coffees', 'teas', 'syrups',
-        'cocoa-and-chocolate-powders',
-    })),
-    ('Warzywa i owoce', frozenset({
-        'fruits', 'vegetables', 'fresh-fruits', 'fresh-vegetables', 'mushrooms',
-        'potatoes', 'dried-fruits',
-    })),
-    # Olej stoi przy occie i sosach, dlatego trafia do Przypraw. Masło
-    # i margarynę łapie wcześniej Nabiał, mimo że też są pod `en:fats`.
-    ('Przyprawy', frozenset({
-        'condiments', 'sauces', 'herbs-and-spices', 'spices', 'herbs', 'salts',
-        'vinegars', 'broths', 'fats', 'vegetable-oils', 'olive-oils',
-    })),
-    ('Produkty suche', frozenset({
-        'cereals-and-potatoes', 'cereals-and-their-products', 'cereal-grains',
-        'pastas', 'rices', 'flours', 'groats', 'breakfast-cereals', 'legumes',
-        'nuts', 'seeds', 'sugars', 'sweeteners', 'starches', 'cooking-helpers',
-        'baking-powders', 'dried-products',
-    })),
-)
-
-# Reguły tekstowe działają, gdy tagi nie rozstrzygają (produkt bez kategorii
-# w bazie albo wpisany ręcznie). Gwiazdka oznacza dopasowanie początku słowa,
-# a fraza z kilku słów musi wystąpić w całości. Oprócz polskich słów są
-# najczęstsze angielskie, niemieckie i czeskie, bo właśnie takie nazwy
-# przychodzą z bazy dla produktów importowanych.
-#
-# Kolejność chroni przed pułapkami wieloznaczności:
-#   "tabletki do zmywarki" to chemia, zanim zadziała cokolwiek o lekach,
-#   "herbatniki" to słodycze, zanim "herbat*" uzna je za napój,
-#   "masło do ciała" i "mleczko czyszczące" nie trafią do nabiału,
-#   "bułka tarta" nie trafi do pieczywa,
-#   "sos pomidorowy" to przyprawa, zanim "pomidor*" uzna go za warzywo,
-#   a Przyprawy są po Napojach, bo 'herb*' złapałby "herbatę".
-CATEGORY_TEXT_RULES = (
-    ('Chemia domowa', (
-        'płyn do naczyń', 'do mycia naczyń', 'do mycia podłóg',
-        'do mycia szyb', 'do czyszczenia', 'do zmywarki', 'do prania',
-        'do płukania tkanin', 'proszek do prania', 'odplamiacz*', 'wybielacz*',
-        'środek czyszczący', 'czyszcząc*', 'odtłuszczacz*', 'odkamieniacz*',
-        'odświeżacz*', 'udrażniacz*', 'worki na śmieci', 'zmywak*',
-        'detergent*', 'cleaner*', 'cleaning', 'laundry', 'dishwash*',
-        'dish soap', 'bleach', 'waschmittel', 'spülmittel', 'reiniger',
-        'weichspüler', 'prací', 'na nádobí',
-    )),
-    ('Artykuły papierowe', (
-        'papier toaletowy', 'ręcznik papierowy', 'ręczniki papierowe',
-        'ręcznik kuchenny', 'ręczniki kuchenne', 'chusteczki higieniczne',
-        'serwetki', 'toilet paper', 'toilet tissue', 'paper towel*',
-        'kitchen roll', 'toilettenpapier', 'küchenrolle', 'toaletní papír',
-    )),
-    ('Kosmetyki i higiena', (
-        'szampon*', 'odżywka do włosów', 'pasta do zębów', 'szczoteczk*',
-        'nić dentystyczna', 'płyn do płukania jamy ustnej', 'dezodorant*',
-        'antyperspirant*', 'żel pod prysznic', 'mydło', 'mydła', 'mydeł',
-        'do ciała', 'krem do rąk', 'krem do twarzy', 'balsam', 'balsamy',
-        'micelarn*', 'podpask*', 'tampon*', 'wkładki higieniczne', 'pieluch*',
-        'pieluszk*', 'chusteczki nawilżane', 'płatki kosmetyczne',
-        'patyczki higieniczne', 'maszynk*', 'do golenia', 'woda toaletowa',
-        'perfum*', 'shampoo*', 'toothpaste*', 'deodorant*', 'shower gel',
-        'soap', 'body lotion', 'duschgel', 'zahnpasta', 'zubní pasta',
-        'šampon', 'sprchový gel',
-    )),
-    ('Dla zwierząt', (
-        'karma', 'karmy', 'dla kota', 'dla kotów', 'dla psa', 'dla psów',
-        'żwirek', 'cat food', 'dog food', 'pet food', 'katzenfutter',
-        'hundefutter', 'whiskas', 'pedigree', 'purina', 'sheba',
-    )),
-    ('Leki i apteczka', (
-        'suplement diety', 'tabletki powlekane', 'tabletki musujące',
-        'ibuprofen*', 'paracetamol*', 'na kaszel', 'na gardło', 'na ból',
-        'przeciwbólow*', 'probiotyk*', 'witamina', 'magnez',
-        'plastry opatrunkowe', 'plaster opatrunkowy', 'bandaż*',
-        'woda utleniona', 'dietary supplement', 'nahrungsergänzungsmittel',
-    )),
-    ('Mrożonki', (
-        'frozen', 'mrożon*', 'ice cream', 'lody', 'tiefkühl*', 'mražen*',
-    )),
-    ('Konserwy', (
-        'canned', 'konserw*', 'w puszce', 'dżem*', 'konfitur*', 'marynowan*',
-        'kiszon*',
-    )),
-    ('Produkty suche', ('bułka tarta', 'masło orzechowe', 'peanut butter')),
-    ('Pieczywo', (
-        'chleb*', 'bułk*', 'bagietk*', 'rogal*', 'croissant*',
-        'pieczywo', 'bread', 'toast*', 'brot', 'brötchen', 'chléb',
-    )),
-    ('Nabiał', (
-        'dairy', 'dairies', 'milk', 'cheese*', 'yogurt*', 'yoghurt*', 'butter',
-        'mleko', 'mleka', 'nabiał', 'ser', 'sery', 'sera', 'serów', 'serek',
-        'jogurt*', 'śmietan*', 'kefir*', 'maślank*', 'twaróg', 'twarożek',
-        'masło', 'margaryn*', 'mozzarell*', 'jaja', 'jajka', 'milch', 'käse',
-        'joghurt*', 'mléko', 'sýr',
-    )),
-    ('Mięso i ryby', (
-        'meat*', 'fish', 'seafood', 'chicken*', 'poultry', 'mięso', 'mięsa',
-        'ryb*', 'kiełbas*', 'szynk*', 'boczek', 'parówk*', 'kurczak*',
-        'wędlin*', 'łosoś', 'łososia', 'tuńczyk*', 'śledź', 'śledzie',
-        'makrel*', 'indyk*', 'pasztet*', 'fleisch', 'wurst', 'schinken',
-    )),
-    ('Słodycze i przekąski', (
-        'czekolad*', 'baton*', 'cukierk*', 'żelk*', 'ciastk*', 'ciasteczk*',
-        'herbatnik*', 'wafel*', 'wafl*', 'chips*', 'chrupk*', 'paluszk*',
-        'popcorn', 'krakers*', 'pralin*', 'lizak*', 'chocolate*', 'candy',
-        'candies', 'biscuit*', 'cookie*', 'crisps', 'snack*', 'schokolade',
-        'kekse', 'čokolád*',
-    )),
-    ('Napoje', (
-        'beverage*', 'drink*', 'juice*', 'water', 'waters', 'soda*', 'coffee',
-        'tea', 'teas', 'beer', 'wine', 'napój', 'napoje', 'napoj*', 'sok',
-        'soki', 'soków', 'nektar*', 'lemoniad*', 'woda', 'wody', 'kawa', 'kawy',
-        'herbat*', 'piwo', 'piwa', 'wino', 'wina', 'syrop*', 'saft', 'wasser',
-        'getränk*', 'kaffee', 'tee', 'bier', 'wein', 'nápoj', 'káva',
-    )),
-    ('Przyprawy', (
-        'spice*', 'seasoning*', 'herb*', 'sauce*', 'vinegar*', 'oil',
-        'ketchup*', 'mayonnaise', 'mustard', 'przypraw*', 'zioł*', 'sól',
-        'soli', 'pieprz*', 'ocet', 'octu', 'olej*', 'oliwa', 'oliwy',
-        'majonez*', 'musztard*', 'sos', 'sosy', 'sosu', 'bulion*', 'rosoł*',
-        'salz', 'essig', 'gewürz*', 'koření',
-    )),
-    ('Warzywa i owoce', (
-        'fruit*', 'vegetable*', 'owoc*', 'warzyw*', 'apple*', 'banana*',
-        'tomato*', 'jabłk*', 'banan*', 'pomidor*', 'ziemniak*', 'marchew*',
-        'cebul*', 'czosn*', 'sałat*', 'cytryn*', 'grzyb*', 'pieczark*', 'obst',
-        'gemüse', 'kartoffel*', 'ovoce', 'zelenina',
-    )),
-    ('Produkty suche', (
-        'pasta', 'pastas', 'rice', 'cereal*', 'flour*', 'sugar*', 'makaron*',
-        'ryż', 'ryżu', 'mąk*', 'cukier', 'cukru', 'kasz*', 'płatk*',
-        'soczewic*', 'fasol*', 'groch*', 'orzech*', 'drożdż*',
-        'proszek do pieczenia', 'nasion*', 'mehl', 'zucker', 'nudeln', 'reis',
-        'rýže', 'mouka',
-    )),
-)
+# Kategorie i reguły automatycznego wyboru kategorii są w bazie i edytują je
+# domownicy (strona "Kategorie" w spiżarni). Stan początkowy i opis kolejności
+# reguł: cooking/category_defaults.py, odczyt: cooking/services/categories.py.
 
 # Domyślna kategoria, gdy ani tagi, ani nazwa nic nie mówią. Produkt z bazy
-# kosmetyków jest kosmetykiem, a karma karmą - nawet bez szczegółów.
-PRODUCT_TYPE_DEFAULT_CATEGORIES = {
-    'beauty': 'Kosmetyki i higiena',
-    'petfood': 'Dla zwierząt',
+# kosmetyków jest kosmetykiem, a karma karmą - nawet bez szczegółów. Po kodzie
+# kategorii, bo domownicy mogą zmienić jej nazwę.
+PRODUCT_TYPE_DEFAULT_CATEGORY_CODES = {
+    'beauty': 'kosmetyki',
+    'petfood': 'zwierzeta',
 }
 
 
@@ -508,13 +296,8 @@ def _category_tags(value):
 
 
 def _category_from_tags(category_tags, food_allowed=True):
-    tags = set(_category_tags(category_tags))
-    for category, known_tags in CATEGORY_TAG_RULES:
-        if not food_allowed and category not in NON_FOOD_CATEGORIES:
-            continue
-        if tags & known_tags:
-            return category
-    return ''
+    match = category_rules.match_tags(_category_tags(category_tags), food_allowed=food_allowed)
+    return match.category if match else ''
 
 
 def _category_tag_storage_values(value, raw_external_category=''):
@@ -529,20 +312,18 @@ def _category_tag_storage_values(value, raw_external_category=''):
         seen.add(cleaned)
         cleaned_values.append(cleaned)
 
+    rule_count = len(category_rules.taxonomy().tag_rules)
+
     def priority(raw_value):
-        normalized_tags = set(_category_tags([raw_value]))
-        for index, (_, known_tags) in enumerate(CATEGORY_TAG_RULES):
-            if normalized_tags & known_tags:
-                return index
-        return len(CATEGORY_TAG_RULES)
+        return category_rules.tag_rule_priority(_category_tags([raw_value]))
 
     recognized_values = [
         raw_value for raw_value in cleaned_values
-        if priority(raw_value) < len(CATEGORY_TAG_RULES)
+        if priority(raw_value) < rule_count
     ]
     other_values = [
         raw_value for raw_value in cleaned_values
-        if priority(raw_value) == len(CATEGORY_TAG_RULES)
+        if priority(raw_value) >= rule_count
     ]
     recognized_values.sort(key=priority)
     external_category = _clean_text(raw_external_category, max_length=255)
@@ -551,34 +332,13 @@ def _category_tag_storage_values(value, raw_external_category=''):
     return recognized_values + other_values
 
 
-def _text_has_keyword(searchable, keyword):
-    """Dopasowanie całego słowa albo frazy; gwiazdka = początek słowa.
-
-    Dopasowanie jest do granicy słowa z lewej strony, więc "ser" nie trafi
-    w "serwetki", a "czyszcząc*" trafi w "czyszczące". Działa też dla fraz
-    z gwiazdką ("paper towel*" -> "paper towels").
-    """
-    normalized_keyword = ' '.join(keyword.rstrip('*').casefold().split())
-    if not normalized_keyword:
-        return False
-    padded = f' {searchable} '
-    if keyword.endswith('*'):
-        return f' {normalized_keyword}' in padded
-    return f' {normalized_keyword} ' in padded
+_text_has_keyword = category_rules.text_has_keyword
+_searchable_text = category_rules.searchable_text
 
 
 def _category_from_text(searchable, food_allowed=True):
-    for category, keywords in CATEGORY_TEXT_RULES:
-        if not food_allowed and category not in NON_FOOD_CATEGORIES:
-            continue
-        if any(_text_has_keyword(searchable, keyword) for keyword in keywords):
-            return category
-    return ''
-
-
-def _searchable_text(*parts):
-    searchable = ' '.join(str(part or '') for part in parts).casefold()
-    return ' '.join(re.sub(r'[^\w]+', ' ', searchable).split())
+    match = category_rules.match_text(searchable, food_allowed=food_allowed)
+    return match.category if match else ''
 
 
 def suggest_category_from_name(name):
@@ -594,8 +354,9 @@ def _suggest_category(
     product_type='food',
 ):
     normalized_product_type = _clean_text(product_type, max_length=20).casefold() or 'food'
-    if normalized_product_type == 'petfood':
-        return 'Dla zwierząt'
+    pet_category = category_rules.category_for_code('zwierzeta')
+    if normalized_product_type == 'petfood' and pet_category:
+        return pet_category
     # Kategoria spożywcza dla produktu z bazy kosmetyków albo produktów
     # ogólnych byłaby błędem niezależnie od tego, co mówi nazwa
     # ("masło do ciała" to nie nabiał).
@@ -612,7 +373,9 @@ def _suggest_category(
     text_category = _category_from_text(searchable, food_allowed=food_allowed)
     if text_category:
         return text_category
-    return PRODUCT_TYPE_DEFAULT_CATEGORIES.get(normalized_product_type, 'Inne')
+    default_code = PRODUCT_TYPE_DEFAULT_CATEGORY_CODES.get(normalized_product_type)
+    default_category = category_rules.category_for_code(default_code) if default_code else ''
+    return default_category or PANTRY_CATEGORY_OTHER
 
 
 def _source_timestamp(product):
@@ -712,7 +475,7 @@ def category_suggestion_for_entry(entry):
         return ''
     if entry.source == HOUSEHOLD_SOURCE:
         # Wybór domownika jest ostateczny - reguły go nie nadpisują.
-        return entry.suggested_category if entry.suggested_category in PANTRY_CATEGORIES else ''
+        return entry.suggested_category if category_rules.is_valid_category(entry.suggested_category) else ''
     category = _suggest_category(
         entry.product_name,
         entry.description,
@@ -720,7 +483,7 @@ def category_suggestion_for_entry(entry):
         category_tags=_category_tags(entry.external_category),
         product_type=entry.product_type,
     )
-    return category if category in PANTRY_CATEGORIES else 'Inne'
+    return category if category_rules.is_valid_category(category) else PANTRY_CATEGORY_OTHER
 
 
 def suggested_category_for_catalog_entry(entry):
@@ -883,7 +646,7 @@ def remember_household_product(barcode, *, name, category, unit, quantity_per_sc
     name = _clean_text(name, max_length=160)
     if not barcode or not name:
         return None
-    category = category if category in PANTRY_CATEGORIES else ''
+    category = category if category_rules.is_valid_category(category) else ''
     now = timezone.now()
     defaults = {
         'status': ProductCatalogEntry.STATUS_FOUND,

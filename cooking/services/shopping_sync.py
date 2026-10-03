@@ -29,7 +29,8 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
-from ..constants import PANTRY_CATEGORIES, PANTRY_CATEGORY_OTHER
+from ..constants import PANTRY_CATEGORY_OTHER
+from .categories import category_groups_json, category_names
 from ..models import (
     PANTRY_UNIT_CHOICES,
     PantryMovement,
@@ -423,6 +424,9 @@ def shopping_snapshot():
             {'uuid': str(shop.uuid), 'name': shop.name, 'order': list(shop.category_order)}
             for shop in ShopLayout.objects.all()
         ],
+        # Kategorie edytują domownicy, więc telefon dostaje aktualną listę
+        # z każdą synchronizacją, a nie tylko z powłoką aplikacji.
+        'categoryGroups': category_groups_json(),
         # Spiżarnia w telefonie: podpowiedzi przy dopisywaniu pozycji, podgląd
         # stanu przy półce w sklepie i skanowanie kodów bez połączenia.
         'products': [
@@ -544,7 +548,7 @@ def _op_add(raw, user, when):
         raise OperationRejected('Nieznana jednostka.')
     quantity = _parse_quantity(data.get('quantity'), unit)
     category = str(data.get('category') or '').strip()
-    if category and category not in PANTRY_CATEGORIES:
+    if category and category not in category_names():
         category = ''
     group = None
     raw_group = data.get('group')
@@ -661,7 +665,7 @@ def _clean_category_order(value):
     order = []
     for name in value:
         name = str(name or '').strip()
-        if name in PANTRY_CATEGORIES and name not in order:
+        if name in category_names() and name not in order:
             order.append(name)
     return order
 

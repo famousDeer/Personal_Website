@@ -1,6 +1,6 @@
 # cooking/urls.py
 from django.urls import path
-from . import shopping_app_views, views
+from . import shopping_app_views, views, views_categories as category_views
 
 app_name = 'cooking'
 
@@ -19,6 +19,17 @@ urlpatterns = [
     path('pantry/catalog/image/<int:entry_id>/', views.PantryCatalogImageView.as_view(), name='pantry-catalog-image'),
     path('pantry/<int:product_id>/image/', views.PantryProductImageView.as_view(), name='pantry-product-image'),
     path('pantry/<int:product_id>/image/upload/', views.PantryProductImageUploadView.as_view(), name='pantry-product-image-upload'),
+    # Kategorie i reguły automatycznego wyboru kategorii (cooking/views_categories.py)
+    path('pantry/categories/', category_views.PantryCategoriesView.as_view(), name='pantry-categories'),
+    path('pantry/categories/add/', category_views.PantryCategoryCreateView.as_view(), name='pantry-category-add'),
+    path('pantry/categories/<int:category_id>/', category_views.PantryCategoryEditView.as_view(), name='pantry-category-edit'),
+    path('pantry/categories/<int:category_id>/delete/', category_views.PantryCategoryDeleteView.as_view(), name='pantry-category-delete'),
+    path('pantry/categories/<int:category_id>/move/', category_views.PantryCategoryMoveView.as_view(), name='pantry-category-move'),
+    path('pantry/categories/rules/add/', category_views.PantryCategoryRuleFormView.as_view(), name='pantry-category-rule-add'),
+    path('pantry/categories/rules/restore/', category_views.PantryCategoryRulesRestoreView.as_view(), name='pantry-category-rules-restore'),
+    path('pantry/categories/rules/<int:rule_id>/', category_views.PantryCategoryRuleFormView.as_view(), name='pantry-category-rule-edit'),
+    path('pantry/categories/rules/<int:rule_id>/delete/', category_views.PantryCategoryRuleDeleteView.as_view(), name='pantry-category-rule-delete'),
+    path('pantry/categories/rules/<int:rule_id>/move/', category_views.PantryCategoryRuleMoveView.as_view(), name='pantry-category-rule-move'),
     path('pantry/groups/', views.ProductGroupListView.as_view(), name='product-groups'),
     path('pantry/groups/create/', views.CreateProductGroupView.as_view(), name='create-product-group'),
     path('pantry/groups/<int:group_id>/', views.UpdateProductGroupView.as_view(), name='update-product-group'),

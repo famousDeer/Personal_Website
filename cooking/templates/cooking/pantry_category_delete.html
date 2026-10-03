@@ -1,0 +1,47 @@
+{% extends 'cooking/index.html' %}
+{% load ui %}
+
+{% block title %}Usuń kategorię {{ category.name }}{% endblock %}
+{% block cooking_editor_assets %}{% endblock %}
+
+{% block content_cooking %}
+{% url 'cooking:pantry-category-edit' category.pk as edit_url %}
+{% page_head title="Usunąć kategorię?" eyebrow="Kategorie" icon="bi-tags" sub=category.name back=edit_url back_label="Wróć do kategorii" %}{% endpage_head %}
+
+<form method="post" class="pc-card pc-form animate-fade-in-up">
+    {% csrf_token %}
+    {% if used %}
+        <p class="mb-2">Kategorię „{{ category.name }}” mają teraz:</p>
+        <ul class="pc-usage">
+            {% if usage.products %}<li><i class="bi bi-box-seam" aria-hidden="true"></i> {{ usage.products|pl:"produkt w spiżarni,produkty w spiżarni,produktów w spiżarni" }}</li>{% endif %}
+            {% if usage.groups %}<li><i class="bi bi-collection" aria-hidden="true"></i> {{ usage.groups|pl:"grupa produktów,grupy produktów,grup produktów" }}</li>{% endif %}
+            {% if usage.items %}<li><i class="bi bi-cart" aria-hidden="true"></i> {{ usage.items|pl:"pozycja na listach zakupów,pozycje na listach zakupów,pozycji na listach zakupów" }}</li>{% endif %}
+            {% if usage.ingredients %}<li><i class="bi bi-journal-text" aria-hidden="true"></i> {{ usage.ingredients|pl:"składnik przepisu,składniki przepisów,składników przepisów" }}</li>{% endif %}
+        </ul>
+        <div class="mb-3">
+            <label class="form-label fw-bold" for="move-to">Przenieś je do</label>
+            <select class="form-select" id="move-to" name="move_to">
+                <option value="">Bez kategorii</option>
+                {% regroup others by get_group_display as grouped %}
+                {% for group in grouped %}
+                    <optgroup label="{{ group.grouper }}">
+                        {% for other in group.list %}<option value="{{ other.name }}">{{ other.name }}</option>{% endfor %}
+                    </optgroup>
+                {% endfor %}
+                <option value="{{ other_name }}">{{ other_name }}</option>
+            </select>
+        </div>
+    {% else %}
+        <p>Kategorii „{{ category.name }}” nie ma żaden produkt, lista zakupów ani przepis.</p>
+    {% endif %}
+    {% if rule_count == 1 %}
+        <p class="pc-hint">Razem z kategorią zniknie jej reguła automatycznego wyboru.</p>
+    {% elif rule_count %}
+        <p class="pc-hint">Razem z kategorią znikną jej reguły automatycznego wyboru ({{ rule_count }}).</p>
+    {% endif %}
+    <div class="pc-form-actions">
+        <a class="btn btn-outline-secondary" href="{{ edit_url }}">Anuluj</a>
+        <button type="submit" class="btn btn-danger"><i class="bi bi-trash3" aria-hidden="true"></i> Usuń kategorię</button>
+    </div>
+</form>
+{% endblock %}

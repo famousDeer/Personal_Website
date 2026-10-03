@@ -610,3 +610,77 @@ class SentNotification(models.Model):
 
     def __str__(self):
         return f'{self.kind} {self.sent_at:%d.%m %H:%M}'
+
+
+class PantryCategory(models.Model):
+    """Kategoria spiżarni edytowana przez domowników (strona "Kategorie").
+
+    Produkty, pozycje list zakupów, składniki przepisów i grupy produktów
+    trzymają nazwę kategorii jako zwykły tekst, więc zmiana nazwy i usunięcie
+    przepisują te pola (cooking.services.categories). "Inne" nie jest w tej
+    tabeli: to stała kategoria zapasowa, zawsze ostatnia.
+    """
+
+    GROUP_FOOD = 'food'
+    GROUP_HOME = 'home'
+    GROUP_CHOICES = [
+        (GROUP_FOOD, 'Spożywcze'),
+        (GROUP_HOME, 'Dom'),
+    ]
+
+    name = models.CharField(max_length=60)
+    group = models.CharField(max_length=10, choices=GROUP_CHOICES, default=GROUP_FOOD)
+    position = models.PositiveIntegerField(default=0)
+    # Kategorie wbudowane mają kod, po którym "Przywróć domyślne reguły"
+    # rozpoznaje je także po zmianie nazwy. Dodane przez domowników: brak kodu.
+    code = models.SlugField(max_length=40, unique=True, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'pantry_categories'
+        # "food" < "home": grupa spożywcza zawsze pierwsza.
+        ordering = ['group', 'position', 'id']
+        constraints = [
+            models.UniqueConstraint(Lower('name'), name='unique_pantry_category_name_ci'),
+        ]
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def is_home(self):
+        return self.group == self.GROUP_HOME
+
+
+class PantryCategoryRule(models.Model):
+    """Reguła automatycznego wyboru kategorii.
+
+    Reguły sprawdzane są od góry (position), osobno dla tagów z bazy
+    Open Food Facts i dla słów kluczowych; wygrywa pierwsza pasująca.
+    Wzorce trzymamy po jednym w linii.
+    """
+
+    KIND_KEYWORDS = 'keywords'
+    KIND_TAGS = 'tags'
+    KIND_CHOICES = [
+        (KIND_KEYWORDS, 'Słowa kluczowe'),
+        (KIND_TAGS, 'Tagi Open Food Facts'),
+    ]
+
+    category = models.ForeignKey(PantryCategory, on_delete=models.CASCADE, related_name='rules')
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES, default=KIND_KEYWORDS)
+    patterns = models.TextField()
+    position = models.PositiveIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'pantry_category_rules'
+        ordering = ['kind', 'position', 'id']
+
+    def __str__(self):
+        return f'{self.category.name}: {self.get_kind_display()}'
+
+    @property
+    def pattern_list(self):
+        return [line for line in self.patterns.splitlines() if line.strip()]

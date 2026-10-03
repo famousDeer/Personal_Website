@@ -1,36 +1,6 @@
-# Kategorie spiżarni pogrupowane tak, jak pokazują się w formularzach.
-#
-# Nazwy są zapisywane jako zwykły tekst w PantryProduct.category,
-# ShoppingListItem.category i RecipeStepIngredient.category, więc zmiana
-# istniejącej nazwy wymaga migracji danych. Nowe kategorie można dopisywać
-# bez niej - istniejące produkty zachowują swoje.
+# Kategoria zapasowa: zawsze ostatnia i nie do usunięcia. Pozostałe kategorie
+# są w bazie i edytują je domownicy (cooking.services.categories).
 PANTRY_CATEGORY_OTHER = 'Inne'
-
-PANTRY_CATEGORY_GROUPS = (
-    ('Spożywcze', (
-        'Pieczywo',
-        'Nabiał',
-        'Mięso i ryby',
-        'Warzywa i owoce',
-        'Mrożonki',
-        'Produkty suche',
-        'Słodycze i przekąski',
-        'Przyprawy',
-        'Konserwy',
-        'Napoje',
-    )),
-    ('Dom', (
-        'Chemia domowa',
-        'Kosmetyki i higiena',
-        'Artykuły papierowe',
-        'Dla zwierząt',
-        'Leki i apteczka',
-    )),
-)
-
-PANTRY_CATEGORIES = tuple(
-    category for _, categories in PANTRY_CATEGORY_GROUPS for category in categories
-) + (PANTRY_CATEGORY_OTHER,)
 
 # Tymczasowo wyłączone na czas nauki użytkowników. Zmień na True, aby ponownie
 # włączyć automatyczną akcję po zeskanowaniu produktu.

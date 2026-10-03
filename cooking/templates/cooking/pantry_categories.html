@@ -1,0 +1,224 @@
+{% extends 'cooking/index.html' %}
+{% load ui %}
+
+{% block title %}Kategorie spiżarni{% endblock %}
+{% block cooking_editor_assets %}{% endblock %}
+
+{% block content_cooking %}
+{% url 'cooking:pantry' as pantry_url %}
+{% page_head title="Kategorie" eyebrow="Spiżarnia" icon="bi-tags" sub="Porządkują spiżarnię i listy zakupów. Reguły same podpowiadają kategorię nowemu produktowi – przy skanowaniu i przy dodawaniu bez kodu." back=pantry_url back_label="Wróć do spiżarni" %}{% endpage_head %}
+
+<div class="pc-page animate-fade-in-up">
+    <nav class="pantry-view-switch pc-tabs" aria-label="Sekcje strony kategorii" data-segmented>
+        <a href="{% url 'cooking:pantry-categories' %}" class="{% if tab == 'kategorie' %}is-active{% endif %}"
+           {% if tab == 'kategorie' %}aria-current="page"{% endif %}>
+            <i class="bi bi-tags" aria-hidden="true"></i> Kategorie
+            <span class="pantry-view-count">{{ category_total }}</span>
+        </a>
+        <a href="{% url 'cooking:pantry-categories' %}?tab=reguly" class="{% if tab == 'reguly' %}is-active{% endif %}"
+           {% if tab == 'reguly' %}aria-current="page"{% endif %}>
+            <i class="bi bi-magic" aria-hidden="true"></i> Reguły
+        </a>
+    </nav>
+
+{% if tab == 'kategorie' %}
+    <section class="pc-card" aria-labelledby="pc-add-title">
+        <h2 class="pc-card-title" id="pc-add-title">Nowa kategoria</h2>
+        <form class="pc-add" method="post" action="{% url 'cooking:pantry-category-add' %}">
+            {% csrf_token %}
+            <label class="visually-hidden" for="pc-new-name">Nazwa nowej kategorii</label>
+            <input id="pc-new-name" class="form-control" type="text" name="name" maxlength="60"
+                   autocomplete="off" placeholder="np. Kawa i herbata" required>
+            <label class="visually-hidden" for="pc-new-group">Grupa</label>
+            <select id="pc-new-group" class="form-select" name="group">
+                {% for value, label in group_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+            </select>
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-plus-lg" aria-hidden="true"></i> Dodaj
+            </button>
+        </form>
+        <p class="pc-hint">Grupa „Dom” to produkty niejadalne: kosmetyki z bazy nigdy nie trafią do kategorii spożywczej.</p>
+    </section>
+
+    {% for group in groups %}
+        <section class="pc-group" aria-labelledby="pc-group-{{ group.value }}">
+            <h2 class="pc-group-title" id="pc-group-{{ group.value }}">
+                {{ group.label }} <span>{{ group.categories|length }}</span>
+            </h2>
+            {% if group.categories %}
+                <ol class="pc-list">
+                    {% for category in group.categories %}
+                        <li class="pc-row" id="kategoria-{{ category.pk }}">
+                            <div class="pc-move">
+                                <form method="post" action="{% url 'cooking:pantry-category-move' category.pk %}">
+                                    {% csrf_token %}<input type="hidden" name="direction" value="up">
+                                    <button type="submit" class="pc-icon-btn" {% if forloop.first %}disabled{% endif %}
+                                            aria-label="Przesuń wyżej: {{ category.name }}"><i class="bi bi-chevron-up" aria-hidden="true"></i></button>
+                                </form>
+                                <form method="post" action="{% url 'cooking:pantry-category-move' category.pk %}">
+                                    {% csrf_token %}<input type="hidden" name="direction" value="down">
+                                    <button type="submit" class="pc-icon-btn" {% if forloop.last %}disabled{% endif %}
+                                            aria-label="Przesuń niżej: {{ category.name }}"><i class="bi bi-chevron-down" aria-hidden="true"></i></button>
+                                </form>
+                            </div>
+                            <a class="pc-row-main" href="{% url 'cooking:pantry-category-edit' category.pk %}">
+                                <span class="pc-row-name">{{ category.name }}</span>
+                                <span class="pc-row-meta">
+                                    {{ category.product_count|pl:"produkt,produkty,produktów" }}
+                                    <span aria-hidden="true">·</span>
+                                    {% if category.rule_count %}
+                                        {{ category.rule_count|pl:"reguła,reguły,reguł" }}
+                                    {% else %}
+                                        <span class="pc-warn">bez słów kluczowych</span>
+                                    {% endif %}
+                                </span>
+                            </a>
+                            <a class="pc-icon-btn" href="{% url 'cooking:pantry-category-edit' category.pk %}"
+                               aria-label="Edytuj: {{ category.name }}"><i class="bi bi-pencil" aria-hidden="true"></i></a>
+                            <a class="pc-icon-btn is-danger" href="{% url 'cooking:pantry-category-delete' category.pk %}"
+                               aria-label="Usuń: {{ category.name }}"><i class="bi bi-trash3" aria-hidden="true"></i></a>
+                        </li>
+                    {% endfor %}
+                </ol>
+            {% else %}
+                <p class="pc-empty">Brak kategorii w tej grupie.</p>
+            {% endif %}
+        </section>
+    {% endfor %}
+
+    <section class="pc-group" aria-labelledby="pc-group-fixed">
+        <h2 class="pc-group-title" id="pc-group-fixed">Zawsze na końcu</h2>
+        <ol class="pc-list">
+            <li class="pc-row is-fixed">
+                <span class="pc-fixed-icon"><i class="bi bi-lock" aria-hidden="true"></i></span>
+                <span class="pc-row-main">
+                    <span class="pc-row-name">{{ other_name }}</span>
+                    <span class="pc-row-meta">{{ other_count|pl:"produkt,produkty,produktów" }} · gdy żadna reguła nie pasuje</span>
+                </span>
+            </li>
+            {% if uncategorized_count %}
+                <li class="pc-row is-fixed">
+                    <span class="pc-fixed-icon"><i class="bi bi-dash-circle" aria-hidden="true"></i></span>
+                    <span class="pc-row-main">
+                        <span class="pc-row-name">Bez kategorii</span>
+                        <span class="pc-row-meta">{{ uncategorized_count|pl:"produkt,produkty,produktów" }}</span>
+                    </span>
+                </li>
+            {% endif %}
+        </ol>
+    </section>
+    <p class="pc-hint">
+        Kolejność to kolejność w formularzach i na listach zakupów bez wybranego sklepu.
+        Automatyczny wybór ma własną kolejność – w drugiej zakładce.
+    </p>
+
+{% else %}
+    <details class="pc-card pc-help" data-remember-open="pantry-categories-help" open>
+        <summary><i class="bi bi-info-circle" aria-hidden="true"></i> Jak działa automatyczny wybór i jak zapisać słowa kluczowe</summary>
+        <div class="pc-help-body">
+            <p>
+                Gdy skanujesz nowy kod albo dodajesz produkt bez kodu, aplikacja podpowiada kategorię – zawsze możesz ją zmienić.
+                Szuka słów kluczowych w <strong>nazwie produktu</strong>, a dla produktów z bazy Open Food Facts także w ich opisie
+                i kategoriach z bazy. Reguły sprawdzane są <strong>od góry</strong>: wygrywa pierwsza pasująca.
+            </p>
+            <h3>Zasady zapisu</h3>
+            <ul class="pc-rules-help">
+                <li><span class="pc-help-key">Przecinek</span> Oddziela słowa: <code>mleko, kefir, maślank*</code>. Można też pisać w osobnych liniach.</li>
+                <li><span class="pc-help-key">Całe słowo</span> <code>ser</code> trafi w „Ser żółty”, ale nie w „Serwetki”.</li>
+                <li><span class="pc-help-key">Gwiazdka</span> Na końcu oznacza początek słowa: <code>jogurt*</code> trafi w „jogurt”, „jogurty”, „jogurtowy”. Przydaje się przy polskiej odmianie: <code>kiełbas*</code> to „kiełbasa”, „kiełbasy”, „kiełbaski”.</li>
+                <li><span class="pc-help-key">Fraza</span> Kilka słów musi wystąpić w całości i w tej kolejności: <code>do zmywarki</code>, <code>papier toaletowy</code>.</li>
+                <li><span class="pc-help-key">Litery</span> Wielkość liter nie ma znaczenia, ale <strong>polskie i obce znaki tak</strong>: <code>żółty</code> to nie to samo co <code>zolty</code>. Wpisuj słowa tak, jak są pisane w danym języku.</li>
+                <li><span class="pc-help-key">Inne języki</span> Produkty z bazy mają nazwę po polsku, po angielsku albo w języku kraju producenta (często niemiecki lub czeski). Dopisz tłumaczenia do tej samej reguły: <code>mleko, milk, milch, mléko</code>.</li>
+                <li><span class="pc-help-key">Myślniki</span> Myślnik, kropka i inne znaki liczą się jak spacja: <code>coca-cola</code> = <code>coca cola</code>.</li>
+                <li><span class="pc-help-key">Kolejność</span> Rozstrzyga konflikty: „Herbatniki” trafiają do słodyczy, bo reguła z <code>herbatnik*</code> stoi wyżej niż napoje z <code>herbat*</code>. Słowo ogólne umieszczaj niżej niż szczegółowe.</li>
+            </ul>
+        </div>
+    </details>
+
+    <section class="pc-card" aria-labelledby="pc-test-title">
+        <h2 class="pc-card-title" id="pc-test-title">Sprawdź nazwę</h2>
+        <form class="pc-add" method="get" action="{% url 'cooking:pantry-categories' %}#pc-test-title">
+            <input type="hidden" name="tab" value="reguly">
+            <label class="visually-hidden" for="pc-test-name">Nazwa produktu do sprawdzenia</label>
+            <input id="pc-test-name" class="form-control" type="search" name="sprawdz" maxlength="160"
+                   value="{{ test_name }}" placeholder="np. Herbatniki maślane" autocomplete="off">
+            <button type="submit" class="btn btn-outline-primary"><i class="bi bi-search" aria-hidden="true"></i> Sprawdź</button>
+        </form>
+        {% if test_result %}
+            <div class="pc-test-result {% if test_result.match %}is-match{% else %}is-miss{% endif %}" role="status">
+                {% if test_result.match %}
+                    <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
+                    <span>
+                        „{{ test_result.name }}” → <strong>{{ test_result.match.category }}</strong><br>
+                        <small>reguła nr {{ test_result.match.position }}, pasuje <code>{{ test_result.match.pattern }}</code>
+                        {% if test_result.match.rule_id %}· <a href="#regula-{{ test_result.match.rule_id }}">pokaż regułę</a>{% endif %}</small>
+                    </span>
+                {% else %}
+                    <i class="bi bi-question-circle-fill" aria-hidden="true"></i>
+                    <span>
+                        Żadne słowo kluczowe nie pasuje do „{{ test_result.name }}” – produkt dostanie kategorię <strong>{{ other_name }}</strong>.<br>
+                        <small>Dopisz słowo do reguły właściwej kategorii.</small>
+                    </span>
+                {% endif %}
+            </div>
+        {% endif %}
+    </section>
+
+    <section class="pc-group" aria-labelledby="pc-keywords-title">
+        <div class="pc-group-head">
+            <h2 class="pc-group-title" id="pc-keywords-title">Słowa kluczowe <span>{{ keyword_rules|length }}</span></h2>
+            <a class="btn btn-primary btn-sm" href="{% url 'cooking:pantry-category-rule-add' %}?rodzaj=slowa">
+                <i class="bi bi-plus-lg" aria-hidden="true"></i> Dodaj regułę
+            </a>
+        </div>
+        {% include 'cooking/partials/category_rule_list.html' with items=keyword_rules match=test_result.match empty="Brak reguł – żaden produkt nie dostanie kategorii z nazwy." %}
+    </section>
+
+    <details class="pc-card pc-advanced" {% if request.GET.zaawansowane %}open{% endif %}>
+        <summary><i class="bi bi-sliders" aria-hidden="true"></i> Zaawansowane: tagi Open Food Facts <span class="pantry-view-count">{{ tag_rules|length }}</span></summary>
+        <div class="pc-help-body">
+            <p>
+                Produkty z bazy Open Food Facts mają tagi kategorii, np. <code>en:frozen-foods</code> albo <code>en:breads</code>.
+                Te reguły są sprawdzane <strong>przed</strong> słowami kluczowymi i rozpoznają produkt niezależnie od języka nazwy.
+                Tag wpisuje się z prefiksem języka albo bez (<code>en:dairies</code> = <code>dairies</code>);
+                listę tagów znajdziesz na <a href="https://world.openfoodfacts.org/categories" target="_blank" rel="noopener">world.openfoodfacts.org/categories</a>.
+            </p>
+            <div class="pc-group-head">
+                <span class="pc-hint mb-0">Wygrywa pierwsza pasująca reguła od góry.</span>
+                <a class="btn btn-outline-primary btn-sm" href="{% url 'cooking:pantry-category-rule-add' %}?rodzaj=tagi">
+                    <i class="bi bi-plus-lg" aria-hidden="true"></i> Dodaj regułę tagów
+                </a>
+            </div>
+            {% include 'cooking/partials/category_rule_list.html' with items=tag_rules match=None empty="Brak reguł tagów." %}
+        </div>
+    </details>
+
+    <form class="pc-restore" method="post" action="{% url 'cooking:pantry-category-rules-restore' %}"
+          data-confirm="Przywrócić domyślne reguły?"
+          data-confirm-detail="Słowa kluczowe, tagi i kolejność reguł wrócą do stanu początkowego. Kategorie i produkty zostają bez zmian."
+          data-confirm-action="Przywróć">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-link btn-sm"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Przywróć domyślne reguły</button>
+    </form>
+{% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Pomoc zwinięta raz zostaje zwinięta (tylko w tej przeglądarce).
+    document.querySelectorAll('details[data-remember-open]').forEach((details) => {
+        const key = `ui:${details.dataset.rememberOpen}`;
+        try {
+            if (localStorage.getItem(key) === 'closed') {
+                details.open = false;
+            }
+        } catch (error) { /* tryb prywatny */ }
+        details.addEventListener('toggle', () => {
+            try {
+                localStorage.setItem(key, details.open ? 'open' : 'closed');
+            } catch (error) { /* tryb prywatny */ }
+        });
+    });
+</script>
+{% endblock %}

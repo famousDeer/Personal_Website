@@ -324,6 +324,10 @@ else:
         }
     }
 
+# Jak często (w sekundach) proces sprawdza, czy ktoś zmienił kategorie
+# spiżarni albo reguły (cooking.services.categories). W testach od razu.
+PANTRY_CATEGORIES_RECHECK_SECONDS = 0 if RUNNING_TESTS else 2
+
 ALPHA_VANTAGE_API_KEY = os.environ.get('ALPHA_VANTAGE_API_KEY', '')
 OPENFIGI_API_KEY = os.environ.get('OPENFIGI_API_KEY', '')
 STOOQ_API_KEY = os.environ.get('STOOQ_API_KEY', '')

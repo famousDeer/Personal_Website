@@ -4,7 +4,8 @@ from django import template
 from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
 
-from ..constants import PANTRY_CATEGORY_GROUPS, PANTRY_CATEGORY_OTHER
+from ..constants import PANTRY_CATEGORY_OTHER
+from ..services.categories import category_groups
 
 register = template.Library()
 
@@ -24,8 +25,8 @@ def pantry_category_options(selected=''):
 
     Przy 16 pozycjach płaska lista przestaje być czytelna, a grupa od razu
     mówi, gdzie szukać. Tag zastępuje pętlę powtarzaną w kilkunastu
-    szablonach, więc kolejność i grupy są zdefiniowane w jednym miejscu
-    (cooking/constants.py).
+    szablonach. Kategorie i ich kolejność edytują domownicy na stronie
+    "Kategorie" w spiżarni (cooking.services.categories).
     """
     selected = str(selected or '')
     groups = format_html_join(
@@ -33,7 +34,7 @@ def pantry_category_options(selected=''):
         '<optgroup label="{}">{}</optgroup>',
         (
             (label, mark_safe(''.join(_option(category, selected) for category in categories)))
-            for label, categories in PANTRY_CATEGORY_GROUPS
+            for label, categories in category_groups()
         ),
     )
     return mark_safe(groups + _option(PANTRY_CATEGORY_OTHER, selected))

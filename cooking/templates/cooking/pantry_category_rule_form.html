@@ -1,0 +1,117 @@
+{% extends 'cooking/index.html' %}
+{% load ui %}
+
+{% block title %}{% if rule.pk %}Edytuj regułę{% else %}Nowa reguła{% endif %}{% endblock %}
+{% block cooking_editor_assets %}{% endblock %}
+
+{% block content_cooking %}
+{% url 'cooking:pantry-categories' as categories_url %}
+{% with back=categories_url|add:"?tab=reguly" %}
+{% if is_tags %}
+    {% page_head title=rule.pk|yesno:"Edytuj regułę tagów,Nowa reguła tagów" eyebrow="Kategorie" icon="bi-tags" sub="Tagi kategorii z bazy Open Food Facts. Sprawdzane przed słowami kluczowymi." back=back back_label="Wróć do reguł" %}{% endpage_head %}
+{% else %}
+    {% page_head title=rule.pk|yesno:"Edytuj regułę,Nowa reguła" eyebrow="Kategorie" icon="bi-tags" sub="Produkt, w którego nazwie pojawi się jedno z tych słów, dostanie wybraną kategorię." back=back back_label="Wróć do reguł" %}{% endpage_head %}
+{% endif %}
+
+<form method="post" class="pc-card pc-form animate-fade-in-up" novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="rodzaj" value="{{ kind_slug }}">
+
+    <div class="mb-3">
+        <label class="form-label fw-bold" for="rule-category">Kategoria</label>
+        <select class="form-select" id="rule-category" name="category" required>
+            <option value="">Wybierz kategorię…</option>
+            {% regroup categories by get_group_display as grouped %}
+            {% for group in grouped %}
+                <optgroup label="{{ group.grouper }}">
+                    {% for category in group.list %}
+                        <option value="{{ category.pk }}" {% if form_values.category == category.pk|stringformat:"d" %}selected{% endif %}>{{ category.name }}</option>
+                    {% endfor %}
+                </optgroup>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="mb-2">
+        <label class="form-label fw-bold" for="rule-patterns">{% if is_tags %}Tagi{% else %}Słowa kluczowe{% endif %}</label>
+        <textarea class="form-control pc-patterns" id="rule-patterns" name="patterns" rows="5" required
+                  aria-describedby="rule-patterns-help"
+                  placeholder="{% if is_tags %}en:coffees, en:teas{% else %}kawa, kawy, coffee, kaffee, káva{% endif %}"
+                  data-pattern-input data-kind="{{ kind }}">{{ form_values.patterns }}</textarea>
+    </div>
+    <div class="pc-pattern-preview" data-pattern-preview aria-live="polite"></div>
+    {% if is_tags %}
+        <ul class="pc-rules-help pc-rules-help-compact" id="rule-patterns-help">
+            <li>Oddzielaj przecinkami. Prefiks języka (<code>en:</code>) można pominąć.</li>
+            <li>Tag pasuje tylko w całości, np. <code>frozen-foods</code>. Produkt ma też tagi kategorii nadrzędnych, więc wystarczy tag ogólny.</li>
+        </ul>
+    {% else %}
+        <ul class="pc-rules-help pc-rules-help-compact" id="rule-patterns-help">
+            <li>Oddzielaj przecinkami. Wielkość liter nie ma znaczenia, polskie znaki – tak.</li>
+            <li><code>ser</code> to całe słowo, <code>jogurt*</code> – początek słowa (jogurty, jogurtowy). Fraza musi wystąpić w całości: <code>do zmywarki</code>.</li>
+            <li>Dopisz nazwy w innych językach, bo produkty z bazy często mają nazwę angielską, niemiecką albo czeską: <code>mleko, milk, milch, mléko</code>.</li>
+        </ul>
+    {% endif %}
+
+    <div class="mb-4 mt-3">
+        <label class="form-label fw-bold" for="rule-position">Miejsce na liście</label>
+        <select class="form-select" id="rule-position" name="position" aria-describedby="rule-position-help">
+            {% for number in positions %}
+                <option value="{{ number }}" {% if form_values.position == number|stringformat:"d" %}selected{% endif %}>
+                    {{ number }}{% if forloop.first %} – sprawdzana jako pierwsza{% elif forloop.last %} – sprawdzana jako ostatnia{% endif %}
+                </option>
+            {% endfor %}
+        </select>
+        <div class="form-text" id="rule-position-help">Reguły sprawdzane są od góry, wygrywa pierwsza pasująca. Szczegółowe słowa stawiaj wyżej niż ogólne.</div>
+    </div>
+
+    <div class="pc-form-actions">
+        <a class="btn btn-outline-secondary" href="{{ back }}">Anuluj</a>
+        <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg" aria-hidden="true"></i> Zapisz regułę</button>
+    </div>
+</form>
+{% endwith %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Podgląd: jak aplikacja odczyta wpisane słowa (te same zasady co serwer).
+    (() => {
+        const input = document.querySelector('[data-pattern-input]');
+        const preview = document.querySelector('[data-pattern-preview]');
+        if (!input || !preview) {
+            return;
+        }
+        const isTags = input.dataset.kind === 'tags';
+        const normalizeWord = (value) => {
+            const prefix = value.endsWith('*');
+            const body = value.replace(/\*+$/, '').toLocaleLowerCase('pl-PL').replace(/[^\p{L}\p{N}_]+/gu, ' ').trim().replace(/\s+/g, ' ');
+            return body ? body + (prefix ? '*' : '') : '';
+        };
+        const normalizeTag = (value) => value.toLowerCase().trim().replace(/^[a-z]{2,3}:/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        const render = () => {
+            const parts = input.value.split(/[,;\n]+/).map((part) => part.trim()).filter(Boolean);
+            preview.replaceChildren();
+            const seen = new Set();
+            parts.forEach((part) => {
+                const chip = document.createElement('span');
+                const badStar = !isTags && /\*(?!$)|\*\*$/.test(part);
+                const normalized = isTags ? normalizeTag(part) : normalizeWord(part);
+                const tooShort = normalized.replace(/[*\s-]/g, '').length < 2;
+                chip.className = 'pc-chip' + (badStar || tooShort ? ' is-error' : '') + (seen.has(normalized) ? ' is-dup' : '');
+                chip.textContent = badStar ? `${part} – gwiazdka tylko na końcu` : (tooShort ? `${part} – za krótkie` : normalized);
+                seen.add(normalized);
+                preview.append(chip);
+            });
+            if (parts.length) {
+                const count = document.createElement('span');
+                count.className = 'pc-preview-count';
+                count.textContent = `${seen.size} ${isTags ? 'tag.' : 'sł.'}`;
+                preview.append(count);
+            }
+        };
+        input.addEventListener('input', render);
+        render();
+    })();
+</script>
+{% endblock %}

@@ -41,7 +41,7 @@ from django.core.management import call_command
 from django.template import Context, Template
 from django.test import SimpleTestCase
 
-from .constants import PANTRY_CATEGORIES, PANTRY_CATEGORY_GROUPS
+from .services.categories import category_groups, category_names
 from .services.product_catalog import (
     CatalogProductNotFound,
     CatalogUnavailable,
@@ -538,7 +538,7 @@ class PantryTests(TestCase):
         self.assertContains(response, 'Cukier')
         self.assertEqual(
             [group['name'] for group in response.context['product_groups']],
-            # Kolejność grup idzie za PANTRY_CATEGORY_GROUPS, produkty bez kategorii na końcu.
+            # Kolejność grup idzie za kolejnością kategorii, produkty bez kategorii na końcu.
             ['Nabiał', 'Produkty suche', 'Bez kategorii'],
         )
 
@@ -2189,15 +2189,16 @@ class CookModeTests(TestCase):
 
 
 
-class PantryCategoryListTests(SimpleTestCase):
+class PantryCategoryListTests(TestCase):
     def test_categories_are_grouped_and_other_is_last(self):
-        grouped = [category for _, categories in PANTRY_CATEGORY_GROUPS for category in categories]
-        self.assertEqual(list(PANTRY_CATEGORIES), [*grouped, 'Inne'])
-        self.assertEqual(len(set(PANTRY_CATEGORIES)), len(PANTRY_CATEGORIES))
-        # Stare nazwy muszą zostać - są zapisane jako tekst w produktach.
+        grouped = [category for _, categories in category_groups() for category in categories]
+        self.assertEqual(list(category_names()), [*grouped, 'Inne'])
+        self.assertEqual(len(set(category_names())), len(category_names()))
+        # Migracja wpisuje do bazy dokładnie dotychczasowe nazwy - są zapisane
+        # jako tekst w produktach.
         for legacy in ['Produkty suche', 'Nabiał', 'Warzywa i owoce', 'Mięso i ryby', 'Mrożonki',
                        'Przyprawy', 'Konserwy', 'Napoje', 'Chemia domowa', 'Inne']:
-            self.assertIn(legacy, PANTRY_CATEGORIES)
+            self.assertIn(legacy, category_names())
 
     def test_options_tag_renders_groups_and_marks_selection(self):
         html = Template('{% load pantry_extras %}{% pantry_category_options value %}').render(
@@ -2217,7 +2218,7 @@ class PantryCategoryListTests(SimpleTestCase):
         self.assertNotIn(' selected', html)
 
 
-class PantryCategoryMappingTests(SimpleTestCase):
+class PantryCategoryMappingTests(TestCase):
     """Mapowanie na łańcuchach tagów takich, jakie zwraca API: tag i wszyscy
     jego przodkowie z taksonomii openfoodfacts-server."""
 

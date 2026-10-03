@@ -21,7 +21,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views import View
 
-from .constants import PANTRY_CATEGORY_GROUPS, PANTRY_CATEGORY_OTHER
+from .services.categories import category_groups_json
 from .models import PANTRY_UNIT_CHOICES, PushSubscription, ShoppingList
 from .services.polish import completion_message
 from .services.shopping_sync import (
@@ -103,10 +103,9 @@ class ShoppingAppView(View):
                 'pushSubscribeUrl': reverse('cooking:shopping-api-push-subscribe'),
                 'pushUnsubscribeUrl': reverse('cooking:shopping-api-push-unsubscribe'),
                 'units': [{'value': value, 'label': label} for value, label in PANTRY_UNIT_CHOICES],
-                'categoryGroups': [
-                    {'label': label, 'categories': list(categories)}
-                    for label, categories in PANTRY_CATEGORY_GROUPS
-                ] + [{'label': '', 'categories': [PANTRY_CATEGORY_OTHER]}],
+                # Zapas na pierwsze uruchomienie; aktualna lista przychodzi
+                # w każdej synchronizacji (snapshot), bo domownicy ją edytują.
+                'categoryGroups': category_groups_json(),
             },
         })
         response['Cache-Control'] = 'no-cache'

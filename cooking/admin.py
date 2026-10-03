@@ -1,6 +1,8 @@
 from django.contrib import admin
 
 from .models import (
+    PantryCategory,
+    PantryCategoryRule,
     PantryMovement,
     PantryProduct,
     ProductCatalogEntry,
@@ -96,3 +98,20 @@ class ShoppingListItemAdmin(admin.ModelAdmin):
     list_display = ('name', 'shopping_list', 'quantity', 'unit', 'category', 'is_purchased')
     search_fields = ('name', 'shopping_list__title', 'note')
     list_filter = ('unit', 'category', 'is_purchased')
+
+
+class PantryCategoryRuleInline(admin.TabularInline):
+    model = PantryCategoryRule
+    extra = 0
+    fields = ('kind', 'position', 'patterns')
+
+
+@admin.register(PantryCategory)
+class PantryCategoryAdmin(admin.ModelAdmin):
+    """Zwykła edycja jest na stronie "Kategorie" w spiżarni - tam zmiana nazwy
+    przepisuje ją też w produktach i listach. Zmiana nazwy tutaj tego nie robi."""
+
+    list_display = ('name', 'group', 'position', 'code')
+    list_filter = ('group',)
+    ordering = ('group', 'position')
+    inlines = [PantryCategoryRuleInline]

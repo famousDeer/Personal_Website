@@ -32,7 +32,14 @@
     const OP_LIST_CREATE = 'list.create';
 
     const unitLabels = Object.fromEntries(config.units.map((unit) => [unit.value, unit.label]));
-    const categoryOrder = config.categoryGroups.flatMap((group) => group.categories);
+    // Kategorie edytują domownicy na stronie spiżarni, więc aktualna lista
+    // przychodzi z każdą synchronizacją; ta z powłoki to tylko zapas.
+    function categoryGroups() {
+        return (state.snapshot && state.snapshot.categoryGroups) || config.categoryGroups;
+    }
+    function categoryOrder() {
+        return categoryGroups().flatMap((group) => group.categories);
+    }
     const timeFormat = new Intl.DateTimeFormat('pl-PL', { hour: '2-digit', minute: '2-digit' });
     const dateFormat = new Intl.DateTimeFormat('pl-PL', { day: 'numeric', month: 'numeric' });
 
@@ -525,6 +532,7 @@
 
     async function acceptServerData(data) {
         state.snapshot = data.snapshot;
+        renderCategoryOptions();
         state.meta.user = data.user;
         state.meta.csrfToken = data.csrf_token;
         state.meta.lastSyncAt = new Date().toISOString();
@@ -752,7 +760,7 @@
             if (!category) {
                 return 10000;
             }
-            const index = categoryOrder.indexOf(category);
+            const index = categoryOrder().indexOf(category);
             return (shopOrder && shopOrder.length ? 1000 : 0) + (index === -1 ? 500 : index);
         };
         return [...groups.entries()]
@@ -1657,10 +1665,23 @@
     const listError = el('[data-list-error]');
 
     addUnit.innerHTML = config.units.map((unit) => `<option value="${escapeHtml(unit.value)}">${escapeHtml(unit.label)}</option>`).join('');
-    addCategory.innerHTML = '<option value="">Bez kategorii</option>' + config.categoryGroups.map((group) => {
-        const options = group.categories.map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`).join('');
-        return group.label ? `<optgroup label="${escapeHtml(group.label)}">${options}</optgroup>` : options;
-    }).join('');
+    let renderedCategoryKey = '';
+    function renderCategoryOptions() {
+        const groups = categoryGroups();
+        const key = JSON.stringify(groups);
+        if (key === renderedCategoryKey) {
+            return;
+        }
+        renderedCategoryKey = key;
+        const selected = addCategory.value;
+        addCategory.innerHTML = '<option value="">Bez kategorii</option>' + groups.map((group) => {
+            const options = group.categories.map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`).join('');
+            return group.label ? `<optgroup label="${escapeHtml(group.label)}">${options}</optgroup>` : options;
+        }).join('');
+        // Wybrana kategoria mogła zniknąć (usunięta albo przemianowana).
+        addCategory.value = groups.some((group) => group.categories.includes(selected)) ? selected : '';
+    }
+    renderCategoryOptions();
 
     function syncAddUnitStep() {
         // min razem ze step: kroki liczą się od min (0.01 + 1 = 1.01, nie 1).
@@ -2495,6 +2516,7 @@
         try {
             state.storageOk = await store.persistent();
             state.snapshot = (await store.get('snapshot')) || null;
+            renderCategoryOptions();
             state.meta = { ...state.meta, ...((await store.get('meta')) || {}) };
             state.outbox = ((await store.outboxAll()) || []).sort((a, b) => a.seq - b.seq);
         } catch (error) {

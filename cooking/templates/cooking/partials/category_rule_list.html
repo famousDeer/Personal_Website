@@ -1,0 +1,60 @@
+{% comment %} Lista reguł automatycznego wyboru kategorii (strona "Kategorie").
+   Parametry: items - [{rule, number, patterns}], match - wynik "Sprawdź nazwę"
+   (podświetla trafioną regułę), empty - tekst dla pustej listy. {% endcomment %}
+{% if items %}
+    <ol class="pc-rule-list">
+        {% for item in items %}
+            {% with rule=item.rule %}
+            <li class="pc-rule {% if match and match.rule_id == rule.pk %}is-match{% endif %}" id="regula-{{ rule.pk }}">
+                <div class="pc-rule-head">
+                    <span class="pc-rule-num" aria-label="Reguła numer {{ item.number }}">{{ item.number }}</span>
+                    <a class="pc-rule-target" href="{% url 'cooking:pantry-category-rule-edit' rule.pk %}">
+                        <i class="bi bi-arrow-right-short" aria-hidden="true"></i>
+                        <strong>{{ rule.category.name }}</strong>
+                    </a>
+                    <div class="pc-rule-actions">
+                        <div class="pc-move">
+                            <form method="post" action="{% url 'cooking:pantry-category-rule-move' rule.pk %}">
+                                {% csrf_token %}<input type="hidden" name="direction" value="up">
+                                <button type="submit" class="pc-icon-btn" {% if forloop.first %}disabled{% endif %}
+                                        aria-label="Sprawdzaj wcześniej: reguła {{ item.number }}"><i class="bi bi-chevron-up" aria-hidden="true"></i></button>
+                            </form>
+                            <form method="post" action="{% url 'cooking:pantry-category-rule-move' rule.pk %}">
+                                {% csrf_token %}<input type="hidden" name="direction" value="down">
+                                <button type="submit" class="pc-icon-btn" {% if forloop.last %}disabled{% endif %}
+                                        aria-label="Sprawdzaj później: reguła {{ item.number }}"><i class="bi bi-chevron-down" aria-hidden="true"></i></button>
+                            </form>
+                        </div>
+                        <a class="pc-icon-btn" href="{% url 'cooking:pantry-category-rule-edit' rule.pk %}"
+                           aria-label="Edytuj regułę {{ item.number }}"><i class="bi bi-pencil" aria-hidden="true"></i></a>
+                        <form method="post" action="{% url 'cooking:pantry-category-rule-delete' rule.pk %}"
+                              data-confirm="Usunąć regułę nr {{ item.number }}?"
+                              data-confirm-detail="Kategoria „{{ rule.category.name }}” zostaje. Produkty, które już ją mają, też."
+                              data-confirm-action="Usuń regułę">
+                            {% csrf_token %}
+                            <button type="submit" class="pc-icon-btn is-danger" aria-label="Usuń regułę {{ item.number }}"><i class="bi bi-trash3" aria-hidden="true"></i></button>
+                        </form>
+                    </div>
+                </div>
+                <ul class="pc-chips" aria-label="Wzorce reguły {{ item.number }}">
+                    {% for pattern in item.patterns|slice:":14" %}
+                        <li class="pc-chip {% if match and match.rule_id == rule.pk and match.pattern == pattern %}is-hit{% endif %}">{{ pattern }}</li>
+                    {% endfor %}
+                </ul>
+                {% if item.patterns|length > 14 %}
+                    <details class="pc-more" {% if match and match.rule_id == rule.pk %}open{% endif %}>
+                        <summary>+{{ item.patterns|length|add:"-14" }} więcej</summary>
+                        <ul class="pc-chips">
+                            {% for pattern in item.patterns|slice:"14:" %}
+                                <li class="pc-chip {% if match and match.rule_id == rule.pk and match.pattern == pattern %}is-hit{% endif %}">{{ pattern }}</li>
+                            {% endfor %}
+                        </ul>
+                    </details>
+                {% endif %}
+            </li>
+            {% endwith %}
+        {% endfor %}
+    </ol>
+{% else %}
+    <p class="pc-empty">{{ empty }}</p>
+{% endif %}

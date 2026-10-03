@@ -23,7 +23,6 @@ from utils.navigation import redirect_back
 from utils.undo import delete_with_undo
 
 from .constants import (
-    PANTRY_CATEGORIES,
     PANTRY_CATEGORY_OTHER,
     PANTRY_SCANNER_AUTO_ACTION_ENABLED,
     PANTRY_SCANNER_AUTO_ACTION_TIMEOUT_MS,
@@ -46,6 +45,7 @@ from .services.product_groups import (
     restock_target,
     suggest_groups,
 )
+from .services.categories import category_names
 from .services.product_catalog import (
     cached_open_food_facts_entry,
     household_catalog_entry,
@@ -138,7 +138,7 @@ def parse_pantry_category(value, default=''):
     category = str(value or '').strip()
     if not category:
         return default
-    if category not in PANTRY_CATEGORIES:
+    if category not in category_names():
         raise ValueError('Wybierz poprawną kategorię produktu.')
     return category
 
@@ -427,7 +427,7 @@ def parse_shopping_items_from_request(request):
 
 def get_pantry_form_context(**extra_context):
     context = {
-        'categories': PANTRY_CATEGORIES,
+        'categories': category_names(),
         'units': PantryProduct.UNIT_CHOICES,
         'today': timezone.localdate(),
         'product_groups': ProductGroup.objects.all(),
@@ -459,7 +459,7 @@ def pantry_rows_for_list(items):
 
 def get_shopping_form_context(request, **extra_context):
     context = {
-        'categories': PANTRY_CATEGORIES,
+        'categories': category_names(),
         'units': PantryProduct.UNIT_CHOICES,
         'pantry_products': PantryProduct.objects.all(),
     }
@@ -473,7 +473,7 @@ def get_recipe_form_context(**extra_context):
         'meal_types': MEAL_TYPES,
         'dish_types': DISH_TYPES,
         'units': PantryProduct.UNIT_CHOICES,
-        'pantry_categories': PANTRY_CATEGORIES,
+        'pantry_categories': category_names(),
     }
     context.update(extra_context)
     return context
@@ -768,7 +768,7 @@ def pantry_cards_by_category(product_cards):
         category = card['product'].category or 'Bez kategorii'
         buckets.setdefault(category, []).append(card)
 
-    category_order = [*PANTRY_CATEGORIES, 'Bez kategorii']
+    category_order = [*category_names(), 'Bez kategorii']
     ordered = [category for category in category_order if category in buckets] + [
         category for category in sorted(buckets) if category not in category_order
     ]
@@ -955,7 +955,7 @@ class PantryListView(LoginRequiredMixin, View):
             # byłyby tylko szumem.
             'proposals': suggest_groups(loose_products) if view_mode == 'grupy' else [],
             'loose_products': sorted(loose_products, key=lambda item: item.name) if view_mode == 'grupy' else [],
-            'categories': PANTRY_CATEGORIES,
+            'categories': category_names(),
             'units': PantryProduct.UNIT_CHOICES,
             'current_search': search_query,
             'current_status': status_filter,
@@ -2423,7 +2423,7 @@ class CookView(LoginRequiredMixin, View):
             'selected_recipe': selected_recipe,
             'pantry_products': PantryProduct.objects.all(),
             'units': PantryProduct.UNIT_CHOICES,
-            'categories': PANTRY_CATEGORIES,
+            'categories': category_names(),
         })
 
     def post(self, request):
@@ -2534,7 +2534,7 @@ class CookView(LoginRequiredMixin, View):
                     'selected_recipe': recipe,
                     'pantry_products': PantryProduct.objects.all(),
                     'units': PantryProduct.UNIT_CHOICES,
-                    'categories': PANTRY_CATEGORIES,
+                    'categories': category_names(),
                     'form_rows': zip(product_names, quantities, units, categories),
                 })
 
