@@ -569,11 +569,25 @@ foreground, after each change and every 30 s while open.
   list is finished.
 - **Pantry in the phone.** The app has a second screen with the whole pantry, saved
   along with the lists, so stock, search and the barcode scanner work without the
-  server. Scanning a known product offline takes one package off the stock (the
-  `pantry.movement` operation syncs later); an unknown barcode can only be added at
-  home. "Dopisz do listy" puts a product straight onto the active list, in pieces (see
+  server. "Dopisz do listy" puts a product straight onto the active list, in pieces (see
   the section above); the snapshot carries `add_quantity`/`add_unit`, so the phone and
   the server always agree on what one tap adds.
+- **Finding products offline.** Search matches name, brand group, category and barcode
+  digits, ignoring Polish characters ("maslo" finds "Masło"). Filter chips narrow the
+  list by stock (*Do kupienia* = empty or low, without "nie kupuję ponownie" products;
+  *Brak*, *Mało*, *Jest*, *Na liście*), a select narrows it by category, and results are
+  grouped by category. Counts on the chips follow the search and category; the chosen
+  filter and category are remembered in the phone.
+- **Scanning while shopping.** A known barcode offers *Kupiono* and *Zużyto*.
+  *Kupiono* works on the active list: an unchecked item for the product (same product,
+  its brand group or the same name) is checked off; an item already in the basket gets
+  one more piece; otherwise the product is added to the list as bought (`item.add` with
+  `data.product` + `item.set_purchased`, one purchase = `buy_quantity`/`buy_unit` from the
+  snapshot). With no active list, one is created first (`list.create`). The pantry
+  stock shown in the phone changes at once. `item.set_purchased` may carry the scanned
+  `product`: a brand-group item then restocks the scanned brand instead of the brand
+  bought last; an item linked to a different product keeps its link. *Zużyto* takes one
+  package off the stock (`pantry.movement`). An unknown barcode can only be added at home.
 
 ## Push notifications
 

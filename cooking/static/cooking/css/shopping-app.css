@@ -462,6 +462,106 @@ button:disabled { cursor: not-allowed; }
     font-size: var(--fs-callout);
 }
 
+/* Filtry spiżarni: stan (przewijane chipy), kategoria, wyczyść. */
+.sa-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2);
+    margin: 0 0 var(--sp-1);
+}
+
+.sa-filter-chips {
+    display: flex;
+    flex: 1 0 100%;
+    gap: 6px;
+    margin: 0 calc(var(--sp-4) * -1);
+    padding: 2px var(--sp-4) 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+.sa-filter-chips::-webkit-scrollbar { display: none; }
+
+.sa-filter-chip {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 6px;
+    min-height: 40px;
+    padding: 0 var(--sp-3);
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-pill);
+    background: var(--surface-1);
+    color: var(--ink-2);
+    font-size: var(--fs-sm);
+    font-weight: 650;
+    white-space: nowrap;
+    transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+                transform var(--dur-press) var(--ease-out);
+}
+
+.sa-filter-chip span {
+    min-width: 20px;
+    padding: 0 6px;
+    border-radius: var(--r-pill);
+    background: var(--surface-3);
+    color: var(--ink-3);
+    font-size: var(--fs-caption);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+}
+
+.sa-filter-chip.is-active {
+    border-color: transparent;
+    background: var(--brand-700);
+    color: var(--ink-on-brand);
+}
+
+.sa-filter-chip.is-active span { background: rgba(255, 255, 255, 0.22); color: inherit; }
+.sa-filter-chip:active { transform: scale(0.97); }
+.sa-filter-category {
+    position: relative;
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    min-width: 0;
+    color: var(--ink-3);
+}
+
+.sa-filter-category > i {
+    position: absolute;
+    left: var(--sp-3);
+    pointer-events: none;
+}
+
+.sa-filter-category select {
+    width: 100%;
+    min-height: 40px;
+    padding: 0 var(--sp-6) 0 calc(var(--sp-3) + 1.4rem);
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-pill);
+    background: var(--surface-1);
+    color: var(--ink-1);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    text-overflow: ellipsis;
+}
+
+.sa-filter-clear {
+    min-height: 40px;
+    padding: 0 var(--sp-3);
+    border: 0;
+    border-radius: var(--r-pill);
+    background: transparent;
+    color: var(--income-ink);
+    font-size: var(--fs-sm);
+    font-weight: 700;
+}
+
+.sa-empty .sa-secondary { margin-top: var(--sp-3); padding: 0 var(--sp-4); height: 44px; }
+
 .sa-pantry-item .sa-item-body { padding-left: var(--sp-4); cursor: default; }
 .sa-pantry-actions { display: flex; gap: 4px; padding-right: var(--sp-3); }
 
@@ -521,6 +621,14 @@ button:disabled { cursor: not-allowed; }
 
 .sa-scanner-sheet strong { font-size: var(--fs-h3); color: var(--ink-1); }
 .sa-scanner-sheet p { margin: 0; font-size: var(--fs-sm); color: var(--ink-3); }
+.sa-scanner-sheet .sa-scanner-list-hint {
+    display: flex;
+    gap: var(--sp-2);
+    padding: var(--sp-2) var(--sp-3);
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+    color: var(--ink-2);
+}
 .sa-scanner-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .sa-scanner-actions .sa-primary,
 .sa-scanner-actions .sa-secondary { flex: 1 1 140px; height: 46px; }
@@ -817,6 +925,11 @@ button:disabled { cursor: not-allowed; }
 }
 
 .sa-footer[hidden] { display: none; }
+/* .sa-primary/.sa-secondary mają display: inline-flex, co nadpisuje atrybut
+   hidden - w spiżarni zostawały wtedy trzy ściśnięte przyciski zamiast
+   samego "Skanuj kod". */
+.sa-footer > [hidden] { display: none; }
+.sa-footer > .sa-secondary:only-of-type:not(.is-icon) { flex: 1; }
 
 /* Na wąskim telefonie trzy przyciski stopki nie mieściły się w szerokości
    ekranu (390 px) i "Zakończ listę" wystawało poza krawędź. Przyciski mogą

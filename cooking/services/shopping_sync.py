@@ -275,6 +275,8 @@ def item_json(item):
         'purchased_by': item.purchased_by.username if item.purchased_by_id and item.purchased_by else '',
         'in_pantry': bool(item.pantry_product_id),
         'added_to_pantry': bool(item.pantry_movement_id),
+        # Skaner w telefonie rozpoznaje po nim pozycję zeskanowanego produktu.
+        'product': item.pantry_product_id,
     }
 
 
@@ -335,6 +337,7 @@ def shopping_item_for_product(product):
 
 def pantry_product_json(product):
     add = shopping_item_for_product(product)
+    own_quantity, own_unit = shopping_item_defaults(product)
     return {
         'id': product.id,
         'name': product.name,
@@ -359,6 +362,10 @@ def pantry_product_json(product):
         'add_category': add['category'],
         'group': add['group'].id if add['group'] else None,
         'group_name': add['group'].name if add['group'] else '',
+        # Jeden zakup TEGO produktu (nie grupy) - skaner dopisuje go do listy
+        # po "Kupiono", gdy produktu na liście nie było.
+        'buy_quantity': format(own_quantity, '.2f'),
+        'buy_unit': own_unit,
     }
 
 
@@ -556,7 +563,14 @@ def _op_add(raw, user, when):
         group = ProductGroup.objects.filter(pk=raw_group).first()
         if group is None:
             raise OperationSkipped('Grupa produktów została usunięta w domu.')
-    product = None if group is not None else find_pantry_product(name)
+    product = None
+    if group is None:
+        # Pozycja ze skanera wskazuje dokładnie zeskanowany produkt; ręcznie
+        # dopisana - szukamy go po nazwie, jak dotąd.
+        raw_product = data.get('product')
+        if raw_product:
+            product = PantryProduct.objects.filter(pk=_product_pk(raw_product)).first()
+        product = product or find_pantry_product(name)
     ShoppingListItem.objects.create(
         shopping_list=shopping_list,
         uuid=item_uuid,
@@ -573,6 +587,29 @@ def _op_add(raw, user, when):
     return ''
 
 
+def _product_pk(raw_value):
+    try:
+        return int(raw_value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _scanned_product_for(item, raw_value):
+    """Zeskanowany produkt, do którego ma trafić zapas z odhaczanej pozycji.
+
+    Pozycja z grupy ("Jogurt naturalny") nie wskazuje marki, więc zapas
+    poszedłby do marki kupowanej ostatnio - a w ręce jest ta zeskanowana.
+    Pozycja bez produktu dostaje go od razu. Pozycji z innym produktem nie
+    zmieniamy (nazwy mogą się pokrywać przypadkiem).
+    """
+    product = PantryProduct.objects.filter(pk=_product_pk(raw_value)).first() if raw_value else None
+    if product is None or item.pantry_product_id == product.pk:
+        return None
+    if item.pantry_group_id:
+        return product if product.group_id == item.pantry_group_id else None
+    return product if item.pantry_product_id is None else None
+
+
 def _op_set_purchased(raw, user, when):
     item = _locked_item(raw)
     purchased = raw.get('purchased')
@@ -580,6 +617,10 @@ def _op_set_purchased(raw, user, when):
         raise OperationRejected('Brak stanu odhaczenia.')
     if item.purchased_changed_at and when < item.purchased_changed_at:
         raise OperationSkipped(f'„{item.name}”: ktoś zmienił odhaczenie później.')
+    if purchased and not item.is_purchased:
+        scanned = _scanned_product_for(item, raw.get('product'))
+        if scanned is not None:
+            item.pantry_product = scanned
     warning = set_item_purchased(item, purchased, user=user, when=when)
     _touch_list(item.shopping_list)
     return warning

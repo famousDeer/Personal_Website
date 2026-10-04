@@ -287,6 +287,37 @@
         return (view.products || []).find((product) => product.name.toLocaleLowerCase('pl') === wanted) || null;
     }
 
+    // Ile pozycji listy (ilość w jej jednostce) to w jednostce produktu.
+    // Te same zasady co serwer: "szt."/"opak." produktu mierzonego wagą albo
+    // objętością to opakowania. null = nie da się policzyć w telefonie.
+    const PACKAGE_UNITS = ['szt', 'opak'];
+    function pantryDelta(product, quantity, unit) {
+        const amount = Number(quantity);
+        if (!Number.isFinite(amount)) {
+            return null;
+        }
+        if (unit === product.unit || (PACKAGE_UNITS.includes(unit) && PACKAGE_UNITS.includes(product.unit))) {
+            return amount;
+        }
+        if (PACKAGE_UNITS.includes(unit) && Number(product.package) > 0) {
+            return amount * Number(product.package);
+        }
+        return null;
+    }
+
+    function bumpLocalStock(product, delta) {
+        if (delta === null || !delta) {
+            return;
+        }
+        const quantity = Math.max(0, Number(product.quantity) + delta);
+        product.quantity = quantity.toFixed(2);
+        if (product.tracks_packages && Number(product.package) > 0) {
+            product.packages = Math.max(0, Math.round(quantity / Number(product.package)));
+        }
+        const minimum = Number(product.minimum);
+        product.status = quantity <= 0 ? 'empty' : (minimum > 0 && quantity <= minimum ? 'low' : 'ok');
+    }
+
     function applyOp(view, op) {
         if (op.type === OP_LIST_CREATE) {
             if (!view.lists.some((list) => list.uuid === op.list)) {
@@ -353,7 +384,8 @@
             if (!list || list.items.some((item) => item.uuid === op.data.uuid)) {
                 return;
             }
-            const product = productByName(view, op.data.name);
+            const product = (op.data.product && (view.products || []).find((candidate) => candidate.id === op.data.product))
+                || productByName(view, op.data.name);
             list.items.push({
                 uuid: op.data.uuid,
                 name: op.data.name,
@@ -366,6 +398,7 @@
                 purchased_by: '',
                 in_pantry: Boolean(product),
                 added_to_pantry: false,
+                product: product ? product.id : null,
             });
             return;
         }
@@ -373,11 +406,23 @@
         if (!found) {
             return;
         }
+        // Zakup ze skanera (op.product) od razu zmienia stan w telefonie,
+        // tak jak "+" w spiżarni - inaczej do synchronizacji pokazywałby brak.
+        const scanned = op.product ? (view.products || []).find((candidate) => candidate.id === op.product) : null;
         if (op.type === OP_SET_PURCHASED) {
+            if (scanned && op.purchased && !found.item.is_purchased) {
+                found.item.product = scanned.id;
+                found.item.in_pantry = true;
+                bumpLocalStock(scanned, pantryDelta(scanned, found.item.quantity, found.item.unit));
+            }
             found.item.is_purchased = op.purchased;
             found.item.purchased_by = op.purchased ? state.meta.user : '';
             found.item.added_to_pantry = op.purchased && found.item.in_pantry;
         } else if (op.type === OP_SET_QUANTITY) {
+            if (scanned && found.item.is_purchased) {
+                const change = Number(op.quantity) - Number(found.item.quantity);
+                bumpLocalStock(scanned, pantryDelta(scanned, change, found.item.unit));
+            }
             found.item.quantity = op.quantity;
         } else if (op.type === OP_DELETE) {
             found.list.items.splice(found.index, 1);
@@ -1205,11 +1250,62 @@
     // ------------------------------------------------------------------
     const STATUS_LABELS = { empty: 'brak', low: 'mało', ok: 'jest' };
 
-    function pantryProducts(view) {
-        const search = state.pantrySearch.trim().toLocaleLowerCase('pl');
-        return (view.products || [])
-            .filter((product) => !search || product.name.toLocaleLowerCase('pl').includes(search))
-            .sort((a, b) => a.name.localeCompare(b.name, 'pl'));
+    // Szukanie bez polskich znaków: w sklepie łatwiej wpisać "maslo" niż "masło".
+    function foldText(value) {
+        return String(value || '').toLocaleLowerCase('pl').replace(/ł/g, 'l')
+            .normalize('NFD').replace(/[̀-ͯ]/g, '');
+    }
+
+    function needsBuying(product) {
+        return !product.one_off && (product.status === 'empty' || product.status === 'low');
+    }
+
+    // Filtry stanu. "Do kupienia" pomija produkty "nie kupuję ponownie".
+    const PANTRY_FILTERS = [
+        { key: 'all', label: 'Wszystkie', test: () => true },
+        { key: 'need', label: 'Do kupienia', test: (product) => needsBuying(product) },
+        { key: 'empty', label: 'Brak', test: (product) => product.status === 'empty' },
+        { key: 'low', label: 'Mało', test: (product) => product.status === 'low' },
+        { key: 'ok', label: 'Jest', test: (product) => product.status === 'ok' },
+        { key: 'listed', label: 'Na liście', test: (product, onList) => Boolean(onList) },
+    ];
+
+    function pantryFilterKey() {
+        const key = state.meta.pantryFilter;
+        return PANTRY_FILTERS.some((filter) => filter.key === key) ? key : 'all';
+    }
+
+    function pantrySearchMatches(product, search) {
+        if (!search) {
+            return true;
+        }
+        const haystack = foldText([product.name, product.group_name, product.category].join(' '));
+        return search.split(/\s+/).every((word) => haystack.includes(word))
+            || (/^\d{3,}$/.test(search) && String(product.barcode || '').includes(search));
+    }
+
+    function pantryProducts(view, list) {
+        const search = foldText(state.pantrySearch.trim());
+        // '' = wszystkie kategorie, '-' = produkty bez kategorii.
+        const category = state.meta.pantryCategory || '';
+        const wanted = category === '-' ? '' : category;
+        const base = (view.products || [])
+            .filter((product) => pantrySearchMatches(product, search))
+            .map((product) => ({ product, onList: productOnList(view, list, product) }));
+        const inCategory = base.filter((entry) => !category || (entry.product.category || '') === wanted);
+        const filter = PANTRY_FILTERS.find((candidate) => candidate.key === pantryFilterKey());
+        const counts = Object.fromEntries(PANTRY_FILTERS.map((candidate) => [
+            candidate.key, inCategory.filter((entry) => candidate.test(entry.product, entry.onList)).length,
+        ]));
+        const categories = new Map();
+        base.filter((entry) => filter.test(entry.product, entry.onList)).forEach((entry) => {
+            const name = entry.product.category || '';
+            categories.set(name, (categories.get(name) || 0) + 1);
+        });
+        const visible = inCategory
+            .filter((entry) => filter.test(entry.product, entry.onList))
+            .sort((a, b) => a.product.name.localeCompare(b.product.name, 'pl'));
+        return { visible, counts, categories, category, wanted, filterKey: filter.key, total: (view.products || []).length };
     }
 
     function productOnList(view, list, product) {
@@ -1221,49 +1317,110 @@
         return list.items.find((item) => item.name.toLocaleLowerCase('pl') === target) || null;
     }
 
-    function renderPantry(view, list) {
-        const products = pantryProducts(view);
-        const rows = products.map((product) => {
-            const onList = productOnList(view, list, product);
-            return `
-                <li class="sa-item sa-pantry-item" data-product="${product.id}">
-                    <div class="sa-item-row">
-                        <div class="sa-item-body">
-                            <span class="sa-item-name">${escapeHtml(product.name)}</span>
-                            <span class="sa-item-meta">
-                                <span class="sa-qty">${escapeHtml(formatQuantity(product.quantity))} ${escapeHtml(product.unit_label)}</span>
-                                <span class="sa-tag is-stock-${escapeHtml(product.status)}">${STATUS_LABELS[product.status] || product.status}</span>
-                                ${product.tracks_packages ? `<span class="sa-note">${product.packages} opak.</span>` : ''}
-                                ${product.group_name ? `<span class="sa-note"><i class="bi bi-collection" aria-hidden="true"></i> ${escapeHtml(product.group_name)}</span>` : ''}
-                                ${onList ? '<span class="sa-tag"><i class="bi bi-cart" aria-hidden="true"></i> na liście</span>' : ''}
-                            </span>
-                        </div>
-                        <div class="sa-pantry-actions">
-                            <button type="button" class="sa-step" data-pantry="consume" aria-label="Zużyto jedno opakowanie: ${escapeHtml(product.name)}">
-                                <i class="bi bi-dash-lg" aria-hidden="true"></i>
-                            </button>
-                            <button type="button" class="sa-step" data-pantry="purchase" aria-label="Dokupiono jedno opakowanie: ${escapeHtml(product.name)}">
-                                <i class="bi bi-plus-lg" aria-hidden="true"></i>
-                            </button>
-                            ${onList ? '' : `<button type="button" class="sa-step" data-pantry="to-list" aria-label="Dopisz do listy: ${escapeHtml(product.add_name || product.name)}">
-                                <i class="bi bi-cart-plus" aria-hidden="true"></i>
-                            </button>`}
-                        </div>
+    function pantryRowHtml(product, onList) {
+        const finished = product.one_off && product.status === 'empty';
+        const statusLabel = finished ? 'skończony' : (STATUS_LABELS[product.status] || product.status);
+        return `
+            <li class="sa-item sa-pantry-item" data-product="${product.id}">
+                <div class="sa-item-row">
+                    <div class="sa-item-body">
+                        <span class="sa-item-name">${escapeHtml(product.name)}</span>
+                        <span class="sa-item-meta">
+                            <span class="sa-qty">${escapeHtml(formatQuantity(product.quantity))} ${escapeHtml(product.unit_label)}</span>
+                            <span class="sa-tag ${finished ? '' : `is-stock-${escapeHtml(product.status)}`}">${statusLabel}</span>
+                            ${product.tracks_packages ? `<span class="sa-note">${product.packages} opak.</span>` : ''}
+                            ${product.group_name ? `<span class="sa-note"><i class="bi bi-collection" aria-hidden="true"></i> ${escapeHtml(product.group_name)}</span>` : ''}
+                            ${onList ? `<span class="sa-tag"><i class="bi bi-cart${onList.is_purchased ? '-check' : ''}" aria-hidden="true"></i> ${onList.is_purchased ? 'w koszyku' : 'na liście'}</span>` : ''}
+                        </span>
                     </div>
-                </li>`;
+                    <div class="sa-pantry-actions">
+                        <button type="button" class="sa-step" data-pantry="consume" aria-label="Zużyto jedno opakowanie: ${escapeHtml(product.name)}">
+                            <i class="bi bi-dash-lg" aria-hidden="true"></i>
+                        </button>
+                        <button type="button" class="sa-step" data-pantry="purchase" aria-label="Dokupiono jedno opakowanie: ${escapeHtml(product.name)}">
+                            <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                        </button>
+                        ${onList ? '' : `<button type="button" class="sa-step" data-pantry="to-list" aria-label="Dopisz do listy: ${escapeHtml(product.add_name || product.name)}">
+                            <i class="bi bi-cart-plus" aria-hidden="true"></i>
+                        </button>`}
+                    </div>
+                </div>
+            </li>`;
+    }
+
+    function pantryResultsHtml(view, list) {
+        const result = pantryProducts(view, list);
+        const filtered = Boolean(state.pantrySearch.trim() || result.category || result.filterKey !== 'all');
+        const chips = PANTRY_FILTERS.map((filter) => {
+            const active = filter.key === result.filterKey;
+            return `
+                <button type="button" class="sa-filter-chip ${active ? 'is-active' : ''}" data-pantry-filter="${filter.key}"
+                        aria-pressed="${active}">
+                    ${filter.label}<span>${result.counts[filter.key]}</span>
+                </button>`;
         }).join('');
+        // Kategorie w zwykłej kolejności; licznik = produkty po filtrze stanu.
+        const order = categoryOrder();
+        const names = [...result.categories.keys()].sort((a, b) => {
+            const rank = (name) => (name ? (order.indexOf(name) === -1 ? 500 : order.indexOf(name)) : 1000);
+            return rank(a) - rank(b) || a.localeCompare(b, 'pl');
+        });
+        if (result.category && !result.categories.has(result.wanted)) {
+            names.unshift(result.wanted);
+        }
+        const categoryOptions = names.map((name) => `
+            <option value="${escapeHtml(name || '-')}" ${(name || '-') === result.category ? 'selected' : ''}>
+                ${escapeHtml(name || 'Bez kategorii')} (${result.categories.get(name) || 0})
+            </option>`).join('');
+
+        let body;
+        if (result.visible.length) {
+            const groups = new Map();
+            result.visible.forEach((entry) => {
+                const name = entry.product.category || '';
+                if (!groups.has(name)) {
+                    groups.set(name, []);
+                }
+                groups.get(name).push(entry);
+            });
+            body = names.filter((name) => groups.has(name)).map((name) => `
+                <section class="sa-group">
+                    <h2 class="sa-group-title">${escapeHtml(name || 'Bez kategorii')} <span>${groups.get(name).length}</span></h2>
+                    <ul class="sa-items">${groups.get(name).map((entry) => pantryRowHtml(entry.product, entry.onList)).join('')}</ul>
+                </section>`).join('');
+        } else {
+            body = `
+                <div class="sa-empty">
+                    <i class="bi bi-box-seam" aria-hidden="true"></i>
+                    <h2>${result.total ? 'Nic nie pasuje' : 'Spiżarnia jest pusta'}</h2>
+                    <p>${result.total ? 'Zmień wyszukiwanie albo filtry.' : 'Produkty dodajesz w domu, w zakładce Spiżarnia.'}</p>
+                    ${filtered && result.total ? '<button type="button" class="sa-secondary" data-pantry-clear>Pokaż wszystkie</button>' : ''}
+                </div>`;
+        }
+        return `
+            <div class="sa-filter-bar">
+                <div class="sa-filter-chips" role="group" aria-label="Stan produktu">${chips}</div>
+                <label class="sa-filter-category">
+                    <i class="bi bi-tag" aria-hidden="true"></i>
+                    <span class="visually-hidden">Kategoria</span>
+                    <select data-pantry-category aria-label="Kategoria">
+                        <option value="" ${result.category ? '' : 'selected'}>Wszystkie kategorie</option>
+                        ${categoryOptions}
+                    </select>
+                </label>
+                ${filtered ? '<button type="button" class="sa-filter-clear" data-pantry-clear>Wyczyść</button>' : ''}
+            </div>
+            ${body}`;
+    }
+
+    function renderPantry(view, list) {
         return `
             <div class="sa-pantry-search">
                 <i class="bi bi-search" aria-hidden="true"></i>
-                <input type="search" value="${escapeHtml(state.pantrySearch)}" placeholder="Szukaj produktu"
+                <input type="search" value="${escapeHtml(state.pantrySearch)}" placeholder="Szukaj: nazwa, marka, kod"
                        aria-label="Szukaj w spiżarni" data-pantry-search>
             </div>
-            ${products.length ? `<ul class="sa-items">${rows}</ul>` : `
-                <div class="sa-empty">
-                    <i class="bi bi-box-seam" aria-hidden="true"></i>
-                    <h2>${state.pantrySearch ? 'Nic nie znaleziono' : 'Spiżarnia jest pusta'}</h2>
-                    <p>${state.pantrySearch ? 'Zmień wyszukiwanie.' : 'Produkty dodajesz w domu, w zakładce Spiżarnia.'}</p>
-                </div>`}`;
+            <div data-pantry-results>${pantryResultsHtml(view, list)}</div>`;
     }
 
     // ------------------------------------------------------------------
@@ -1390,25 +1547,106 @@
         render();
     }
 
+    // Pozycja listy dla zeskanowanego produktu: najpierw jeszcze nie kupiona
+    // (ta sama marka, potem grupa albo ta sama nazwa), potem już w koszyku.
+    function scanTarget(list, product) {
+        if (!list) {
+            return null;
+        }
+        const names = [product.name, product.add_name].filter(Boolean).map((name) => name.toLocaleLowerCase('pl'));
+        const matches = (item) => item.product === product.id || names.includes(item.name.toLocaleLowerCase('pl'));
+        const candidates = list.items.filter(matches);
+        const rank = (item) => (item.is_purchased ? 2 : 0) + (item.product === product.id ? 0 : 1);
+        return candidates.sort((a, b) => rank(a) - rank(b))[0] || null;
+    }
+
+    // Ile dopisać, gdy produkt jest już w koszyku i kupujemy kolejną sztukę:
+    // jedna sztuka zakupu w jednostce pozycji albo null (wtedy nowa pozycja).
+    function oneMoreQuantity(item, product) {
+        const current = Number(item.quantity);
+        if (item.unit === product.buy_unit) {
+            return current + Number(product.buy_quantity);
+        }
+        if (item.unit === product.unit) {
+            return current + Number(product.package);
+        }
+        return null;
+    }
+
+    async function buyScannedProduct(product) {
+        const view = currentView();
+        let list = selectedList(view);
+        if (!list) {
+            // Bez listy zakup i tak ma być widać: zakładamy listę jak przycisk
+            // "Nowa lista" (zapisze się w domu przy synchronizacji).
+            const uuid = newId();
+            const title = defaultListTitle();
+            state.meta.selectedListKey = uuid;
+            state.meta.selectedListId = null;
+            await saveMeta();
+            await enqueue({ type: OP_LIST_CREATE, list: uuid, title });
+            list = { uuid, id: null, title };
+            toast(`Utworzono listę „${title}”.`, 'info');
+        }
+        const item = scanTarget(list, product);
+        if (item && !item.is_purchased) {
+            await enqueue({ type: OP_SET_PURCHASED, item: item.uuid, purchased: true, product: product.id });
+            return `Odhaczono: ${item.name}`;
+        }
+        if (item) {
+            const quantity = oneMoreQuantity(item, product);
+            if (quantity !== null) {
+                await enqueue({
+                    type: OP_SET_QUANTITY, item: item.uuid, product: product.id,
+                    quantity: normalizeQuantity(String(quantity), item.unit) || String(quantity),
+                });
+                return `Kolejne w koszyku: ${item.name} (${formatQuantity(quantity)} ${item.unit_label || unitLabels[item.unit] || item.unit})`;
+            }
+        }
+        const uuid = newId();
+        await enqueue({
+            type: OP_ADD,
+            list: listRef(list),
+            data: {
+                uuid,
+                name: product.name,
+                quantity: product.buy_quantity || product.package || '1',
+                unit: product.buy_unit || product.unit,
+                category: product.category,
+                product: product.id,
+                note: '',
+            },
+        });
+        await enqueue({ type: OP_SET_PURCHASED, item: uuid, purchased: true, product: product.id });
+        return `Dopisano do listy jako kupione: ${product.name}`;
+    }
+
     async function scannerAction(action) {
         const product = state.scanner && state.scanner.product;
         if (!product) {
             return;
         }
-        const view = currentView();
-        const list = selectedList(view);
-        if (action === 'check') {
-            const item = productOnList(view, list, product);
-            if (item) {
-                await enqueue({ type: OP_SET_PURCHASED, item: item.uuid, purchased: true });
-                toast(`Odhaczono: ${product.name}`, 'success');
-            }
+        if (action === 'bought') {
+            toast(await buyScannedProduct(product), 'success');
         } else {
             await enqueue({ type: OP_PANTRY_MOVEMENT, product: product.id, action, count: 1 });
-            toast(action === 'consume' ? `Zużyto: ${product.name}` : `Dokupiono: ${product.name}`, 'success');
+            toast(`Zużyto: ${product.name}`, 'success');
         }
         // W sklepie skanuje się kilka rzeczy z rzędu, więc wracamy do aparatu.
         openScanner();
+    }
+
+    function scanResultHint(list, product, item) {
+        if (!list) {
+            return 'Nie ma aktywnej listy – „Kupiono” założy nową i dopisze produkt.';
+        }
+        if (item && !item.is_purchased) {
+            return `Na liście: ${formatQuantity(item.quantity)} ${item.unit_label || unitLabels[item.unit] || item.unit} – „Kupiono” odhaczy pozycję.`;
+        }
+        if (item) {
+            return 'Już w koszyku – „Kupiono” doliczy kolejną sztukę.';
+        }
+        return `Nie ma na liście „${list.title}” – „Kupiono” dopisze go jako kupiony.`;
     }
 
     // Podgląd z aparatu rysujemy RAZ: każde ponowne wstawienie HTML zabrałoby
@@ -1433,17 +1671,20 @@
         container.hidden = false;
         const scanner = state.scanner;
         if (scanner.status === 'result') {
-            const product = scanner.product;
-            const item = product ? productOnList(view, list, product) : null;
+            // Produkt z aktualnego widoku (stan po zmianach offline).
+            const product = scanner.product
+                ? ((view.products || []).find((candidate) => candidate.id === scanner.product.id) || scanner.product)
+                : null;
+            const item = product ? scanTarget(list, product) : null;
             container.innerHTML = `
                 <div class="sa-scanner-sheet">
                     ${product ? `
                         <strong>${escapeHtml(product.name)}</strong>
                         <p>W spiżarni: ${escapeHtml(formatQuantity(product.quantity))} ${escapeHtml(product.unit_label)}
                            · opakowanie ${escapeHtml(formatQuantity(product.package))} ${escapeHtml(product.unit_label)}</p>
+                        <p class="sa-scanner-list-hint"><i class="bi bi-cart" aria-hidden="true"></i> ${escapeHtml(scanResultHint(list, product, item))}</p>
                         <div class="sa-scanner-actions">
-                            ${item && !item.is_purchased ? '<button type="button" class="sa-primary" data-scan-action="check"><i class="bi bi-check-lg" aria-hidden="true"></i> Odhacz z listy</button>' : ''}
-                            <button type="button" class="sa-secondary" data-scan-action="purchase"><i class="bi bi-plus-lg" aria-hidden="true"></i> Dokupiono</button>
+                            <button type="button" class="sa-primary" data-scan-action="bought"><i class="bi bi-cart-check" aria-hidden="true"></i> Kupiono</button>
                             <button type="button" class="sa-secondary" data-scan-action="consume"><i class="bi bi-dash-lg" aria-hidden="true"></i> Zużyto</button>
                         </div>` : `
                         <strong>Nieznany kod</strong>
@@ -2135,18 +2376,38 @@
     el('[data-list]').addEventListener('input', (event) => {
         if (event.target.matches('[data-pantry-search]')) {
             state.pantrySearch = event.target.value;
-            const items = el('[data-list]').querySelector('.sa-items, .sa-empty');
+            const results = el('[data-list]').querySelector('[data-pantry-results]');
             const view = currentView();
-            const fresh = document.createElement('div');
-            fresh.innerHTML = renderPantry(view, selectedList(view));
-            const replacement = fresh.querySelector('.sa-items, .sa-empty');
-            if (items && replacement) {
-                items.replaceWith(replacement);
+            if (results) {
+                results.innerHTML = pantryResultsHtml(view, selectedList(view));
             }
         }
     });
 
+    el('[data-list]').addEventListener('change', (event) => {
+        if (event.target.matches('[data-pantry-category]')) {
+            state.meta.pantryCategory = event.target.value;
+            saveMeta();
+            render();
+        }
+    });
+
     el('[data-list]').addEventListener('click', async (event) => {
+        const filterButton = event.target.closest('[data-pantry-filter]');
+        if (filterButton) {
+            state.meta.pantryFilter = filterButton.dataset.pantryFilter;
+            saveMeta();
+            render();
+            return;
+        }
+        if (event.target.closest('[data-pantry-clear]')) {
+            state.meta.pantryFilter = 'all';
+            state.meta.pantryCategory = '';
+            state.pantrySearch = '';
+            saveMeta();
+            render();
+            return;
+        }
         const button = event.target.closest('[data-pantry]');
         if (!button) {
             return;
