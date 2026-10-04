@@ -592,22 +592,35 @@ a { text-decoration: none; }
     font-weight: 700;
 }
 
+/* Tabela mieści się w szerokości karty: wcześniej miała min-width 1120 px
+   przy karcie ~1050 px, więc kolumna "Sklep / kontrahent" zawsze wystawała
+   i trzeba było przewijać w bok - a przewinięcie gładzikiem do krawędzi
+   przeglądarka brała za gest "wstecz" i porzucała podgląd importu.
+   Kolumny o stałej treści mają stałą szerokość, a opis i sklep dzielą
+   resztę po równo. Przewijanie zostaje tylko jako zabezpieczenie (np. duże
+   powiększenie tekstu), z wyłączonym gestem nawigacji na krawędzi. */
 .bank-import-table-scroll {
     overflow-x: auto;
+    overscroll-behavior-x: contain;
 }
 
 .bank-import-table {
     width: 100%;
-    min-width: 1120px;
+    min-width: 900px;
     table-layout: fixed;
 }
 
-.bank-import-select-column { width: 58px; }
-.bank-import-date-column { width: 132px; }
-.bank-import-description-column { width: 28%; }
-.bank-import-amount-column { width: 190px; }
-.bank-import-category-column { width: 205px; }
-.bank-import-store-column { width: 25%; }
+.bank-import-select-column { width: 48px; }
+.bank-import-date-column { width: 152px; }
+.bank-import-description-column { width: auto; }
+.bank-import-amount-column { width: 168px; }
+.bank-import-category-column { width: 178px; }
+.bank-import-store-column { width: auto; }
+
+.bank-import-table thead th:first-child,
+.bank-import-table tbody td.bank-import-select-cell { padding-left: 1rem !important; }
+.bank-import-table thead th:last-child,
+.bank-import-table tbody td.bank-import-store-cell { padding-right: 1rem !important; }
 
 .bank-import-table th,
 .bank-import-table td {
@@ -672,6 +685,15 @@ a { text-decoration: none; }
     padding: 0.45rem 0.55rem !important;
     text-align: right;
     font-variant-numeric: tabular-nums;
+    /* Bez strzałek pola liczbowego: zabierały miejsce i ucinały kwotę. */
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.bank-import-amount-input::-webkit-outer-spin-button,
+.bank-import-amount-input::-webkit-inner-spin-button {
+    margin: 0;
+    -webkit-appearance: none;
 }
 
 .bank-import-select-control {
@@ -765,8 +787,17 @@ a { text-decoration: none; }
     }
 
     .bank-import-amount-control .input-group-text {
-        min-width: 3.25rem;
+        min-width: 2.75rem;
+        padding-left: 0.4rem;
+        padding-right: 0.4rem;
         justify-content: center;
+    }
+
+    /* Data mieści się w całości (dd.mm.rrrr + ikona kalendarza). */
+    .bank-import-date-cell .form-control {
+        padding-left: 0.5rem;
+        padding-right: 0.4rem;
+        font-variant-numeric: tabular-nums;
     }
 
     .bank-import-description-cell.is-source-open {
