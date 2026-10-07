@@ -2184,3 +2184,180 @@ form:has(#one-off:checked) .pantry-restock-fields { opacity: 0.45; }
 }
 
 .pc-usage i { margin-right: 0.35rem; color: var(--ink-3); }
+
+/* =========================================================================
+   Listy zakupów: wybór sugestii ze spiżarni
+   ========================================================================= */
+.shopping-picker { display: flex; flex-direction: column; gap: var(--sp-3); }
+
+.shopping-picker-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2);
+}
+
+.shopping-picker-chip {
+    min-height: 36px;
+    padding: 0 var(--sp-3);
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-pill);
+    background: var(--surface-1);
+    color: var(--ink-2);
+    font-size: var(--fs-sm);
+    font-weight: 650;
+    transition: background-color var(--dur-fast) var(--ease), transform var(--dur-press) var(--ease-out);
+}
+
+@media (pointer: coarse) { .shopping-picker-chip { min-height: 44px; } }
+@media (hover: hover) and (pointer: fine) { .shopping-picker-chip:hover { background: var(--surface-3); } }
+.shopping-picker-chip:active { transform: scale(0.97); }
+.shopping-picker-chip:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+.shopping-picker-group {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+}
+
+.shopping-picker-legend {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    float: none;
+    width: auto;
+    margin: 0 0 var(--sp-2);
+    color: var(--ink-3);
+    font-size: var(--fs-eyebrow);
+    font-weight: 700;
+    letter-spacing: var(--tracking-eyebrow);
+    text-transform: uppercase;
+}
+
+.shopping-picker-legend span {
+    padding: 0 6px;
+    border-radius: var(--r-pill);
+    background: var(--surface-3);
+    letter-spacing: 0;
+}
+
+.shopping-picker-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-2) var(--sp-3);
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+    transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
+                opacity var(--dur-fast) var(--ease);
+}
+
+.shopping-picker-row + .shopping-picker-row { margin-top: 6px; }
+.shopping-picker-row.is-picked { background: var(--surface-1); border-color: var(--income-bg); box-shadow: inset 3px 0 0 var(--income); }
+.shopping-picker-row:not(.is-picked) .shopping-picker-qty { opacity: 0.5; }
+.shopping-picker-row.is-on-list { opacity: 0.6; }
+
+.shopping-picker-main {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: flex-start;
+    gap: var(--sp-3);
+    min-width: 0;
+    margin: 0;
+    padding: var(--sp-1) 0;
+    cursor: pointer;
+}
+
+.shopping-picker-main .form-check-input {
+    flex: 0 0 auto;
+    width: 1.35rem;
+    height: 1.35rem;
+    margin: 0.1rem 0 0;
+}
+
+.shopping-picker-status {
+    display: inline-block;
+    margin-right: 0.3rem;
+    padding: 0 0.45rem;
+    border-radius: var(--r-pill);
+    font-size: var(--fs-caption);
+    font-weight: 700;
+}
+
+.shopping-picker-status.is-empty { color: var(--expense-ink); background: var(--expense-bg); }
+.shopping-picker-status.is-low { color: var(--ink-2); background: color-mix(in srgb, var(--cat-4) 22%, transparent); }
+.shopping-picker-status.is-forecast { color: var(--invest-ink); background: var(--invest-bg); }
+
+.shopping-picker-on-list { display: block; margin-top: 0.15rem; color: var(--ink-3); font-weight: 600; }
+.shopping-picker-on-list[hidden] { display: none; }
+
+.shopping-picker-qty {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0;
+}
+
+.shopping-picker-qty input {
+    width: 4.75rem;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.shopping-picker-unit { min-width: 2rem; color: var(--ink-3); font-size: var(--fs-sm); font-weight: 600; }
+
+.shopping-picker-footer {
+    position: sticky;
+    bottom: calc(var(--sp-3) + env(safe-area-inset-bottom));
+    z-index: 5;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2) var(--sp-3);
+    padding: var(--sp-3);
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-lg);
+    background: var(--surface-1);
+    box-shadow: var(--sh-2);
+}
+
+.shopping-picker-target {
+    display: flex;
+    gap: var(--sp-2);
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.shopping-picker-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 40px;
+    margin: 0;
+    padding: 0 var(--sp-3);
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-pill);
+    font-size: var(--fs-sm);
+    font-weight: 650;
+    cursor: pointer;
+}
+
+.shopping-picker-option:has(input:checked) { color: var(--income-ink); background: var(--income-bg); border-color: transparent; }
+.shopping-picker-option input { accent-color: var(--income); }
+
+.shopping-picker-destination { flex: 1 1 14rem; min-width: 0; }
+.shopping-picker-destination [hidden] { display: none; }
+.shopping-picker-footer .btn { white-space: nowrap; }
+
+@media (max-width: 575.98px) {
+    .shopping-picker-row { flex-wrap: wrap; }
+    .shopping-picker-qty { margin-left: calc(1.35rem + var(--sp-3)); }
+    /* Na telefonie przyklejony pasek (3 wiersze) zasłaniałby listę -
+       zostaje zwykłym blokiem na końcu sugestii. */
+    .shopping-picker-footer { position: static; box-shadow: none; }
+    .shopping-picker-footer .btn { flex: 1 1 100%; }
+}

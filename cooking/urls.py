@@ -67,6 +67,7 @@ urlpatterns = [
     ),
     path('shopping/create/', views.CreateShoppingListView.as_view(), name='create-shopping-list'),
     path('shopping/auto/', views.GenerateShoppingListView.as_view(), name='generate-shopping-list'),
+    path('shopping/suggestions/add/', views.AddShoppingSuggestionsView.as_view(), name='add-shopping-suggestions'),
     path('shopping/<int:list_id>/', views.ShoppingListDetailView.as_view(), name='shopping-list-detail'),
     path('shopping/<int:list_id>/edit/', views.EditShoppingListView.as_view(), name='edit-shopping-list'),
     path('shopping/<int:list_id>/delete/', views.DeleteShoppingListView.as_view(), name='delete-shopping-list'),

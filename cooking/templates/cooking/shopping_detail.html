@@ -144,6 +144,10 @@
                     <h3 class="h5 fw-bold mb-0">Dopisz z zapasów</h3>
                 </div>
                 <div class="shopping-section-actions">
+                    <a class="btn btn-sm btn-outline-primary" href="{% url 'cooking:shopping-list' %}?lista={{ shopping_list.id }}#sugestie"
+                       title="Wybierz braki i produkty z prognozy, które mają trafić na tę listę">
+                        <i class="bi bi-magic me-1"></i> Z sugestii
+                    </a>
                     <button class="btn btn-sm btn-outline-success" type="button" data-bs-toggle="collapse" data-bs-target="#shopping-pantry-picker" aria-expanded="false">
                         <i class="bi bi-box-seam me-1"></i> Pokaż spiżarnię
                     </button>

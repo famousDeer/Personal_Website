@@ -340,6 +340,9 @@ def build_shopping_suggestions():
             unit = product.unit
 
         suggestions.append({
+            # Klucz do formularza wyboru sugestii (przetrwa przeliczenie).
+            'key': f'p-{product.pk}',
+            'status': product.stock_status if product.stock_status in ['empty', 'low'] else 'forecast',
             'product': product,
             'group': None,
             'name': product.name,
@@ -364,6 +367,8 @@ def build_shopping_suggestions():
         packages = max(packages, max(group.minimum_packages - in_stock, 0), 1)
 
         suggestions.append({
+            'key': f'g-{group.pk}',
+            'status': status if status in ['empty', 'low'] else 'forecast',
             'product': None,
             'group': group,
             'name': group.name,
@@ -378,6 +383,32 @@ def build_shopping_suggestions():
 
     suggestions.sort(key=lambda suggestion: suggestion['name'].casefold())
     return suggestions
+
+
+SUGGESTION_STATUS_LABELS = {'empty': 'Brak', 'low': 'Mało', 'forecast': 'Prognoza'}
+
+
+def suggestion_groups(suggestions):
+    """Sugestie pogrupowane po kategoriach, w kolejności kategorii spiżarni."""
+    order = {name: index for index, name in enumerate(category_names())}
+    buckets = defaultdict(list)
+    for suggestion in suggestions:
+        buckets[suggestion['category'] or ''].append(suggestion)
+    categories = sorted(buckets, key=lambda name: (name == '', order.get(name, len(order)), name.casefold()))
+    return [{'category': name or 'Bez kategorii', 'items': buckets[name]} for name in categories]
+
+
+def suggestion_on_list(suggestion, items):
+    """Czy produkt (albo grupa) z sugestii już jest na liście - kupiony czy nie."""
+    name = suggestion['name'].casefold()
+    product = suggestion['product']
+    group = suggestion['group']
+    return any(
+        (product is not None and item.pantry_product_id == product.pk)
+        or (group is not None and item.pantry_group_id == group.pk)
+        or item.name.casefold() == name
+        for item in items
+    )
 
 
 def parse_shopping_items_from_request(request):
@@ -1949,8 +1980,22 @@ class ShoppingListView(LoginRequiredMixin, View):
             if shopping_list.status == ShoppingList.COMPLETED
         ][:6]
         suggestions = build_shopping_suggestions()
+        # Na których aktywnych listach już jest dana sugestia - wybór celu
+        # w formularzu od razu wyszarza to, co by się powtórzyło.
+        for suggestion in suggestions:
+            suggestion['on_lists'] = [
+                shopping_list.pk for shopping_list in active_lists
+                if suggestion_on_list(suggestion, shopping_list.items.all())
+            ]
+            suggestion['status_label'] = SUGGESTION_STATUS_LABELS[suggestion['status']]
+        target_list = request.GET.get('lista', '')
+        if not any(str(shopping_list.pk) == target_list for shopping_list in active_lists):
+            target_list = ''
 
         context = {
+            'suggestion_groups': suggestion_groups(suggestions),
+            'suggestion_target': target_list,
+            'suggestion_title': f'Lista zakupów {timezone.localdate():%d.%m.%Y}',
             'active_lists': active_lists,
             'completed_lists': completed_lists,
             'suggestions': suggestions,
@@ -2029,6 +2074,91 @@ class GenerateShoppingListView(LoginRequiredMixin, View):
             )
 
         messages.success(request, f'Utworzono automatyczną listę z {len(suggestions)} pozycjami.')
+        return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
+
+
+class AddShoppingSuggestionsView(LoginRequiredMixin, View):
+    """Wybrane sugestie ze spiżarni: na nową listę albo do istniejącej.
+
+    Sugestie liczą się od nowa przy zapisie - formularz przysyła tylko klucze
+    (p-<produkt>, g-<grupa>) i ewentualnie zmienioną ilość. Produkt, który
+    w międzyczasie przestał być potrzebny, jest pomijany z komunikatem.
+    """
+
+    @transaction.atomic
+    def post(self, request):
+        picked = list(dict.fromkeys(request.POST.getlist('pick')))
+        back = f"{reverse('cooking:shopping-list')}#sugestie"
+        if not picked:
+            messages.error(request, 'Zaznacz co najmniej jeden produkt.')
+            return redirect(back)
+
+        by_key = {suggestion['key']: suggestion for suggestion in build_shopping_suggestions()}
+        chosen = [by_key[key] for key in picked if key in by_key]
+        gone = len(picked) - len(chosen)
+        if not chosen:
+            messages.warning(request, 'Zaznaczone produkty nie są już potrzebne - stan spiżarni się zmienił.')
+            return redirect(back)
+
+        target = request.POST.get('target', 'new')
+        if target == 'existing':
+            target = request.POST.get('target_list', '')
+        if target == 'new':
+            title = ' '.join(request.POST.get('title', '').split())[:180] or f'Lista zakupów {timezone.localdate():%d.%m.%Y}'
+            shopping_list = ShoppingList.objects.create(
+                created_by=request.user, title=title, source=ShoppingList.AUTOMATIC,
+            )
+            existing = []
+        else:
+            shopping_list = ShoppingList.objects.select_for_update().filter(
+                pk=target if str(target).isdigit() else None, status=ShoppingList.ACTIVE,
+            ).first()
+            if shopping_list is None:
+                messages.error(request, 'Wybrana lista nie istnieje albo została zakończona.')
+                return redirect(back)
+            existing = list(shopping_list.items.all())
+
+        added, skipped, corrected = [], [], []
+        for suggestion in chosen:
+            if suggestion_on_list(suggestion, existing):
+                skipped.append(suggestion['name'])
+                continue
+            quantity = suggestion['quantity']
+            raw_quantity = request.POST.get(f"qty_{suggestion['key']}", '').strip()
+            if raw_quantity:
+                try:
+                    quantity = parse_pantry_decimal(raw_quantity)
+                    if quantity <= 0:
+                        raise ValueError
+                    validate_pantry_quantity_for_unit(quantity, suggestion['unit'])
+                except ValueError:
+                    quantity = suggestion['quantity']
+                    corrected.append(suggestion['name'])
+            ShoppingListItem.objects.create(
+                shopping_list=shopping_list,
+                pantry_product=suggestion['product'],
+                pantry_group=suggestion['group'],
+                name=suggestion['name'],
+                quantity=quantity,
+                unit=suggestion['unit'],
+                category=suggestion['category'],
+                note=suggestion['reason'],
+            )
+            added.append(suggestion['name'])
+        shopping_list.save(update_fields=['updated_at'])
+
+        if target == 'new':
+            messages.success(request, f'Utworzono listę „{shopping_list.title}”: {polish_count(len(added), "pozycja", "pozycje", "pozycji")}.')
+        elif added:
+            messages.success(request, f'Dodano do listy „{shopping_list.title}”: {polish_count(len(added), "pozycję", "pozycje", "pozycji")}.')
+        else:
+            messages.info(request, f'Nic nie dodano - wszystko jest już na liście „{shopping_list.title}”.')
+        if skipped:
+            messages.info(request, 'Pominięte, bo już są na liście: ' + ', '.join(skipped) + '.')
+        if corrected:
+            messages.warning(request, 'Niepoprawna ilość, użyto sugerowanej: ' + ', '.join(corrected) + '.')
+        if gone:
+            messages.info(request, f'{polish_count(gone, "produkt nie jest", "produkty nie są", "produktów nie jest")} już potrzebne - stan spiżarni się zmienił.')
         return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
 
 

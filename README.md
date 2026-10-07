@@ -459,7 +459,19 @@ being stored as a wrong number.
 
 `build_shopping_suggestions` (cooking/views.py) puts on the list every product (or
 product group) that is empty, at or below its minimum, or that the forecast says will
-run short before the next shopping trip. The forecast lives in
+run short before the next shopping trip.
+
+The shopping page lists the suggestions grouped by category, all ticked. *Utwórz ze
+wszystkich* (and *Automatyczna lista* in the header) still creates a list from all of
+them at once. To pick: untick what you do not need (quick picks *Wszystkie*, *Tylko
+braki*, *Nic*), change a quantity if needed, then create a new list or add to an
+existing one (`AddShoppingSuggestionsView`, `shopping/suggestions/add/`). The form sends
+only suggestion keys (`p-<product>`, `g-<group>`) and quantities; suggestions are
+recomputed on save, so a product that stopped being needed is skipped with a message.
+Adding to an existing list skips what is already on it (same product, same group or
+same name, bought or not); the page greys those rows out for the chosen list. A list's
+page has *Z sugestii*, which opens the picker with that list already chosen
+(`?lista=<id>#sugestie`). The forecast lives in
 `cooking/services/pantry_forecast.py`:
 
 1. **Pieces, not grams.** A scanned product (barcode or counted packages) is forecast

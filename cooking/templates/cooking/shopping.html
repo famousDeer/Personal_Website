@@ -1,5 +1,5 @@
 {% extends 'cooking/index.html' %}
-{% load ui pantry_extras %}
+{% load ui pantry_extras static %}
 
 {% block title %}Listy zakupów{% endblock %}
 
@@ -11,7 +11,7 @@
         </a>
         <form method="post" action="{% url 'cooking:generate-shopping-list' %}">
             {% csrf_token %}
-            <button type="submit" class="btn btn-outline-primary" {% if not suggestions %}disabled{% endif %}>
+            <button type="submit" class="btn btn-outline-primary" {% if not suggestion_groups %}disabled{% endif %}>
                 <i class="bi bi-magic"></i> Automatyczna lista
             </button>
         </form>
@@ -48,39 +48,97 @@
     </div>
 </div>
 
-<section class="shopping-auto-panel mb-4 animate-fade-in-up">
+<section class="shopping-auto-panel mb-4 animate-fade-in-up" id="sugestie">
     <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
         <div>
             <div class="small text-uppercase fw-bold text-muted mb-1">Automatycznie ze spiżarni</div>
             <h3 class="h5 fw-bold mb-1">Produkty do uzupełnienia</h3>
-            <p class="text-muted small mb-0">Uwzględniane są braki, niskie stany i prognoza terminu zakupu.</p>
+            <p class="text-muted small mb-0">Braki, niskie stany i prognoza terminu zakupu. Zaznacz, co chcesz kupić, albo utwórz listę ze wszystkiego jednym przyciskiem.</p>
         </div>
         <form method="post" action="{% url 'cooking:generate-shopping-list' %}" class="align-self-lg-start">
             {% csrf_token %}
-            <button type="submit" class="btn btn-outline-primary rounded-pill px-4" {% if not suggestions %}disabled{% endif %}>
-                <i class="bi bi-lightning-charge me-1"></i> Utwórz z sugestii
+            <button type="submit" class="btn btn-outline-primary rounded-pill px-4" {% if not suggestion_groups %}disabled{% endif %}>
+                <i class="bi bi-lightning-charge me-1"></i> Utwórz ze wszystkich
             </button>
         </form>
     </div>
 
-    {% if suggestions %}
-        <div class="shopping-suggestion-list mt-3">
-            {% for suggestion in suggestions %}
-                <div class="shopping-suggestion-row">
-                    <div class="min-w-0">
-                        <strong class="d-block text-truncate">{{ suggestion.name }}</strong>
-                        <span class="small text-muted">
-                            {{ suggestion.category|default:"Bez kategorii" }} · {{ suggestion.reason }}
-                            {% if suggestion.group %} · grupa: {{ suggestion.group.brand_names|join:", " }}{% endif %}
-                        </span>
-                    </div>
-                    <span class="shopping-quantity-pill">
-                        {{ suggestion.quantity|qty }}
-                        {{ suggestion.unit_label }}
-                    </span>
-                </div>
+    {% if suggestion_groups %}
+        <form method="post" action="{% url 'cooking:add-shopping-suggestions' %}" class="shopping-picker mt-3" data-suggestion-picker>
+            {% csrf_token %}
+            <div class="shopping-picker-tools" role="group" aria-label="Szybkie zaznaczanie">
+                <span class="small fw-bold text-muted">Zaznacz:</span>
+                <button type="button" class="shopping-picker-chip" data-pick="all">Wszystkie</button>
+                <button type="button" class="shopping-picker-chip" data-pick="empty">Tylko braki</button>
+                <button type="button" class="shopping-picker-chip" data-pick="none">Nic</button>
+            </div>
+
+            {% for group in suggestion_groups %}
+                <fieldset class="shopping-picker-group">
+                    <legend class="shopping-picker-legend">{{ group.category }} <span>{{ group.items|length }}</span></legend>
+                    {% for suggestion in group.items %}
+                        <div class="shopping-picker-row" data-suggestion-row data-status="{{ suggestion.status }}"
+                             data-on-lists="{{ suggestion.on_lists|join:' ' }}">
+                            <label class="shopping-picker-main">
+                                <input class="form-check-input" type="checkbox" name="pick" value="{{ suggestion.key }}" checked data-suggestion-pick>
+                                <span class="min-w-0">
+                                    <strong class="d-block text-truncate">{{ suggestion.name }}</strong>
+                                    <span class="small text-muted d-block">
+                                        <span class="shopping-picker-status is-{{ suggestion.status }}">{{ suggestion.status_label }}</span>
+                                        {{ suggestion.reason }}{% if suggestion.group %} · grupa: {{ suggestion.group.brand_names|join:", " }}{% endif %}
+                                    </span>
+                                    <span class="shopping-picker-on-list small" data-on-list-note hidden>
+                                        <i class="bi bi-cart-check" aria-hidden="true"></i> już na tej liście – zostanie pominięty
+                                    </span>
+                                </span>
+                            </label>
+                            <label class="shopping-picker-qty">
+                                <span class="visually-hidden">Ilość: {{ suggestion.name }}</span>
+                                <input type="number" class="form-control form-control-sm" name="qty_{{ suggestion.key }}"
+                                       value="{{ suggestion.quantity|plain_decimal }}"
+                                       min="{% if suggestion.unit == 'szt' %}1{% else %}0.01{% endif %}"
+                                       step="{% if suggestion.unit == 'szt' %}1{% else %}0.01{% endif %}"
+                                       inputmode="decimal" data-suggestion-qty>
+                                <span class="shopping-picker-unit">{{ suggestion.unit_label }}</span>
+                            </label>
+                        </div>
+                    {% endfor %}
+                </fieldset>
             {% endfor %}
-        </div>
+
+            <div class="shopping-picker-footer">
+                <fieldset class="shopping-picker-target">
+                    <legend class="visually-hidden">Gdzie dodać</legend>
+                    <label class="shopping-picker-option">
+                        <input type="radio" name="target" value="new" {% if not suggestion_target %}checked{% endif %} data-target-choice>
+                        <span>Nowa lista</span>
+                    </label>
+                    {% if active_lists %}
+                        <label class="shopping-picker-option">
+                            <input type="radio" name="target" value="existing" {% if suggestion_target %}checked{% endif %} data-target-choice>
+                            <span>Dodaj do listy</span>
+                        </label>
+                    {% endif %}
+                </fieldset>
+                <div class="shopping-picker-destination">
+                    <label class="visually-hidden" for="suggestion-title">Nazwa nowej listy</label>
+                    <input type="text" class="form-control" id="suggestion-title" name="title" maxlength="180"
+                           value="{{ suggestion_title }}" data-target-new {% if suggestion_target %}hidden{% endif %}>
+                    {% if active_lists %}
+                        <label class="visually-hidden" for="suggestion-list">Lista, do której dodać</label>
+                        <select class="form-select" id="suggestion-list" name="target_list" data-target-list {% if not suggestion_target %}hidden{% endif %}>
+                            {% for shopping_list in active_lists %}
+                                <option value="{{ shopping_list.pk }}" {% if suggestion_target == shopping_list.pk|stringformat:"d" %}selected{% endif %}>{{ shopping_list.title }}</option>
+                            {% endfor %}
+                        </select>
+                    {% endif %}
+                </div>
+                <button type="submit" class="btn btn-primary rounded-pill fw-bold px-4" data-suggestion-submit>
+                    <i class="bi bi-cart-plus me-1" aria-hidden="true"></i>
+                    <span data-suggestion-submit-label>Dodaj zaznaczone</span>
+                </button>
+            </div>
+        </form>
     {% else %}
         <div class="shopping-empty-inline mt-3">
             <i class="bi bi-check2-circle"></i>
@@ -169,4 +227,8 @@
         </div>
     </section>
 {% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'cooking/js/shopping-suggestions.js' %}"></script>
 {% endblock %}
