@@ -8,7 +8,7 @@
 <div class="row justify-content-center">
     <div class="col-12 col-xl-11">
         {% url 'finance:expense_list' as back_url %}
-        {% page_head title="Import wyciągu bankowego" eyebrow="Finanse" icon="bi-wallet2" sub="Pliki CSV z Millennium i ING. Duplikaty wykryjemy przed zapisem." back=back_url %}
+        {% page_head title="Import wyciągu bankowego" eyebrow="Finanse" icon="bi-wallet2" sub="Pliki CSV z Millennium i ING. Płatność kartą dostaje datę z opisu, nie z dnia zaksięgowania. Duplikaty wykryjemy przed zapisem." back=back_url %}
             {% if preview %}
                 <span class="badge bg-danger-subtle text-danger">{{ preview.expenses_count|pl:"wydatek,wydatki,wydatków" }}</span>
                 <span class="badge bg-success-subtle text-success">{{ preview.incomes_count|pl:"przychód,przychody,przychodów" }}</span>
@@ -98,7 +98,11 @@
                                     </td>
                                     <td class="bank-import-date-cell" data-label="Data">
                                         <input type="date" class="form-control form-control-sm" name="row_{{ candidate.index }}_date" aria-label="Data transakcji" value="{{ candidate.date_display }}" required>
-                                        <div class="small text-muted mt-1">wiersz {{ candidate.row_number }}</div>
+                                        {% if candidate.booked_later %}
+                                            <div class="small text-muted mt-1" title="Data z opisu płatności kartą. Bank zaksięgował ją później.">zaksięg. {{ candidate.booking_date_display }} · wiersz {{ candidate.row_number }}</div>
+                                        {% else %}
+                                            <div class="small text-muted mt-1">wiersz {{ candidate.row_number }}</div>
+                                        {% endif %}
                                     </td>
                                     <td class="bank-import-description-cell" data-label="Opis">
                                         <textarea class="form-control form-control-sm fw-medium bank-import-title bank-import-auto-grow" name="row_{{ candidate.index }}_title" aria-label="Opis transakcji" rows="1" required>{{ candidate.title }}</textarea>
