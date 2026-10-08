@@ -34,8 +34,6 @@ from .models import (
     ProductGroup,
     ShopLayout,
     Recipe,
-    RecipeStep,
-    RecipeStepIngredient,
     ShoppingList,
     ShoppingListItem,
 )
@@ -45,6 +43,7 @@ from .services.product_groups import (
     restock_target,
     suggest_groups,
 )
+from .services import recipe_form, recipe_pantry, recipe_units
 from .services.categories import category_names
 from .services.product_catalog import (
     cached_open_food_facts_entry,
@@ -498,16 +497,45 @@ def get_shopping_form_context(request, **extra_context):
     return context
 
 
-def get_recipe_form_context(**extra_context):
-    context = {
-        'regions': KITCHEN_REGIONS,
-        'meal_types': MEAL_TYPES,
-        'dish_types': DISH_TYPES,
+def recipe_draft_key(request, recipe=None):
+    """Klucz szkicu w przeglądarce - osobny dla domownika i przepisu."""
+    if recipe is not None and recipe.pk:
+        return f'recipe-draft:edit:{recipe.pk}:{request.user.pk}'
+    return f'recipe-draft:new:{request.user.pk}'
+
+
+def get_recipe_form_context(request, state, recipe=None, failed=False, problems=None):
+    """Kontekst wspólnego formularza przepisu (dodawanie i edycja)."""
+    def options(values, current):
+        # Wartość spoza listy (stary przepis) zostaje do wyboru.
+        return [current, *values] if current and current not in values else list(values)
+
+    return {
+        'form': state,
+        'recipe': recipe,
+        'failed': failed,
+        'problems': problems or [],
+        'draft_key': recipe_draft_key(request, recipe),
+        'regions': options(KITCHEN_REGIONS, state['kitchen_region']),
+        'meal_types': options(MEAL_TYPES, state['meal_type']),
+        'dish_types': options(DISH_TYPES, state['type_of_dish']),
         'units': PantryProduct.UNIT_CHOICES,
+        'unit_groups': recipe_units.UNIT_GROUPS,
         'pantry_categories': category_names(),
+        'max_image_mb': MAX_RECIPE_IMAGE_SIZE // (1024 * 1024),
+        'max_image_bytes': MAX_RECIPE_IMAGE_SIZE,
+        # Wzory dla przycisków „+ Krok” i „+ Składnik”.
+        'blank_step': recipe_form.empty_step(),
+        'blank_ingredient': recipe_form.empty_ingredient(),
+        # Podpowiedzi nazw składników i automatyczna kategoria (recipe-form.js).
+        'pantry_index': recipe_pantry.pantry_index(),
+        'tags_chosen': ' · '.join(filter(None, [
+            state['kitchen_region'].removeprefix('Kuchnia ').capitalize() if state['kitchen_region'].startswith('Kuchnia ') else state['kitchen_region'],
+            state['meal_type'],
+            state['type_of_dish'],
+        ])),
+        'keyword_rules': recipe_pantry.keyword_rules(),
     }
-    context.update(extra_context)
-    return context
 
 
 def validate_recipe_image(uploaded_file):
@@ -562,82 +590,6 @@ def validate_pantry_product_image(uploaded_file):
     return uploaded_file
 
 
-def build_recipe_legacy_text(recipe):
-    ingredient_lines = []
-    instruction_lines = []
-    for step in recipe.steps.prefetch_related('ingredients').all():
-        if step.title:
-            instruction_lines.append(f"<p><strong>Krok {step.order}: {step.title}</strong></p>")
-        instruction_lines.append(f"<p>{step.instruction}</p>")
-        if step.mix_after:
-            instruction_lines.append("<p>Wymieszaj składniki.</p>")
-        for ingredient in step.ingredients.all():
-            ingredient_lines.append(f"<p>{ingredient.quantity} {ingredient.get_unit_display()} - {ingredient.name}</p>")
-    return ''.join(ingredient_lines), ''.join(instruction_lines)
-
-
-def save_recipe_structure(recipe, request):
-    step_titles = request.POST.getlist('step_title')
-    step_instructions = request.POST.getlist('step_instruction')
-    step_durations = request.POST.getlist('step_duration_minutes')
-    mixed_steps = set(request.POST.getlist('step_mix_after'))
-    ingredient_steps = request.POST.getlist('ingredient_step')
-    ingredient_names = request.POST.getlist('ingredient_name')
-    ingredient_quantities = request.POST.getlist('ingredient_quantity')
-    ingredient_units = request.POST.getlist('ingredient_unit')
-    ingredient_categories = request.POST.getlist('ingredient_category')
-
-    recipe.steps.all().delete()
-    created_steps = []
-    for index, instruction in enumerate(step_instructions):
-        instruction = instruction.strip()
-        title = step_titles[index].strip() if index < len(step_titles) else ''
-        if not instruction and not title:
-            continue
-        duration = None
-        if index < len(step_durations) and step_durations[index]:
-            duration = int(step_durations[index])
-        created_steps.append(RecipeStep.objects.create(
-            recipe=recipe,
-            order=len(created_steps) + 1,
-            title=title,
-            instruction=instruction or title,
-            mix_after=str(index) in mixed_steps,
-            duration_minutes=duration,
-        ))
-
-    if not created_steps:
-        created_steps.append(RecipeStep.objects.create(
-            recipe=recipe,
-            order=1,
-            title='Przygotowanie',
-            instruction=request.POST.get('instructions', '').strip() or 'Przygotuj przepis krok po kroku.',
-        ))
-
-    ingredient_order_by_step = {}
-    for index, raw_name in enumerate(ingredient_names):
-        name = raw_name.strip()
-        if not name:
-            continue
-        step_index = int(ingredient_steps[index]) if index < len(ingredient_steps) and ingredient_steps[index] else 0
-        if step_index >= len(created_steps):
-            step_index = len(created_steps) - 1
-        quantity = parse_pantry_decimal(ingredient_quantities[index] if index < len(ingredient_quantities) else '0')
-        unit = ingredient_units[index] if index < len(ingredient_units) else PantryProduct.UNIT_GRAM
-        validate_pantry_quantity_for_unit(quantity, unit)
-        ingredient_order_by_step[step_index] = ingredient_order_by_step.get(step_index, 0) + 1
-        RecipeStepIngredient.objects.create(
-            step=created_steps[step_index],
-            order=ingredient_order_by_step[step_index],
-            name=name,
-            quantity=quantity,
-            unit=unit,
-            category=ingredient_categories[index].strip() if index < len(ingredient_categories) else '',
-        )
-
-    recipe.ingredients, recipe.instructions = build_recipe_legacy_text(recipe)
-    recipe.save(update_fields=['ingredients', 'instructions', 'updated_at'])
-
 @login_required
 def index(request):
     return render(request, 'cooking/index.html')
@@ -677,113 +629,83 @@ class RecipeListView(LoginRequiredMixin, View):
             'current_meal': meal_filter,
             'current_type': type_filter,
             'search_query': search_query,
+            # Szkic zapisanego właśnie przepisu jest już niepotrzebny.
+            'recipe_draft_saved': request.session.pop('recipe_draft_saved', ''),
         }
         
         return render(request, 'cooking/recipe-list.html', context)
     
-class AddRecipeView(LoginRequiredMixin, View):
-    def get(self, request):
-        return render(request, 'cooking/add-recipe.html', get_recipe_form_context())
+class RecipeFormMixin:
+    """Wspólny zapis dodawania i edycji przepisu.
 
-    @transaction.atomic
-    def post(self, request):
-        # Pobieranie danych z formularza
-        title = request.POST.get('title')
-        description = request.POST.get('description')
-        ingredients = request.POST.get('ingredients') or ''
-        instructions = request.POST.get('instructions') or ''
-        
-        # Pobieranie liczb (z domyślnymi wartościami w razie błędu)
-        try:
-            portions = int(request.POST.get('portions', 1))
-            kcal = int(request.POST.get('kcal', 0))
-            preparation_time = int(request.POST.get('preparation_time', 5))
-        except ValueError:
-            portions = 1
-            kcal = 0
-            preparation_time = 5
+    Po błędzie formularz wraca z wpisanymi danymi i komunikatami przy
+    polach. Po zapisie: lista przepisów przewinięta do tego przepisu.
+    """
+    template_name = 'cooking/recipe_form.html'
 
-        # Pobieranie opcji wyboru
-        kitchen_region = request.POST.get('kitchen_region', '')
-        meal_type = request.POST.get('meal_type', '')
-        type_of_dish = request.POST.get('type_of_dish', '')
-        
-        try:
-            image = validate_recipe_image(request.FILES.get('image'))
-        except ValueError as exc:
-            messages.error(request, str(exc))
-            return render(
-                request,
-                'cooking/add-recipe.html',
-                get_recipe_form_context(form_values=request.POST),
-            )
+    def render_form(self, request, state, recipe=None, problems=None):
+        context = get_recipe_form_context(
+            request, state, recipe=recipe, failed=bool(problems), problems=problems,
+        )
+        return render(request, self.template_name, context)
 
-        # Tworzenie obiektu
-        try:
-            recipe = Recipe.objects.create(
-                user=request.user,
-                title=title,
-                description=description,
-                ingredients=ingredients,
-                instructions=instructions,
-                portions=portions,
-                kcal=kcal,
-                preparation_time=preparation_time,
-                kitchen_region=kitchen_region,
-                meal_type=meal_type,
-                type_of_dish=type_of_dish,
-                image=image
-            )
-            save_recipe_structure(recipe, request)
-        except Exception as exc:
-            transaction.set_rollback(True)
-            messages.error(request, f'Nie udało się dodać przepisu: {exc}')
-            return render(
-                request,
-                'cooking/add-recipe.html',
-                get_recipe_form_context(form_values=request.POST),
-            )
+    def handle(self, request, recipe=None):
+        state = recipe_form.state_from_post(request.POST)
+        clean, problems = recipe_form.validate(state)
 
-        return redirect('cooking:recipe-list')
-
-class EditRecipeView(LoginRequiredMixin, View):
-    def get(self, request, recipe_id):
-        # Pobieramy przepis, upewniając się, że należy do użytkownika
-        recipe = get_object_or_404(Recipe.objects.prefetch_related('steps__ingredients'), id=recipe_id, user=request.user)
-        recipe.kcal = str(recipe.kcal)
-        context = get_recipe_form_context(recipe=recipe)
-        return render(request, 'cooking/edit-recipe.html', context)
-
-    @transaction.atomic
-    def post(self, request, recipe_id):
-        recipe = get_object_or_404(Recipe, id=recipe_id, user=request.user)
-        
-        # Aktualizacja pól
-        recipe.title = request.POST.get('title')
-        recipe.description = request.POST.get('description')
-        recipe.ingredients = request.POST.get('ingredients') or ''
-        recipe.instructions = request.POST.get('instructions') or ''
-        recipe.portions = request.POST.get('portions')
-        recipe.kcal = request.POST.get('kcal')
-        recipe.preparation_time = request.POST.get('preparation_time')
-        recipe.kitchen_region = request.POST.get('kitchen_region')
-        recipe.meal_type = request.POST.get('meal_type')
-        recipe.type_of_dish = request.POST.get('type_of_dish')
-        
-        if request.FILES.get('image'):
+        image = None
+        uploaded = request.FILES.get('image')
+        if uploaded:
             try:
-                recipe.image = validate_recipe_image(request.FILES.get('image'))
+                image = validate_recipe_image(uploaded)
             except ValueError as exc:
-                messages.error(request, str(exc))
-                return render(
-                    request,
-                    'cooking/edit-recipe.html',
-                    get_recipe_form_context(recipe=recipe),
-                )
-            
-        recipe.save()
-        save_recipe_structure(recipe, request)
-        return redirect('cooking:recipe-list')
+                state['errors']['image'] = str(exc)
+                problems.insert(0, str(exc))
+
+        if problems:
+            if uploaded and 'image' not in state['errors']:
+                state['errors']['image'] = 'Wybierz zdjęcie jeszcze raz - przeglądarka nie odsyła go po błędzie.'
+            # Lista błędów jest na górze formularza, a każdy błąd także
+            # przy swoim polu. Wpisane dane zostają.
+            return self.render_form(request, state, recipe=recipe, problems=problems)
+
+        is_new = recipe is None
+        if is_new:
+            recipe = Recipe(user=request.user)
+        draft_key = recipe_draft_key(request, None if is_new else recipe)
+        recipe_form.save_recipe(
+            recipe, clean, image=image,
+            remove_image=not image and request.POST.get('remove_image') == '1',
+        )
+        request.session['recipe_draft_saved'] = draft_key
+        messages.success(
+            request,
+            f'Dodano przepis „{recipe.title}”.' if is_new else f'Zapisano zmiany w przepisie „{recipe.title}”.',
+        )
+        return redirect(f"{reverse('cooking:recipe-list')}#przepis-{recipe.pk}")
+
+
+class AddRecipeView(LoginRequiredMixin, RecipeFormMixin, View):
+    def get(self, request):
+        return self.render_form(request, recipe_form.blank_state())
+
+    def post(self, request):
+        return self.handle(request)
+
+
+class EditRecipeView(LoginRequiredMixin, RecipeFormMixin, View):
+    def get_recipe(self, request, recipe_id):
+        # Edytować może tylko autor przepisu.
+        return get_object_or_404(
+            Recipe.objects.prefetch_related('steps', 'ingredient_items'), id=recipe_id, user=request.user,
+        )
+
+    def get(self, request, recipe_id):
+        recipe = self.get_recipe(request, recipe_id)
+        return self.render_form(request, recipe_form.state_from_recipe(recipe), recipe=recipe)
+
+    def post(self, request, recipe_id):
+        return self.handle(request, self.get_recipe(request, recipe_id))
 
 class DeleteRecipeView(LoginRequiredMixin, View):
     def post(self, request, recipe_id):
@@ -2541,17 +2463,52 @@ class CompleteShoppingListView(LoginRequiredMixin, View):
         return redirect('cooking:shopping-list-detail', list_id=shopping_list.id)
 
 
+def cook_sections(recipe):
+    """Panele „Gotuj”: składniki bez kroku (jeśli są), potem kroki.
+
+    Każdy wiersz ma podpowiedź ilości (recipe_units.cook_prefill): łyżki
+    przeliczone na ml, sztuki w górę, „do smaku” do pominięcia.
+    """
+    products = {}
+
+    def product_for(name):
+        key = name.strip().casefold()
+        if key not in products:
+            products[key] = recipe_pantry.resolve_pantry_product(name)
+        return products[key]
+
+    rows = defaultdict(list)
+    for item in recipe.ingredient_items.all():
+        rows[item.step_id].append({'ingredient': item, 'prefill': recipe_units.cook_prefill(item, product_for(item.name))})
+    sections = []
+    if rows.get(None):
+        sections.append({
+            'label': 'Składniki', 'title': 'Składniki bez kroku',
+            'instruction': 'Te składniki nie są przypisane do kroku – zważ je na początku.',
+            'mix_after': False, 'rows': rows[None],
+        })
+    for number, step in enumerate(recipe.steps.all(), start=1):
+        sections.append({
+            'label': f'Krok {number}', 'title': step.title or 'Etap', 'instruction': step.instruction,
+            'mix_after': step.mix_after, 'rows': rows.get(step.pk, []),
+        })
+    return sections
+
+
 class CookView(LoginRequiredMixin, View):
     def get(self, request):
         selected_recipe = None
         recipe_id = request.GET.get('recipe')
         if recipe_id:
-            selected_recipe = get_object_or_404(Recipe.objects.prefetch_related('steps__ingredients'), id=recipe_id)
+            selected_recipe = get_object_or_404(
+                Recipe.objects.prefetch_related('steps', 'ingredient_items__step'), id=recipe_id,
+            )
 
         return render(request, 'cooking/cook.html', {
             'recipes': Recipe.objects.all(),
             'selected_recipe': selected_recipe,
-            'pantry_products': PantryProduct.objects.all(),
+            'cook_sections': cook_sections(selected_recipe) if selected_recipe else [],
+            'pantry_products': recipe_pantry.pantry_index(),
             'units': PantryProduct.UNIT_CHOICES,
             'categories': category_names(),
         })
@@ -2579,6 +2536,9 @@ class CookView(LoginRequiredMixin, View):
 
             if not name and not raw_quantity:
                 continue
+            if name and not raw_quantity.strip():
+                # Wiersz bez ilości (np. „sól do smaku”) - nic nie schodzi.
+                continue
             if not name:
                 errors.append(f'Wiersz {index + 1}: podaj nazwę produktu.')
                 continue
@@ -2588,7 +2548,8 @@ class CookView(LoginRequiredMixin, View):
                 if quantity <= 0:
                     raise ValueError('Ilość musi być większa od zera.')
 
-                product = PantryProduct.objects.filter(name__iexact=name).first()
+                # Nazwa produktu albo grupy („Jogurt naturalny” = marka z zapasem).
+                product = recipe_pantry.resolve_pantry_product(name)
                 fulfilled_quantity = Decimal('0.00')
                 before_package_count = 0
                 if product is None:
@@ -2662,7 +2623,8 @@ class CookView(LoginRequiredMixin, View):
                 return render(request, 'cooking/cook.html', {
                     'recipes': Recipe.objects.all(),
                     'selected_recipe': recipe,
-                    'pantry_products': PantryProduct.objects.all(),
+                    'cook_sections': cook_sections(recipe) if recipe else [],
+                    'pantry_products': recipe_pantry.pantry_index(),
                     'units': PantryProduct.UNIT_CHOICES,
                     'categories': category_names(),
                     'form_rows': zip(product_names, quantities, units, categories),

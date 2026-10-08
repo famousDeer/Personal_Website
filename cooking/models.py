@@ -26,6 +26,22 @@ PANTRY_UNIT_CHOICES = [
     (UNIT_PACKAGE, 'opak.'),
 ]
 
+# Jednostki kuchenne - tylko w przepisach. „Gotuj” przelicza łyżki
+# i szklanki na ml, a „szczyptę” i „do smaku” pomija (cooking.services.recipe_units).
+UNIT_TABLESPOON = 'lyzka'
+UNIT_TEASPOON = 'lyzeczka'
+UNIT_GLASS = 'szklanka'
+UNIT_PINCH = 'szczypta'
+UNIT_TO_TASTE = 'do_smaku'
+KITCHEN_UNIT_CHOICES = [
+    (UNIT_TABLESPOON, 'łyżka'),
+    (UNIT_TEASPOON, 'łyżeczka'),
+    (UNIT_GLASS, 'szklanka'),
+    (UNIT_PINCH, 'szczypta'),
+    (UNIT_TO_TASTE, 'do smaku'),
+]
+RECIPE_UNIT_CHOICES = PANTRY_UNIT_CHOICES + KITCHEN_UNIT_CHOICES
+
 # Recipe database
 class Recipe(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='recipes')
@@ -70,17 +86,33 @@ class RecipeStep(models.Model):
 
 
 class RecipeStepIngredient(models.Model):
-    step = models.ForeignKey(RecipeStep, on_delete=models.CASCADE, related_name='ingredients')
+    """Składnik przepisu.
+
+    Należy do przepisu (lista składników) i opcjonalnie do kroku, w którym
+    się go używa - wtedy „Gotuj” pokazuje go przy tym kroku. Kolejność
+    (order) jest wspólna dla całego przepisu.
+    """
+    recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, related_name='ingredient_items')
+    step = models.ForeignKey(
+        RecipeStep, on_delete=models.SET_NULL, related_name='ingredients', null=True, blank=True,
+    )
     order = models.PositiveIntegerField(default=1)
     name = models.CharField(max_length=160)
+    # „do smaku” ma ilość 0
     quantity = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
-    unit = models.CharField(max_length=10, choices=PANTRY_UNIT_CHOICES, default=UNIT_GRAM)
+    unit = models.CharField(max_length=10, choices=RECIPE_UNIT_CHOICES, default=UNIT_GRAM)
     category = models.CharField(max_length=120, blank=True)
     note = models.CharField(max_length=255, blank=True)
 
     class Meta:
         db_table = 'recipe_step_ingredients'
-        ordering = ['step__order', 'order', 'id']
+        ordering = ['order', 'id']
+
+    def save(self, *args, **kwargs):
+        # Składnik podany tylko z krokiem należy do przepisu tego kroku.
+        if self.recipe_id is None and self.step_id is not None:
+            self.recipe_id = self.step.recipe_id
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.name} ({self.quantity} {self.unit})"

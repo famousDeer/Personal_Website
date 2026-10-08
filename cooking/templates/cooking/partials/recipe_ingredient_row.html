@@ -1,0 +1,51 @@
+{% load pantry_extras %}{% comment %}
+Wiersz na liście składników przepisu. Wspólny dla wierszy z serwera
+i wzoru <template>, z którego skrypt dodaje nowe wiersze.
+- Uchwyt: przeciąganie albo strzałki na klawiaturze.
+- Nazwa: podpowiedzi ze spiżarni; pod wierszem stan „w spiżarni” albo
+  „nowy produkt” (recipe-form.js). Kategoria pokazuje się tylko przy
+  nowym produkcie - pustą uzupełnia serwer.
+- Ilość: pole tekstowe z klawiaturą liczbową (0,5 i 0.5); przy „do smaku”
+  niepotrzebna, przy „szczypcie” pusta = 1.
+- Krok: opcjonalny - wtedy „Gotuj” pokaże składnik przy tym kroku.
+{% endcomment %}
+<div class="recipe-ingredient-row{% if ingredient.error %} has-error{% endif %}" data-ingredient-row>
+    <button class="rf-drag" type="button" data-drag-ingredient
+            title="Przeciągnij, aby zmienić kolejność (albo strzałki na klawiaturze)" aria-label="Zmień kolejność składnika">
+        <i class="bi bi-grip-vertical" aria-hidden="true"></i>
+    </button>
+    <div class="rf-name">
+        <input type="text" name="ingredient_name" class="form-control" value="{{ ingredient.name }}"
+               placeholder="Produkt, np. cebula" aria-label="Produkt" maxlength="160" autocomplete="off"
+               autocapitalize="sentences" role="combobox" aria-autocomplete="list" aria-expanded="false">
+        <div class="rf-suggest" role="listbox" aria-label="Produkty ze spiżarni" data-suggest hidden></div>
+    </div>
+    <input type="text" name="ingredient_quantity" class="form-control" value="{{ ingredient.quantity }}"
+           inputmode="decimal" placeholder="Ilość" aria-label="Ilość"
+           pattern="\s*[0-9]{1,8}([.,][0-9]{1,2})?\s*" title="Liczba, np. 200 albo 0,5">
+    <select name="ingredient_unit" class="form-select" aria-label="Jednostka">
+        {% for group_label, choices in unit_groups %}
+            <optgroup label="{{ group_label }}">
+                {% for value, label in choices %}
+                    <option value="{{ value }}" {% if ingredient.unit == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </optgroup>
+        {% endfor %}
+    </select>
+    <select name="ingredient_step" class="form-select" aria-label="Krok, w którym używasz składnika" data-step-select>
+        <option value="">Bez kroku</option>
+        {% for step in steps %}
+            <option value="{{ forloop.counter0 }}" {% if ingredient.step == forloop.counter0|stringformat:'s' %}selected{% endif %}>Krok {{ forloop.counter }}</option>
+        {% endfor %}
+    </select>
+    <select name="ingredient_category" class="form-select" aria-label="Kategoria nowego produktu w spiżarni"
+            title="Kategoria, pod którą „Gotuj” doda nowy produkt do spiżarni" data-ingredient-category>
+        <option value="">Kategoria (auto)</option>
+        {% pantry_category_options ingredient.category %}
+    </select>
+    <button class="btn btn-light btn-icon" type="button" data-remove-ingredient title="Usuń składnik" aria-label="Usuń składnik">
+        <i class="bi bi-x-lg" aria-hidden="true"></i>
+    </button>
+    <div class="rf-ing-status" data-ingredient-status aria-live="polite" hidden></div>
+    {% if ingredient.error %}<div class="rf-row-error">{{ ingredient.error|capfirst }}</div>{% endif %}
+</div>

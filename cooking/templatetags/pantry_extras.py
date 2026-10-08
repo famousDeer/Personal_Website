@@ -41,6 +41,13 @@ def pantry_category_options(selected=''):
 
 
 @register.filter
+def recipe_amount(ingredient):
+    """Ilość składnika przepisu: „500 g”, „2 łyżki”, „do smaku”."""
+    from ..services.recipe_units import amount_text
+    return amount_text(ingredient.quantity, ingredient.unit)
+
+
+@register.filter
 def plain_decimal(value):
     """Liczba do pola <input type="number">: 750.00 -> "750", 1.50 -> "1.5".
 

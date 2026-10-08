@@ -16,8 +16,18 @@ from .models import (
 
 
 class RecipeStepIngredientInline(admin.TabularInline):
+    """Składniki przepisu; krok jest opcjonalny."""
     model = RecipeStepIngredient
+    fk_name = 'recipe'
+    fields = ('order', 'name', 'quantity', 'unit', 'step', 'category')
     extra = 1
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        # Do wyboru tylko kroki tego przepisu.
+        if db_field.name == 'step':
+            recipe_id = request.resolver_match.kwargs.get('object_id')
+            kwargs['queryset'] = RecipeStep.objects.filter(recipe_id=recipe_id) if recipe_id else RecipeStep.objects.none()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
 class RecipeStepInline(admin.StackedInline):
@@ -31,7 +41,7 @@ class RecipeAdmin(admin.ModelAdmin):
     list_display = ('title', 'user', 'meal_type', 'kitchen_region', 'created_at')
     search_fields = ('title', 'ingredients', 'instructions')
     list_filter = ('meal_type', 'kitchen_region', 'type_of_dish')
-    inlines = [RecipeStepInline]
+    inlines = [RecipeStepIngredientInline, RecipeStepInline]
 
 
 @admin.register(RecipeStep)
@@ -39,13 +49,12 @@ class RecipeStepAdmin(admin.ModelAdmin):
     list_display = ('recipe', 'order', 'title', 'mix_after', 'duration_minutes')
     list_filter = ('mix_after',)
     search_fields = ('recipe__title', 'title', 'instruction')
-    inlines = [RecipeStepIngredientInline]
 
 
 @admin.register(RecipeStepIngredient)
 class RecipeStepIngredientAdmin(admin.ModelAdmin):
-    list_display = ('name', 'step', 'quantity', 'unit', 'category')
-    search_fields = ('name', 'step__recipe__title')
+    list_display = ('name', 'recipe', 'step', 'quantity', 'unit', 'category')
+    search_fields = ('name', 'recipe__title')
     list_filter = ('unit', 'category')
 
 

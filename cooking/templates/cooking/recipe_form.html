@@ -1,0 +1,210 @@
+{% extends 'cooking/index.html' %}
+{% load static ui %}
+{% comment %}
+Wspólny formularz dodawania i edycji przepisu (dawniej add-recipe.html
+i edit-recipe.html). Renderuje się ze stanu `form`
+(cooking/services/recipe_form.py), więc po błędzie wraca z wpisanymi
+danymi. Szkic, ostrzeżenie przy wyjściu, zmniejszanie zdjęcia i dodawanie
+kroków obsługuje cooking/static/cooking/js/recipe-form.js.
+{% endcomment %}
+
+{% block title %}{% if recipe %}Edytuj przepis{% else %}Nowy przepis{% endif %}{% endblock %}
+
+{% block content_cooking %}
+{% url 'cooking:recipe-list' as back_url %}
+{% if recipe %}
+    {% page_head title=recipe.title eyebrow="Kuchnia · edycja przepisu" icon="bi-egg-fried" sub="Zmiany widzą wszyscy domownicy." back=back_url back_label="Przepisy" %}{% endpage_head %}
+{% else %}
+    {% page_head title="Nowy przepis" eyebrow="Kuchnia" icon="bi-egg-fried" sub="Wystarczą nazwa, porcje i kroki – reszta jest opcjonalna." back=back_url back_label="Przepisy" %}{% endpage_head %}
+{% endif %}
+
+<form method="post" enctype="multipart/form-data" class="recipe-form" id="recipe-form"
+      data-recipe-form
+      data-draft-key="{{ draft_key }}"
+      data-failed="{% if failed %}1{% endif %}"
+      data-max-image-bytes="{{ max_image_bytes }}">
+    {% csrf_token %}
+
+    {% if problems %}
+        <div class="alert alert-danger rf-summary" role="alert" tabindex="-1" data-error-summary>
+            <div class="fw-semibold mb-1"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i> Przepis nie został zapisany. Do poprawienia:</div>
+            <ul class="mb-1">
+                {% for problem in problems %}<li>{{ problem }}</li>{% endfor %}
+            </ul>
+            <div class="small">Wszystko, co wpisano, zostało w formularzu.</div>
+        </div>
+    {% endif %}
+
+    <div class="alert alert-info rf-draft" data-draft-banner hidden>
+        <div class="rf-draft-text">
+            <i class="bi bi-journal-text" aria-hidden="true"></i>
+            <span data-draft-text>Na tym urządzeniu jest niezapisany szkic tego przepisu.</span>
+        </div>
+        <div class="rf-draft-actions">
+            <button type="button" class="btn btn-sm btn-primary" data-draft-restore>Przywróć szkic</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-draft-discard>Odrzuć</button>
+        </div>
+    </div>
+
+    <div class="rf-layout">
+        <div class="card border-0 shadow-sm action-card rf-basics">
+            <div class="card-body">
+                <label for="rf-title" class="form-label fw-semibold">Nazwa dania</label>
+                <input type="text" name="title" id="rf-title" class="form-control form-control-lg fw-semibold{% if form.errors.title %} is-invalid{% endif %}"
+                       value="{{ form.title }}" maxlength="255" required placeholder="np. Spaghetti bolognese"
+                       autocapitalize="sentences" {% if not recipe and not failed %}autofocus{% endif %}>
+                {% if form.errors.title %}<div class="invalid-feedback">{{ form.errors.title }}</div>{% endif %}
+
+                <label for="rf-description" class="form-label fw-semibold mt-3">Krótki opis <span class="fw-normal text-muted">(opcjonalnie)</span></label>
+                <textarea name="description" id="rf-description" class="form-control auto-expand" rows="2"
+                          placeholder="np. Szybki obiad na 30 minut, dzieci go lubią." autocapitalize="sentences">{{ form.description }}</textarea>
+            </div>
+        </div>
+
+        <aside class="rf-side">
+            <div class="card border-0 shadow-sm action-card">
+                <div class="card-body">
+                    <h2 class="rf-card-title">Szczegóły</h2>
+                    <div class="rf-details">
+                        <div>
+                            <label for="rf-portions" class="form-label small fw-semibold">Porcje</label>
+                            <input type="number" name="portions" id="rf-portions" class="form-control{% if form.errors.portions %} is-invalid{% endif %}"
+                                   value="{{ form.portions }}" min="1" max="999" step="1" inputmode="numeric" required>
+                        </div>
+                        <div>
+                            <label for="rf-time" class="form-label small fw-semibold">Czas (min)</label>
+                            <input type="number" name="preparation_time" id="rf-time" class="form-control{% if form.errors.preparation_time %} is-invalid{% endif %}"
+                                   value="{{ form.preparation_time }}" min="1" max="10000" step="1" inputmode="numeric"
+                                   placeholder="auto" data-total-time aria-describedby="rf-time-hint">
+                        </div>
+                        <div>
+                            <label for="rf-kcal" class="form-label small fw-semibold">Kcal/porcja</label>
+                            <input type="number" name="kcal" id="rf-kcal" class="form-control{% if form.errors.kcal %} is-invalid{% endif %}"
+                                   value="{{ form.kcal }}" min="0" max="20000" step="1" inputmode="numeric" placeholder="–">
+                        </div>
+                    </div>
+                    <div class="form-text" id="rf-time-hint" data-time-hint>Pusty czas = suma czasów kroków. Kcal można pominąć.</div>
+                    {% if form.errors.portions %}<div class="rf-field-error mt-2">{{ form.errors.portions }}</div>{% endif %}
+                    {% if form.errors.preparation_time %}<div class="rf-field-error mt-2">{{ form.errors.preparation_time }}</div>{% endif %}
+                    {% if form.errors.kcal %}<div class="rf-field-error mt-2">{{ form.errors.kcal }}</div>{% endif %}
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm action-card">
+                <div class="card-body">
+                    <h2 class="rf-card-title">Zdjęcie <span class="fw-normal text-muted">(opcjonalnie)</span></h2>
+                    <div class="rf-photo{% if recipe.image %} has-image{% endif %}" data-photo>
+                        <img data-photo-preview alt="" {% if recipe.image %}src="{{ recipe.image.url }}"{% else %}hidden{% endif %}>
+                        <label class="rf-photo-pick" for="rf-image">
+                            <i class="bi bi-camera" aria-hidden="true"></i>
+                            <span data-photo-label>{% if recipe.image %}Zmień zdjęcie{% else %}Dodaj zdjęcie dania{% endif %}</span>
+                        </label>
+                        <input type="file" name="image" id="rf-image" accept="image/*" class="visually-hidden" data-photo-input>
+                    </div>
+                    <div class="form-text" data-photo-hint>JPG, PNG lub WEBP. Duże zdjęcie z telefonu zmniejszy się samo przed wysłaniem.</div>
+                    {% if recipe.image %}
+                        <label class="form-check mt-2 mb-0">
+                            <input class="form-check-input" type="checkbox" name="remove_image" value="1" data-photo-remove>
+                            <span class="form-check-label small">Usuń zdjęcie</span>
+                        </label>
+                    {% endif %}
+                    <div class="rf-field-error mt-2" data-photo-error {% if not form.errors.image %}hidden{% endif %}>{{ form.errors.image }}</div>
+                </div>
+            </div>
+
+            {% comment %} Na telefonie zwinięte (opcjonalne, a zajmowały cały ekran przed
+               krokami). Na komputerze skrypt je rozwija. {% endcomment %}
+            {% comment %} Kategorie jako przyciski do kliknięcia (jeden wybór w grupie,
+               ponowne kliknięcie odznacza). Na telefonie zwinięte - w nagłówku
+               widać, co wybrano. Na komputerze skrypt je rozwija. {% endcomment %}
+            <details class="card border-0 shadow-sm action-card rf-tags-card" data-tags {% if form.kitchen_region or form.meal_type or form.type_of_dish %}open{% endif %}>
+                <summary class="card-body rf-tags-summary">
+                    <span class="rf-tags-summary-text">
+                        <span class="rf-card-title mb-0">Kategorie <span class="fw-normal text-muted">(do filtrów, opcjonalnie)</span></span>
+                        <span class="rf-tags-chosen" data-tags-chosen>{{ tags_chosen }}</span>
+                    </span>
+                    <i class="bi bi-chevron-down" aria-hidden="true"></i>
+                </summary>
+                <div class="card-body pt-0 rf-tags">
+                    {% include 'cooking/partials/recipe_chips.html' with legend='Kuchnia' name='kitchen_region' values=regions current=form.kitchen_region strip='Kuchnia ' %}
+                    {% include 'cooking/partials/recipe_chips.html' with legend='Posiłek' name='meal_type' values=meal_types current=form.meal_type %}
+                    {% include 'cooking/partials/recipe_chips.html' with legend='Przygotowanie' name='type_of_dish' values=dish_types current=form.type_of_dish %}
+                </div>
+            </details>
+
+        </aside>
+
+        <section class="card border-0 shadow-sm action-card rf-ingredients" aria-labelledby="rf-ingredients-title">
+            <div class="card-body">
+                <div class="rf-steps-head">
+                    <h2 class="h5 fw-bold mb-0" id="rf-ingredients-title">Składniki</h2>
+                    <span class="small text-muted">Krok przy składniku jest opcjonalny – wtedy „Gotuj” pokaże go przy tym kroku.</span>
+                </div>
+                {% if form.errors.ingredients %}<div class="rf-field-error mb-3">{{ form.errors.ingredients }}</div>{% endif %}
+                <div class="recipe-ingredient-list" data-ingredient-list>
+                    {% for ingredient in form.ingredients %}
+                        {% include 'cooking/partials/recipe_ingredient_row.html' with ingredient=ingredient steps=form.steps %}
+                    {% endfor %}
+                </div>
+
+                <div class="rf-paste" data-paste-panel hidden>
+                    <label class="form-label small fw-semibold mb-1" for="rf-paste-input">Wklej składniki – każdy w osobnej linii</label>
+                    <textarea class="form-control auto-expand" rows="4" id="rf-paste-input" data-paste-input
+                              placeholder="500 g mięsa mielonego&#10;1 cebula&#10;2 łyżki oliwy&#10;sól do smaku"></textarea>
+                    <ul class="rf-paste-preview" data-paste-preview aria-live="polite"></ul>
+                    <div class="rf-paste-actions">
+                        <button class="btn btn-sm btn-primary" type="button" data-paste-apply disabled>Dodaj składniki</button>
+                        <button class="btn btn-sm btn-outline-secondary" type="button" data-paste-cancel>Anuluj</button>
+                    </div>
+                </div>
+
+                <div class="rf-step-ingredients-buttons mt-2">
+                    <button class="btn btn-sm btn-outline-success rounded-pill" type="button" data-add-ingredient>
+                        <i class="bi bi-plus-lg" aria-hidden="true"></i> Składnik
+                    </button>
+                    <button class="btn btn-sm btn-soft-neutral rounded-pill" type="button" data-paste-open hidden>
+                        <i class="bi bi-clipboard-plus" aria-hidden="true"></i> Wklej listę
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <section class="rf-steps" aria-labelledby="rf-steps-title">
+            <div class="rf-steps-head">
+                <h2 class="h5 fw-bold mb-0" id="rf-steps-title">Kroki</h2>
+            </div>
+            {% if form.errors.steps %}<div class="rf-field-error mb-3">{{ form.errors.steps }}</div>{% endif %}
+            <div class="recipe-step-list" data-step-list>
+                {% for step in form.steps %}
+                    {% include 'cooking/partials/recipe_step.html' with step=step number=forloop.counter index=forloop.counter0 ingredients=form.ingredients %}
+                {% endfor %}
+            </div>
+            <button class="btn btn-outline-primary rounded-pill rf-add-step" type="button" data-add-step>
+                <i class="bi bi-plus-lg" aria-hidden="true"></i> Dodaj krok
+            </button>
+        </section>
+    </div>
+
+    <div class="u-form-actions rf-actions">
+        <span class="rf-status" data-draft-status aria-live="polite"></span>
+        <a href="{{ back_url }}" class="btn btn-outline-secondary" data-cancel>Anuluj</a>
+        <button type="submit" class="btn btn-primary" data-submit>
+            <i class="bi bi-check-lg" aria-hidden="true"></i> {% if recipe %}Zapisz zmiany{% else %}Dodaj przepis{% endif %}
+        </button>
+    </div>
+</form>
+
+<template data-step-template>
+    {% include 'cooking/partials/recipe_step.html' with step=blank_step number=1 index=0 %}
+</template>
+<template data-ingredient-template>
+    {% include 'cooking/partials/recipe_ingredient_row.html' with ingredient=blank_ingredient steps=form.steps %}
+</template>
+{% endblock %}
+
+{% block extra_js %}
+{{ pantry_index|json_script:"recipe-pantry-index" }}
+{{ keyword_rules|json_script:"recipe-keyword-rules" }}
+<script src="{% static 'cooking/js/recipe-ingredients.js' %}"></script>
+<script src="{% static 'cooking/js/recipe-form.js' %}"></script>
+{% endblock %}

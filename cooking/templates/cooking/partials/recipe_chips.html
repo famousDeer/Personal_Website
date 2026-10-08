@@ -1,0 +1,13 @@
+{% comment %} Grupa przycisków-kategorii w formularzu przepisu (radio; recipe-form.js
+   pozwala odznaczyć wybrany przycisk ponownym kliknięciem). {% endcomment %}
+<fieldset class="rf-chip-group" data-chip-group>
+    <legend class="form-label small fw-semibold mb-2">{{ legend }}</legend>
+    <div class="rf-chip-list">
+        {% for value in values %}
+            <label class="rf-chip">
+                <input type="radio" name="{{ name }}" value="{{ value }}" {% if current == value %}checked{% endif %}>
+                <span>{% if strip %}{{ value|cut:strip|capfirst }}{% else %}{{ value }}{% endif %}</span>
+            </label>
+        {% endfor %}
+    </div>
+</fieldset>

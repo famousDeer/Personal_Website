@@ -52,25 +52,28 @@
                         </a>
                     </div>
                     <div class="cook-recipe-preview">
+                        {% if selected_recipe.ingredient_items.all %}
+                            <h4 class="small text-uppercase fw-bold text-muted mb-2">Składniki</h4>
+                            <ul class="small mb-4">
+                                {% for ingredient in selected_recipe.ingredient_items.all %}
+                                    <li>{{ ingredient|recipe_amount }} – {{ ingredient.name }}{% if ingredient.step %} <span class="text-muted">· krok {{ ingredient.step.order }}</span>{% endif %}</li>
+                                {% endfor %}
+                            </ul>
+                        {% endif %}
                         {% for step in selected_recipe.steps.all %}
                             <div class="mb-4">
                                 <div class="small text-uppercase fw-bold text-muted mb-1">Krok {{ forloop.counter }}</div>
                                 <h4 class="h6 fw-bold mb-2">{{ step.title|default:"Etap" }}</h4>
-                                {% if step.ingredients.all %}
-                                    <ul class="small mb-2">
-                                        {% for ingredient in step.ingredients.all %}
-                                            <li>{{ ingredient.quantity|qty }} {{ ingredient.get_unit_display }} - {{ ingredient.name }}</li>
-                                        {% endfor %}
-                                    </ul>
-                                {% endif %}
                                 <p class="small mb-1">{{ step.instruction }}</p>
                                 {% if step.mix_after %}
                                     <span class="badge bg-info-subtle text-info rounded-pill">Wymieszaj po dodaniu</span>
                                 {% endif %}
                             </div>
                         {% empty %}
-                            <h4 class="small text-uppercase fw-bold text-muted mb-2">Składniki</h4>
-                            <div class="small mb-4">{{ selected_recipe.ingredients|safe_recipe_html }}</div>
+                            {% if not selected_recipe.ingredient_items.all %}
+                                <h4 class="small text-uppercase fw-bold text-muted mb-2">Składniki</h4>
+                                <div class="small mb-4">{{ selected_recipe.ingredients|safe_recipe_html }}</div>
+                            {% endif %}
                             <h4 class="small text-uppercase fw-bold text-muted mb-2">Kroki</h4>
                             <div class="small">{{ selected_recipe.instructions|safe_recipe_html }}</div>
                         {% endfor %}
@@ -109,20 +112,21 @@
 
                     {% if selected_recipe %}
                         <div class="cook-step-flow" data-cook-flow>
-                            {% for step in selected_recipe.steps.all %}
+                            {% for section in cook_sections %}
                                 <section class="cook-step-panel {% if forloop.first %}is-active{% endif %}" data-cook-step-panel>
                                     <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
                                         <div>
-                                            <span class="badge rounded-pill bg-primary-subtle text-primary mb-2">Krok {{ forloop.counter }}</span>
-                                            <h4 class="h6 fw-bold mb-1">{{ step.title|default:"Etap" }}</h4>
-                                            <p class="text-muted small mb-0">{{ step.instruction }}</p>
-                                            {% if step.mix_after %}
+                                            <span class="badge rounded-pill bg-primary-subtle text-primary mb-2">{{ section.label }}</span>
+                                            <h4 class="h6 fw-bold mb-1">{{ section.title }}</h4>
+                                            <p class="text-muted small mb-0">{{ section.instruction }}</p>
+                                            {% if section.mix_after %}
                                                 <span class="badge bg-info-subtle text-info rounded-pill mt-2">Po dodaniu wymieszaj</span>
                                             {% endif %}
                                         </div>
                                     </div>
                                     <div class="cook-row-list" data-cook-rows>
-                                        {% for ingredient in step.ingredients.all %}
+                                        {% for row in section.rows %}
+                                            {% with ingredient=row.ingredient prefill=row.prefill %}
                                             <div class="cook-row">
                                                 <div>
                                                     <label class="form-label small text-uppercase fw-bold text-muted">Produkt</label>
@@ -130,13 +134,13 @@
                                                 </div>
                                                 <div>
                                                     <label class="form-label small text-uppercase fw-bold text-muted">Ilość z wagi</label>
-                                                    <input type="number" name="quantity" class="form-control" step="{% if ingredient.unit == 'szt' %}1{% else %}0.01{% endif %}" min="{% if ingredient.unit == 'szt' %}1{% else %}0.01{% endif %}" value="{{ ingredient.quantity|unlocalize }}" required>
+                                                    <input type="number" name="quantity" class="form-control" step="{% if prefill.unit == 'szt' %}1{% else %}0.01{% endif %}" min="{% if prefill.unit == 'szt' %}1{% else %}0.01{% endif %}" value="{{ prefill.quantity }}" {% if prefill.optional %}placeholder="–" data-optional{% else %}required{% endif %}>
                                                 </div>
                                                 <div>
                                                     <label class="form-label small text-uppercase fw-bold text-muted">Jednostka</label>
                                                     <select name="unit" class="form-select" required>
                                                         {% for value, label in units %}
-                                                            <option value="{{ value }}" {% if ingredient.unit == value %}selected{% endif %}>{{ label }}</option>
+                                                            <option value="{{ value }}" {% if prefill.unit == value %}selected{% endif %}>{{ label }}</option>
                                                         {% endfor %}
                                                     </select>
                                                 </div>
@@ -150,36 +154,11 @@
                                                 <button class="btn btn-light align-self-end" type="button" data-remove-cook-row title="Usuń wiersz">
                                                     <i class="bi bi-x-lg"></i>
                                                 </button>
+                                                {% if prefill.hint %}<div class="form-text cook-row-hint">{{ prefill.hint }}</div>{% endif %}
                                             </div>
+                                            {% endwith %}
                                         {% empty %}
-                                            <div class="cook-row">
-                                                <div>
-                                                    <label class="form-label small text-uppercase fw-bold text-muted">Produkt</label>
-                                                    <input type="text" name="product_name" class="form-control" list="pantry-product-suggestions" placeholder="np. Mąka" required>
-                                                </div>
-                                                <div>
-                                                    <label class="form-label small text-uppercase fw-bold text-muted">Ilość z wagi</label>
-                                                    <input type="number" name="quantity" class="form-control" step="0.01" min="0.01" placeholder="0.00" required>
-                                                </div>
-                                                <div>
-                                                    <label class="form-label small text-uppercase fw-bold text-muted">Jednostka</label>
-                                                    <select name="unit" class="form-select" required>
-                                                        {% for value, label in units %}
-                                                            <option value="{{ value }}" {% if value == 'g' %}selected{% endif %}>{{ label }}</option>
-                                                        {% endfor %}
-                                                    </select>
-                                                </div>
-                                                <div>
-                                                    <label class="form-label small text-uppercase fw-bold text-muted">Kategoria</label>
-                                                    <select name="category" class="form-select">
-                                                        <option value="">Auto / Inne</option>
-                                                        {% pantry_category_options %}
-                                                    </select>
-                                                </div>
-                                                <button class="btn btn-light align-self-end" type="button" data-remove-cook-row title="Usuń wiersz">
-                                                    <i class="bi bi-x-lg"></i>
-                                                </button>
-                                            </div>
+                                            <p class="text-muted small mb-0" data-cook-no-rows>W tym kroku nic nie ubywa ze spiżarni. Jeśli jednak coś zużyjesz, dodaj wiersz.</p>
                                         {% endfor %}
                                     </div>
                                 </section>
@@ -257,6 +236,37 @@
                         </div>
                     {% endif %}
 
+                    <template data-cook-row-template>
+                        <div class="cook-row">
+                            <div>
+                                <label class="form-label small text-uppercase fw-bold text-muted">Produkt</label>
+                                <input type="text" name="product_name" class="form-control" list="pantry-product-suggestions" placeholder="np. Mąka" required>
+                            </div>
+                            <div>
+                                <label class="form-label small text-uppercase fw-bold text-muted">Ilość</label>
+                                <input type="number" name="quantity" class="form-control" step="0.01" min="0.01" placeholder="0.00" required>
+                            </div>
+                            <div>
+                                <label class="form-label small text-uppercase fw-bold text-muted">Jednostka</label>
+                                <select name="unit" class="form-select" required>
+                                    {% for value, label in units %}
+                                        <option value="{{ value }}" {% if value == 'g' %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div>
+                                <label class="form-label small text-uppercase fw-bold text-muted">Kategoria</label>
+                                <select name="category" class="form-select">
+                                    <option value="">Auto / Inne</option>
+                                    {% pantry_category_options %}
+                                </select>
+                            </div>
+                            <button class="btn btn-light align-self-end" type="button" data-remove-cook-row title="Usuń wiersz">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+                    </template>
+
                     <datalist id="pantry-product-suggestions">
                         {% for product in pantry_products %}
                             <option value="{{ product.name }}"></option>
@@ -302,9 +312,16 @@
 
         function syncRemoveButtons() {
             document.querySelectorAll('[data-cook-rows]').forEach((rows) => {
+                const count = rows.querySelectorAll('.cook-row').length;
                 rows.querySelectorAll('[data-remove-cook-row]').forEach((button) => {
-                    button.disabled = rows.querySelectorAll('.cook-row').length === 1;
+                    // W krokach przepisu można usunąć każdy wiersz (składnika
+                    // nie użyto). Bez przepisu zostaje co najmniej jeden.
+                    button.disabled = !flow && count === 1;
                 });
+                const empty = rows.querySelector('[data-cook-no-rows]');
+                if (empty) {
+                    empty.hidden = count > 0;
+                }
             });
         }
 
@@ -331,7 +348,9 @@
             const integerOnly = unit.value === 'szt';
             quantity.step = integerOnly ? '1' : '0.01';
             quantity.min = integerOnly ? '1' : '0.01';
-            quantity.placeholder = integerOnly ? '0' : '0.00';
+            if (!quantity.hasAttribute('data-optional')) {
+                quantity.placeholder = integerOnly ? '0' : '0.00';
+            }
         }
 
         function bindRow(row) {
@@ -370,12 +389,8 @@
 
         addButton.addEventListener('click', () => {
             const rows = activeRows();
-            const clone = rows.querySelector('.cook-row').cloneNode(true);
-            clone.querySelectorAll('input').forEach((input) => {
-                input.value = '';
-            });
-            clone.querySelector('select[name="category"]').value = '';
-            clone.querySelector('select[name="unit"]').value = 'g';
+            const template = document.querySelector('[data-cook-row-template]');
+            const clone = template.content.firstElementChild.cloneNode(true);
             rows.appendChild(clone);
             bindRow(clone);
             syncRemoveButtons();

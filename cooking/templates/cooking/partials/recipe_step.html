@@ -1,0 +1,60 @@
+{% comment %}
+Karta kroku w formularzu przepisu (dla kroków z serwera i wzoru <template>).
+Składniki są na liście nad krokami; tu widać te przypisane do kroku,
+a „Wybierz składniki” pozwala je zaznaczyć bez przewijania do listy.
+Numer kroku, pola step_mix_after i wybory kroku przy składnikach
+przelicza skrypt recipe-form.js.
+{% endcomment %}
+<section class="recipe-step-card{% if step.error %} has-error{% endif %}" data-step-card>
+    <div class="recipe-step-header">
+        <span class="badge rounded-pill bg-primary-subtle text-primary" data-step-label>Krok {{ number }}</span>
+        <div class="rf-step-tools">
+            <button class="btn btn-sm btn-light btn-icon" type="button" data-move-step="-1" title="Przesuń krok wyżej" aria-label="Przesuń krok wyżej">
+                <i class="bi bi-arrow-up" aria-hidden="true"></i>
+            </button>
+            <button class="btn btn-sm btn-light btn-icon" type="button" data-move-step="1" title="Przesuń krok niżej" aria-label="Przesuń krok niżej">
+                <i class="bi bi-arrow-down" aria-hidden="true"></i>
+            </button>
+            <button class="btn btn-sm btn-light btn-icon" type="button" data-remove-step title="Usuń krok" aria-label="Usuń krok">
+                <i class="bi bi-trash3" aria-hidden="true"></i>
+            </button>
+        </div>
+    </div>
+    {% if step.error %}<div class="rf-field-error mb-3"><i class="bi bi-exclamation-circle" aria-hidden="true"></i> {{ step.error|capfirst }}</div>{% endif %}
+    <div class="row g-2 g-md-3">
+        <div class="col-8 col-md-9">
+            <label class="form-label small fw-semibold text-muted mb-1">Tytuł kroku <span class="fw-normal">(opcjonalnie)</span></label>
+            <input type="text" name="step_title" class="form-control" value="{{ step.title }}" maxlength="160" placeholder="np. Sos" autocapitalize="sentences">
+        </div>
+        <div class="col-4 col-md-3">
+            <label class="form-label small fw-semibold text-muted mb-1">Czas (min)</label>
+            <input type="number" name="step_duration_minutes" class="form-control" value="{{ step.duration }}" min="0" max="10000" step="1" inputmode="numeric" placeholder="–" data-step-duration>
+        </div>
+        <div class="col-12">
+            <label class="form-label small fw-semibold text-muted mb-1">Co zrobić</label>
+            <textarea name="step_instruction" class="form-control auto-expand" rows="2" placeholder="np. Podsmaż cebulę na oliwie, aż się zeszkli." autocapitalize="sentences">{{ step.instruction }}</textarea>
+        </div>
+    </div>
+
+    <div class="rf-step-ingredients">
+        <div class="rf-step-assigned">
+            <span class="small fw-semibold text-muted">Składniki w tym kroku:</span>
+            <span class="rf-step-chips" data-step-chips>{% for ingredient in ingredients %}{% if ingredient.step == index|stringformat:'s' and ingredient.name %}<span class="rf-step-chip">{{ ingredient.name }}</span>{% endif %}{% endfor %}</span>
+            <span class="rf-no-ingredients" data-no-ingredients>brak – to w porządku dla kroków typu „Piecz 40 minut”</span>
+        </div>
+        <div class="rf-step-picker" data-step-picker hidden>
+            <div class="small fw-semibold mb-2">Zaznacz składniki używane w tym kroku</div>
+            <div class="rf-step-picker-list" data-step-picker-list></div>
+            <button class="btn btn-sm btn-primary mt-2" type="button" data-step-picker-close>Gotowe</button>
+        </div>
+        <div class="rf-step-ingredients-foot">
+            <button class="btn btn-sm btn-soft-neutral rounded-pill" type="button" data-step-picker-open hidden>
+                <i class="bi bi-check2-square" aria-hidden="true"></i> Wybierz składniki
+            </button>
+            <label class="form-check rf-mix" data-mix-option>
+                <input class="form-check-input" type="checkbox" name="step_mix_after" value="{{ index }}" {% if step.mix_after %}checked{% endif %}>
+                <span class="form-check-label">Przypomnij: wymieszaj po dodaniu</span>
+            </label>
+        </div>
+    </div>
+</section>

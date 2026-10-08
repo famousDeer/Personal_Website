@@ -287,6 +287,54 @@ caddy` before restarting if the image on the Pi is older than 2.7):
 If Caddy fails with `address already in use`, something else on the Pi (for example
 Pi-hole) already uses port 80 or 443.
 
+## Recipe form
+
+Adding and editing a recipe share one template (`cooking/templates/cooking/recipe_form.html`)
+and one service (`cooking/services/recipe_form.py`). The form is always rendered from a
+"state" of what the user typed, so a validation error never clears it: the problems are
+listed at the top and shown next to the fields, and every step and ingredient stays.
+
+- Ingredients are a list for the whole recipe (`RecipeStepIngredient.recipe`), shown
+  above the steps. Each one may point to the step it is used in (`step`, optional):
+  the step card lists its ingredients and has "Wybierz składniki" to tick them, and the
+  cook page shows them at that step. Unassigned ingredients get their own first panel
+  ("Składniki bez kroku"). A step may have no ingredients ("Bake for 40 minutes").
+- Kitchen units exist only in recipes: `łyżka` (15 ml), `łyżeczka` (5 ml),
+  `szklanka` (250 ml), `szczypta` and `do smaku` (no amount). The cook page converts
+  spoons and glasses to ml when the pantry product is measured by volume (or is new),
+  asks to weigh it when the product is kept in g or pieces, and leaves "szczypta" /
+  "do smaku" empty; a row left empty is skipped. See `cooking/services/recipe_units.py`.
+- Migration `0023_recipe_ingredient_list` moves existing ingredients to their recipe,
+  keeps them at their step and numbers them through the recipe; it runs on container
+  start and can be reversed (unassigned ingredients go back to the first step).
+- Ingredient amounts accept a comma and fractions of a piece (`0,5 szt.` = half an
+  onion). The cook page rounds pieces up (`1 szt.` leaves the pantry) and says so.
+- An empty total time is the sum of the step times; an empty kcal is stored as `0`
+  and shown as "no data" (the list hides the badge).
+- `cooking/static/cooking/js/recipe-form.js` keeps a draft in `localStorage` (one per
+  household member and recipe), offers to restore it after leaving the page, warns
+  before leaving with unsaved changes (desktop browsers) and shrinks a large phone
+  photo to 2000 px JPEG before upload, so the 5 MB limit is rarely hit. The draft is
+  removed by the recipe list after a successful save.
+- After saving, the recipe list opens scrolled to the recipe (`#przepis-<id>`).
+
+Ingredients and the pantry (`cooking/services/recipe_pantry.py`,
+`cooking/static/cooking/js/recipe-ingredients.js`):
+
+- The ingredient name suggests pantry products **and product groups** ("Jogurt
+  naturalny" instead of three brands). Under each row the form says whether the name
+  is in the pantry, offers "Chodziło o …?" for typos and inflected forms, and warns
+  when the unit cannot be converted by the cook page (pantry in litres, recipe in g).
+- The category field is shown only for a new product and is pre-filled from the
+  keyword rules; an empty category is filled on save (pantry product, group, rules).
+- "Wklej listę" turns a pasted list (`500 g mięsa mielonego`, `Cebula - 1 szt.`,
+  `1/2 cebuli`, `2 łyżki oliwy`, `szczypta soli`, `sól do smaku`) into rows, with a preview.
+- Steps move with the arrows (their ingredients follow them), ingredients with the
+  drag handle or the arrow keys on the handle. Recipe categories are chips.
+- The cook page recognises a group name and uses the brand with the most stock, so a
+  group ingredient no longer creates an empty product.
+- `cooking/tests_recipe_js.py` runs the browser logic in Node (skipped without Node).
+
 ## Pantry catalog
 
 A barcode is looked up in this order:
