@@ -1,6 +1,6 @@
 # finance/urls.py
 from django.urls import path
-from . import views
+from . import views, views_import_rules
 
 app_name = 'finance'
 
@@ -15,6 +15,11 @@ urlpatterns = [
     path('expenses/edit/<int:expense_id>/', views.EditExpenseView.as_view(), name='edit_expense'),
     path('expenses/delete/<int:expense_id>/', views.DeleteExpenseView.as_view(), name='delete_expense'),
     path('bank/import/', views.ImportBankTransactionsView.as_view(), name='import_bank_transactions'),
+    path('bank/rules/', views_import_rules.ImportRulesView.as_view(), name='import_rules'),
+    path('bank/rules/add/', views_import_rules.ImportRuleFormView.as_view(), name='import_rule_add'),
+    path('bank/rules/<int:rule_id>/', views_import_rules.ImportRuleFormView.as_view(), name='import_rule_edit'),
+    path('bank/rules/<int:rule_id>/delete/', views_import_rules.ImportRuleDeleteView.as_view(), name='import_rule_delete'),
+    path('bank/rules/<int:rule_id>/move/', views_import_rules.ImportRuleMoveView.as_view(), name='import_rule_move'),
 
     # Incomes
     path('income/', views.IncomeListView.as_view(), name='income_list'),

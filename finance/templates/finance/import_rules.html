@@ -1,0 +1,192 @@
+{% extends 'finance/index.html' %}
+{% load ui %}
+
+{% block title %}Reguły importu{% endblock %}
+
+{% block content_finance %}
+{% comment %} Reguły domownika dla importu wyciągu (finance.views_import_rules).
+   Wygląd jak „Kategorie” w spiżarni (klasy pc-*). {% endcomment %}
+{% url 'finance:import_bank_transactions' as import_url %}
+{% page_head title="Reguły importu" eyebrow="Import wyciągu" icon="bi-magic" sub="Sklep albo nadawca → kategoria. Reguły podpowiadają w podglądzie importu i dotyczą aktywnego konta – na koncie wspólnym widzą je wszyscy jego członkowie." back=import_url back_label="Wróć do importu" %}{% endpage_head %}
+
+<div class="pc-page animate-fade-in-up">
+    <nav class="pantry-view-switch pc-tabs" aria-label="Rodzaj reguł" data-segmented>
+        <a href="{% url 'finance:import_rules' %}" class="{% if is_expense %}is-active{% endif %}" {% if is_expense %}aria-current="page"{% endif %}>
+            <i class="bi bi-dash-circle" aria-hidden="true"></i> Wydatki
+            <span class="pantry-view-count">{{ expense_count }}</span>
+        </a>
+        <a href="{% url 'finance:import_rules' %}?rodzaj=przychody" class="{% if not is_expense %}is-active{% endif %}" {% if not is_expense %}aria-current="page"{% endif %}>
+            <i class="bi bi-plus-circle" aria-hidden="true"></i> Przychody
+            <span class="pantry-view-count">{{ income_count }}</span>
+        </a>
+    </nav>
+
+    <details class="pc-card pc-help" data-remember-open="import-rules-help" open>
+        <summary><i class="bi bi-info-circle" aria-hidden="true"></i> Jak działają reguły i jak zapisać słowa</summary>
+        <div class="pc-help-body">
+            <p>
+                Najprościej: w podglądzie importu popraw kategorię i zaznacz <strong>„Zapamiętaj”</strong>.
+                Aplikacja szuka słów w nazwie {% if is_expense %}sklepu{% else %}nadawcy{% endif %}, opisie i kontrahencie z wyciągu.
+                Podpowiedź pochodzi z pierwszego pasującego miejsca:
+            </p>
+            <ol class="ir-order">
+                <li><strong>Twoje reguły</strong>, od góry – wygrywa pierwsza pasująca.</li>
+                {% if is_expense %}<li><strong>Przelew do biura maklerskiego</strong> → Inwestycje (reguła wbudowana).</li>{% endif %}
+                <li><strong>Historia</strong> – jak ostatnio zapisano pozycję {% if is_expense %}z tego sklepu{% else %}o tym opisie{% endif %}.</li>
+                <li><strong>Reguły wbudowane</strong> – lista na dole strony.</li>
+            </ol>
+            <h3>Zasady zapisu</h3>
+            <ul class="pc-rules-help">
+                <li><span class="pc-help-key">Przecinek</span> Oddziela słowa: <code>fred, malinogród</code>. Można też pisać w osobnych liniach.</li>
+                <li><span class="pc-help-key">Całe słowo</span> <code>ola</code> trafi w „OLA SKLEP”, ale nie w „KOLACJA”.</li>
+                <li><span class="pc-help-key">Gwiazdka</span> Na końcu oznacza początek słowa: <code>pierog*</code> trafi w „Pierogi”, „Pierogarnia”.</li>
+                <li><span class="pc-help-key">Fraza</span> Kilka słów musi wystąpić w całości i w tej kolejności: <code>mr cleaner</code>.</li>
+                <li><span class="pc-help-key">Litery</span> Wielkość liter i polskie znaki nie mają znaczenia – bank często je gubi: <code>żabka</code> = <code>ZABKA</code>.</li>
+            </ul>
+        </div>
+    </details>
+
+    <section class="pc-card" aria-labelledby="ir-test-title">
+        <h2 class="pc-card-title" id="ir-test-title">Sprawdź opis z wyciągu</h2>
+        <form class="pc-add" method="get" action="{% url 'finance:import_rules' %}#ir-test-title">
+            {% if not is_expense %}<input type="hidden" name="rodzaj" value="przychody">{% endif %}
+            <label class="visually-hidden" for="ir-test-text">Opis z wyciągu do sprawdzenia</label>
+            <input id="ir-test-text" class="form-control" type="search" name="sprawdz" maxlength="300"
+                   value="{{ test_text }}" placeholder="{% if is_expense %}np. FRED  GDYNIA  POL{% else %}np. Wynagrodzenie za wrzesień{% endif %}" autocomplete="off">
+            <button type="submit" class="btn btn-outline-primary"><i class="bi bi-search" aria-hidden="true"></i> Sprawdź</button>
+        </form>
+        {% if test_result %}
+            {% with s=test_result.suggestion %}
+            <div class="pc-test-result {% if s.origin == origin_default %}is-miss{% else %}is-match{% endif %}" role="status">
+                <i class="bi {% if s.origin == origin_default %}bi-question-circle-fill{% else %}bi-check-circle-fill{% endif %}" aria-hidden="true"></i>
+                <span>
+                    → <strong>{{ s.label }}</strong>
+                    {% if is_expense and s.store %}· sklep „{{ s.store }}”{% endif %} · opis „{{ s.title }}”<br>
+                    <small>
+                        {% if s.origin == origin_rule %}
+                            Twoja reguła nr {{ test_result.match.number }}, pasuje <code>{{ test_result.match.pattern }}</code> · <a href="#regula-{{ test_result.match.rule.pk }}">pokaż regułę</a>
+                        {% elif s.origin == origin_history %}
+                            Z historii konta ({{ s.reason|cut:"historia: " }}). Własna reguła ma pierwszeństwo.
+                        {% elif s.origin == origin_builtin %}
+                            Reguła wbudowana. Własna reguła ma pierwszeństwo.
+                        {% else %}
+                            Nic nie pasuje – pozycja dostanie „Inne”.
+                        {% endif %}
+                        {% if s.origin != origin_rule and is_expense and s.store %}
+                            · <a href="{% url 'finance:import_rule_add' %}?rodzaj={{ kind_slug }}&amp;wzor={{ s.store|urlencode }}">Dodaj regułę dla „{{ s.store }}”</a>
+                        {% elif s.origin != origin_rule %}
+                            · <a href="{% url 'finance:import_rule_add' %}?rodzaj={{ kind_slug }}">Dodaj regułę</a>
+                        {% endif %}
+                    </small>
+                </span>
+            </div>
+            {% endwith %}
+        {% endif %}
+    </section>
+
+    <section class="pc-group" aria-labelledby="ir-rules-title">
+        <div class="pc-group-head">
+            <h2 class="pc-group-title" id="ir-rules-title">Twoje reguły <span>{{ rules|length }}</span></h2>
+            <a class="btn btn-primary btn-sm" href="{% url 'finance:import_rule_add' %}?rodzaj={{ kind_slug }}">
+                <i class="bi bi-plus-lg" aria-hidden="true"></i> Dodaj regułę
+            </a>
+        </div>
+        {% if rules %}
+            <ol class="pc-rule-list">
+                {% for item in rules %}
+                    {% with rule=item.rule %}
+                    <li class="pc-rule {% if test_result.match and test_result.match.rule.pk == rule.pk %}is-match{% endif %}" id="regula-{{ rule.pk }}">
+                        <div class="pc-rule-head">
+                            <span class="pc-rule-num" aria-label="Reguła numer {{ item.number }}">{{ item.number }}</span>
+                            <a class="pc-rule-target" href="{% url 'finance:import_rule_edit' rule.pk %}">
+                                <i class="bi bi-arrow-right-short" aria-hidden="true"></i>
+                                <span class="ir-rule-target">
+                                    <strong>{{ rule.label }}</strong>
+                                    {% if rule.title or rule.store_name %}
+                                        <span class="ir-rule-extra">{% if rule.title %}opis „{{ rule.title }}”{% endif %}{% if rule.title and rule.store_name %} · {% endif %}{% if rule.store_name %}sklep „{{ rule.store_name }}”{% endif %}</span>
+                                    {% endif %}
+                                </span>
+                            </a>
+                            <div class="pc-rule-actions">
+                                <div class="pc-move">
+                                    <form method="post" action="{% url 'finance:import_rule_move' rule.pk %}">
+                                        {% csrf_token %}<input type="hidden" name="direction" value="up">
+                                        <button type="submit" class="pc-icon-btn" {% if forloop.first %}disabled{% endif %}
+                                                aria-label="Sprawdzaj wcześniej: reguła {{ item.number }}"><i class="bi bi-chevron-up" aria-hidden="true"></i></button>
+                                    </form>
+                                    <form method="post" action="{% url 'finance:import_rule_move' rule.pk %}">
+                                        {% csrf_token %}<input type="hidden" name="direction" value="down">
+                                        <button type="submit" class="pc-icon-btn" {% if forloop.last %}disabled{% endif %}
+                                                aria-label="Sprawdzaj później: reguła {{ item.number }}"><i class="bi bi-chevron-down" aria-hidden="true"></i></button>
+                                    </form>
+                                </div>
+                                <a class="pc-icon-btn" href="{% url 'finance:import_rule_edit' rule.pk %}"
+                                   aria-label="Edytuj regułę {{ item.number }}"><i class="bi bi-pencil" aria-hidden="true"></i></a>
+                                <form method="post" action="{% url 'finance:import_rule_delete' rule.pk %}">
+                                    {% csrf_token %}
+                                    <button type="submit" class="pc-icon-btn is-danger" aria-label="Usuń regułę {{ item.number }}"><i class="bi bi-trash3" aria-hidden="true"></i></button>
+                                </form>
+                            </div>
+                        </div>
+                        <ul class="pc-chips" aria-label="Słowa reguły {{ item.number }}">
+                            {% for pattern in item.patterns %}
+                                <li class="pc-chip {% if test_result.match and test_result.match.rule.pk == rule.pk and test_result.match.pattern == pattern %}is-hit{% endif %}">{{ pattern }}</li>
+                            {% endfor %}
+                        </ul>
+                    </li>
+                    {% endwith %}
+                {% endfor %}
+            </ol>
+        {% else %}
+            <p class="pc-empty">
+                Brak własnych reguł. Zaznacz „Zapamiętaj” przy pozycji w podglądzie importu albo dodaj regułę tutaj.
+            </p>
+        {% endif %}
+    </section>
+
+    <details class="pc-card pc-advanced" {% if request.GET.wbudowane %}open{% endif %}>
+        <summary><i class="bi bi-box-seam" aria-hidden="true"></i> Reguły wbudowane <span class="pantry-view-count">{{ builtin|length }}</span></summary>
+        <div class="pc-help-body">
+            <p>
+                Działają zawsze, gdy nie pasuje Twoja reguła ani historia. Nie da się ich zmienić,
+                ale można skopiować regułę do swoich, poprawić i ustawić wyżej – wtedy wygrywa Twoja wersja.
+            </p>
+            <ol class="pc-rule-list">
+                {% for item in builtin %}
+                    <li class="pc-rule {% if test_result.suggestion.origin == origin_builtin and test_result.suggestion.label == item.label %}is-match{% endif %}">
+                        <div class="pc-rule-head">
+                            <span class="pc-rule-num" aria-hidden="true">{{ item.number }}</span>
+                            <span class="pc-rule-target"><i class="bi bi-arrow-right-short" aria-hidden="true"></i><strong>{{ item.label }}</strong></span>
+                            <a class="btn btn-outline-primary btn-sm ir-copy" href="{% url 'finance:import_rule_add' %}?rodzaj={{ kind_slug }}&amp;wbudowana={{ item.number }}">
+                                <i class="bi bi-copy" aria-hidden="true"></i> Skopiuj do swoich
+                            </a>
+                        </div>
+                        <ul class="pc-chips" aria-label="Słowa reguły wbudowanej {{ item.label }}">
+                            {% for pattern in item.patterns %}<li class="pc-chip">{{ pattern }}</li>{% endfor %}
+                        </ul>
+                    </li>
+                {% endfor %}
+            </ol>
+        </div>
+    </details>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Pomoc zwinięta raz zostaje zwinięta (tylko w tej przeglądarce).
+    document.querySelectorAll('details[data-remember-open]').forEach((details) => {
+        const key = `ui:${details.dataset.rememberOpen}`;
+        try {
+            if (localStorage.getItem(key) === 'closed') {
+                details.open = false;
+            }
+        } catch (error) { /* tryb prywatny */ }
+        details.addEventListener('toggle', () => {
+            try {
+                localStorage.setItem(key, details.open ? 'open' : 'closed');
+            } catch (error) { /* tryb prywatny */ }
+        });
+    });
+</script>
+{% endblock %}

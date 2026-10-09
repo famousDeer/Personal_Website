@@ -599,3 +599,56 @@ class TravelExpense(models.Model):
             else self.travel_destination.country.name
         )
         return f"{self.user.username} – {destination} – {self.date} – {self.title}"
+
+
+class ImportRule(models.Model):
+    """Reguła importu wyciągu ustawiona przez domownika.
+
+    Słowa z ``patterns`` (po jednym w linii) szukane są w nazwie sklepu,
+    opisie i kontrahencie z wyciągu. Reguły konta sprawdzane są od góry
+    (``position``) i wygrywają z historią i z regułami wbudowanymi
+    (finance.bank_import.EXPENSE_RULES). Silnik: finance.import_rules.
+    """
+
+    EXPENSE = 'expense'
+    INCOME = 'income'
+    KIND_CHOICES = [
+        (EXPENSE, 'Wydatek'),
+        (INCOME, 'Przychód'),
+    ]
+
+    account = models.ForeignKey('FinanceAccount', on_delete=models.CASCADE, related_name='import_rules')
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES, default=EXPENSE)
+    patterns = models.TextField()
+    # Kategoria wydatku albo źródło przychodu.
+    label = models.CharField(max_length=100)
+    # Opcjonalnie: opis i nazwa sklepu, które dostanie pozycja.
+    title = models.CharField(max_length=255, blank=True)
+    store_name = models.CharField(max_length=255, blank=True)
+    position = models.PositiveIntegerField(default=0)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name='finance_import_rules',
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'finance_import_rules'
+        ordering = ['account', 'kind', 'position', 'id']
+        verbose_name = 'Import Rule'
+        verbose_name_plural = 'Import Rules'
+
+    def __str__(self):
+        return f'{", ".join(self.pattern_list)} → {self.label}'
+
+    @property
+    def pattern_list(self):
+        return [line.strip() for line in self.patterns.splitlines() if line.strip()]
+
+    @property
+    def is_expense(self):
+        return self.kind == self.EXPENSE

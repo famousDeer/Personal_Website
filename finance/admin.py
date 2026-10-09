@@ -10,6 +10,7 @@ from .models import (
     BrokerageTransaction,
     Daily,
     FinanceAccount,
+    ImportRule,
     Income,
     InvestmentFunding,
     Monthly,
@@ -100,3 +101,10 @@ class InvestmentFundingAdmin(admin.ModelAdmin):
     list_display = ('occurred_on', 'account', 'source_amount', 'source_currency', 'status', 'cash_operation')
     list_filter = ('status', 'source_currency', 'account')
     search_fields = ('account__name', 'expense__title', 'cash_operation__external_id')
+
+
+@admin.register(ImportRule)
+class ImportRuleAdmin(admin.ModelAdmin):
+    list_display = ('account', 'kind', 'position', 'label', 'patterns', 'title', 'store_name', 'created_by')
+    list_filter = ('kind', 'account')
+    search_fields = ('patterns', 'label', 'title', 'store_name')

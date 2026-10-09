@@ -1,0 +1,117 @@
+{% extends 'finance/index.html' %}
+{% load ui static %}
+
+{% block title %}{% if rule.pk %}Edytuj regułę{% else %}Nowa reguła{% endif %}{% endblock %}
+
+{% block content_finance %}
+{% if is_expense %}
+    {% page_head title=rule.pk|yesno:"Edytuj regułę,Nowa reguła" eyebrow="Reguły importu · wydatki" icon="bi-magic" sub="Płatność, w której opisie pojawi się jedno z tych słów, dostanie wybraną kategorię." back=back_url back_label="Wróć do reguł" %}{% endpage_head %}
+{% else %}
+    {% page_head title=rule.pk|yesno:"Edytuj regułę,Nowa reguła" eyebrow="Reguły importu · przychody" icon="bi-magic" sub="Wpływ, w którego opisie albo nadawcy pojawi się jedno z tych słów, dostanie wybrane źródło." back=back_url back_label="Wróć do reguł" %}{% endpage_head %}
+{% endif %}
+
+<form method="post" class="pc-card pc-form animate-fade-in-up" novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="rodzaj" value="{{ kind_slug }}">
+
+    <div class="mb-2">
+        <label class="form-label fw-bold" for="rule-patterns">{% if is_expense %}Sklep albo słowa z opisu{% else %}Nadawca albo słowa z opisu{% endif %}</label>
+        <textarea class="form-control pc-patterns" id="rule-patterns" name="patterns" rows="3" required
+                  aria-describedby="rule-patterns-help"
+                  placeholder="{% if is_expense %}fred, malinogród{% else %}wynagrodzenie, nazwa firmy{% endif %}"
+                  data-pattern-input>{{ form_values.patterns }}</textarea>
+    </div>
+    <div class="pc-pattern-preview" data-pattern-preview aria-live="polite"></div>
+    <ul class="pc-rules-help pc-rules-help-compact" id="rule-patterns-help">
+        <li>Oddzielaj przecinkami. Wielkość liter i polskie znaki nie mają znaczenia.</li>
+        <li><code>ola</code> to całe słowo, <code>pierog*</code> – początek słowa. Fraza musi wystąpić w całości: <code>mr cleaner</code>.</li>
+    </ul>
+
+    <div class="mb-3 mt-3">
+        <label class="form-label fw-bold" for="rule-label">{% if is_expense %}Kategoria{% else %}Źródło{% endif %}</label>
+        <div class="finance-autocomplete">
+            <input type="text" class="form-control" id="rule-label" name="label" maxlength="100" required
+                   value="{{ form_values.label }}"
+                   data-autocomplete-input data-autocomplete-source="import-rule-labels"
+                   data-autocomplete-icon="{% if is_expense %}bi-tags{% else %}bi-wallet2{% endif %}" data-autocomplete-limit="0"
+                   autocomplete="off" aria-autocomplete="list" aria-expanded="false" aria-controls="rule-label-suggestions">
+            <div class="finance-autocomplete-menu d-none" id="rule-label-suggestions" data-autocomplete-menu role="listbox"></div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="{% if is_expense %}col-sm-6{% else %}col-12{% endif %}">
+            <label class="form-label fw-bold" for="rule-title">Opis <span class="fw-normal text-muted">(opcjonalnie)</span></label>
+            <input type="text" class="form-control" id="rule-title" name="title" maxlength="255" value="{{ form_values.title }}"
+                   placeholder="{% if is_expense %}np. Sprzątanie{% else %}np. Pensja{% endif %}" aria-describedby="rule-title-help">
+            <div class="form-text" id="rule-title-help">Puste – opis jak dotąd{% if is_expense %} (nazwa sklepu albo kategorii){% endif %}.</div>
+        </div>
+        {% if is_expense %}
+            <div class="col-sm-6">
+                <label class="form-label fw-bold" for="rule-store">Nazwa sklepu <span class="fw-normal text-muted">(opcjonalnie)</span></label>
+                <input type="text" class="form-control" id="rule-store" name="store_name" maxlength="255" value="{{ form_values.store_name }}"
+                       placeholder="np. Mr Cleaner" aria-describedby="rule-store-help">
+                <div class="form-text" id="rule-store-help">Puste – nazwa z wyciągu.</div>
+            </div>
+        {% endif %}
+    </div>
+
+    <div class="mb-4">
+        <label class="form-label fw-bold" for="rule-position">Miejsce na liście</label>
+        <select class="form-select" id="rule-position" name="position" aria-describedby="rule-position-help">
+            {% for number in positions %}
+                <option value="{{ number }}" {% if form_values.position == number|stringformat:"d" %}selected{% endif %}>
+                    {{ number }}{% if forloop.first %} – sprawdzana jako pierwsza{% elif forloop.last %} – sprawdzana jako ostatnia{% endif %}
+                </option>
+            {% endfor %}
+        </select>
+        <div class="form-text" id="rule-position-help">Reguły sprawdzane są od góry, wygrywa pierwsza pasująca. Konkretny sklep stawiaj wyżej niż ogólne słowa.</div>
+    </div>
+
+    <div class="pc-form-actions">
+        <a class="btn btn-outline-secondary" href="{{ back_url }}">Anuluj</a>
+        <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg" aria-hidden="true"></i> Zapisz regułę</button>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+{{ label_choices|json_script:"import-rule-labels" }}
+<script src="{% static 'js/form-autocomplete.js' %}"></script>
+<script>
+    // Podgląd: jak aplikacja odczyta wpisane słowa (te same zasady co serwer:
+    // finance.import_rules.parse_patterns - bez polskich znaków, min. 3 znaki).
+    (() => {
+        const input = document.querySelector('[data-pattern-input]');
+        const preview = document.querySelector('[data-pattern-preview]');
+        if (!input || !preview) {
+            return;
+        }
+        const fold = (value) => value.replace(/[łŁ]/g, 'l').normalize('NFKD').replace(/[̀-ͯ]/g, '')
+            .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+        const render = () => {
+            const parts = input.value.split(/[,;\n]+/).map((part) => part.trim().replace(/\s+/g, ' ')).filter(Boolean);
+            preview.replaceChildren();
+            const seen = new Set();
+            parts.forEach((part) => {
+                const chip = document.createElement('span');
+                const badStar = /\*(?!$)|\*\*$/.test(part);
+                const key = fold(part.replace(/\*+$/, '')) + (part.endsWith('*') ? '*' : '');
+                const tooShort = key.replace(/[*\s]/g, '').length < 3;
+                chip.className = 'pc-chip' + (badStar || tooShort ? ' is-error' : '') + (seen.has(key) ? ' is-dup' : '');
+                chip.textContent = badStar ? `${part} – gwiazdka tylko na końcu` : (tooShort ? `${part} – za krótkie` : part);
+                seen.add(key);
+                preview.append(chip);
+            });
+            if (parts.length) {
+                const count = document.createElement('span');
+                count.className = 'pc-preview-count';
+                count.textContent = `${seen.size} sł.`;
+                preview.append(count);
+            }
+        };
+        input.addEventListener('input', render);
+        render();
+    })();
+</script>
+{% endblock %}

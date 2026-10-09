@@ -1,9 +1,8 @@
 import csv
 import hashlib
 import re
-import unicodedata
 from dataclasses import dataclass, field
-from datetime import date as date_type, datetime
+from datetime import date as date_type, datetime, timedelta
 from decimal import Decimal
 from io import StringIO
 
@@ -11,9 +10,11 @@ from django.db import transaction
 
 from utils.tools import month_start, parse_date_input, parse_decimal
 
-from .account_utils import get_or_create_monthly_record, recalculate_monthly_record
+from .account_utils import TRANSFER_TO_SHARED_CATEGORY, get_or_create_monthly_record, recalculate_monthly_record
 from .investment_funding import INVESTMENT_CATEGORY, sync_investment_funding
+from .import_rules import PATTERN_MIN_LENGTH, ImportRuleIndex, RememberRequest, remember_rules
 from .models import BrokerageAccount, Daily, Income, Monthly
+from .text_utils import normalize_text
 
 
 MILLENNIUM_SOURCE = 'millennium'
@@ -70,6 +71,26 @@ class BankTransactionCandidate:
     # Data zaksięgowania z wyciągu, gdy data transakcji pochodzi z opisu karty
     # (płatność w sobotę bank księguje w poniedziałek).
     booking_date: object = None
+    # Z czym koliduje możliwy duplikat: „Paliwo · 292,75 zł · 30.09”.
+    duplicate_match: str = ''
+    # Nazwa, pod którą „Zapamiętaj” zapisze regułę: sklep z wyciągu albo
+    # kontrahent przychodu. Pusta - nie ma czego zapamiętać.
+    rule_key: str = ''
+    # Opis, który przychód dostałby bez reguł - „Zapamiętaj” zapisuje opis
+    # w regule tylko wtedy, gdy ktoś go zmienił.
+    default_title: str = ''
+    # Podpowiedź z reguły domownika (finance.import_rules).
+    from_user_rule: bool = False
+
+    @property
+    def label(self):
+        """Kategoria wydatku albo źródło przychodu."""
+        return self.category if self.is_expense else self.source
+
+    @property
+    def needs_review(self):
+        """Do sprawdzenia: „Inne” albo możliwy duplikat (pewne duplikaty są pomijane)."""
+        return not self.duplicate and (self.possible_duplicate or self.label in ('', 'Inne'))
 
     @property
     def booked_later(self):
@@ -117,6 +138,18 @@ class BankImportPreview:
     def duplicate_count(self):
         return sum(1 for candidate in self.candidates if candidate.duplicate or candidate.possible_duplicate)
 
+    @property
+    def review_count(self):
+        return sum(1 for candidate in self.candidates if candidate.needs_review)
+
+    @property
+    def expenses_total(self):
+        return sum((candidate.amount for candidate in self.candidates if candidate.is_expense), Decimal('0'))
+
+    @property
+    def incomes_total(self):
+        return sum((candidate.amount for candidate in self.candidates if candidate.is_income), Decimal('0'))
+
 
 @dataclass
 class BankImportResult:
@@ -125,22 +158,13 @@ class BankImportResult:
     duplicates: int = 0
     skipped: int = 0
     warnings: list[str] = field(default_factory=list)
+    # „Zapamiętaj dla tego sklepu”: nowe i zmienione reguły importu.
+    rules_created: int = 0
+    rules_updated: int = 0
 
     @property
     def created_total(self):
         return self.created_expenses + self.created_incomes
-
-
-POLISH_TRANSLATION = str.maketrans({
-    'ł': 'l',
-    'Ł': 'L',
-})
-
-
-def normalize_text(value):
-    normalized = unicodedata.normalize('NFKD', str(value or '').translate(POLISH_TRANSLATION))
-    ascii_text = ''.join(char for char in normalized if not unicodedata.combining(char))
-    return re.sub(r'[^a-z0-9]+', ' ', ascii_text.casefold()).strip()
 
 
 def _clean_text(value):
@@ -519,18 +543,20 @@ def _category_by_rules(candidate_text):
     return 'Inne', 'domyślnie'
 
 
+INCOME_RULES = [
+    ('Pensja', ['pensja', 'wynagrodzenie', 'salary', 'payroll']),
+    ('Premia', ['premia', 'bonus', 'kieszonkowe']),
+    ('Dieta', ['dieta', 'delegac']),
+    ('Inwestycje', ['odsetki', 'dywidenda', 'oprocentowanie']),
+    ('Zwrot podatku', ['zwrot podatku', 'urzad skarbowy']),
+    ('Sprzedaż', ['sprzedaz', 'vinted', 'olx', 'allegro lokalnie']),
+    ('Rodzina', ['zona', 'zonka', 'maz', 'mama', 'tata', 'rodzic', 'netflix', 'spotify']),
+]
+
+
 def _source_by_rules(candidate_text):
     text = normalize_text(candidate_text)
-    rules = [
-        ('Pensja', ['pensja', 'wynagrodzenie', 'salary', 'payroll']),
-        ('Premia', ['premia', 'bonus', 'kieszonkowe']),
-        ('Dieta', ['dieta', 'delegac']),
-        ('Inwestycje', ['odsetki', 'dywidenda', 'oprocentowanie']),
-        ('Zwrot podatku', ['zwrot podatku', 'urzad skarbowy']),
-        ('Sprzedaż', ['sprzedaz', 'vinted', 'olx', 'allegro lokalnie']),
-        ('Rodzina', ['zona', 'zonka', 'maz', 'mama', 'tata', 'rodzic', 'netflix', 'spotify']),
-    ]
-    for source, keywords in rules:
+    for source, keywords in INCOME_RULES:
         if any(keyword in text for keyword in keywords):
             return source, f'reguła: {source}'
     return 'Inne', 'domyślnie'
@@ -684,10 +710,94 @@ def _transaction_dates(row, card):
     return card.date, booked
 
 
+ORIGIN_RULE = 'rule'          # reguła domownika
+ORIGIN_HISTORY = 'history'    # jak ostatnio zapisano ten sklep
+ORIGIN_BUILTIN = 'builtin'    # reguła wbudowana
+ORIGIN_DEFAULT = 'default'    # nic nie pasuje - „Inne”
+
+
+@dataclass
+class Suggestion:
+    """Podpowiedź dla jednej pozycji: kategoria (albo źródło), opis, sklep."""
+    label: str
+    title: str
+    store: str
+    reason: str
+    origin: str
+    rule_match: object = None
+
+
+def _default_expense_title(category, store, row, card):
+    title = _expense_title(category, store, row)
+    if card is None and store and _is_transfer(row):
+        title = f'Przelew: {store}'
+    return title
+
+
+def suggest_expense(store, row, card=None, history=None, rules=None):
+    """Kolejność: reguły domownika → wbudowana „Inwestycje” → historia → wbudowane."""
+    text_parts = (store, _combined_text(row))
+    match = rules.match(EXPENSE, *text_parts) if rules else None
+    if match:
+        rule = match.rule
+        final_store = rule.store_name or store
+        title = rule.title or _default_expense_title(rule.label, final_store, row, card)
+        return Suggestion(rule.label, title, final_store, match.reason, ORIGIN_RULE, match)
+
+    rule_category, rule_reason = _category_by_rules(' '.join(text_parts))
+    if rule_category == INVESTMENT_CATEGORY:
+        return Suggestion(rule_category, _expense_title(rule_category, store, row), store, rule_reason, ORIGIN_BUILTIN)
+    historical_match = history.match_expense(store, row) if history else None
+    if historical_match:
+        category = historical_match['category']
+        return Suggestion(
+            category,
+            historical_match['title'] or _expense_title(category, store, row),
+            store,
+            f"historia: {historical_match['store']}",
+            ORIGIN_HISTORY,
+        )
+    return Suggestion(
+        rule_category,
+        _default_expense_title(rule_category, store, row, card),
+        store,
+        rule_reason,
+        ORIGIN_DEFAULT if rule_reason == 'domyślnie' else ORIGIN_BUILTIN,
+    )
+
+
+def suggest_income(row, history=None, rules=None):
+    """Kolejność: reguły domownika → historia → wbudowane."""
+    combined = _combined_text(row)
+    match = rules.match(INCOME, combined) if rules else None
+    if match:
+        rule = match.rule
+        return Suggestion(rule.label, rule.title or _income_title(row), '', match.reason, ORIGIN_RULE, match)
+    historical_match = history.match_income(row) if history else None
+    if historical_match:
+        return Suggestion(
+            historical_match['source'],
+            historical_match['title'] or _income_title(row),
+            '',
+            f"historia: {historical_match['title']}",
+            ORIGIN_HISTORY,
+        )
+    source, reason = _source_by_rules(combined)
+    return Suggestion(source, _income_title(row), '', reason, ORIGIN_DEFAULT if reason == 'domyślnie' else ORIGIN_BUILTIN)
+
+
+def _rule_key(value):
+    """Nazwa do „Zapamiętaj”, jeśli da się z niej zrobić wzorzec reguły."""
+    value = _clean_text(value)
+    return value if len(normalize_text(value).replace(' ', '')) >= PATTERN_MIN_LENGTH else ''
+
+
 def _candidate_from_row(index, row_number, row, account, import_source=MILLENNIUM_SOURCE, history=None,
-                        raw_description=None):
+                        raw_description=None, rules=None):
     if history is None:
         history = BankHistoryIndex(account)
+    if rules is None:
+        rules = ImportRuleIndex(account)
     debit = _optional_decimal(row.get('Obciążenia'))
     credit = _optional_decimal(row.get('Uznania'))
     if debit is None and credit is None:
@@ -698,65 +808,70 @@ def _candidate_from_row(index, row_number, row, account, import_source=MILLENNIU
     # Opis przed czyszczeniem - podwójna spacja oddziela sklep od miasta.
     card = parse_card_description(raw_description if raw_description is not None else row.get('Opis'))
     transaction_date, booking_date = _transaction_dates(row, card)
+    counterparty = _clean_text(_row_value(row, 'Odbiorca/Zleceniodawca', 'Dane kontrahenta'))
+    common = {
+        'index': index,
+        'row_number': row_number,
+        'date': transaction_date,
+        'raw_description': _clean_text(_row_value(row, 'Opis', 'Tytuł')),
+        'transaction_type': _clean_text(_row_value(row, 'Rodzaj transakcji', 'Szczegóły')),
+        'counterparty': counterparty,
+        'external_id': _external_id(row, import_source),
+        'booking_date': booking_date,
+    }
     if debit is not None:
-        amount = abs(debit)
         store = _expense_store(row, card)
-        rule_category, rule_reason = _category_by_rules(' '.join([store, _combined_text(row)]))
-        historical_match = history.match_expense(store, row) if account else None
-        if rule_category == INVESTMENT_CATEGORY:
-            category = rule_category
-            title = _expense_title(category, store, row)
-            reason = rule_reason
-        elif historical_match:
-            category = historical_match['category']
-            title = historical_match['title'] or _expense_title(category, store, row)
-            reason = f"historia: {historical_match['store']}"
-        else:
-            category, reason = rule_category, rule_reason
-            title = _expense_title(category, store, row)
-            if card is None and store and _is_transfer(row):
-                title = f'Przelew: {store}'
+        suggestion = suggest_expense(store, row, card, history=history, rules=rules)
         return BankTransactionCandidate(
-            index=index,
-            row_number=row_number,
             kind=EXPENSE,
-            date=transaction_date,
-            amount=amount,
-            title=title,
-            category=category,
-            store=store,
-            raw_description=_clean_text(_row_value(row, 'Opis', 'Tytuł')),
-            transaction_type=_clean_text(_row_value(row, 'Rodzaj transakcji', 'Szczegóły')),
-            counterparty=_clean_text(_row_value(row, 'Odbiorca/Zleceniodawca', 'Dane kontrahenta')),
-            external_id=_external_id(row, import_source),
-            suggestion_reason=reason,
-            booking_date=booking_date,
+            amount=abs(debit),
+            title=suggestion.title,
+            category=suggestion.label,
+            store=suggestion.store,
+            suggestion_reason=suggestion.reason,
+            from_user_rule=suggestion.origin == ORIGIN_RULE,
+            rule_key=_rule_key(store),
+            **common,
         )
 
-    amount = abs(credit)
-    historical_match = history.match_income(row) if account else None
-    if historical_match:
-        source = historical_match['source']
-        title = historical_match['title'] or _income_title(row)
-        reason = f"historia: {historical_match['title']}"
-    else:
-        source, reason = _source_by_rules(_combined_text(row))
-        title = _income_title(row)
+    suggestion = suggest_income(row, history=history, rules=rules)
     return BankTransactionCandidate(
-        index=index,
-        row_number=row_number,
         kind=INCOME,
-        date=transaction_date,
-        amount=amount,
-        title=title,
-        source=source,
-        raw_description=_clean_text(_row_value(row, 'Opis', 'Tytuł')),
-        transaction_type=_clean_text(_row_value(row, 'Rodzaj transakcji', 'Szczegóły')),
-        counterparty=_clean_text(_row_value(row, 'Odbiorca/Zleceniodawca', 'Dane kontrahenta')),
-        external_id=_external_id(row, import_source),
-        suggestion_reason=reason,
-        booking_date=booking_date,
+        amount=abs(credit),
+        title=suggestion.title,
+        source=suggestion.label,
+        suggestion_reason=suggestion.reason,
+        from_user_rule=suggestion.origin == ORIGIN_RULE,
+        rule_key=_rule_key(clean_counterparty_name(counterparty)) if counterparty else '',
+        default_title=_income_title(row),
+        **common,
     )
+
+
+# Wpis dodany ręcznie (bez identyfikatora importu) z tą samą kwotą najwyżej
+# tyle dni od transakcji to prawdopodobnie ta sama płatność.
+NEAR_DUPLICATE_DAYS = 3
+
+
+def _amount_text(value):
+    return f'{value:,.2f}'.replace(',', ' ').replace('.', ',')
+
+
+def _date_window(dates):
+    return min(dates) - timedelta(days=NEAR_DUPLICATE_DAYS), max(dates) + timedelta(days=NEAR_DUPLICATE_DAYS)
+
+
+def _near_manual_entry(candidate, entries, field):
+    days = [candidate.date] + ([candidate.booking_date] if candidate.booking_date else [])
+    matches = [
+        (min(abs((entry['date'] - day).days) for day in days), entry)
+        for entry in entries.get(candidate.amount, [])
+    ]
+    matches = [match for match in matches if match[0] <= NEAR_DUPLICATE_DAYS]
+    if not matches:
+        return None
+    _, entry = min(matches, key=lambda match: match[0])
+    return f"{entry['title'] or 'bez opisu'} · {_amount_text(entry[field])} zł · {entry['date']:%d.%m}"
 
 
 def _mark_duplicates(candidates, account):
@@ -773,14 +888,24 @@ def _mark_duplicates(candidates, account):
     # raz, ograniczone do dat występujących w pliku, a porównanie idzie po
     # zbiorach kluczy.
     candidate_dates = {candidate.date for candidate in candidates if candidate.date}
+    candidate_dates |= {candidate.booking_date for candidate in candidates if candidate.booking_date}
     expense_keys_with_store = set()
     expense_keys_any_store = set()
     income_keys = set()
+    # Wpisy bez identyfikatora importu (dodane ręcznie) wg kwoty - do
+    # porównania „ta sama kwota, ±NEAR_DUPLICATE_DAYS dni”.
+    manual_expenses = {}
+    manual_incomes = {}
     if candidate_dates:
+        window = _date_window(candidate_dates)
         for entry in Daily.objects.filter(
             account=account,
-            date__in=candidate_dates,
-        ).values('date', 'cost', 'title', 'store'):
+            date__range=window,
+        ).values('date', 'cost', 'title', 'store', 'external_id'):
+            if not entry['external_id']:
+                manual_expenses.setdefault(entry['cost'], []).append(entry)
+            if entry['date'] not in candidate_dates:
+                continue
             title_key = (entry['title'] or '').lower()
             expense_keys_any_store.add((entry['date'], entry['cost'], title_key))
             expense_keys_with_store.add(
@@ -788,14 +913,27 @@ def _mark_duplicates(candidates, account):
             )
         for entry in Income.objects.filter(
             account=account,
-            date__in=candidate_dates,
-        ).values('date', 'amount', 'title'):
-            income_keys.add((entry['date'], entry['amount'], (entry['title'] or '').lower()))
+            date__range=window,
+        ).values('date', 'amount', 'title', 'external_id'):
+            if not entry['external_id']:
+                manual_incomes.setdefault(entry['amount'], []).append(entry)
+            if entry['date'] in candidate_dates:
+                income_keys.add((entry['date'], entry['amount'], (entry['title'] or '').lower()))
 
     for candidate in candidates:
         if candidate.external_id in existing_expenses or candidate.external_id in existing_incomes:
             candidate.duplicate = True
             candidate.duplicate_reason = 'już zaimportowano'
+            continue
+
+        manual = (
+            _near_manual_entry(candidate, manual_expenses, 'cost') if candidate.is_expense
+            else _near_manual_entry(candidate, manual_incomes, 'amount')
+        )
+        if manual:
+            candidate.possible_duplicate = True
+            candidate.duplicate_reason = 'może być już wpisany ręcznie'
+            candidate.duplicate_match = manual
             continue
 
         title_key = (candidate.title or '').lower()
@@ -825,6 +963,7 @@ def _parse_millennium_csv_text(text, account):
     warnings = []
     candidates = []
     history = BankHistoryIndex(account)
+    rules = ImportRuleIndex(account)
     for row_number, raw_row in enumerate(reader, start=2):
         row = {_clean_header(key): _clean_text(value) for key, value in raw_row.items() if key is not None}
         if not any(row.values()):
@@ -841,6 +980,7 @@ def _parse_millennium_csv_text(text, account):
         try:
             candidate = _candidate_from_row(
                 len(candidates), row_number, row, account, history=history, raw_description=raw_description,
+                rules=rules,
             )
         except (ValueError, ArithmeticError) as exc:
             warnings.append(f'Pominięto wiersz {row_number}: {exc}.')
@@ -887,6 +1027,7 @@ def _parse_ing_csv_text(text, account):
     warnings = []
     candidates = []
     history = BankHistoryIndex(account)
+    rules = ImportRuleIndex(account)
     for row_number, values in enumerate(reader, start=row_number + 1):
         row = _ing_row(headers, values)
         if not any(row.values()):
@@ -914,6 +1055,7 @@ def _parse_ing_csv_text(text, account):
                 account,
                 import_source=ING_SOURCE,
                 history=history,
+                rules=rules,
             )
         except (ValueError, ArithmeticError) as exc:
             warnings.append(f'Pominięto wiersz {row_number}: {exc}.')
@@ -954,6 +1096,38 @@ def _payload_value(post_data, index, name, default=''):
     return post_data.get(f'row_{index}_{name}', default)
 
 
+def _remember_request(post_data, index):
+    """„Zapamiętaj” z podglądu: reguła z bieżących wartości pozycji."""
+    if _payload_value(post_data, index, 'remember') != 'on':
+        return None
+    kind = _payload_value(post_data, index, 'kind')
+    key = _clean_text(_payload_value(post_data, index, 'rule_key'))
+    title = _clean_text(_payload_value(post_data, index, 'title'))
+    if not key:
+        return None
+    if kind == EXPENSE:
+        label = _clean_text(_payload_value(post_data, index, 'category'))
+        store = _clean_text(_payload_value(post_data, index, 'store'))
+        # Opis zapisujemy tylko wtedy, gdy różni się od tego, co i tak by powstał.
+        default_title = _expense_title(label, store or key, {})
+        return RememberRequest(
+            kind=EXPENSE,
+            key=key,
+            label=label,
+            title=title if title and title != default_title else '',
+            store_name=store if store and store != key else '',
+        )
+    if kind == INCOME:
+        default_title = _clean_text(_payload_value(post_data, index, 'default_title'))
+        return RememberRequest(
+            kind=INCOME,
+            key=key,
+            label=_clean_text(_payload_value(post_data, index, 'source')),
+            title=title if title and title != default_title else '',
+        )
+    return None
+
+
 def import_candidates_from_post(user, account, post_data):
     try:
         row_count = int(post_data.get('row_count', '0'))
@@ -964,8 +1138,20 @@ def import_candidates_from_post(user, account, post_data):
     touched_months = set()
     selected_any = False
 
+    remember_requests = []
+
     with transaction.atomic():
         for index in range(row_count):
+            remember = _remember_request(post_data, index)
+            if remember is not None:
+                if remember.kind == EXPENSE and remember.label == TRANSFER_TO_SHARED_CATEGORY:
+                    result.warnings.append(
+                        f'Nie zapamiętano reguły dla „{remember.key}”: kategoria „{TRANSFER_TO_SHARED_CATEGORY}” '
+                        'nie jest obsługiwana w imporcie.'
+                    )
+                else:
+                    remember_requests.append(remember)
+
             if post_data.get(f'row_{index}_selected') != 'on':
                 result.skipped += 1
                 continue
@@ -1069,6 +1255,9 @@ def import_candidates_from_post(user, account, post_data):
 
     if not selected_any:
         raise BankImportError('Zaznacz przynajmniej jedną pozycję do importu.')
+
+    if remember_requests and account is not None:
+        result.rules_created, result.rules_updated = remember_rules(account, user, remember_requests)
 
     for monthly_record in Monthly.objects.filter(id__in=touched_months):
         recalculate_monthly_record(monthly_record)

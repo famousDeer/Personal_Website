@@ -161,3 +161,61 @@ class MillenniumCardImportTests(TestCase):
         self.assertEqual((fred.store, fred.category), ('Fred', 'Wyposazenie domu'))
         self.assertIn('historia', fred.suggestion_reason)
         self.assertEqual(dinner.category, 'Jedzenie na miescie')  # nie „Prezenty” od sklepu „Ola”
+
+
+class ImportPreviewReviewTests(TestCase):
+    """Etap 2: duplikaty z wpisami ręcznymi, „do sprawdzenia”, sumy, nowy podgląd."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='podglad', password='pass123')
+        self.account = self.user.owned_finance_accounts.get(account_type='personal')
+        self.month = Monthly.objects.create(user=self.user, account=self.account, date=date(2026, 10, 1),
+                                            total_income=Decimal('0'), total_expense=Decimal('0'))
+
+    def daily(self, day, cost, title, external_id=''):
+        return Daily.objects.create(user=self.user, account=self.account, month=self.month, date=day,
+                                    title=title, category='Inne', cost=Decimal(cost), external_id=external_id)
+
+    def test_manual_entry_with_same_amount_within_three_days(self):
+        self.daily(date(2026, 10, 6), '85.00', 'Kawa z Anią')           # 2 dni po płatności
+        self.daily(date(2026, 10, 12), '41.29', 'Za daleko')            # 9 dni - nie
+        self.daily(date(2026, 10, 3), '182.91', 'IKEA', external_id='ing:abc')  # z importu - nie
+        coffee, hardware, ikea = parse_bank_csv(upload([
+            card('MOZE KAWY  GDYNIA POL 2026-10-04', booked='2026-10-06', amount='-85.00'),
+            card('LEROY MERLIN GDYNIA  GDYNIA POL 2026-10-03', amount='-41.29'),
+            card('IKEA Gdansk  Gdansk POL 2026-10-03', amount='-182.91'),
+        ]), self.account).candidates
+        self.assertTrue(coffee.possible_duplicate)
+        self.assertEqual(coffee.duplicate_match, 'Kawa z Anią · 85,00 zł · 06.10')
+        self.assertFalse(coffee.selected_by_default)
+        self.assertFalse(hardware.possible_duplicate)
+        self.assertFalse(ikea.possible_duplicate)
+
+    def test_review_count_and_totals(self):
+        preview = parse_bank_csv(upload([
+            card('NIEZNANY SKLEP  GDYNIA POL 2026-10-03', amount='-10.50'),
+            card('LIDL GRYFA  GDYNIA POL 2026-10-03', amount='-20.00'),
+            [ACCOUNT, '2026-10-05', '2026-10-05', 'PRZELEW PRZYCHODZĄCY', '', 'Firma', 'Wynagrodzenie',
+             '', '3000.00', '100.00', 'PLN'],
+        ]), self.account)
+        unknown, lidl, salary = preview.candidates
+        self.assertTrue(unknown.needs_review)
+        self.assertFalse(lidl.needs_review)
+        self.assertEqual(salary.label, 'Pensja')
+        self.assertEqual(preview.review_count, 1)
+        self.assertEqual((preview.expenses_total, preview.incomes_total), (Decimal('30.50'), Decimal('3000.00')))
+
+    def test_preview_page_has_filters_rows_and_sticky_total(self):
+        self.client.force_login(self.user)
+        response = self.client.post('/finance/bank/import/', {'file': upload([
+            card('NIEZNANY SKLEP  GDYNIA POL 2026-10-03', amount='-10.50'),
+            card('LIDL GRYFA  GDYNIA POL 2026-10-03', booked='2026-10-05', amount='-1234.00'),
+        ])})
+        self.assertContains(response, 'data-bip-filter="review"')
+        self.assertContains(response, 'Do sprawdzenia <span data-count="review">1</span>', html=False)
+        self.assertContains(response, 'data-bip-row', count=2)
+        self.assertContains(response, '−1\xa0234,00 zł')
+        self.assertContains(response, 'Wydatki −1\xa0244,50 zł')
+        self.assertContains(response, 'js/bank-import.js')
+        self.assertContains(response, 'name="row_0_category"')
+        self.assertNotContains(response, 'bank-import-upload-panel')  # wybór pliku schowany przy podglądzie

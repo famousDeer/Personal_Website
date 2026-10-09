@@ -1794,10 +1794,15 @@ class ImportBankTransactionsView(View):
                 messages.error(request, str(exc))
                 return redirect('finance:import_bank_transactions')
 
+            remembered = result.rules_created + result.rules_updated
+            remembered_text = (
+                f' Zapamiętane reguły na kolejne importy: {remembered}.'
+                if remembered else ''
+            )
             messages.success(
                 request,
                 f'Import zakończony: dodano {result.created_expenses} wydatków i '
-                f'{result.created_incomes} przychodów, pominięto duplikatów {result.duplicates}.',
+                f'{result.created_incomes} przychodów, pominięto duplikatów {result.duplicates}.{remembered_text}',
             )
             for warning in result.warnings[:5]:
                 messages.warning(request, warning)

@@ -58,9 +58,10 @@ class BankImportQueryCountTests(TestCase):
             )
 
     def test_query_count_does_not_grow_with_row_count(self):
-        with self.assertNumQueries(6):
+        # 7 = historia (2) + reguły importu domownika (1) + duplikaty (4).
+        with self.assertNumQueries(7):
             small = _parse_millennium_csv_text(build_statement(10), self.account)
-        with self.assertNumQueries(6):
+        with self.assertNumQueries(7):
             large = _parse_millennium_csv_text(build_statement(200), self.account)
 
         self.assertEqual(len(small.candidates), 10)

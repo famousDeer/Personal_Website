@@ -9,6 +9,11 @@
     <div class="col-12 col-xl-11">
         {% url 'finance:expense_list' as back_url %}
         {% page_head title="Import wyciągu bankowego" eyebrow="Finanse" icon="bi-wallet2" sub="Pliki CSV z Millennium i ING. Płatność kartą dostaje datę z opisu, nie z dnia zaksięgowania. Duplikaty wykryjemy przed zapisem." back=back_url %}
+            {% if not preview %}
+                <a href="{% url 'finance:import_rules' %}" class="btn btn-outline-primary">
+                    <i class="bi bi-magic" aria-hidden="true"></i> Reguły importu
+                </a>
+            {% endif %}
             {% if preview %}
                 <span class="badge bg-danger-subtle text-danger">{{ preview.expenses_count|pl:"wydatek,wydatki,wydatków" }}</span>
                 <span class="badge bg-success-subtle text-success">{{ preview.incomes_count|pl:"przychód,przychody,przychodów" }}</span>
@@ -18,6 +23,7 @@
             {% endif %}
         {% endpage_head %}
 
+        {% if not preview %}
         <div class="card border-0 shadow-sm action-card mb-4 animate-fade-in-up bank-import-upload-panel">
             <div class="card-body p-4">
                 <form method="post" enctype="multipart/form-data" class="row g-3 align-items-end bank-import-upload-form">
@@ -45,147 +51,51 @@
                 </form>
             </div>
         </div>
+        {% endif %}
 
         {% if preview %}
-            <form method="post" class="card border-0 shadow-sm action-card animate-fade-in-up bank-import-preview">
+            {% comment %} Podgląd: filtry z licznikami, lista pozycji (finance/partials/bank_import_row.html)
+               i przypięty pasek z sumą zaznaczonych. Obsługa: js/bank-import.js. {% endcomment %}
+            <form method="post" class="card border-0 shadow-sm action-card animate-fade-in-up bip" data-bip-form>
                 {% csrf_token %}
                 <input type="hidden" name="confirm_import" value="1">
                 <input type="hidden" name="row_count" value="{{ preview.candidates|length }}">
 
-                <div class="card-header bg-body-tertiary border-bottom border-light-subtle p-4 d-flex flex-column flex-md-row justify-content-between gap-3 bank-import-preview-header">
-                    <div>
-                        <h5 class="fw-bold mb-1">Podgląd transakcji</h5>
-                        <div class="small text-muted">Zaznaczone pozycje zostaną zapisane na aktywnym koncie.</div>
+                <div class="card-body bip-head">
+                    <div class="bip-head-text">
+                        <h2 class="h5 fw-bold mb-1">Podgląd transakcji</h2>
+                        <p class="small text-muted mb-0">Dotknij pozycji, żeby ją poprawić. Zaznaczone zapiszą się na aktywnym koncie.</p>
                     </div>
-                    <div class="d-flex flex-wrap gap-2 bank-import-actions">
-                        <a href="{% url 'finance:import_bank_transactions' %}" class="btn btn-soft-neutral rounded-pill px-4">Wyczyść</a>
-                        <button type="submit" class="btn btn-primary rounded-pill fw-bold text-white px-4">
-                            <i class="bi bi-check2-circle me-1"></i> Importuj zaznaczone
-                        </button>
+                    <div class="bip-filters" role="group" aria-label="Pokaż">
+                        <button type="button" class="bip-filter" data-bip-filter="all" aria-pressed="true">Wszystkie <span data-count="all">{{ preview.candidates|length }}</span></button>
+                        <button type="button" class="bip-filter" data-bip-filter="review" aria-pressed="false">Do sprawdzenia <span data-count="review">{{ preview.review_count }}</span></button>
+                        <button type="button" class="bip-filter" data-bip-filter="expense" aria-pressed="false">Wydatki <span data-count="expense">{{ preview.expenses_count }}</span></button>
+                        {% if preview.incomes_count %}<button type="button" class="bip-filter" data-bip-filter="income" aria-pressed="false">Przychody <span data-count="income">{{ preview.incomes_count }}</span></button>{% endif %}
+                        {% if preview.duplicate_count %}<button type="button" class="bip-filter" data-bip-filter="duplicate" aria-pressed="false">Duplikaty <span data-count="duplicate">{{ preview.duplicate_count }}</span></button>{% endif %}
+                    </div>
+                    <div class="bip-bulk" data-bip-bulk hidden>
+                        <span class="small text-muted">Widoczne:</span>
+                        <button type="button" class="bip-link" data-bip-select-visible="1"><i class="bi bi-check2-all" aria-hidden="true"></i> zaznacz</button>
+                        <button type="button" class="bip-link" data-bip-select-visible="0"><i class="bi bi-x-lg" aria-hidden="true"></i> odznacz</button>
                     </div>
                 </div>
 
-                <div class="table-responsive bank-import-table-scroll">
-                    <table class="table table-hover mb-0 custom-table bank-import-table">
-                        <colgroup>
-                            <col class="bank-import-select-column">
-                            <col class="bank-import-date-column">
-                            <col class="bank-import-description-column">
-                            <col class="bank-import-amount-column">
-                            <col class="bank-import-category-column">
-                            <col class="bank-import-store-column">
-                        </colgroup>
-                        <thead class="bg-light">
-                            <tr>
-                                <th class="ps-4 py-3 text-muted text-uppercase small fw-bold"></th>
-                                <th class="py-3 text-muted text-uppercase small fw-bold">Data</th>
-                                <th class="py-3 text-muted text-uppercase small fw-bold">Opis</th>
-                                <th class="py-3 text-muted text-uppercase small fw-bold">Kwota</th>
-                                <th class="py-3 text-muted text-uppercase small fw-bold">Kategoria / źródło</th>
-                                <th class="pe-4 py-3 text-muted text-uppercase small fw-bold">Sklep / kontrahent</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for candidate in preview.candidates %}
-                                <tr class="bank-import-row {% if candidate.duplicate %}is-duplicate{% elif candidate.possible_duplicate %}is-possible-duplicate{% endif %}">
-                                    <td class="ps-4 bank-import-select-cell" data-label="Uwzględnij">
-                                        <div class="bank-import-select-control">
-                                            <input id="row-{{ candidate.index }}-selected" class="form-check-input" type="checkbox" name="row_{{ candidate.index }}_selected" aria-label="Uwzględnij transakcję" {% if candidate.selected_by_default %}checked{% endif %} {% if candidate.duplicate %}disabled{% endif %}>
-                                            <label class="bank-import-select-label" for="row-{{ candidate.index }}-selected">Uwzględnij</label>
-                                        </div>
-                                        <input type="hidden" name="row_{{ candidate.index }}_kind" value="{{ candidate.kind }}">
-                                        <input type="hidden" name="row_{{ candidate.index }}_external_id" value="{{ candidate.external_id }}">
-                                    </td>
-                                    <td class="bank-import-date-cell" data-label="Data">
-                                        <input type="date" class="form-control form-control-sm" name="row_{{ candidate.index }}_date" aria-label="Data transakcji" value="{{ candidate.date_display }}" required>
-                                        {% if candidate.booked_later %}
-                                            <div class="small text-muted mt-1" title="Data z opisu płatności kartą. Bank zaksięgował ją później.">zaksięg. {{ candidate.booking_date_display }} · wiersz {{ candidate.row_number }}</div>
-                                        {% else %}
-                                            <div class="small text-muted mt-1">wiersz {{ candidate.row_number }}</div>
-                                        {% endif %}
-                                    </td>
-                                    <td class="bank-import-description-cell" data-label="Opis">
-                                        <textarea class="form-control form-control-sm fw-medium bank-import-title bank-import-auto-grow" name="row_{{ candidate.index }}_title" aria-label="Opis transakcji" rows="1" required>{{ candidate.title }}</textarea>
-                                        <details class="bank-import-source-details" name="bank-source-data">
-                                            <summary>
-                                                <span>Dane źródłowe</span>
-                                                <i class="bi bi-chevron-down" aria-hidden="true"></i>
-                                            </summary>
-                                            <dl class="bank-import-source-list">
-                                                <div>
-                                                    <dt>Typ</dt>
-                                                    <dd>{{ candidate.transaction_type|default:"-" }}</dd>
-                                                </div>
-                                                <div>
-                                                    <dt>Opis banku</dt>
-                                                    <dd>{{ candidate.raw_description|default:"-" }}</dd>
-                                                </div>
-                                                <div>
-                                                    <dt>Kontrahent</dt>
-                                                    <dd>{{ candidate.counterparty|default:"-" }}</dd>
-                                                </div>
-                                            </dl>
-                                        </details>
-                                        {% if candidate.duplicate or candidate.possible_duplicate %}
-                                            <span class="badge rounded-pill bg-warning-subtle text-warning mt-2">{{ candidate.duplicate_reason }}</span>
-                                        {% else %}
-                                            <span class="badge rounded-pill bg-primary-subtle text-primary mt-2">{{ candidate.suggestion_reason }}</span>
-                                        {% endif %}
-                                    </td>
-                                    <td class="bank-import-amount-cell" data-label="Kwota">
-                                        <div class="input-group input-group-sm bank-import-amount-control">
-                                            <input type="number" step="0.01" min="0.01" class="form-control fw-bold bank-import-amount-input {% if candidate.is_expense %}text-danger{% else %}text-success{% endif %}" name="row_{{ candidate.index }}_amount" aria-label="Kwota transakcji" value="{{ candidate.amount_display }}" required>
-                                            <span class="input-group-text bg-light text-muted fw-bold">PLN</span>
-                                        </div>
-                                    </td>
-                                    <td class="bank-import-category-cell" data-label="Kategoria lub źródło">
-                                        {% if candidate.is_expense %}
-                                            <div class="finance-autocomplete bank-import-autocomplete">
-                                                <input type="text" class="form-control form-control-sm" id="row-{{ candidate.index }}-category" name="row_{{ candidate.index }}_category"
-                                                       data-autocomplete-input data-autocomplete-source="bank-import-expense-categories"
-                                                       data-autocomplete-icon="bi-tags" data-autocomplete-limit="0"
-                                                       autocomplete="off" aria-autocomplete="list"
-                                                       aria-expanded="false" aria-controls="row-{{ candidate.index }}-category-suggestions"
-                                                       aria-label="Kategoria wydatku" placeholder="Kategoria" value="{{ candidate.category }}" required>
-                                                <div class="finance-autocomplete-menu d-none" id="row-{{ candidate.index }}-category-suggestions" data-autocomplete-menu role="listbox"></div>
-                                            </div>
-                                            <div class="mt-2 {% if candidate.category != investment_category %}d-none{% endif %}" data-bank-brokerage-target>
-                                                <select class="form-select form-select-sm" name="row_{{ candidate.index }}_brokerage_account" aria-label="Docelowe konto maklerskie">
-                                                    <option value="">Nie przypisuj konta</option>
-                                                    {% for account in brokerage_accounts %}
-                                                        <option value="{{ account.id }}">{{ account.name }} · {{ account.currency }}{% if account.account_type == 'ike' %} · IKE{% endif %}</option>
-                                                    {% endfor %}
-                                                </select>
-                                                <div class="form-text">Opcjonalnie: utwórz oczekującą wpłatę.</div>
-                                            </div>
-                                            <input type="hidden" name="row_{{ candidate.index }}_source" value="">
-                                        {% else %}
-                                            <div class="finance-autocomplete bank-import-autocomplete">
-                                                <input type="text" class="form-control form-control-sm" id="row-{{ candidate.index }}-source" name="row_{{ candidate.index }}_source"
-                                                       data-autocomplete-input data-autocomplete-source="bank-import-income-sources"
-                                                       data-autocomplete-icon="bi-wallet2" data-autocomplete-limit="0"
-                                                       autocomplete="off" aria-autocomplete="list"
-                                                       aria-expanded="false" aria-controls="row-{{ candidate.index }}-source-suggestions"
-                                                       aria-label="Źródło przychodu" placeholder="Źródło" value="{{ candidate.source }}" required>
-                                                <div class="finance-autocomplete-menu d-none" id="row-{{ candidate.index }}-source-suggestions" data-autocomplete-menu role="listbox"></div>
-                                            </div>
-                                            <input type="hidden" name="row_{{ candidate.index }}_category" value="">
-                                            <input type="hidden" name="row_{{ candidate.index }}_brokerage_account" value="">
-                                        {% endif %}
-                                    </td>
-                                    <td class="pe-4 bank-import-store-cell" data-label="Sklep lub kontrahent">
-                                        {% if candidate.is_expense %}
-                                            <textarea class="form-control form-control-sm bank-import-store bank-import-auto-grow" name="row_{{ candidate.index }}_store" aria-label="Sklep" rows="1">{{ candidate.store }}</textarea>
-                                        {% else %}
-                                            <textarea class="form-control form-control-sm bank-import-store bank-import-auto-grow" name="row_{{ candidate.index }}_counterparty" aria-label="Kontrahent" placeholder="Kontrahent" rows="1">{{ candidate.counterparty }}</textarea>
-                                        {% endif %}
-                                    </td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
+                <ul class="bip-list" data-bip-list>
+                    {% for candidate in preview.candidates %}
+                        {% include 'finance/partials/bank_import_row.html' with candidate=candidate %}
+                    {% endfor %}
+                </ul>
+                <p class="bip-empty" data-bip-empty hidden>Nic tu nie ma – wszystkie pozycje z tej grupy są w porządku.</p>
 
+                <div class="u-form-actions bip-actions">
+                    <span class="bip-total" data-bip-total aria-live="polite">
+                        Wydatki −{{ preview.expenses_total|floatformat:"2g" }} zł{% if preview.incomes_count %} · przychody +{{ preview.incomes_total|floatformat:"2g" }} zł{% endif %}
+                    </span>
+                    <a href="{% url 'finance:import_bank_transactions' %}" class="btn btn-outline-secondary">Wyczyść</a>
+                    <button type="submit" class="btn btn-primary" data-bip-submit>
+                        <i class="bi bi-check2-circle" aria-hidden="true"></i> <span data-bip-submit-label>Importuj zaznaczone</span>
+                    </button>
+                </div>
             </form>
         {% endif %}
     </div>
@@ -196,6 +106,8 @@
 {{ expense_categories|json_script:"bank-import-expense-categories" }}
 {{ income_sources|json_script:"bank-import-income-sources" }}
 <script src="{% static 'js/form-autocomplete.js' %}"></script>
+{{ investment_category|json_script:"bank-import-investment-category" }}
+<script src="{% static 'js/bank-import.js' %}"></script>
 <script>
     (() => {
         const filePicker = document.querySelector('[data-bank-import-file-picker]');
@@ -213,87 +125,6 @@
             updateFileName();
         }
 
-        const resizeTextarea = (textarea) => {
-            textarea.style.height = 'auto';
-            textarea.style.height = `${textarea.scrollHeight}px`;
-        };
-
-        document.querySelectorAll('.bank-import-auto-grow').forEach(resizeTextarea);
-
-        document.addEventListener('input', (event) => {
-            if (event.target.matches('.bank-import-auto-grow')) {
-                resizeTextarea(event.target);
-            }
-            if (event.target.name?.endsWith('_category')) {
-                const row = event.target.closest('.bank-import-row');
-                const target = row?.querySelector('[data-bank-brokerage-target]');
-                const select = target?.querySelector('select');
-                const isInvestment = event.target.value === "{{ investment_category|escapejs }}";
-                target?.classList.toggle('d-none', !isInvestment);
-                if (!isInvestment && select) select.value = '';
-            }
-        });
-
-        const sourceDetails = [...document.querySelectorAll('.bank-import-source-details')];
-        const desktopSourcePanel = window.matchMedia('(min-width: 992px)');
-
-        const positionSourcePanel = (details) => {
-            details.classList.remove('opens-upward');
-            if (!details.open || !desktopSourcePanel.matches) return;
-
-            requestAnimationFrame(() => {
-                const summary = details.querySelector('summary');
-                const panel = details.querySelector('.bank-import-source-list');
-                const scrollArea = details.closest('.bank-import-table-scroll');
-                if (!summary || !panel || !scrollArea) return;
-
-                const summaryRect = summary.getBoundingClientRect();
-                const panelRect = panel.getBoundingClientRect();
-                const scrollRect = scrollArea.getBoundingClientRect();
-                const viewportPadding = 12;
-                const spaceBelow = Math.min(window.innerHeight - viewportPadding, scrollRect.bottom) - summaryRect.bottom;
-                const spaceAbove = summaryRect.top - Math.max(viewportPadding, scrollRect.top);
-
-                details.classList.toggle(
-                    'opens-upward',
-                    spaceBelow < panelRect.height + viewportPadding && spaceAbove > spaceBelow,
-                );
-            });
-        };
-
-        sourceDetails.forEach((details) => {
-            details.addEventListener('toggle', () => {
-                details.closest('.bank-import-description-cell')?.classList.toggle('is-source-open', details.open);
-                if (!details.open) {
-                    details.classList.remove('opens-upward');
-                    return;
-                }
-
-                sourceDetails.forEach((otherDetails) => {
-                    if (otherDetails !== details) otherDetails.open = false;
-                });
-                positionSourcePanel(details);
-            });
-        });
-
-        document.addEventListener('click', (event) => {
-            const openDetails = document.querySelector('.bank-import-source-details[open]');
-            if (openDetails && !openDetails.contains(event.target)) openDetails.open = false;
-        });
-
-        document.addEventListener('keydown', (event) => {
-            if (event.key !== 'Escape') return;
-            const openDetails = document.querySelector('.bank-import-source-details[open]');
-            if (openDetails) {
-                openDetails.open = false;
-                openDetails.querySelector('summary')?.focus();
-            }
-        });
-
-        window.addEventListener('resize', () => {
-            const openDetails = document.querySelector('.bank-import-source-details[open]');
-            if (openDetails) positionSourcePanel(openDetails);
-        });
     })();
 </script>
 {% endblock %}
