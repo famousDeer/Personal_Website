@@ -14,6 +14,7 @@ from .models import (
     Income,
     InvestmentFunding,
     Monthly,
+    StrategyDailyPrice,
 )
 
 @admin.register(FinanceAccount)
@@ -108,3 +109,10 @@ class ImportRuleAdmin(admin.ModelAdmin):
     list_display = ('account', 'kind', 'position', 'label', 'patterns', 'title', 'store_name', 'created_by')
     list_filter = ('kind', 'account')
     search_fields = ('patterns', 'label', 'title', 'store_name')
+
+
+@admin.register(StrategyDailyPrice)
+class StrategyDailyPriceAdmin(admin.ModelAdmin):
+    list_display = ('trading_date', 'symbol', 'close', 'adjusted_close', 'currency', 'source', 'updated_at')
+    list_filter = ('symbol', 'source')
+    date_hierarchy = 'trading_date'

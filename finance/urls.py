@@ -35,6 +35,7 @@ urlpatterns = [
     path('brokerage/value-history/', views.BrokeragePortfolioHistoryDataView.as_view(), name='brokerage_value_history_data'),
     path('brokerage/refresh/', views.RefreshBrokerageMarketDataView.as_view(), name='brokerage_refresh'),
     path('brokerage/history/sync/', views.SyncBrokeragePriceHistoryView.as_view(), name='brokerage_sync_price_history'),
+    path('brokerage/gem/refresh/', views.GemRefreshView.as_view(), name='brokerage_gem_refresh'),
     path('brokerage/accounts/add/', views.AddBrokerageAccountView.as_view(), name='add_brokerage_account'),
     path('brokerage/accounts/<int:account_id>/edit/', views.EditBrokerageAccountView.as_view(), name='edit_brokerage_account'),
     path('brokerage/accounts/<int:account_id>/delete/', views.DeleteBrokerageAccountView.as_view(), name='delete_brokerage_account'),

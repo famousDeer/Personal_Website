@@ -1,0 +1,145 @@
+{% load humanize gem_extras %}
+{% comment %}
+Panel strategii GEM (finance.gem.build_gem_summary). Ten sam szablon zwraca
+finance.views.GemRefreshView po odświeżeniu ze skryptu (js/gem-strategy.js).
+{% endcomment %}
+<section class="brokerage-panel gem-panel" id="gem" aria-labelledby="gemTitle" data-gem-panel
+         {% if gem.auto_refresh %}data-gem-auto="1"{% endif %}>
+    <div class="brokerage-section-heading gem-heading">
+        <div>
+            <span class="brokerage-section-kicker">Twoja strategia</span>
+            <h2 id="gemTitle">GEM · momentum {{ gem.lookback }} miesięcy</h2>
+            <p>Trzymasz ETF z najwyższą stopą zwrotu z {{ gem.lookback }} miesięcy. Gdy żaden fundusz akcyjny nie bije bonów skarbowych (IB01), przechodzisz do IB01. Pozycję zmieniasz raz w miesiącu.</p>
+        </div>
+        <form method="post" action="{% url 'finance:brokerage_gem_refresh' %}" class="gem-refresh" data-gem-refresh>
+            {% csrf_token %}
+            {% if selected_brokerage_account %}<input type="hidden" name="account" value="{{ selected_brokerage_account.id }}">{% endif %}
+            <span class="brokerage-market-time" data-gem-status>
+                <i class="bi bi-broadcast" aria-hidden="true"></i>
+                {% if gem.as_of %}Sesja {{ gem.as_of|date:"d.m.Y" }}{% else %}Brak notowań{% endif %}
+            </span>
+            <button type="submit" class="btn btn-sm btn-outline-primary rounded-pill" data-gem-refresh-button>
+                <i class="bi bi-arrow-repeat" aria-hidden="true"></i> <span data-gem-refresh-label>Odśwież</span>
+            </button>
+        </form>
+    </div>
+
+    {% if gem_refresh_failed %}
+        <div class="brokerage-table-note gem-note is-warning" role="alert" title="{{ gem_refresh_failed|join:'&#10;' }}">
+            <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
+            <span>Nie udało się pobrać nowych notowań ({{ gem_refresh_failed|length }} z {{ gem.assets|length }} funduszy){% if not gem.is_empty %} – pokazuję ostatnie zapisane{% endif %}. Spróbuj później.</span>
+        </div>
+    {% endif %}
+
+    {% if gem.is_empty %}
+        <div class="brokerage-empty-state gem-empty">
+            <i class="bi bi-compass" aria-hidden="true"></i>
+            <div>
+                <strong>Czekam na notowania {% for asset in gem.assets %}{{ asset.ticker }}{% if not forloop.last %}, {% endif %}{% endfor %}</strong>
+                <span>Potrzeba ok. 13 miesięcy historii z Yahoo Finance. Strona pobiera je sama po zamknięciu sesji; możesz też kliknąć „Odśwież”.{% if gem.last_error %} Ostatnia próba się nie udała – dostawca notowań nie odpowiedział.{% endif %}</span>
+            </div>
+        </div>
+    {% else %}
+        <div class="gem-grid">
+            {% with target=gem.signal_winner %}
+            <div class="gem-verdict{% if target.asset.is_safe %} is-safe{% endif %}{% if not target %} is-unknown{% endif %}">
+                {% if target %}
+                    <span class="gem-verdict-label">Sygnał z końca {{ gem.signal_date|date:"E" }} <small>({{ gem.signal_date|date:"d.m.Y" }})</small></span>
+                    <strong class="gem-verdict-ticker">{{ target.asset.ticker }}</strong>
+                    <span class="gem-verdict-name">{{ target.asset.name }} · {{ target.asset.role }}</span>
+                    <span class="gem-verdict-value">
+                        {{ gem.lookback }} mies.: <strong>{{ target.signal_r12|signed_pct }}</strong>
+                        {% if gem.signal_vs_safe != None %}
+                            {% if gem.signal_safe_mode %}
+                                · najlepsze akcje słabsze od IB01 o {{ gem.signal_vs_safe|signed_pp }}
+                            {% else %}
+                                · bije IB01 o {{ gem.signal_vs_safe|signed_pp }}
+                            {% endif %}
+                        {% endif %}
+                    </span>
+                {% else %}
+                    <span class="gem-verdict-label">Sygnał miesięczny</span>
+                    <strong class="gem-verdict-ticker">–</strong>
+                    <span class="gem-verdict-name">Za mało historii, żeby policzyć {{ gem.lookback }} miesięcy dla wszystkich funduszy.</span>
+                {% endif %}
+
+                {% if gem.winner %}
+                    <div class="gem-today{% if gem.signal_changed %} is-change{% endif %}">
+                        <i class="bi {% if gem.signal_changed %}bi-arrow-left-right{% else %}bi-check2-circle{% endif %}" aria-hidden="true"></i>
+                        <span>
+                            {% if gem.signal_changed %}
+                                <strong>Dziś prowadzi {{ gem.winner.asset.ticker }}</strong> ({{ gem.winner.r12|signed_pct }}).
+                                Jeśli utrzyma się do ostatniej sesji {{ gem.as_of|date:"E" }}, sygnał zmieni się z {{ target.asset.ticker }} na {{ gem.winner.asset.ticker }}.
+                            {% else %}
+                                <strong>Dziś nadal {{ gem.winner.asset.ticker }}</strong>{% if gem.runner_up %} – przewaga {{ gem.margin|signed_pp }} nad {{ gem.runner_up.asset.ticker }}{% endif %}.
+                            {% endif %}
+                        </span>
+                    </div>
+                {% endif %}
+
+                <div class="gem-holding is-{{ gem.holding_status }}">
+                    {% if gem.holding_status == 'match' %}
+                        <i class="bi bi-check-circle-fill" aria-hidden="true"></i><span>Masz {{ gem.held_tickers|join:", " }} – zgodnie z sygnałem.</span>
+                    {% elif gem.holding_status == 'switch' %}
+                        <i class="bi bi-exclamation-circle-fill" aria-hidden="true"></i><span>Masz {{ gem.held_tickers|join:", " }}, a sygnał wskazuje {{ gem.target.asset.ticker }}.</span>
+                    {% elif gem.holding_status == 'mixed' %}
+                        <i class="bi bi-info-circle-fill" aria-hidden="true"></i><span>Masz {{ gem.held_tickers|join:", " }}. Sygnał wskazuje tylko {{ gem.target.asset.ticker }}.</span>
+                    {% elif gem.holding_status == 'unknown' %}
+                        <i class="bi bi-info-circle" aria-hidden="true"></i><span>Masz {{ gem.held_tickers|join:", " }}. Sygnał pojawi się, gdy będzie pełna historia.</span>
+                    {% else %}
+                        <i class="bi bi-dash-circle" aria-hidden="true"></i><span>{% if selected_brokerage_account %}Na tym rachunku{% else %}W portfelu{% endif %} nie ma ETF-ów z tej strategii.</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endwith %}
+
+            <div class="gem-ranking">
+                <div class="gem-ranking-head">
+                    <span>Stopa zwrotu {{ gem.lookback }} mies. na dziś</span>
+                    {% if gem.safe_row.r12 != None %}<span class="gem-hurdle-key"><i aria-hidden="true"></i> próg: IB01 {{ gem.safe_row.r12|signed_pct }}</span>{% endif %}
+                </div>
+                <ol class="gem-rows" style="--gem-zero: {{ gem.zero|default:0|stringformat:'s' }}%;{% if gem.hurdle != None %} --gem-hurdle: {{ gem.hurdle|stringformat:'s' }}%;{% endif %}">
+                    {% for row in gem.rows %}
+                        <li class="gem-row{% if row.is_winner %} is-winner{% endif %}{% if row.asset.is_safe %} is-safe{% endif %}{% if row.r12 == None %} is-missing{% endif %}"
+                            title="{{ row.asset.ticker }} · {{ row.asset.name }}&#10;12 mies.: {{ row.r12|signed_pct:2 }} · 6 mies.: {{ row.r6|signed_pct:2 }} · 3 mies.: {{ row.r3|signed_pct:2 }} · 1 mies.: {{ row.r1|signed_pct:2 }}{% if row.price != None %}&#10;Cena {{ row.price|floatformat:2|intcomma }} {{ row.asset.currency }} ({{ row.price_date|date:'d.m.Y' }}){% endif %}">
+                            <span class="gem-rank" aria-hidden="true">{{ row.rank|default:"–" }}</span>
+                            <span class="gem-name">
+                                <strong>{{ row.asset.ticker }}{% if row.is_winner %} <span class="gem-badge">prowadzi</span>{% endif %}</strong>
+                                <small>{{ row.asset.role }}</small>
+                            </span>
+                            <span class="gem-bar" aria-hidden="true">
+                                {% if row.bar %}<span class="gem-bar-fill{% if row.bar.negative %} is-negative{% endif %}" style="left: {{ row.bar.left|stringformat:'s' }}%; width: {{ row.bar.width|stringformat:'s' }}%;"></span>{% endif %}
+                            </span>
+                            <strong class="gem-value">{% if row.r12 != None %}{{ row.r12|signed_pct }}{% else %}brak{% endif %}</strong>
+                            <small class="gem-periods">{% if row.r12 != None %}6M {{ row.r6|signed_pct }} · 3M {{ row.r3|signed_pct }} · 1M {{ row.r1|signed_pct }}{% elif row.has_data %}za krótka historia{% else %}brak notowań{% endif %}</small>
+                        </li>
+                    {% endfor %}
+                </ol>
+            </div>
+        </div>
+
+        {% if gem.chart %}
+            <div class="gem-chart">
+                <div class="gem-chart-head">
+                    <h3 id="gemChartTitle">Stopa zwrotu od {{ gem.chart.start|date:"d.m.Y" }}</h3>
+                    <span>do {{ gem.chart.end|date:"d.m.Y" }} · {{ gem.chart.labels|length }} sesji</span>
+                </div>
+                <div class="gem-chart-shell">
+                    <canvas data-gem-chart aria-labelledby="gemChartTitle"></canvas>
+                </div>
+                {% include 'finance/partials/chart_table_toggle.html' with id='gemChartTable' %}
+                {{ gem.chart|json_script:"gemChartData" }}
+            </div>
+        {% endif %}
+
+        <div class="brokerage-market-footnote gem-footnote">
+            <i class="bi bi-info-circle" aria-hidden="true"></i>
+            <span>
+                Stopy zwrotu w USD z cen skorygowanych (fundusze akumulujące, LSE).
+                {% if gem.fetched_at %}Pobrano {{ gem.fetched_at|date:"d.m.Y H:i" }}.{% endif %}
+                {% if gem.missing %}Za mało historii: {{ gem.missing|join:", " }}.{% endif %}
+                Narzędzie pomocnicze, nie rekomendacja inwestycyjna.
+            </span>
+        </div>
+    {% endif %}
+</section>

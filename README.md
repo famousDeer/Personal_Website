@@ -22,6 +22,9 @@ Demo image:
   daily price history and portfolio value charts
 - Market data from Yahoo Finance (bulk quotes), with Stooq and Alpha Vantage
   fallbacks and OpenFigi ISIN lookup; NBP for FX rates
+- GEM (Global Equities Momentum) panel on the brokerage page: 12-month return of
+  CSPX, IWDA, EIMI and IB01, the monthly signal, today's leader and whether your
+  positions match it (see [GEM strategy](#gem-strategy))
 - Travel log split into holiday and business trips, geocoded and shown on a map
 - Reports and a dashboard with end-of-month spending projection
 
@@ -694,6 +697,36 @@ docker compose exec -T web python manage.py send_reminders --kind spizarnia
 - Tapping a notification opens the shopping app on the list (handled in the service
   worker). The log of sent notifications is pruned after 90 days.
 
+## GEM strategy
+The brokerage page (`/finance/brokerage/#gem`) shows the household's Global Equities
+Momentum strategy (`finance/gem.py`, panel `finance/partials/gem_panel.html`):
+
+- Funds: CSPX.L (S&P 500), IWDA.L (MSCI World), EIMI.L (MSCI EM IMI) and IB01.L
+  (US Treasury 0-1 yr). All are accumulating UCITS ETFs quoted in USD on the LSE, so the
+  12-month returns use adjusted closes in USD, without converting to PLN. The list is
+  `GEM_ASSETS` in `finance/gem.py`.
+- Rule: hold the fund with the highest 12-month return; when no equity fund beats IB01
+  (absolute momentum), hold IB01.
+- The return is computed like the original yfinance script (`auto_adjust=True`,
+  `data.iloc[-1] / data.iloc[0] - 1` for `start = today - 12 months`): from the first
+  session on or after the day 12 months before the day following the last session,
+  to the last session. Run the day after a session, the script gives the same number.
+- **Signal** is computed on the last session of the previous month (the position changes
+  once a month). **Today** shows the current leader and warns when it differs from the
+  signal ("if it holds until the last session of the month, the signal changes").
+- A line chart shows each fund's return day by day since the start of the 12-month
+  window (IB01 dashed, final value labelled at the end of each line), with a table of
+  month-end values underneath.
+- The panel also shows 1/3/6-month returns, the gap to the runner-up and to IB01, and
+  whether your open positions (ticker without exchange suffix, e.g. `CSPX.UK`) match
+  the signal.
+- Prices live in `StrategyDailyPrice` (about 14 months, shared by all users). They are
+  fetched by `manage.py sync_price_history` (skip with `--bez-gem`), by
+  "Uzupełnij historię", by the panel's "Odśwież" button, and automatically in the
+  background when the page is opened and there was no successful download since the
+  last LSE close (after a failure it waits 30 minutes before trying again).
+- `GEM_PRICES_ENABLED=0` turns all downloads off (it is off in tests).
+
 ## Scheduled tasks (cron)
 Market data refresh and price history synchronisation are also available as
 management commands, so they do not have to run inside a web request:
@@ -703,7 +736,7 @@ python manage.py refresh_market_data
 python manage.py refresh_market_data --user dawid       # selected users only
 python manage.py refresh_market_data --dividends        # also sync dividends (uses Alpha Vantage quota)
 
-# Incremental daily OHLC history
+# Incremental daily OHLC history (also the GEM panel funds)
 python manage.py sync_price_history
 python manage.py sync_price_history --force             # ignore stored coverage and error backoff
 ```
@@ -953,6 +986,7 @@ Brokerage market data:
 - ALPHA_VANTAGE_API_KEY: optional legacy fallback and explicitly requested dividend synchronization; ordinary price refreshes do not consume its daily quota
 - OPENFIGI_API_KEY: ISIN to ticker/instrument mapping
 - STOOQ_API_KEY: optional historical Stooq CSV fallback; imported XTB instruments use Yahoo Finance history by default
+- GEM_PRICES_ENABLED: optional, defaults to `1`; `0` stops downloading prices for the GEM panel
 
 Pantry product catalog:
 - OPEN_FOOD_FACTS_ENABLED: optional, defaults to `1`; set `0` to disable external lookups while keeping the local cache

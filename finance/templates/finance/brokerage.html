@@ -311,6 +311,8 @@
     </div>
     {{ brokerage_initial_portfolio_history|json_script:"brokerageInitialPortfolioHistory" }}
 
+    {% include 'finance/partials/gem_panel.html' %}
+
     <div class="brokerage-layout">
         <aside class="brokerage-sidebar" id="brokerage-data-management" aria-label="Zarządzanie danymi maklerskimi">
             <section class="brokerage-panel">
@@ -1015,6 +1017,7 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'js/gem-strategy.js' %}" defer></script>
 {{ block.super }}
 <script src="{% static 'vendor/chart/chart.umd.js' %}"></script>
 <script src="{% static 'js/charts.js' %}"></script>

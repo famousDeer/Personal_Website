@@ -11,6 +11,7 @@ from django.db import transaction
 from django.db.models import Count, Max, Q, Sum
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -47,6 +48,7 @@ from .forms import (
     TravelDestinationForm,
 )
 from .brokerage_import import BrokerageImportError, import_xtb_files
+from .gem import build_gem_summary, needs_refresh as gem_needs_refresh, sync_gem_prices
 from .geocoding import populate_destination_coordinates
 from .investment_funding import sync_investment_funding
 from .investment_statistics import (
@@ -793,6 +795,7 @@ class BrokeragePortfolioView(View):
                 .order_by('-occurred_on', '-id')[:20]
             ),
             'unassigned_investments': unassigned_investments[:12],
+            'gem': build_gem_summary(summary.get('positions')),
         })
         return render(request, 'finance/brokerage.html', summary)
 
@@ -860,9 +863,56 @@ class RefreshBrokerageMarketDataView(View):
 
 
 @method_decorator(login_required, name='dispatch')
+class GemRefreshView(View):
+    """Pobiera notowania strategii GEM (finance.gem).
+
+    ``mode=auto`` wysyła skrypt panelu po wejściu na stronę - pobiera tylko,
+    gdy od zamknięcia ostatniej sesji nie było udanego pobrania. Przycisk
+    „Odśwież” pobiera zawsze. Zapytanie ze skryptu dostaje nowy panel jako
+    HTML w JSON-ie, bez skryptu - przekierowanie z komunikatem.
+    """
+
+    def post(self, request):
+        automatic = request.POST.get('mode') == 'auto'
+        result = None
+        if not automatic or gem_needs_refresh():
+            result = sync_gem_prices()
+
+        account = None
+        raw_account = request.POST.get('account', '')
+        if raw_account.isdigit():
+            account = BrokerageAccount.objects.filter(id=raw_account, user=request.user).first()
+        failed = result['failed'] if result else []
+
+        if request.headers.get('X-Requested-With') == 'fetch':
+            summary = build_portfolio_summary(request.user, selected_account=account)
+            html = render_to_string('finance/partials/gem_panel.html', {
+                'gem': build_gem_summary(summary.get('positions')),
+                'selected_brokerage_account': account,
+                'gem_refresh_failed': failed,
+            }, request=request)
+            return JsonResponse({'html': html, 'fetched': result is not None, 'failed': failed})
+
+        if result is None:
+            messages.info(request, 'Notowania GEM są aktualne.')
+        elif failed and not result['synced']:
+            messages.warning(request, f'Nie udało się pobrać notowań GEM: {"; ".join(failed[:2])}')
+        else:
+            messages.success(request, f'Pobrano notowania GEM (nowe sesje: {result["created"]}).')
+            if failed:
+                messages.warning(request, f'Bez notowań: {"; ".join(failed[:2])}')
+        url = reverse('finance:brokerage')
+        if account is not None:
+            url += f'?account={account.id}'
+        return redirect(f'{url}#gem')
+
+
+@method_decorator(login_required, name='dispatch')
 class SyncBrokeragePriceHistoryView(View):
     def post(self, request):
         result = sync_price_history_for_user(request.user)
+        # Przy okazji notowania strategii GEM (błędy widać w samym panelu).
+        sync_gem_prices()
         synced = result['instruments_synced']
         created = result['points_created']
         updated = result['points_updated']

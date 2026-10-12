@@ -379,6 +379,38 @@ class BrokerageDailyPrice(models.Model):
     def __str__(self):
         return f"{self.instrument.ticker} {self.close} @ {self.trading_date}"
 
+
+class StrategyDailyPrice(models.Model):
+    """Dzienne notowania ETF-ów strategii GEM (finance.gem).
+
+    Osobno od BrokerageDailyPrice, bo te fundusze nie muszą być w portfelu,
+    a notowania są wspólne dla wszystkich domowników (symbol z Yahoo, np.
+    „CSPX.L”). Wystarczy ok. 13 miesięcy historii.
+    """
+
+    symbol = models.CharField(max_length=32)
+    trading_date = models.DateField()
+    close = models.DecimalField(max_digits=18, decimal_places=6)
+    adjusted_close = models.DecimalField(max_digits=18, decimal_places=6, blank=True, null=True)
+    currency = models.CharField(max_length=3, blank=True)
+    source = models.CharField(max_length=80, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'finance_strategy_daily_prices'
+        ordering = ['symbol', 'trading_date']
+        constraints = [
+            models.UniqueConstraint(fields=['symbol', 'trading_date'], name='unique_strategy_daily_price'),
+        ]
+
+    def __str__(self):
+        return f'{self.symbol} {self.close} @ {self.trading_date}'
+
+    @property
+    def value(self):
+        """Cena do liczenia stopy zwrotu: skorygowana (dywidendy, splity), jeśli jest."""
+        return self.adjusted_close if self.adjusted_close is not None else self.close
+
 # Expense and Income database
 class Monthly(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='monthly_records')

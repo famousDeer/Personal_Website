@@ -1037,3 +1037,303 @@
         animation-iteration-count: 1 !important;
     }
 }
+
+/* --- Strategia GEM (finance/partials/gem_panel.html) ----------------------
+   Werdykt po lewej, ranking stóp zwrotu 12 mies. po prawej. Słupki na
+   wspólnej osi z zerem (--gem-zero), przerywana linia = wynik IB01, czyli
+   próg, który fundusz akcyjny musi pobić (--gem-hurdle). */
+.gem-panel {
+    padding: 1.05rem;
+    border-radius: var(--brokerage-panel-radius);
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+    scroll-margin-top: calc(var(--nav-h, 4rem) + 0.75rem);
+}
+
+.gem-panel[aria-busy="true"] .gem-grid { opacity: 0.6; transition: opacity var(--dur, 160ms) var(--ease, ease); }
+
+.gem-heading > div { display: grid; gap: 0.15rem; max-width: 46rem; }
+.gem-heading p { margin: 0; color: var(--text-muted); font-size: var(--fs-sm); }
+
+.gem-refresh {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin: 0;
+    font-size: var(--fs-caption);
+}
+
+.gem-grid {
+    display: grid;
+    grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.45fr);
+    gap: 1rem;
+    align-items: stretch;
+}
+
+.gem-verdict {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    min-width: 0;
+    padding: 1rem;
+    border: 1px solid rgba(37, 99, 235, 0.22);
+    border-radius: var(--brokerage-inner-radius);
+    background: linear-gradient(160deg, rgba(37, 99, 235, 0.09), rgba(37, 99, 235, 0.02) 70%), var(--surface-card);
+}
+
+.gem-verdict.is-safe {
+    border-color: var(--surface-border);
+    background: var(--surface-subtle);
+}
+
+.gem-verdict-label {
+    color: var(--text-muted);
+    font-size: var(--fs-eyebrow);
+    font-weight: 850;
+    letter-spacing: var(--tracking-eyebrow);
+    text-transform: uppercase;
+}
+
+.gem-verdict-label small { font-weight: 700; letter-spacing: 0; text-transform: none; }
+
+.gem-verdict-ticker {
+    color: var(--text-main);
+    font-size: clamp(2rem, 4vw, 2.6rem);
+    font-weight: 850;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+}
+
+.gem-verdict-name { color: var(--text-muted); font-size: var(--fs-sm); }
+.gem-verdict-value { font-size: var(--fs-sm); color: var(--text-main); }
+.gem-verdict-value strong { font-variant-numeric: tabular-nums; }
+
+.gem-today,
+.gem-holding {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding-top: 0.65rem;
+    font-size: var(--fs-sm);
+    line-height: 1.4;
+}
+
+.gem-today { margin-top: 0.4rem; border-top: 1px solid var(--surface-border); }
+.gem-today > i,
+.gem-holding > i { flex: 0 0 auto; margin-top: 0.1rem; }
+.gem-today > i { color: var(--brokerage-accent); }
+.gem-today.is-change > i,
+.gem-holding.is-switch > i { color: var(--brokerage-warning); }
+.gem-holding { margin-top: auto; }
+.gem-holding.is-match > i { color: var(--brokerage-positive); }
+.gem-holding.is-mixed > i,
+.gem-holding.is-unknown > i,
+.gem-holding.is-none > i { color: var(--text-muted); }
+.gem-holding.is-none { color: var(--text-muted); }
+
+.gem-ranking {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--surface-border);
+    border-radius: var(--brokerage-inner-radius);
+    background: var(--surface-card);
+}
+
+.gem-ranking-head {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.25rem 1rem;
+    margin-bottom: 0.25rem;
+    color: var(--text-muted);
+    font-size: var(--fs-caption);
+    font-weight: 700;
+}
+
+.gem-hurdle-key { display: inline-flex; align-items: center; gap: 0.4rem; }
+.gem-hurdle-key i {
+    display: inline-block;
+    width: 0;
+    height: 0.9rem;
+    border-left: 2px dashed var(--text-muted);
+}
+
+.gem-rows { margin: 0; padding: 0; list-style: none; }
+
+.gem-row {
+    display: grid;
+    /* Stałe szerokości kolumn: oś zera i próg IB01 wypadają w każdym wierszu
+       w tym samym miejscu (każdy wiersz to osobna siatka). */
+    grid-template-columns: 1.6rem 10.5rem minmax(0, 1fr) 14.5rem;
+    grid-template-areas:
+        "rank name bar value"
+        "rank name bar periods";
+    gap: 0.1rem 0.85rem;
+    align-items: center;
+    padding: 0.6rem 0;
+}
+
+.gem-row + .gem-row { border-top: 1px solid var(--surface-border); }
+
+.gem-rank {
+    grid-area: rank;
+    align-self: center;
+    display: inline-grid;
+    width: 1.6rem;
+    height: 1.6rem;
+    place-items: center;
+    border-radius: 999px;
+    background: var(--surface-subtle);
+    color: var(--text-muted);
+    font-size: var(--fs-caption);
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+.gem-row.is-winner .gem-rank { background: var(--brokerage-accent); color: #fff; }
+
+.gem-name { grid-area: name; display: grid; align-self: center; min-width: 0; }
+.gem-name strong { display: flex; align-items: center; gap: 0.4rem; color: var(--text-main); font-size: var(--fs-md); }
+.gem-name small { overflow: hidden; color: var(--text-muted); font-size: var(--fs-caption); text-overflow: ellipsis; white-space: nowrap; }
+
+.gem-badge {
+    padding: 0.05rem 0.45rem;
+    border-radius: 999px;
+    background: rgba(37, 99, 235, 0.12);
+    color: var(--brokerage-accent-strong);
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+.gem-bar {
+    grid-area: bar;
+    position: relative;
+    align-self: center;
+    height: 0.65rem;
+}
+
+/* Oś zera i próg IB01 */
+.gem-bar::before,
+.gem-bar::after {
+    position: absolute;
+    top: -0.35rem;
+    bottom: -0.35rem;
+    content: "";
+}
+
+.gem-bar::before {
+    left: var(--gem-zero, 0%);
+    border-left: 1px solid var(--surface-border);
+}
+
+.gem-rows[style*="--gem-hurdle"] .gem-bar::after {
+    left: var(--gem-hurdle);
+    border-left: 2px dashed var(--text-muted);
+    opacity: 0.75;
+}
+
+.gem-bar-fill {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-radius: 0 4px 4px 0;
+    background: rgba(37, 99, 235, 0.42);
+}
+
+.gem-bar-fill.is-negative { border-radius: 4px 0 0 4px; }
+.gem-row.is-winner .gem-bar-fill { background: var(--brokerage-accent); }
+.gem-row.is-safe .gem-bar-fill { background: var(--text-muted); opacity: 0.55; }
+.gem-row.is-safe.is-winner .gem-bar-fill { opacity: 1; }
+.gem-row.is-missing { color: var(--text-muted); }
+
+.gem-value,
+.gem-periods { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.gem-value { grid-area: value; align-self: end; color: var(--text-main); font-size: var(--fs-md); }
+.gem-periods { grid-area: periods; align-self: start; color: var(--text-muted); font-size: var(--fs-caption); }
+
+.gem-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.45rem;
+    margin: 0 0 0.85rem;
+    padding: 0.55rem 0.75rem;
+    border-radius: 10px;
+    background: rgba(217, 119, 6, 0.1);
+    color: var(--text-main);
+}
+
+.gem-note > i { color: var(--brokerage-warning); }
+
+.gem-empty {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+}
+
+.gem-empty > i { color: var(--brokerage-accent); font-size: 1.4rem; }
+.gem-empty > div { display: grid; gap: 0.2rem; }
+.gem-empty strong { color: var(--text-main); }
+
+.gem-footnote { margin-top: 0.85rem; align-items: flex-start; flex-wrap: nowrap; }
+
+.gem-chart {
+    margin-top: 1rem;
+    padding: 0.85rem 1rem 0.6rem;
+    border: 1px solid var(--surface-border);
+    border-radius: var(--brokerage-inner-radius);
+    background: var(--surface-card);
+}
+
+.gem-chart-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.25rem 1rem;
+    margin-bottom: 0.35rem;
+}
+
+.gem-chart-head h3 { margin: 0; font-size: var(--fs-sm); font-weight: 800; color: var(--text-main); }
+.gem-chart-head span { color: var(--text-muted); font-size: var(--fs-caption); }
+.gem-chart-shell { position: relative; height: 300px; }
+.gem-chart .u-chart-data { margin-top: 0.35rem; }
+
+[data-theme="dark"] .gem-verdict:not(.is-safe) {
+    border-color: rgba(96, 165, 250, 0.3);
+    background: linear-gradient(160deg, rgba(96, 165, 250, 0.14), rgba(96, 165, 250, 0.03) 70%), var(--surface-card);
+}
+
+[data-theme="dark"] .gem-bar-fill { background: rgba(96, 165, 250, 0.45); }
+[data-theme="dark"] .gem-row.is-winner .gem-bar-fill,
+[data-theme="dark"] .gem-row.is-winner .gem-rank { background: #60a5fa; color: #0b1220; }
+[data-theme="dark"] .gem-badge { background: rgba(96, 165, 250, 0.16); color: #93c5fd; }
+
+@media (max-width: 991.98px) {
+    .gem-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 575.98px) {
+    .gem-panel { padding: 0.85rem; border-radius: 15px; }
+    .gem-heading { flex-direction: column; }
+    .gem-refresh { justify-content: flex-start; }
+    .gem-ranking { padding: 0.75rem 0.8rem; }
+    .gem-row {
+        grid-template-columns: 1.6rem minmax(0, 1fr) auto;
+        grid-template-areas:
+            "rank name value"
+            ". bar bar"
+            ". periods periods";
+        gap: 0.3rem 0.65rem;
+    }
+    .gem-value { align-self: center; }
+    .gem-periods { text-align: left; white-space: normal; }
+    .gem-bar { margin: 0.2rem 0 0.1rem; }
+    .gem-chart { padding: 0.75rem 0.6rem 0.5rem; }
+    .gem-chart-shell { height: 240px; }
+}

@@ -331,6 +331,9 @@ PANTRY_CATEGORIES_RECHECK_SECONDS = 0 if RUNNING_TESTS else 2
 ALPHA_VANTAGE_API_KEY = os.environ.get('ALPHA_VANTAGE_API_KEY', '')
 OPENFIGI_API_KEY = os.environ.get('OPENFIGI_API_KEY', '')
 STOOQ_API_KEY = os.environ.get('STOOQ_API_KEY', '')
+# Notowania ETF-ów strategii GEM (finance.gem). W testach wyłączone - testy
+# GEM włączają je przez override_settings i podmieniają dostawcę.
+GEM_PRICES_ENABLED = env_bool('GEM_PRICES_ENABLED', not RUNNING_TESTS)
 TRAVEL_GEOCODING_ENABLED = env_bool('TRAVEL_GEOCODING_ENABLED', True)
 TRAVEL_GEOCODING_TIMEOUT = float(os.environ.get('TRAVEL_GEOCODING_TIMEOUT', '3'))
 TRAVEL_GEOCODING_USER_AGENT = os.environ.get(
