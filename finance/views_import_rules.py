@@ -27,7 +27,7 @@ from .bank_import import (
     suggest_income,
 )
 from .import_rules import ImportRuleError, ImportRuleIndex, move_rule, rules_of, save_rule
-from .models import ImportRule, Income
+from .models import ImportRule
 
 KIND_PARAM = {'wydatki': ImportRule.EXPENSE, 'przychody': ImportRule.INCOME}
 KIND_SLUG = {value: key for key, value in KIND_PARAM.items()}
@@ -71,15 +71,13 @@ def builtin_rules(kind):
 
 def label_choices(account, kind):
     # Podpowiedzi jak w podglądzie importu (ImportBankTransactionsView).
-    from .views import INCOME_SOURCES, get_available_expense_categories
+    from .views import get_available_expense_categories, get_available_income_sources
     if kind == ImportRule.EXPENSE:
         return [
             category for category in get_available_expense_categories(account)
             if category != TRANSFER_TO_SHARED_CATEGORY
         ]
-    return sorted(set(INCOME_SOURCES).union(
-        Income.objects.filter(account=account).exclude(source='').values_list('source', flat=True)
-    ))
+    return get_available_income_sources()
 
 
 def _rule_items(account, kind):

@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(!.env.example)",
+      "Read(migrations/**)",
+      "Read(staticfiles/**)",
+      "Read(media/**)",
+      "Read(private_media/**)",
+      "Read(static_cooking/img/**)",
+      "Read(vendor/**)",
+      "Read(node_modules/**)",
+      "Read(__pycache__/**)",
+      "Read(**/*.pyc)",
+      "Read(venv/**)",
+      "Read(.venv/**)",
+      "Read(**/*.log)",
+      "Read(**/*.sql)",
+      "Read(**/*.dump)",
+      "Read(**/*.sqlite3)",
+      "Read(db_backups/**)",
+      "Read(img/**)",
+      "Read(**/.DS_Store)"
+    ]
+  }
+}

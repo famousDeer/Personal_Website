@@ -612,11 +612,23 @@ def _ranking_rows(names, amounts, *, slots=1, limit=8):
 
 
 def get_available_expense_categories(account):
-    dynamic_categories = Daily.objects.filter(account=account).values_list('category', flat=True).distinct()
+    """Kategorie do wyboru: wbudowane i wszystkie użyte przez domowników.
+
+    Własne kategorie są wspólne dla całego domu (jak spiżarnia): kategoria
+    dopisana przez jedną osobę na jej koncie podpowiada się też innym.
+    ``account`` decyduje tylko o kategorii przelewu na konto wspólne.
+    """
+    dynamic_categories = Daily.objects.exclude(category='').values_list('category', flat=True).distinct()
     categories = set(CATEGORIES_EXPENSES)
     if account.account_type != FinanceAccount.PERSONAL:
         categories.discard(TRANSFER_TO_SHARED_CATEGORY)
     return sorted(categories.union(dynamic_categories))
+
+
+def get_available_income_sources():
+    """Źródła przychodu: wbudowane i wszystkie użyte przez domowników (wspólne dla domu)."""
+    used = Income.objects.exclude(source='').values_list('source', flat=True).distinct()
+    return sorted(set(INCOME_SOURCES).union(used))
 
 
 def get_store_suggestions(account):
@@ -1801,14 +1813,7 @@ class ImportBankTransactionsView(View):
             for category in get_available_expense_categories(active_account)
             if category != TRANSFER_TO_SHARED_CATEGORY
         ]
-        income_sources = sorted(
-            set(INCOME_SOURCES).union(
-                Income.objects
-                .filter(account=active_account)
-                .exclude(source='')
-                .values_list('source', flat=True)
-            )
-        )
+        income_sources = get_available_income_sources()
         preview = extra_context.get('preview')
         if preview:
             expense_categories = sorted(set(expense_categories).union(
@@ -2029,7 +2034,7 @@ class AddIncomeView(View):
     def get(self, request):
         context = {
             'default_date': timezone.now().date(),
-            'income_sources': INCOME_SOURCES,
+            'income_sources': get_available_income_sources(),
         }
         return render(request, 'finance/add_income.html', context)
 
@@ -2069,7 +2074,7 @@ class AddIncomeView(View):
             messages.error(request, f'Błąd: {exc}')
             context = {
                 'default_date': timezone.now().date(),
-                'income_sources': INCOME_SOURCES,
+                'income_sources': get_available_income_sources(),
                 'form_values': request.POST,
             }
             return render(request, 'finance/add_income.html', context)
@@ -2086,7 +2091,7 @@ class EditIncomeView(View):
 
         context = {
             'income': income,
-            'income_sources': INCOME_SOURCES,
+            'income_sources': get_available_income_sources(),
         }
         return render(request, 'finance/edit_income.html', context)
 
@@ -2125,7 +2130,7 @@ class EditIncomeView(View):
             return redirect('finance:income_list')
         except Exception as exc:
             messages.error(request, f'Błąd podczas aktualizacji: {exc}')
-            return render(request, 'finance/edit_income.html', {'income': income, 'income_sources': INCOME_SOURCES})
+            return render(request, 'finance/edit_income.html', {'income': income, 'income_sources': get_available_income_sources()})
 
 
 @method_decorator(login_required, name='dispatch')
