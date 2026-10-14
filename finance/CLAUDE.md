@@ -6,7 +6,7 @@ Widoki: `views.py` (~2400 l., czytaj grepem) – Dashboard, Expense*/Income* CRU
 
 Logika poza widokami:
 - `account_utils.py` – aktywne konto (`get_active_finance_account`), przeliczanie Monthly, `TRANSFER_TO_SHARED_CATEGORY` (przelew na wspólne tworzy powiązany Income na koncie wspólnym). `signals.py` zakłada konto osobiste nowemu użytkownikowi.
-- `bank_import.py` – parser CSV Millennium/ING, duplikaty, podpowiedzi kategorii. `import_rules.py` – reguły domownika. `text_utils.py` – `normalize_text`.
+- `bank_import.py` – parser CSV Millennium/ING/mBank (mBank: cp1250, data z „DATA TRANSAKCJI”, „Twoje cele” → Oszczędności, domyślnie odznaczone), duplikaty, podpowiedzi kategorii. `import_rules.py` – reguły domownika. `text_utils.py` – `normalize_text`.
 - `brokerage.py` – `build_portfolio_summary` (FIFO, podatek Belki, IKE zwolnione). `brokerage_import.py` – XLSX z XTB. `portfolio_history.py`, `investment_statistics.py`, `investment_funding.py`.
 - `market_data.py` – Yahoo (główne), Stooq, Alpha Vantage, OpenFIGI, NBP. `sync_price_history_for_user`, `refresh_market_data_for_user`.
 - `household.py` + `views_household.py` – analiza domowa (`/finance/analysis/`, szczegóły miesiąca `/finance/analysis/<rok>/<mies>/`: pozycje tylko z moich i wspólnych kont): moje konto + wspólne + konta osobiste domowników z kont wspólnych, tylko gdy właściciel włączył `FinanceAccount.share_in_household_analysis`; z cudzych kont tylko sumy. Rodzaje kategorii (niezbędne/pozostałe/oszczędności/pomijane) w `CategoryKind`, minimum na życie = średnia niezbędnych z pełnych miesięcy.

@@ -87,7 +87,7 @@ CATEGORIES_EXPENSES = sorted([
     'Delegacje', 'Inwestycje', 'Inne', 'Rata kredytu konsumenckiego',
     'Wyposazenie domu', 'Sport', 'Hobby', 'Prezenty', 'Spłata karty kredytowej',
     'Uroda', 'Drogeria', 'Pielęgnacja auta', 'Serwis auta', 'Części do auta',
-    'Subskrypcje', TRANSFER_TO_SHARED_CATEGORY,
+    'Subskrypcje', 'Oszczędności', TRANSFER_TO_SHARED_CATEGORY,
 ])
 
 INCOME_SOURCES = sorted([

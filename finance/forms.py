@@ -282,7 +282,7 @@ class BrokerageTransactionImportForm(BootstrapFinanceFormMixin, forms.Form):
 class BankTransactionImportForm(BootstrapFinanceFormMixin, forms.Form):
     MAX_UPLOAD_SIZE = 5 * 1024 * 1024
     file = forms.FileField(
-        label='Plik CSV z Millennium lub ING',
+        label='Plik CSV z Millennium, ING lub mBanku',
         help_text='Obsługiwane są eksporty historii rachunku w formacie CSV.',
     )
 
@@ -296,7 +296,7 @@ class BankTransactionImportForm(BootstrapFinanceFormMixin, forms.Form):
     def clean_file(self):
         uploaded_file = self.cleaned_data['file']
         if not uploaded_file.name.lower().endswith('.csv'):
-            raise forms.ValidationError('Wgraj plik CSV wyeksportowany z banku Millennium lub ING.')
+            raise forms.ValidationError('Wgraj plik CSV wyeksportowany z banku Millennium, ING lub mBank.')
         if uploaded_file.size > self.MAX_UPLOAD_SIZE:
             raise forms.ValidationError('Plik importu może mieć maksymalnie 5 MB.')
         return uploaded_file

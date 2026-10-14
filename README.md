@@ -14,9 +14,11 @@ Demo image:
 - Expenses and incomes by date, category/source and store, with monthly totals
 - Personal and shared household accounts; a transfer to a shared account
   automatically creates the matching income on the other side
-- Bank statement import from **Millennium** and **ING** CSV: duplicate detection by
-  a stable transaction identity, category suggestions from account history and
-  keyword rules, editable preview before anything is written
+- Bank statement import from **Millennium**, **ING** and **mBank** CSV: duplicate
+  detection by a stable transaction identity, category suggestions from account
+  history and keyword rules, editable preview before anything is written
+  (mBank: card payments dated from „DATA TRANSAKCJI”, „Twoje cele” round-ups
+  shown as Oszczędności and unticked by default)
 - Brokerage portfolio: XTB XLSX import (transactions, cash operations, position
   snapshots), FIFO cost basis, 19% capital gains tax with IKE accounts exempt,
   daily price history and portfolio value charts
@@ -805,7 +807,7 @@ Website-Finance/
 ├─ config/                    # Django project (settings, urls, wsgi, test_settings)
 ├─ deploy/                    # Caddyfile (HTTPS) and the phone certificate page
 ├─ finance/                   # Budget, brokerage portfolio, travel
-│  ├─ bank_import.py          # Millennium / ING CSV import
+│  ├─ bank_import.py          # Millennium / ING / mBank CSV import
 │  ├─ brokerage.py            # Portfolio summary, FIFO, capital gains tax
 │  ├─ brokerage_import.py     # XTB XLSX reader (no openpyxl)
 │  ├─ market_data.py          # Yahoo / Stooq / Alpha Vantage / OpenFigi / NBP

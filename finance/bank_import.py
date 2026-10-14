@@ -19,6 +19,7 @@ from .text_utils import normalize_text
 
 MILLENNIUM_SOURCE = 'millennium'
 ING_SOURCE = 'ing'
+MBANK_SOURCE = 'mbank'
 EXPENSE = 'expense'
 INCOME = 'income'
 
@@ -42,7 +43,14 @@ ING_REQUIRED_HEADERS = {
     'Konto',
 }
 
-BANK_IMPORT_SOURCES = {MILLENNIUM_SOURCE, ING_SOURCE}
+BANK_IMPORT_SOURCES = {MILLENNIUM_SOURCE, ING_SOURCE, MBANK_SOURCE}
+
+# mBank: nagłówek tabeli operacji po bloku z danymi klienta i rachunku.
+MBANK_REQUIRED_HEADERS = {'#Data księgowania', '#Data operacji', '#Opis operacji', '#Tytuł', '#Kwota'}
+# „Przelew na Twoje cele” to zaokrąglenie zakupu odkładane na cel oszczędnościowy
+# w mBanku - pieniądze zostają u właściciela, więc domyślnie nie są wydatkiem.
+MBANK_GOAL_TYPE = 'przelew na twoje cele'
+SAVINGS_CATEGORY = 'Oszczędności'
 
 
 class BankImportError(Exception):
@@ -73,6 +81,8 @@ class BankTransactionCandidate:
     booking_date: object = None
     # Z czym koliduje możliwy duplikat: „Paliwo · 292,75 zł · 30.09”.
     duplicate_match: str = ''
+    # Pozycja, którą zwykle się pomija (mBank: przelew na Twoje cele).
+    default_selected: bool = True
     # Nazwa, pod którą „Zapamiętaj” zapisze regułę: sklep z wyciągu albo
     # kontrahent przychodu. Pusta - nie ma czego zapamiętać.
     rule_key: str = ''
@@ -110,7 +120,7 @@ class BankTransactionCandidate:
 
     @property
     def selected_by_default(self):
-        return not self.duplicate and not self.possible_duplicate
+        return self.default_selected and not self.duplicate and not self.possible_duplicate
 
     @property
     def amount_display(self):
@@ -213,7 +223,22 @@ def _parse_date(value):
 
 STORE_ALIASES = [
     # (słowo po normalize_text, nazwa) - dopasowanie od początku słowa
+    ('mcdonalds', "McDonald's"),
     ('mcdonald', "McDonald's"),
+    ('allegr', 'Allegro'),
+    # mBank ucina nazwę sklepu do 19 znaków („POPEYES-GDYNIA RIVI”, „ZARA Galeria CH Riv”).
+    ('popeyes', 'Popeyes'),
+    ('zara', 'Zara'),
+    ('bershka', 'Bershka'),
+    ('half price', 'Half Price'),
+    ('dealz', 'Dealz'),
+    ('action', 'Action'),
+    ('aldek', 'Aldek'),
+    ('eurospar', 'Eurospar'),
+    ('smyk', 'Smyk'),
+    ('maxi zoo', 'Maxi Zoo'),
+    ('goraco polecam', 'Gorąco Polecam'),
+    ('lisek', 'Lisek'),
     ('store steampowered', 'Steam'),
     ('steampowered', 'Steam'),
     ('steam', 'Steam'),
@@ -288,15 +313,15 @@ DOMAIN = re.compile(
     re.IGNORECASE,
 )
 LEGAL_FORM = re.compile(
-    r'(?:^|\s)(?:sp\.?\s*z\s*o\.?\s*o\.?|sp[oó]łka\s+z\s+ograniczon[aą]\s+odpowiedzialno[sś]ci[aą]'
-    r'|sp[oó]łka\s+akcyjna|sp[oó]łka\s+jawna|sp[oó]łka\s+komandytowa|s\.\s*a\.?|sa|sp\.?\s*j\.?|sp\.?\s*k\.?'
+    r'(?:^|\s)(?:sp\.?\s*z\s*o\.?\s*o\.?|sp[oó][lł]ka\s+z\s+ograniczon[aą]\s+odpowiedzialno[sś]ci[aą]'
+    r'|sp[oó][lł]ka\s+akcyjna|sp[oó][lł]ka\s+jawna|sp[oó][lł]ka\s+komandytowa|s\.\s*a\.?|sa|sp\.?\s*j\.?|sp\.?\s*k\.?'
     r'|s\.?\s*c\.?|sp\.?|ltd\.?|limited|gmbh|inc\.?|llc|s\.?\s*r\.?\s*o\.?|b\.?\s*v\.?|ab|as)\s*$',
     re.IGNORECASE,
 )
 # Długie formy prawne ucinają nazwę także w środku: za nimi stoi już adres
 # („MOBILE-TRAFFIC-DATA SPÓŁKA Z O.O. DRUŻBICKIEGO 11”).
 LEGAL_FORM_INSIDE = re.compile(
-    r'\s(?:sp\.?\s*z\s*o\.?\s*o\.?|sp[oó]łka\s+(?:z\s+ograniczon[aą]\s+odpowiedzialno[sś]ci[aą]|akcyjna|jawna|komandytowa)'
+    r'\s(?:sp\.?\s*z\s*o\.?\s*o\.?|sp[oó][lł]ka\s+(?:z\s+ograniczon[aą]\s+odpowiedzialno[sś]ci[aą]|akcyjna|jawna|komandytowa)'
     r'|s\.\s*a\.|ltd\.?|gmbh|inc\.)(?=\s|$)',
     re.IGNORECASE,
 )
@@ -359,7 +384,7 @@ def clean_store_name(value, city=''):
         return alias
     if '*' in name:
         left, right = (part.strip() for part in name.split('*', 1))
-        name = right if normalize_text(left) in PAYMENT_PROCESSORS and right else left
+        name = right if normalize_text(_strip_legal_forms(left)) in PAYMENT_PROCESSORS and right else left
     brand = _domain_brand(name)
     if brand:
         return _alias_for(brand) or brand
@@ -502,21 +527,23 @@ def _is_transfer(row):
 EXPENSE_RULES = [
     ('Zakupy spozywcze', ['biedronka', 'lidl', 'zabka', 'auchan', 'carrefour', 'aldi', 'netto', 'kaufland',
                           'stokrotka', 'leclerc', ' dino ', 'polomarket', ' spar ', 'intermarche', 'freshmarket',
-                          'delikatesy', 'piekarnia', 'warzywniak', 'market ']),
+                          'delikatesy', 'piekarnia', 'warzywniak', 'market ', 'aldek', 'eurospar', 'warzywa i owoce',
+                          'lisek app', ' lisek ']),
     ('Jedzenie na miescie', ['mcdonald', 'kfc', 'burger', 'pizza', 'kebab', 'kebap', 'restauracja', 'restaurant',
                              'bar ', 'bistro', 'grill', 'pierogarnia', 'sushi', 'ramen', 'cafe', 'coffee', 'kawy',
                              'kawiarnia', 'cukiernia', 'lody', 'starbucks', 'costa', 'popeyes', 'pyszne', 'glovo',
-                             'wolt', 'uber eats', 'karczma', 'gospoda', 'tawerna', 'pub ']),
+                             'wolt', 'uber eats', 'karczma', 'gospoda', 'tawerna', 'pub ', 'goraco polecam']),
     ('Podroze - transport', ['pkp', 'intercity', 'ryanair', 'wizzair', 'lot polish', 'booking flight', 'flixbus']),
     ('Transport miejski', ['ztm', 'skm', 'jakdojade', 'koleo', 'uber', 'bolt', 'taxi', 'skycash', 'parking',
                            'apcoa', 'parkomat', 'mpay', 'pango', 'mevo', 'tfl']),
     ('Paliwo', ['orlen', 'circle k', 'shell', 'moya', ' bp ', 'lotos', ' mol ', ' amic ', ' avia ',
                 'stacja paliw']),
+    ('Pielęgnacja auta', ['myjnia', 'car wash']),
     ('Zdrowie', ['apteka', ' doz ', 'medicover', 'lux med', 'enel med', 'lekarz', 'przychodnia', 'dentyst', 'stomatolog']),
     ('Drogeria', ['rossmann', 'hebe', 'drogeria natura', 'super pharm']),
     ('Uroda', ['douglas', 'rituals', 'sephora', 'fryzjer', 'barber', 'kosmetycz']),
     ('Ubrania', ['zalando', 'reserved', 'zara', ' hm ', ' h m ', ' ccc ', 'eobuwie', 'shein', 'vinted', 'van graaf',
-                 'sinsay', ' house ', 'cropp', 'answear']),
+                 'sinsay', ' house ', 'cropp', 'answear', 'bershka', 'half price']),
     ('Subskrypcje', ['netflix', 'spotify', 'icloud', 'apple com bill', 'google storage', 'youtube premium', 'disney',
                      'hbo max', ' max com', ' canal ', 'chatgpt', 'openai']),
     ('Rozrywka', ['steam', 'valve', 'playstation', 'xbox', 'nintendo', 'eneba', ' k4g', ' g2a', 'instant gaming',
@@ -527,7 +554,7 @@ EXPENSE_RULES = [
     ('Inwestycje', ['xtb', 'maklerski', 'broker', 'revolut trading']),
     ('Sport', ['silownia', ' gym ', 'fitness', 'decathlon', 'basen', 'multisport']),
     ('Wyposazenie domu', ['ikea', 'leroy', 'castorama', ' obi ', 'jysk', 'home you', 'pepco', ' action ', 'agata',
-                          'black red white', 'media expert', 'mediamarkt', 'media markt', 'x kom', 'rtv euro']),
+                          'black red white', 'media expert', 'mediamarkt', 'media markt', 'x kom', 'rtv euro', 'dealz']),
     ('Edukacja', ['udemy', 'coursera', 'ebook', 'ksiazka', 'studia', 'empik']),
     ('Prezenty', ['prezent']),
     ('Rodzina', [' zona ', ' zonka', ' zony ', ' maz ', ' meza ', ' mama', ' mamy ', ' tata', ' taty ', ' rodzic',
@@ -671,13 +698,13 @@ def _income_title(row):
 
 
 def _external_id(row, import_source):
-    if import_source == ING_SOURCE:
+    if import_source in (ING_SOURCE, MBANK_SOURCE):
         identity = '\u241f'.join(
             f'{field}={_clean_text(value)}'
             for field, value in sorted(row.items())
         )
         digest = hashlib.sha256(identity.encode('utf-8')).hexdigest()[:32]
-        return f'{ING_SOURCE}:{digest}'
+        return f'{import_source}:{digest}'
 
     fields = [
         'Numer rachunku/karty',
@@ -1070,8 +1097,104 @@ def _parse_ing_csv_text(text, account):
     return BankImportPreview(candidates=candidates, warnings=warnings)
 
 
-def _contains_required_headers(text, required_headers):
-    reader = csv.reader(StringIO(text), dialect=_csv_dialect(text))
+MBANK_CARD_TITLE = re.compile(
+    r'^(?P<merchant>.*?)\s*/(?P<city>.*?)\s+DATA TRANSAKCJI:\s*(?P<date>\d{4}-\d{2}-\d{2})\s*$'
+)
+
+
+def _mbank_value(value):
+    """Pola mBanku bywają puste jako „  ” albo '' (apostrofy w numerze konta)."""
+    return _clean_text(str(value or '').strip().strip("'"))
+
+
+def _mbank_row(headers, values):
+    """Wiersz mBanku w kluczach, które rozumie _candidate_from_row (jak Millennium).
+
+    Płatność kartą: tytuł „SKLEP (19 znaków) /MIASTO … DATA TRANSAKCJI: RRRR-MM-DD”
+    zamieniamy na opis karty Millennium („SKLEP  MIASTO RRRR-MM-DD”), żeby
+    zadziałały te same: data płatności, czysta nazwa sklepu i reguły kategorii.
+    """
+    original = {}
+    for header, value in zip(headers, values):
+        key = _clean_header(header).lstrip('#')
+        if key and key not in original:
+            original[key] = _mbank_value(value)
+    raw_title = next((str(value or '') for header, value in zip(headers, values)
+                      if _clean_header(header).lstrip('#') == 'Tytuł'), '')
+    amount = _optional_decimal(original.get('Kwota'))
+    row = dict(original)
+    row['Data transakcji'] = original.get('Data księgowania') or original.get('Data operacji', '')
+    row['Rodzaj transakcji'] = original.get('Opis operacji', '')
+    row['Odbiorca/Zleceniodawca'] = original.get('Nadawca/Odbiorca', '')
+    row['Opis'] = original.get('Tytuł', '')
+    raw_description = None
+    card = MBANK_CARD_TITLE.match(_clean_text(raw_title)) if 'KARTY' in row['Rodzaj transakcji'].upper() else None
+    if card:
+        merchant = re.sub(r'\s{2,}', '  ', raw_title.split('/', 1)[0].strip())
+        raw_description = f"{merchant}  {card['city'].strip()}  {card['date']}"
+        row['Opis'] = f"{_clean_text(merchant)} {card['city'].strip()}".strip()
+        row['Odbiorca/Zleceniodawca'] = ''
+    if amount is not None and amount < 0:
+        row['Obciążenia'] = str(amount)
+    elif amount is not None and amount > 0:
+        row['Uznania'] = str(amount)
+    return row, raw_description
+
+
+def _parse_mbank_csv_text(text, account):
+    reader = csv.reader(StringIO(text), delimiter=';', quotechar='"')
+    headers = None
+    row_number = 0
+    for row_number, values in enumerate(reader, start=1):
+        clean_headers = [_clean_header(value) for value in values]
+        if MBANK_REQUIRED_HEADERS.issubset(set(clean_headers)):
+            headers = clean_headers
+            break
+    if headers is None:
+        raise BankImportError('Brakuje kolumn w CSV mBanku.')
+
+    warnings = []
+    candidates = []
+    history = BankHistoryIndex(account)
+    rules = ImportRuleIndex(account)
+    for row_number, values in enumerate(reader, start=row_number + 1):
+        if not any(_mbank_value(value) for value in values):
+            continue
+        # Stopka zestawienia („#Saldo końcowe”, podstawa prawna) - koniec tabeli.
+        if not _mbank_value(values[0]) or not re.match(r'\d{4}-\d{2}-\d{2}$', _mbank_value(values[0])):
+            continue
+        try:
+            row, raw_description = _mbank_row(headers, values)
+            candidate = _candidate_from_row(
+                len(candidates), row_number, row, account, import_source=MBANK_SOURCE,
+                history=history, raw_description=raw_description, rules=rules,
+            )
+        except (ValueError, ArithmeticError) as exc:
+            warnings.append(f'Pominięto wiersz {row_number}: {exc}.')
+            continue
+        if candidate is None or candidate.amount <= 0:
+            continue
+        if candidate.is_expense and MBANK_GOAL_TYPE in normalize_text(row['Rodzaj transakcji']):
+            goal = clean_store_name(row['Opis'])
+            candidate.category = SAVINGS_CATEGORY
+            candidate.title = f'Twoje cele: {goal}' if goal else 'Twoje cele'
+            candidate.store = ''
+            candidate.rule_key = ''
+            candidate.default_selected = False
+            candidate.suggestion_reason = 'mBank: zaokrąglenie zakupu odłożone na cel – domyślnie pomijane'
+        candidates.append(candidate)
+
+    if not candidates:
+        raise BankImportError('Nie znaleziono wydatków ani przychodów do importu.')
+    _mark_duplicates(candidates, account)
+    return BankImportPreview(candidates=candidates, warnings=warnings)
+
+
+def _contains_required_headers(text, required_headers, delimiter=None):
+    if delimiter:
+        reader = csv.reader(StringIO(text), delimiter=delimiter, quotechar='"')
+    else:
+        reader = csv.reader(StringIO(text), dialect=_csv_dialect(text))
     for values in reader:
         headers = {_clean_header(value) for value in values}
         if required_headers.issubset(headers):
@@ -1089,7 +1212,9 @@ def parse_bank_csv(uploaded_file, account):
         return _parse_millennium_csv_text(text, account)
     if _contains_required_headers(text, ING_REQUIRED_HEADERS):
         return _parse_ing_csv_text(text, account)
-    raise BankImportError('Nie rozpoznano formatu CSV. Obsługiwane banki: Millennium i ING.')
+    if _contains_required_headers(text, MBANK_REQUIRED_HEADERS, delimiter=';'):
+        return _parse_mbank_csv_text(text, account)
+    raise BankImportError('Nie rozpoznano formatu CSV. Obsługiwane banki: Millennium, ING i mBank.')
 
 
 def _payload_value(post_data, index, name, default=''):

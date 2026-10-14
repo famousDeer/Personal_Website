@@ -61,6 +61,7 @@ DEFAULT_KINDS = {
     'Serwis auta': ESSENTIAL,
     'Części do auta': ESSENTIAL,
     'Inwestycje': SAVINGS,
+    'Oszczędności': SAVINGS,
     'Delegacje': EXCLUDED,
 }
 
