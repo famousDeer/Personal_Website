@@ -174,6 +174,24 @@ def analysis_period(months, today=None):
     return _add_months(end, -months), end
 
 
+def _monthly_rows(account_ids, start, end):
+    """Sumy (konto × kategoria/źródło × miesiąc) bez przelewów wewnątrz domu."""
+    expense_rows = list(
+        Daily.objects.filter(account_id__in=account_ids, date__gte=start, date__lt=end)
+        .exclude(category=TRANSFER_TO_SHARED_CATEGORY)
+        .annotate(month_start=TruncMonth('date'))
+        .values('account_id', 'category', 'month_start')
+        .annotate(total=Sum('cost'))
+    )
+    income_rows = list(
+        Income.objects.filter(account_id__in=account_ids, date__gte=start, date__lt=end, linked_expense__isnull=True)
+        .annotate(month_start=TruncMonth('date'))
+        .values('account_id', 'source', 'month_start')
+        .annotate(total=Sum('amount'))
+    )
+    return expense_rows, income_rows
+
+
 def build_household_analysis(user, months=DEFAULT_PERIOD, today=None):
     if months not in PERIOD_CHOICES:
         months = DEFAULT_PERIOD
@@ -183,21 +201,7 @@ def build_household_analysis(user, months=DEFAULT_PERIOD, today=None):
     entries = {entry.account.pk: entry for entry in scope.included}
     account_ids = list(entries)
 
-    expense_rows = (
-        Daily.objects.filter(account_id__in=account_ids, date__gte=start, date__lt=end)
-        .exclude(category=TRANSFER_TO_SHARED_CATEGORY)
-        .annotate(month_start=TruncMonth('date'))
-        .values('account_id', 'category', 'month_start')
-        .annotate(total=Sum('cost'))
-    )
-    income_rows = (
-        Income.objects.filter(account_id__in=account_ids, date__gte=start, date__lt=end, linked_expense__isnull=True)
-        .annotate(month_start=TruncMonth('date'))
-        .values('account_id', 'source', 'month_start')
-        .annotate(total=Sum('amount'))
-    )
-    expense_rows = list(expense_rows)
-    income_rows = list(income_rows)
+    expense_rows, income_rows = _monthly_rows(account_ids, start, end)
     kinds = category_kinds({row['category'] for row in expense_rows})
 
     def month_key(value):
@@ -326,4 +330,152 @@ def build_household_analysis(user, months=DEFAULT_PERIOD, today=None):
             'savings': [float(row['savings']) for row in monthly],
             'income': [float(row['income']) for row in monthly],
         },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Szczegóły jednego miesiąca
+# ---------------------------------------------------------------------------
+
+COMPARE_MONTHS = 6
+
+
+def _delta(amount, average):
+    if average is None:
+        return None
+    return {
+        'amount': _money(amount - average),
+        'percent': ((amount - average) / average * HUNDRED).quantize(Decimal('1')) if average else None,
+    }
+
+
+def build_month_detail(user, month, today=None):
+    """Jeden miesiąc całego domu na tle średniej z COMPARE_MONTHS miesięcy przed nim.
+
+    Pozycje (tytuł, sklep, data) tylko z moich kont i kont wspólnych;
+    z kont osobistych domowników wyłącznie sumy.
+    """
+    today = today or timezone.localdate()
+    current = today.replace(day=1)
+    month = month.replace(day=1)
+    scope = household_scope(user)
+    entries = {entry.account.pk: entry for entry in scope.included}
+    account_ids = list(entries)
+    end = _add_months(month, 1)
+    compare_start = _add_months(month, -COMPARE_MONTHS)
+    expense_rows, income_rows = _monthly_rows(account_ids, compare_start, end)
+    kinds = category_kinds({row['category'] for row in expense_rows})
+    people = [entry.label for entry in scope.included]
+
+    def month_key(value):
+        return value.date() if hasattr(value, 'date') else value
+
+    now = defaultdict(lambda: ZERO)
+    before = defaultdict(lambda: ZERO)
+    now_person = defaultdict(lambda: defaultdict(lambda: ZERO))
+    kind_now = defaultdict(lambda: ZERO)
+    kind_before = defaultdict(lambda: ZERO)
+    before_months = set()
+    for row in expense_rows:
+        key = month_key(row['month_start'])
+        kind = kinds[row['category']]
+        if key == month:
+            now[row['category']] += row['total']
+            now_person[row['category']][entries[row['account_id']].label] += row['total']
+            kind_now[kind] += row['total']
+        else:
+            before[row['category']] += row['total']
+            kind_before[kind] += row['total']
+            before_months.add(key)
+
+    income_now = defaultdict(lambda: ZERO)
+    income_before = ZERO
+    for row in income_rows:
+        key = month_key(row['month_start'])
+        if key == month:
+            income_now[row['source'] or 'Inne'] += row['total']
+        else:
+            income_before += row['total']
+            before_months.add(key)
+
+    divisor = Decimal(len(before_months)) if before_months else None
+
+    def average(value):
+        return _money(value / divisor) if divisor else None
+
+    items = defaultdict(list)
+    own_ids = [pk for pk, entry in entries.items() if entry.role in ('me', 'shared')]
+    for expense in (
+        Daily.objects.filter(account_id__in=own_ids, date__gte=month, date__lt=end)
+        .exclude(category=TRANSFER_TO_SHARED_CATEGORY)
+        .order_by('-cost', 'date')
+        .values('date', 'title', 'store', 'cost', 'category', 'account_id')
+    ):
+        items[expense['category']].append({**expense, 'account': entries[expense['account_id']].label})
+    hidden_people = [entry.label for entry in scope.included if entry.role == 'partner']
+
+    groups = []
+    for kind in KIND_ORDER:
+        names = [name for name in set(now) | set(before) if kinds[name] == kind]
+        if not names:
+            continue
+        names.sort(key=lambda name: (-now.get(name, ZERO), -before.get(name, ZERO)))
+        largest = max([now.get(name, ZERO) for name in names] + [average(before.get(name, ZERO)) or ZERO for name in names]) or Decimal('1')
+        rows = []
+        for name in names:
+            amount = _money(now.get(name, ZERO))
+            avg_value = average(before.get(name, ZERO))
+            rows.append({
+                'name': name,
+                'amount': amount,
+                'avg': avg_value,
+                'delta': _delta(amount, avg_value),
+                'bar': (amount / largest * HUNDRED).quantize(Decimal('0.1')),
+                'avg_bar': ((avg_value or ZERO) / largest * HUNDRED).quantize(Decimal('0.1')),
+                'people': [{'label': person, 'amount': _money(now_person[name].get(person, ZERO))} for person in people],
+                'items': items.get(name, []),
+                'hidden_amount': _money(sum((now_person[name].get(person, ZERO) for person in hidden_people), ZERO)),
+            })
+        groups.append({
+            'kind': kind,
+            'label': KIND_LABELS[kind],
+            # Więcej odłożonych pieniędzy to dobra zmiana, więcej wydatków - zła.
+            'good_when_up': kind == SAVINGS,
+            'amount': _money(kind_now[kind]),
+            'avg': average(kind_before[kind]),
+            'delta': _delta(_money(kind_now[kind]), average(kind_before[kind])),
+            'rows': rows,
+        })
+
+    income_total = _money(sum(income_now.values(), ZERO))
+    spending = _money(kind_now[ESSENTIAL] + kind_now[LIFESTYLE])
+    spending_avg = average(kind_before[ESSENTIAL] + kind_before[LIFESTYLE])
+    previous = _add_months(month, -1)
+    following = _add_months(month, 1)
+    return {
+        'scope': scope,
+        'month': month,
+        'in_progress': month == current,
+        'previous': previous,
+        'next': following if following <= current else None,
+        'has_data': bool(now or income_now),
+        'compare_months': len(before_months),
+        'essential': _money(kind_now[ESSENTIAL]),
+        'essential_avg': average(kind_before[ESSENTIAL]),
+        'essential_delta': _delta(_money(kind_now[ESSENTIAL]), average(kind_before[ESSENTIAL])),
+        'spending': spending,
+        'spending_avg': spending_avg,
+        'spending_delta': _delta(spending, spending_avg),
+        'savings': _money(kind_now[SAVINGS]),
+        'income': income_total,
+        'income_avg': average(income_before),
+        'income_delta': _delta(income_total, average(income_before)),
+        'balance': _money(income_total - spending - kind_now[SAVINGS]),
+        'groups': groups,
+        'people': people,
+        'hidden_people': hidden_people,
+        'income_sources': sorted(
+            ({'name': name, 'amount': _money(total)} for name, total in income_now.items()),
+            key=lambda item: -item['amount'],
+        ),
     }

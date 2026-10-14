@@ -1,0 +1,128 @@
+{% extends 'finance/index.html' %}
+{% load humanize l10n ui %}
+
+{% block title %}{{ month|date:"F Y"|capfirst }} · analiza domowa{% endblock %}
+
+{% block content_finance %}
+{% comment %} Szczegóły miesiąca analizy domowej (finance.household.build_month_detail).
+   Pozycje tylko z moich kont i kont wspólnych, z kont domowników same sumy. {% endcomment %}
+{% if compare_months %}
+    {% page_head title=month|date:"F Y"|capfirst eyebrow="Analiza domowa" icon="bi-people" sub="Wydatki i przychody całego domu na tle średniej z poprzednich miesięcy." back=back_url back_label="Wróć do analizy" %}{% endpage_head %}
+{% else %}
+    {% page_head title=month|date:"F Y"|capfirst eyebrow="Analiza domowa" icon="bi-people" sub="Wydatki i przychody całego domu w tym miesiącu." back=back_url back_label="Wróć do analizy" %}{% endpage_head %}
+{% endif %}
+
+<div class="ha-page animate-fade-in-up">
+    <nav class="ha-month-nav" aria-label="Inne miesiące">
+        <a href="{{ previous_url }}" class="u-btn u-btn-ghost"><i class="bi bi-chevron-left" aria-hidden="true"></i> {{ previous|date:"F"|capfirst }}</a>
+        <span class="ha-month-note">
+            {% if in_progress %}Miesiąc jeszcze trwa · {% endif %}{% if compare_months %}średnia z {{ compare_months|pl:"miesiąca,miesięcy,miesięcy" }} przed nim{% else %}brak wcześniejszych miesięcy do porównania{% endif %}
+        </span>
+        {% if next_url %}<a href="{{ next_url }}" class="u-btn u-btn-ghost">{{ next|date:"F"|capfirst }} <i class="bi bi-chevron-right" aria-hidden="true"></i></a>{% else %}<span></span>{% endif %}
+    </nav>
+
+    {% if hidden_people %}
+        <p class="ha-hint"><i class="bi bi-lock" aria-hidden="true"></i> Z konta {{ hidden_people|join:", " }} widać tylko sumy w kategoriach – bez pojedynczych pozycji.</p>
+    {% endif %}
+
+    {% if not has_data %}
+        <div class="u-card u-card-pad ha-empty">
+            <i class="bi bi-calendar2-x" aria-hidden="true"></i>
+            <div><strong>Brak wpisów w tym miesiącu</strong><span>Na żadnym z kont w analizie nie ma wydatków ani przychodów.</span></div>
+        </div>
+    {% else %}
+        <div class="u-metric-grid">
+            <div class="u-metric is-expense">
+                <div class="u-metric-label"><i class="bi bi-house-heart" aria-hidden="true"></i> Niezbędne</div>
+                <div class="u-metric-value">{{ essential|zl }}</div>
+                <div class="u-metric-note">{% if essential_avg != None %}Średnio {{ essential_avg|zl }} {% include 'finance/partials/household_delta.html' with delta=essential_delta %}{% else %}Część minimum na życie{% endif %}</div>
+            </div>
+            <div class="u-metric">
+                <div class="u-metric-label"><i class="bi bi-cart3" aria-hidden="true"></i> Wydatki razem</div>
+                <div class="u-metric-value">{{ spending|zl }}</div>
+                <div class="u-metric-note">{% if spending_avg != None %}Średnio {{ spending_avg|zl }} {% include 'finance/partials/household_delta.html' with delta=spending_delta %}{% else %}Niezbędne i pozostałe{% endif %}</div>
+            </div>
+            <div class="u-metric is-income">
+                <div class="u-metric-label"><i class="bi bi-arrow-up-circle" aria-hidden="true"></i> Przychody</div>
+                <div class="u-metric-value is-income">{{ income|zl }}</div>
+                <div class="u-metric-note">{% if income_avg != None %}Średnio {{ income_avg|zl }} {% include 'finance/partials/household_delta.html' with delta=income_delta good_when_up=True %}{% endif %}</div>
+            </div>
+            <div class="u-metric is-invest">
+                <div class="u-metric-label"><i class="bi bi-wallet2" aria-hidden="true"></i> Zostało</div>
+                <div class="u-metric-value {% if balance < 0 %}is-expense{% else %}is-invest{% endif %}">{{ balance|zl }}</div>
+                <div class="u-metric-note">Po wydatkach i oszczędnościach ({{ savings|zl }})</div>
+            </div>
+        </div>
+
+        <section class="u-card u-card-pad" aria-labelledby="hm-cat-title">
+            <div class="u-section-head">
+                <div>
+                    <h2 class="u-section-title" id="hm-cat-title">Kategorie</h2>
+                    <p class="u-page-sub mb-0">Pasek to ten miesiąc, kreska – średnia. Rozwiń kategorię, żeby zobaczyć pozycje.</p>
+                </div>
+            </div>
+            {% for group in groups %}
+                <div class="ha-group is-{{ group.kind }}">
+                    <div class="ha-group-head">
+                        <h3>{{ group.label }}</h3>
+                        <strong>{{ group.amount|zl }}</strong>
+                        <p>{% if group.avg != None %}Średnio {{ group.avg|zl }} {% include 'finance/partials/household_delta.html' with delta=group.delta good_when_up=group.good_when_up %}{% endif %}</p>
+                    </div>
+                    <ul class="hm-rows">
+                        {% for row in group.rows %}
+                            <li class="hm-row{% if not row.amount %} is-zero{% endif %}">
+                                <details class="hm-item" {% if not row.items %}data-no-items{% endif %}>
+                                    <summary>
+                                        <span class="ha-name">{{ row.name }}{% if row.avg != None %}<small>średnio {{ row.avg|zl }}</small>{% endif %}</span>
+                                        <span class="hm-bar" aria-hidden="true">
+                                            <span class="hm-bar-fill" style="width: {{ row.bar|unlocalize }}%"></span>
+                                            {% if row.avg %}<span class="hm-bar-avg" style="left: {{ row.avg_bar|unlocalize }}%"></span>{% endif %}
+                                        </span>
+                                        <strong class="ha-amount">{{ row.amount|zl }}</strong>
+                                        <span class="hm-delta">{% include 'finance/partials/household_delta.html' with delta=row.delta good_when_up=group.good_when_up %}</span>
+                                        <i class="bi bi-chevron-down hm-chevron" aria-hidden="true"></i>
+                                    </summary>
+                                    <div class="hm-detail">
+                                        {% if people|length > 1 %}
+                                            <p class="hm-people">{% for item in row.people %}{% if item.amount %}<span>{{ item.label }} <strong>{{ item.amount|zl }}</strong></span>{% endif %}{% endfor %}</p>
+                                        {% endif %}
+                                        {% if row.items %}
+                                            <ul class="hm-items">
+                                                {% for item in row.items %}
+                                                    <li>
+                                                        <span class="hm-date">{{ item.date|date:"d.m" }}</span>
+                                                        <span class="hm-title">{{ item.title }}{% if item.store and item.store != item.title %}<small>{{ item.store }}</small>{% endif %}{% if people|length > 1 %}<small>{{ item.account }}</small>{% endif %}</span>
+                                                        <span class="hm-cost">{{ item.cost|floatformat:"2g" }} zł</span>
+                                                    </li>
+                                                {% endfor %}
+                                            </ul>
+                                        {% endif %}
+                                        {% if row.hidden_amount %}<p class="hm-hidden"><i class="bi bi-lock" aria-hidden="true"></i> {{ hidden_people|join:", " }}: {{ row.hidden_amount|floatformat:"2g" }} zł – bez szczegółów</p>{% endif %}
+                                        {% if not row.amount %}<p class="hm-hidden">W tym miesiącu nic w tej kategorii.</p>{% endif %}
+                                    </div>
+                                </details>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endfor %}
+        </section>
+
+        {% if income_sources %}
+            <section class="u-card u-card-pad" aria-labelledby="hm-income-title">
+                <h2 class="u-section-title" id="hm-income-title">Przychody</h2>
+                <div class="u-table-wrap">
+                    <table class="u-table">
+                        <thead><tr><th scope="col">Źródło</th><th scope="col" class="text-end">Kwota</th></tr></thead>
+                        <tbody>
+                            {% for source in income_sources %}<tr><th scope="row">{{ source.name }}</th><td class="u-amount">{{ source.amount|floatformat:"2g" }} zł</td></tr>{% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        {% endif %}
+
+        <p class="ha-footnote"><i class="bi bi-info-circle" aria-hidden="true"></i> Bez przelewów z kont osobistych na konto wspólne. Rodzaje kategorii zmienisz na stronie analizy.</p>
+    {% endif %}
+</div>
+{% endblock %}

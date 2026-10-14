@@ -184,3 +184,53 @@ class ViewTests(HouseholdTestCase):
 
     def test_index_links_to_analysis(self):
         self.assertContains(self.client.get(reverse('finance:index')), reverse('finance:household_analysis'))
+
+
+class MonthDetailTests(HouseholdTestCase):
+    def setUp(self):
+        super().setUp()
+        self.seed()
+        self.ania_account.share_in_household_analysis = True
+        self.ania_account.save()
+        self.client.force_login(self.dawid)
+
+    def detail(self, year=2026, month=9):
+        from finance.household import build_month_detail
+        return build_month_detail(self.dawid, date(year, month, 1), today=TODAY)
+
+    def test_month_against_previous_average(self):
+        result = self.detail()
+        self.assertEqual(result['compare_months'], 2)                    # lipiec i sierpień mają wpisy
+        self.assertEqual((result['essential'], result['essential_avg']), (Decimal('800.00'), Decimal('1100.00')))
+        self.assertEqual(result['essential_delta'], {'amount': Decimal('-300.00'), 'percent': Decimal('-27')})
+        self.assertEqual(result['income'], Decimal('5000.00'))
+        self.assertEqual(result['savings'], Decimal('400.00'))
+        self.assertEqual(result['balance'], Decimal('3800.00'))           # 5000 - 800 wydatków - 400 oszczędności
+        self.assertEqual(result['next'], date(2026, 10, 1))
+        groceries = next(row for group in result['groups'] for row in group['rows'] if row['name'] == 'Zakupy spozywcze')
+        self.assertEqual((groceries['amount'], groceries['avg']), (Decimal('800.00'), Decimal('500.00')))
+        self.assertEqual(groceries['items'], [])                          # wydatek Ani - bez pozycji
+        self.assertEqual(groceries['hidden_amount'], Decimal('800.00'))
+        rent = next(row for group in result['groups'] for row in group['rows'] if row['name'] == 'Rachunki')
+        self.assertEqual(rent['amount'], Decimal('0.00'))                 # w średniej, ale nie w tym miesiącu
+        investment = next(row for group in result['groups'] for row in group['rows'] if row['name'] == 'Inwestycje')
+        self.assertEqual([item['title'] for item in investment['items']], ['Wydatek'])
+
+    def test_current_month_has_no_next(self):
+        result = self.detail(2026, 10)
+        self.assertTrue(result['in_progress'])
+        self.assertIsNone(result['next'])
+
+    def test_page_and_links(self):
+        with mock.patch('finance.household.timezone.localdate', return_value=TODAY):
+            analysis = self.client.get(reverse('finance:household_analysis'), {'okres': 3})
+            response = self.client.get(reverse('finance:household_month', args=[2026, 9]), {'okres': 3})
+        self.assertContains(analysis, reverse('finance:household_month', args=[2026, 9]) + '?okres=3')
+        self.assertContains(response, 'Wrzesień 2026')
+        self.assertContains(response, 'bez szczegółów')
+        self.assertNotContains(response, 'Sekretny prezent')
+        self.assertContains(response, reverse('finance:household_analysis') + '?okres=3')
+
+    def test_future_and_invalid_month(self):
+        self.assertEqual(self.client.get(reverse('finance:household_month', args=[2099, 1])).status_code, 404)
+        self.assertEqual(self.client.get(reverse('finance:household_month', args=[2026, 13])).status_code, 404)

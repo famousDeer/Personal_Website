@@ -1,6 +1,7 @@
 /* Analiza domowa (finance/household_analysis.html):
    - wykres: wydatki niezbędne, pozostałe i oszczędności (słupki skumulowane)
      oraz przychody (linia) w jednej skali złotych, z tabelą pod spodem,
+   - kliknięcie miesiąca otwiera jego szczegóły (finance:household_month),
    - zmiana rodzaju kategorii pokazuje przycisk „Zapisz i przelicz”. */
 (function () {
     'use strict';
@@ -40,6 +41,18 @@
             const spent = items.filter((item) => item.dataset.stack === 'out').reduce((sum, item) => sum + item.parsed.y, 0);
             return spent ? `Wydatki i oszczędności: ${zl(spent)}` : '';
         };
+        // Kliknięcie miesiąca (słupka albo kolumny) otwiera jego szczegóły.
+        options.onClick = (event, elements, chart) => {
+            const hit = elements.length ? elements : chart.getElementsAtEventForMode(event, 'index', { intersect: false }, false);
+            const url = hit.length ? (data.urls || [])[hit[0].index] : '';
+            if (url) {
+                window.location.href = url;
+            }
+        };
+        options.onHover = (event, elements, chart) => {
+            chart.canvas.style.cursor = elements.length || chart.getElementsAtEventForMode(event, 'index', { intersect: false }, false).length ? 'pointer' : '';
+        };
+        options.plugins.tooltip.callbacks.afterFooter = () => 'Kliknij, żeby zobaczyć szczegóły';
         if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
             options.animation = false;
         }

@@ -30,6 +30,7 @@ urlpatterns = [
     # Reports
     path('reports/', views.ReportsView.as_view(), name='reports'),
     path('analysis/', views_household.HouseholdAnalysisView.as_view(), name='household_analysis'),
+    path('analysis/<int:year>/<int:month>/', views_household.HouseholdMonthView.as_view(), name='household_month'),
 
     # Brokerage portfolio
     path('brokerage/', views.BrokeragePortfolioView.as_view(), name='brokerage'),

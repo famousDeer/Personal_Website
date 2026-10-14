@@ -88,10 +88,18 @@
             <div class="u-section-head">
                 <div>
                     <h2 class="u-section-title" id="ha-chart-title">Miesiąc po miesiącu</h2>
-                    <p class="u-page-sub mb-0">Wydatki według rodzaju i przychody całego domu.</p>
+                    <p class="u-page-sub mb-0">Wydatki według rodzaju i przychody całego domu. Kliknij miesiąc, żeby zobaczyć szczegóły.</p>
                 </div>
             </div>
             <div class="u-chart ha-chart"><canvas id="haChart" role="img" aria-label="Wydatki niezbędne, pozostałe, oszczędności i przychody w kolejnych miesiącach"></canvas></div>
+            <nav class="ha-months" aria-label="Szczegóły miesiąca">
+                {% for row in monthly %}
+                    <a href="{{ row.url }}" class="ha-month-link{% if not row.has_data %} is-empty{% endif %}">
+                        <span>{{ row.month|date:"M Y" }}</span>
+                        <strong>{{ row.essential|add:row.lifestyle|zl }}</strong>
+                    </a>
+                {% endfor %}
+            </nav>
             {% include 'finance/partials/chart_table_toggle.html' with id='haChartTable' %}
         </section>
 

@@ -2798,3 +2798,59 @@ form:has(#one-off:checked) .pantry-restock-fields { opacity: 0.45; }
     .ha-chart { height: 260px; }
 }
 .ha-per-month { font-size: var(--fs-caption); font-weight: 600; color: var(--ink-3); }
+
+/* Analiza domowa: lista miesięcy pod wykresem i szczegóły miesiąca (household_month.html) */
+.ha-months { display: flex; gap: var(--sp-2); margin-top: var(--sp-3); overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.ha-months::-webkit-scrollbar { display: none; }
+.ha-month-link {
+    flex: 1 0 6.5rem; display: grid; gap: .05rem; padding: .45rem .7rem; text-decoration: none;
+    border: 1px solid var(--line-1); border-radius: var(--r-md); background: var(--surface-1);
+}
+.ha-month-link span { font-size: var(--fs-caption); color: var(--ink-3); text-transform: capitalize; }
+.ha-month-link strong { font-size: var(--fs-sm); color: var(--ink-1); font-variant-numeric: tabular-nums; }
+.ha-month-link:hover { border-color: var(--accent); }
+.ha-month-link:focus-visible { outline: 0; box-shadow: var(--focus-ring); }
+.ha-month-link.is-empty { opacity: .6; }
+.ha-month-nav { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--sp-3); }
+.ha-month-note { text-align: center; font-size: var(--fs-caption); color: var(--ink-3); }
+.ha-delta { display: inline-flex; align-items: center; white-space: nowrap; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--ink-3); }
+.ha-delta.is-bad { color: var(--expense-ink); }
+.ha-delta.is-good { color: var(--income-ink); }
+.ha-delta i { font-size: 1.05em; }
+.hm-rows { margin: 0; padding: 0; list-style: none; }
+.hm-row + .hm-row { border-top: 1px solid var(--line-2); }
+.hm-item > summary { list-style: none; cursor: pointer; }
+.hm-item > summary::-webkit-details-marker { display: none; }
+.hm-item > summary {
+    display: grid; grid-template-columns: minmax(9rem, 14rem) minmax(4rem, 1fr) 6.5rem 9.5rem 1rem;
+    gap: .2rem var(--sp-3); align-items: center; padding: .5rem 0;
+}
+.hm-item > summary:focus-visible { outline: 0; box-shadow: var(--focus-ring); border-radius: var(--r-sm); }
+.hm-bar { position: relative; height: .55rem; border-radius: 0 4px 4px 0; background: var(--surface-2); }
+.hm-bar-fill { position: absolute; inset: 0 auto 0 0; border-radius: 0 4px 4px 0; background: var(--ha-color); }
+.hm-bar-avg { position: absolute; top: -.25rem; bottom: -.25rem; width: 0; border-left: 2px solid var(--ink-1); opacity: .55; }
+.hm-delta { font-size: var(--fs-caption); text-align: right; }
+.hm-chevron { color: var(--ink-4); transition: transform var(--dur) var(--ease); }
+.hm-item[open] .hm-chevron { transform: rotate(180deg); }
+.hm-row.is-zero .ha-name, .hm-row.is-zero .ha-amount { color: var(--ink-3); }
+.hm-detail { padding: 0 0 var(--sp-3); }
+.hm-people { display: flex; flex-wrap: wrap; gap: .2rem var(--sp-4); margin: 0 0 var(--sp-2); font-size: var(--fs-sm); color: var(--ink-3); }
+.hm-people strong { color: var(--ink-1); font-variant-numeric: tabular-nums; }
+.hm-items { margin: 0; padding: 0; list-style: none; border-radius: var(--r-md); background: var(--surface-2); }
+.hm-items li { display: grid; grid-template-columns: 3rem minmax(0, 1fr) auto; gap: var(--sp-3); align-items: baseline; padding: .45rem .75rem; font-size: var(--fs-sm); }
+.hm-items li + li { border-top: 1px solid var(--line-2); }
+.hm-date { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.hm-title { display: flex; flex-wrap: wrap; gap: 0 .5rem; min-width: 0; color: var(--ink-1); overflow-wrap: anywhere; }
+.hm-title small { color: var(--ink-3); }
+.hm-cost { font-weight: 650; font-variant-numeric: tabular-nums; color: var(--ink-1); white-space: nowrap; }
+.hm-hidden { display: flex; gap: .4rem; margin: var(--sp-2) 0 0; font-size: var(--fs-caption); color: var(--ink-3); }
+@media (max-width: 767.98px) {
+    .hm-item > summary { grid-template-columns: minmax(0, 1fr) auto 1rem; grid-template-areas: "name amount chev" "bar bar bar" "delta delta delta"; }
+    .hm-item .ha-name { grid-area: name; }
+    .hm-item .ha-amount { grid-area: amount; }
+    .hm-item .hm-chevron { grid-area: chev; }
+    .hm-bar { grid-area: bar; }
+    .hm-delta { grid-area: delta; text-align: left; }
+    .hm-delta:empty { display: none; }
+    .ha-month-nav .u-btn { padding-inline: .6rem; }
+}

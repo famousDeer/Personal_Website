@@ -1,12 +1,22 @@
-"""Strona „Analiza domowa” (finance.household)."""
+"""Strona „Analiza domowa” i szczegóły miesiąca (finance.household)."""
+from datetime import date
+
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.http import Http404
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.views import View
 
 from .account_utils import ensure_personal_finance_account
-from .household import DEFAULT_PERIOD, PERIOD_CHOICES, build_household_analysis, save_category_kinds
+from .household import (
+    DEFAULT_PERIOD,
+    PERIOD_CHOICES,
+    build_household_analysis,
+    build_month_detail,
+    save_category_kinds,
+)
 
 
 def _months(value):
@@ -17,6 +27,11 @@ def _months(value):
     return months if months in PERIOD_CHOICES else DEFAULT_PERIOD
 
 
+def _month_url(month, months):
+    url = reverse('finance:household_month', args=[month.year, month.month])
+    return url + (f'?okres={months}' if months != DEFAULT_PERIOD else '')
+
+
 class HouseholdAnalysisView(LoginRequiredMixin, View):
     template_name = 'finance/household_analysis.html'
 
@@ -24,6 +39,10 @@ class HouseholdAnalysisView(LoginRequiredMixin, View):
         months = _months(request.GET.get('okres'))
         context = build_household_analysis(request.user, months)
         context['my_account'] = ensure_personal_finance_account(request.user)
+        # Kliknięcie miesiąca na wykresie albo w liście pod nim: szczegóły.
+        for row in context['monthly']:
+            row['url'] = _month_url(row['month'], months)
+        context['chart']['urls'] = [row['url'] for row in context['monthly']]
         return render(request, self.template_name, context)
 
     def post(self, request):
@@ -59,3 +78,27 @@ class HouseholdAnalysisView(LoginRequiredMixin, View):
         if months != DEFAULT_PERIOD:
             url += f'?okres={months}'
         return redirect(url + anchor)
+
+
+class HouseholdMonthView(LoginRequiredMixin, View):
+    """Jeden miesiąc analizy domowej na tle średniej z poprzednich miesięcy."""
+
+    template_name = 'finance/household_month.html'
+
+    def get(self, request, year, month):
+        try:
+            selected = date(year, month, 1)
+        except ValueError:
+            raise Http404('Nie ma takiego miesiąca.')
+        if selected > timezone.localdate().replace(day=1):
+            raise Http404('Ten miesiąc jeszcze się nie zaczął.')
+        months = _months(request.GET.get('okres'))
+        context = build_month_detail(request.user, selected)
+        back = reverse('finance:household_analysis')
+        context.update({
+            'months': months,
+            'back_url': back + (f'?okres={months}' if months != DEFAULT_PERIOD else ''),
+            'previous_url': _month_url(context['previous'], months),
+            'next_url': _month_url(context['next'], months) if context['next'] else '',
+        })
+        return render(request, self.template_name, context)
