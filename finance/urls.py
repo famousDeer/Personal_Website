@@ -1,6 +1,6 @@
 # finance/urls.py
 from django.urls import path
-from . import views, views_import_rules
+from . import views, views_household, views_import_rules
 
 app_name = 'finance'
 
@@ -29,6 +29,7 @@ urlpatterns = [
 
     # Reports
     path('reports/', views.ReportsView.as_view(), name='reports'),
+    path('analysis/', views_household.HouseholdAnalysisView.as_view(), name='household_analysis'),
 
     # Brokerage portfolio
     path('brokerage/', views.BrokeragePortfolioView.as_view(), name='brokerage'),

@@ -8,6 +8,7 @@ from .models import (
     BrokeragePositionSnapshot,
     BrokeragePriceSnapshot,
     BrokerageTransaction,
+    CategoryKind,
     Daily,
     FinanceAccount,
     ImportRule,
@@ -116,3 +117,10 @@ class StrategyDailyPriceAdmin(admin.ModelAdmin):
     list_display = ('trading_date', 'symbol', 'close', 'adjusted_close', 'currency', 'source', 'updated_at')
     list_filter = ('symbol', 'source')
     date_hierarchy = 'trading_date'
+
+
+@admin.register(CategoryKind)
+class CategoryKindAdmin(admin.ModelAdmin):
+    list_display = ('category', 'kind', 'updated_by', 'updated_at')
+    list_filter = ('kind',)
+    search_fields = ('category',)

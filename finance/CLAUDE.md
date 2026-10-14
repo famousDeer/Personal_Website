@@ -9,6 +9,7 @@ Logika poza widokami:
 - `bank_import.py` – parser CSV Millennium/ING, duplikaty, podpowiedzi kategorii. `import_rules.py` – reguły domownika. `text_utils.py` – `normalize_text`.
 - `brokerage.py` – `build_portfolio_summary` (FIFO, podatek Belki, IKE zwolnione). `brokerage_import.py` – XLSX z XTB. `portfolio_history.py`, `investment_statistics.py`, `investment_funding.py`.
 - `market_data.py` – Yahoo (główne), Stooq, Alpha Vantage, OpenFIGI, NBP. `sync_price_history_for_user`, `refresh_market_data_for_user`.
+- `household.py` + `views_household.py` – analiza domowa (`/finance/analysis/`): moje konto + wspólne + konta osobiste domowników z kont wspólnych, tylko gdy właściciel włączył `FinanceAccount.share_in_household_analysis`; z cudzych kont tylko sumy. Rodzaje kategorii (niezbędne/pozostałe/oszczędności/pomijane) w `CategoryKind`, minimum na życie = średnia niezbędnych z pełnych miesięcy.
 - `gem.py` – strategia GEM (CSPX/IWDA/EIMI/IB01, 12M, sygnał z końca miesiąca).
 - `geocoding.py` – Nominatim dla podróży.
 

@@ -26,6 +26,10 @@ class FinanceAccount(models.Model):
     name = models.CharField(max_length=255)
     account_type = models.CharField(max_length=20, choices=ACCOUNT_TYPE_CHOICES, default=PERSONAL)
     members = models.ManyToManyField(User, related_name='finance_accounts')
+    # Konto osobiste: właściciel zgadza się, żeby domownicy z kont wspólnych
+    # widzieli jego sumy wydatków i przychodów w analizie domowej
+    # (finance.household). Bez tytułów, sklepów i pojedynczych pozycji.
+    share_in_household_analysis = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -684,3 +688,33 @@ class ImportRule(models.Model):
     @property
     def is_expense(self):
         return self.kind == self.EXPENSE
+
+
+class CategoryKind(models.Model):
+    """Rodzaj kategorii wydatku w analizie domowej (wspólny dla całego domu).
+
+    Kategorie bez wpisu dostają rodzaj domyślny z finance.household.DEFAULT_KINDS.
+    """
+
+    ESSENTIAL = 'essential'
+    LIFESTYLE = 'lifestyle'
+    SAVINGS = 'savings'
+    EXCLUDED = 'excluded'
+    KIND_CHOICES = [
+        (ESSENTIAL, 'Niezbędne'),
+        (LIFESTYLE, 'Pozostałe'),
+        (SAVINGS, 'Oszczędności i inwestycje'),
+        (EXCLUDED, 'Pomijane'),
+    ]
+
+    category = models.CharField(max_length=100, unique=True)
+    kind = models.CharField(max_length=12, choices=KIND_CHOICES)
+    updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'finance_category_kinds'
+        ordering = ['category']
+
+    def __str__(self):
+        return f'{self.category}: {self.get_kind_display()}'

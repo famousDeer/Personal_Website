@@ -2708,3 +2708,93 @@ form:has(#one-off:checked) .pantry-restock-fields { opacity: 0.45; }
     .shopping-picker-footer { position: static; box-shadow: none; }
     .shopping-picker-footer .btn { flex: 1 1 100%; }
 }
+
+/* Analiza domowa (finance/household_analysis.html) */
+.ha-page { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-4); }
+.ha-scope-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+.ha-scope-head .u-section-title { margin: 0; }
+.ha-people { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: 0; padding: 0; list-style: none; }
+.ha-person {
+    display: flex; align-items: center; gap: .55rem; padding: .5rem .8rem;
+    border: 1px solid var(--line-1); border-radius: var(--r-md); background: var(--surface-1);
+}
+.ha-person > i { color: var(--income-ink); font-size: 1.1rem; }
+.ha-person span { display: grid; line-height: 1.25; }
+.ha-person strong { font-size: var(--fs-sm); color: var(--ink-1); }
+.ha-person small { font-size: var(--fs-caption); color: var(--ink-3); }
+.ha-person.is-off { border-style: dashed; background: var(--surface-2); }
+.ha-person.is-off > i { color: var(--ink-4); }
+.ha-period-note { margin: var(--sp-3) 0 0; font-size: var(--fs-caption); color: var(--ink-3); }
+.ha-hint { display: flex; gap: .5rem; margin: var(--sp-3) 0 0; padding: .6rem .8rem; border-radius: var(--r-md); background: var(--surface-2); font-size: var(--fs-sm); color: var(--ink-2); }
+.ha-hint > i { color: var(--invest-ink); }
+.ha-empty { display: flex; gap: var(--sp-3); align-items: flex-start; color: var(--ink-3); }
+.ha-empty > i { font-size: 1.5rem; color: var(--ink-4); }
+.ha-empty div { display: grid; gap: .2rem; }
+.ha-empty strong { color: var(--ink-1); }
+.u-metric-value small { font-size: var(--fs-sm); font-weight: 600; color: var(--ink-3); }
+.ha-minimum { background: linear-gradient(160deg, var(--expense-bg), var(--surface-1) 75%); }
+
+.ha-reserve { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3) var(--sp-4); }
+.ha-reserve > i { font-size: 1.5rem; color: var(--income-ink); }
+.ha-reserve > div { display: grid; flex: 1 1 16rem; gap: .1rem; }
+.ha-reserve > div span { font-size: var(--fs-sm); color: var(--ink-3); }
+.ha-reserve ul { display: flex; gap: var(--sp-4); margin: 0; padding: 0; list-style: none; }
+.ha-reserve li { display: grid; text-align: right; }
+.ha-reserve li small { font-size: var(--fs-caption); color: var(--ink-3); }
+.ha-reserve li strong { font-size: 1.15rem; font-variant-numeric: tabular-nums; color: var(--ink-1); }
+.ha-chart { height: 320px; }
+
+.ha-group + .ha-group { margin-top: var(--sp-5); }
+.ha-group-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .1rem var(--sp-3); align-items: baseline; padding-bottom: var(--sp-2); border-bottom: 1px solid var(--line-1); }
+.ha-group-head h3 { margin: 0; font-size: var(--fs-md); font-weight: 750; color: var(--ink-1); }
+.ha-group-head h3::before { content: ""; display: inline-block; width: .65rem; height: .65rem; margin-right: .45rem; border-radius: 3px; background: var(--ha-color, var(--ink-4)); }
+.ha-group-head > strong { font-variant-numeric: tabular-nums; color: var(--ink-1); }
+.ha-group-head small { font-weight: 600; color: var(--ink-3); }
+.ha-group-head p { grid-column: 1 / -1; margin: 0; font-size: var(--fs-caption); color: var(--ink-3); }
+.ha-group.is-essential { --ha-color: var(--cat-1); }
+.ha-group.is-lifestyle { --ha-color: var(--cat-2); }
+.ha-group.is-savings { --ha-color: var(--cat-3); }
+.ha-group.is-excluded { --ha-color: var(--ink-4); }
+.ha-rows { margin: 0; padding: 0; list-style: none; }
+.ha-row {
+    display: grid;
+    grid-template-columns: minmax(9rem, 14rem) minmax(4rem, 1fr) 6.5rem repeat(var(--ha-people, 0), 6.5rem) 11.5rem;
+    gap: .2rem var(--sp-3); align-items: center; padding: .45rem 0;
+}
+.ha-rows .ha-row + .ha-row { border-top: 1px solid var(--line-2); }
+.ha-row-head { padding-bottom: 0; font-size: var(--fs-caption); font-weight: 650; color: var(--ink-3); }
+.ha-row-head > span:nth-child(3), .ha-person-col { text-align: right; }
+.ha-name { display: grid; min-width: 0; color: var(--ink-1); font-weight: 600; overflow-wrap: anywhere; }
+.ha-name small { font-weight: 500; font-size: var(--fs-caption); color: var(--ink-3); }
+.ha-bar { height: .55rem; border-radius: 0 4px 4px 0; background: var(--surface-2); overflow: hidden; }
+.ha-bar span { display: block; height: 100%; border-radius: 0 4px 4px 0; background: var(--ha-color); }
+.ha-amount { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-1); }
+.ha-person-col { font-size: var(--fs-sm); font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.ha-people-line { display: none; }
+.ha-save {
+    position: sticky; bottom: calc(var(--sp-3) + env(safe-area-inset-bottom)); z-index: 5;
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2);
+    margin-top: var(--sp-4); padding: .6rem .8rem; border-radius: var(--r-md);
+    background: var(--surface-1); border: 1px solid var(--accent); box-shadow: var(--sh-2);
+    font-size: var(--fs-sm); font-weight: 600; color: var(--ink-1);
+}
+.ha-save[hidden] { display: none; }
+.ha-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: var(--sp-4); }
+.ha-footnote { display: flex; gap: .5rem; margin: 0; font-size: var(--fs-caption); color: var(--ink-3); }
+.ha-share { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+.ha-share > div { flex: 1 1 22rem; }
+.ha-share .u-section-title { margin-bottom: .25rem; }
+
+@media (max-width: 767.98px) {
+    .ha-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name amount" "bar bar" "people people" "kind kind"; }
+    .ha-row-head, .ha-person-col { display: none; }
+    .ha-name { grid-area: name; }
+    .ha-amount { grid-area: amount; }
+    .ha-bar { grid-area: bar; }
+    .ha-kind { grid-area: kind; }
+    .ha-people-line { grid-area: people; display: flex; flex-wrap: wrap; gap: .1rem .8rem; font-size: var(--fs-caption); color: var(--ink-3); }
+    .ha-people-line:empty { display: none; }
+    .ha-reserve ul { width: 100%; justify-content: space-between; }
+    .ha-chart { height: 260px; }
+}
+.ha-per-month { font-size: var(--fs-caption); font-weight: 600; color: var(--ink-3); }

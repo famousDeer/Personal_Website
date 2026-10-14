@@ -1,0 +1,221 @@
+{% extends 'finance/index.html' %}
+{% load humanize l10n static ui %}
+
+{% block title %}Analiza domowa{% endblock %}
+
+{% block content_finance %}
+{% comment %} Analiza domowa (finance.household / finance.views_household).
+   Cudze konta tylko ze zgodą właściciela i tylko jako sumy. {% endcomment %}
+{% url 'finance:index' as back_url %}
+{% page_head title="Analiza domowa" eyebrow="Finanse" icon="bi-people" sub="Ile kosztuje życie całego domu i na co idą pieniądze – z pełnych miesięcy, bez przelewów między Waszymi kontami." back=back_url %}{% endpage_head %}
+
+<div class="ha-page animate-fade-in-up">
+    <section class="u-card u-card-pad ha-scope" aria-labelledby="ha-scope-title">
+        <div class="ha-scope-head">
+            <h2 class="u-section-title" id="ha-scope-title">Kto jest w analizie</h2>
+            <nav class="pantry-view-switch ha-period" aria-label="Okres analizy" data-segmented>
+                {% for value in period_choices %}
+                    <a href="{% url 'finance:household_analysis' %}{% if value != 6 %}?okres={{ value }}{% endif %}"
+                       class="{% if value == months %}is-active{% endif %}" {% if value == months %}aria-current="page"{% endif %}>{{ value }} mies.</a>
+                {% endfor %}
+            </nav>
+        </div>
+        <ul class="ha-people">
+            {% for entry in scope.entries %}
+                <li class="ha-person{% if not entry.included %} is-off{% endif %}">
+                    <i class="bi {% if not entry.included %}bi-lock{% elif entry.role == 'shared' %}bi-people{% else %}bi-person-check{% endif %}" aria-hidden="true"></i>
+                    <span>
+                        <strong>{{ entry.label }}</strong>
+                        <small>{% if entry.role == 'shared' %}konto wspólne{% elif entry.role == 'me' %}Twoje konto osobiste{% elif entry.included %}udostępnia sumy{% else %}nie udostępnia{% endif %}</small>
+                    </span>
+                </li>
+            {% endfor %}
+        </ul>
+        <p class="ha-period-note">
+            {{ start|date:"F Y"|capfirst }} – {{ last_month|date:"F Y" }}{% if has_data and active_months < months %} · dane z {{ active_months|pl:"miesiąca,miesięcy,miesięcy" }}{% endif %}. Bieżący miesiąc jeszcze trwa, więc się nie liczy.
+        </p>
+        {% if not scope.has_partner %}
+            <p class="ha-hint"><i class="bi bi-info-circle" aria-hidden="true"></i> Analiza obejmuje tylko Twoje konta. Żeby dołączyć drugą osobę, załóż w <a href="{% url 'profile' %}">profilu</a> konto wspólne i dodaj ją do niego. Potem ona włącza udostępnianie u siebie na tej stronie.</p>
+        {% elif scope.missing_partners %}
+            <p class="ha-hint"><i class="bi bi-info-circle" aria-hidden="true"></i>
+                {% for entry in scope.missing_partners %}{{ entry.label }}{% if not forloop.last %}, {% endif %}{% endfor %}
+                {% if scope.missing_partners|length == 1 %}jeszcze nie udostępnia{% else %}jeszcze nie udostępniają{% endif %} swojego konta osobistego. Udostępnianie każdy włącza sam, po zalogowaniu na swoje konto, w sekcji „Twoje udostępnianie” na dole tej strony.
+            </p>
+        {% endif %}
+    </section>
+
+    {% if not has_data %}
+        <div class="u-card u-card-pad ha-empty">
+            <i class="bi bi-calendar2-x" aria-hidden="true"></i>
+            <div><strong>Brak wpisów w tym okresie</strong><span>Dodaj wydatki albo zaimportuj wyciąg – analiza liczy pełne miesiące.</span></div>
+        </div>
+    {% else %}
+        <div class="u-metric-grid">
+            <div class="u-metric is-expense ha-minimum">
+                <div class="u-metric-label"><i class="bi bi-house-heart" aria-hidden="true"></i> Minimum na życie</div>
+                <div class="u-metric-value">{{ minimum|zl }}<small> / mies.</small></div>
+                <div class="u-metric-note">Średnio na wydatki niezbędne{% if active_months > 1 %} · od {{ minimum_low|zl }} do {{ minimum_high|zl }} w miesiącu{% endif %}</div>
+            </div>
+            <div class="u-metric">
+                <div class="u-metric-label"><i class="bi bi-cart3" aria-hidden="true"></i> Wydatki razem</div>
+                <div class="u-metric-value">{{ spending|zl }}<small> / mies.</small></div>
+                <div class="u-metric-note">W tym pozostałe {{ lifestyle|zl }}{% if essential_share != None %} · niezbędne to {{ essential_share|floatformat:0 }}%{% endif %}</div>
+            </div>
+            <div class="u-metric is-income">
+                <div class="u-metric-label"><i class="bi bi-arrow-up-circle" aria-hidden="true"></i> Przychody</div>
+                <div class="u-metric-value is-income">{{ income|zl }}<small> / mies.</small></div>
+                <div class="u-metric-note">{% if savings_rate != None %}Zostaje {{ savings_rate|floatformat:0 }}% przychodów{% else %}Brak przychodów w okresie{% endif %}</div>
+            </div>
+            <div class="u-metric is-invest">
+                <div class="u-metric-label"><i class="bi bi-piggy-bank" aria-hidden="true"></i> Oszczędności i inwestycje</div>
+                <div class="u-metric-value is-invest">{{ savings|zl }}<small> / mies.</small></div>
+                <div class="u-metric-note">Odkładane – nie wliczają się do wydatków</div>
+            </div>
+        </div>
+
+        <section class="u-card u-card-pad ha-reserve" aria-label="Poduszka finansowa">
+            <i class="bi bi-shield-check" aria-hidden="true"></i>
+            <div>
+                <strong>Poduszka finansowa</strong>
+                <span>Na tyle miesięcy samego minimum, gdyby przychody zniknęły:</span>
+            </div>
+            <ul>
+                {% for item in reserves %}<li><small>{{ item.months }} mies.</small><strong>{{ item.amount|zl }}</strong></li>{% endfor %}
+            </ul>
+        </section>
+
+        <section class="u-card u-card-pad" aria-labelledby="ha-chart-title">
+            <div class="u-section-head">
+                <div>
+                    <h2 class="u-section-title" id="ha-chart-title">Miesiąc po miesiącu</h2>
+                    <p class="u-page-sub mb-0">Wydatki według rodzaju i przychody całego domu.</p>
+                </div>
+            </div>
+            <div class="u-chart ha-chart"><canvas id="haChart" role="img" aria-label="Wydatki niezbędne, pozostałe, oszczędności i przychody w kolejnych miesiącach"></canvas></div>
+            {% include 'finance/partials/chart_table_toggle.html' with id='haChartTable' %}
+        </section>
+
+        <form method="post" class="u-card u-card-pad ha-categories" id="kategorie" aria-labelledby="ha-cat-title">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="kinds">
+            <input type="hidden" name="okres" value="{{ months }}">
+            <div class="u-section-head">
+                <div>
+                    <h2 class="u-section-title" id="ha-cat-title">Na co idą pieniądze</h2>
+                    <p class="u-page-sub mb-0">Średnio na miesiąc. Rodzaj kategorii decyduje, czy wchodzi do minimum – zmień go, jeśli nie pasuje. Zmiana dotyczy całego domu.</p>
+                </div>
+            </div>
+            {% for group in groups %}
+                <div class="ha-group is-{{ group.kind }}" style="--ha-people: {% if people|length > 1 %}{{ people|length }}{% else %}0{% endif %};">
+                    <div class="ha-group-head">
+                        <h3>{{ group.label }}</h3>
+                        <strong>{{ group.avg|zl }}<small> / mies.</small></strong>
+                        <p>{{ group.hint }}</p>
+                    </div>
+                    {% if people|length > 1 %}
+                        <div class="ha-row ha-row-head" aria-hidden="true">
+                            <span>Kategoria</span><span></span><span>Razem</span>
+                            {% for person in people %}<span class="ha-person-col">{{ person }}</span>{% endfor %}
+                            <span>Rodzaj</span>
+                        </div>
+                    {% endif %}
+                    <ul class="ha-rows">
+                        {% for row in group.rows %}
+                            <li class="ha-row">
+                                <span class="ha-name">{{ row.name }}<small>{{ row.share|floatformat:0 }}% grupy</small></span>
+                                <span class="ha-bar" aria-hidden="true"><span style="width: {{ row.bar|unlocalize }}%"></span></span>
+                                <strong class="ha-amount">{{ row.avg|zl }}</strong>
+                                {% if people|length > 1 %}
+                                    {% for item in row.people %}<span class="ha-person-col">{{ item.avg|zl }}</span>{% endfor %}
+                                    <span class="ha-people-line">{% for item in row.people %}{% if item.avg %}<span>{{ item.label }} {{ item.avg|zl }}</span>{% endif %}{% endfor %}</span>
+                                {% endif %}
+                                <span class="ha-kind">
+                                    <input type="hidden" name="category_{{ forloop.parentloop.counter }}_{{ forloop.counter }}" value="{{ row.name }}">
+                                    <label class="visually-hidden" for="kind-{{ forloop.parentloop.counter }}-{{ forloop.counter }}">Rodzaj: {{ row.name }}</label>
+                                    <select class="form-select form-select-sm" id="kind-{{ forloop.parentloop.counter }}-{{ forloop.counter }}"
+                                            name="kind_{{ forloop.parentloop.counter }}_{{ forloop.counter }}">
+                                        {% for value, label in kind_choices %}<option value="{{ value }}" {% if value == row.kind %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                                    </select>
+                                </span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endfor %}
+            <div class="ha-save" data-ha-save hidden>
+                <span>Zmieniono rodzaj kategorii – zapisz, żeby przeliczyć minimum.</span>
+                <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-check-lg" aria-hidden="true"></i> Zapisz i przelicz</button>
+            </div>
+            <noscript><div class="ha-save"><button type="submit" class="btn btn-primary btn-sm">Zapisz rodzaje kategorii</button></div></noscript>
+        </form>
+
+        <div class="ha-two">
+            {% if people|length > 1 %}
+                <section class="u-card u-card-pad" aria-labelledby="ha-people-title">
+                    <h2 class="u-section-title" id="ha-people-title">Według kont <small class="ha-per-month">średnio / mies.</small></h2>
+                    <div class="u-table-wrap">
+                        <table class="u-table">
+                            <thead><tr><th scope="col">Konto</th><th scope="col" class="text-end">Wydatki</th><th scope="col" class="text-end">Przychody</th></tr></thead>
+                            <tbody>
+                                {% for person in people_totals %}
+                                    <tr><th scope="row">{{ person.label }}</th><td class="u-amount">{{ person.spending|zl }}</td><td class="u-amount">{{ person.income|zl }}</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            {% endif %}
+            {% if income_sources %}
+                <section class="u-card u-card-pad" aria-labelledby="ha-income-title">
+                    <h2 class="u-section-title" id="ha-income-title">Skąd są przychody</h2>
+                    <div class="u-table-wrap">
+                        <table class="u-table">
+                            <thead><tr><th scope="col">Źródło</th><th scope="col" class="text-end">Średnio / mies.</th></tr></thead>
+                            <tbody>
+                                {% for source in income_sources %}<tr><th scope="row">{{ source.name }}</th><td class="u-amount">{{ source.avg|zl }}</td></tr>{% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            {% endif %}
+        </div>
+
+        <p class="ha-footnote"><i class="bi bi-info-circle" aria-hidden="true"></i>
+            Pominięte: przelewy z kont osobistych na konto wspólne i powiązane z nimi wpływy{% if excluded %}, kategorie „Pomijane” (średnio {{ excluded|zl }} / mies.){% endif %}. Średnie liczone z miesięcy, w których są wpisy.
+        </p>
+    {% endif %}
+
+    <form method="post" class="u-card u-card-pad ha-share" id="udostepnianie">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="share">
+        <input type="hidden" name="okres" value="{{ months }}">
+        <div>
+            <h2 class="u-section-title">Twoje udostępnianie</h2>
+            <p class="u-page-sub mb-0">
+                {% if my_account.share_in_household_analysis %}
+                    Domownicy z Twoich kont wspólnych widzą w tej analizie sumy z Twojego konta osobistego: kwoty według kategorii i miesięcy. Tytułów, sklepów i pojedynczych wydatków nie widzą.
+                {% else %}
+                    Twoje konto osobiste jest widoczne tylko dla Ciebie. Po włączeniu domownicy z Twoich kont wspólnych zobaczą tu sumy według kategorii i miesięcy – bez tytułów, sklepów i pojedynczych wydatków.
+                {% endif %}
+            </p>
+        </div>
+        {% if my_account.share_in_household_analysis %}
+            <input type="hidden" name="share" value="0">
+            <button type="submit" class="btn btn-outline-secondary"><i class="bi bi-lock" aria-hidden="true"></i> Przestań udostępniać</button>
+        {% else %}
+            <input type="hidden" name="share" value="1">
+            <button type="submit" class="btn btn-primary"><i class="bi bi-share" aria-hidden="true"></i> Udostępnij sumy domownikom</button>
+        {% endif %}
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ block.super }}
+{% if has_data %}
+    {{ chart|json_script:"haChartData" }}
+    <script src="{% static 'vendor/chart/chart.umd.js' %}"></script>
+    <script src="{% static 'js/charts.js' %}"></script>
+    <script src="{% static 'js/household-analysis.js' %}"></script>
+{% endif %}
+{% endblock %}
