@@ -8,7 +8,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Prefetch, Q, Sum
+from django.db.models import Count, Min, Prefetch, Q, Sum
 from django.http import FileResponse, Http404, JsonResponse
 from django.urls import reverse
 from django.utils.http import urlencode
@@ -28,6 +28,7 @@ from .constants import (
     PANTRY_SCANNER_AUTO_ACTION_TIMEOUT_MS,
 )
 from .models import (
+    PantryBatch,
     PantryMovement,
     PantryProduct,
     ProductCatalogEntry,
@@ -71,6 +72,10 @@ from .services.pantry_sharing import UNIT_BASE
 from .services.polish import completion_message, polish_count, polish_number
 from .services.receipt_prices import barcode_link_candidates, price_summaries
 from .services.receipts import assign_barcode
+from .services.pantry_batches import (
+    add_batch, date_undated_stock, expiry_category_names, expiry_overview, parse_expiry, quick_dates,
+    requires_expiry,
+)
 from .services.shopping_sync import (
     complete_shopping_list,
     refresh_pantry_purchase,
@@ -160,6 +165,8 @@ def pantry_product_json(product):
         'image_url': image_url,
         'image_upload_url': reverse('cooking:pantry-product-image-upload', args=[product.id]),
         'stock_status': product.stock_status,
+        # Nabiał: „Dodano” wymaga terminu przydatności (services/pantry_batches.py).
+        'requires_expiry': requires_expiry(product),
     }
 
 
@@ -843,6 +850,11 @@ class PantryListView(LoginRequiredMixin, View):
             return group_packages.get(product.group_id, 0) > product.group.minimum_packages
 
         prices = price_summaries([product.pk for product in visible_products])
+        expiry = expiry_overview(all_products)
+        nearest = dict(
+            PantryBatch.objects.filter(product__in=visible_products)
+            .values('product').annotate(first=Min('expires_on')).values_list('product', 'first')
+        )
         for product in visible_products:
             forecast = forecasts[product.pk]
             average_daily = forecast.rate
@@ -860,6 +872,8 @@ class PantryListView(LoginRequiredMixin, View):
                 'catalog_entry': catalog_by_barcode.get(product.barcode),
                 'forecast': forecast,
                 'price': prices.get(product.pk),
+                'expires_on': nearest.get(product.pk),
+                'expires_in': (nearest[product.pk] - today).days if product.pk in nearest else None,
                 'manual_consume_id': uuid4(),
                 'manual_purchase_id': uuid4(),
                 'group_covered': covered_by_group(product),
@@ -931,6 +945,9 @@ class PantryListView(LoginRequiredMixin, View):
             'total_consumed': movement_stats['total_consumed'] or Decimal('0'),
             'total_restocked': movement_stats['total_restocked'] or Decimal('0'),
             'movement_count': movement_stats['movement_count'] or 0,
+            'expiry': expiry,
+            'quick_dates': quick_dates(today),
+            'expiry_category_names': sorted(expiry_category_names()),
             'scanner_auto_action_enabled': PANTRY_SCANNER_AUTO_ACTION_ENABLED,
             'scanner_auto_action_timeout_seconds': max(
                 1,
@@ -1066,6 +1083,7 @@ class PantryBarcodeActionView(LoginRequiredMixin, View):
             count = parse_scan_count(payload.get('count'))
             if action not in [PantryMovement.CONSUME, PantryMovement.PURCHASE]:
                 raise ValueError('Wybierz „zużyto” albo „dodano”.')
+            expires_on = parse_expiry(payload.get('expires_on'))
 
             replay = PantryMovement.objects.select_related('product').filter(scan_id=scan_id).first()
             if replay:
@@ -1106,6 +1124,8 @@ class PantryBarcodeActionView(LoginRequiredMixin, View):
                     {'ok': False, 'error': 'Kod nie jest jeszcze przypisany do produktu.'},
                     status=404,
                 )
+            if action == PantryMovement.PURCHASE and expires_on is None and requires_expiry(product):
+                raise ValueError('Ten produkt ma obowiązkowy termin przydatności - wybierz datę.')
             requested_quantity = (product.quantity_per_scan * Decimal(count)).quantize(Decimal('0.01'))
             validate_pantry_storage_quantity(requested_quantity)
             validate_pantry_quantity_for_unit(requested_quantity, product.unit)
@@ -1145,6 +1165,8 @@ class PantryBarcodeActionView(LoginRequiredMixin, View):
                 requested_package_count=count,
                 stock_was_insufficient=stock_was_insufficient,
             )
+            if action == PantryMovement.PURCHASE and expires_on:
+                add_batch(product, fulfilled_quantity, expires_on)
             return JsonResponse({
                 'ok': True,
                 'idempotent_replay': False,
@@ -1184,6 +1206,9 @@ class PantryBarcodeRegisterView(LoginRequiredMixin, View):
             if len(name) > 160:
                 raise ValueError('Nazwa produktu może mieć maksymalnie 160 znaków.')
             requested_category = parse_pantry_category(payload.get('category'))
+            expires_on = parse_expiry(payload.get('expires_on'))
+            if expires_on is None and requested_category and requested_category in expiry_category_names():
+                raise ValueError(f'Kategoria „{requested_category}” ma obowiązkowy termin przydatności - wybierz datę.')
             catalog_entry = household_catalog_entry(barcode) or cached_open_food_facts_entry(barcode)
             catalog_category = suggested_category_for_catalog_entry(catalog_entry)
             category = (
@@ -1300,6 +1325,8 @@ class PantryBarcodeRegisterView(LoginRequiredMixin, View):
                 scan_id=scan_id,
                 package_count=count,
             )
+            if expires_on:
+                add_batch(product, quantity, expires_on)
             return JsonResponse({
                 'ok': True,
                 'idempotent_replay': False,
@@ -2664,3 +2691,20 @@ class PantryBarcodeLinkView(LoginRequiredMixin, View):
         except ValueError as exc:
             return JsonResponse({'ok': False, 'error': str(exc)}, status=409)
         return JsonResponse({'ok': True, 'status': 'known', 'product': pantry_product_json(product)})
+
+
+class PantryExpiryView(LoginRequiredMixin, View):
+    """„Uzupełnij termin”: data dla całej ilości produktu, która jeszcze jej nie ma."""
+
+    def post(self, request, product_id):
+        product = get_object_or_404(PantryProduct, pk=product_id)
+        try:
+            expires_on = parse_expiry(request.POST.get('expires_on') or request.POST.get('custom_expires_on'))
+            if expires_on is None:
+                raise ValueError('Wybierz datę przydatności.')
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            return redirect_back(request, reverse('cooking:pantry'))
+        if date_undated_stock(product, expires_on):
+            messages.success(request, f'{product.name}: ważne do {expires_on:%d.%m.%Y}.')
+        return redirect_back(request, reverse('cooking:pantry'))

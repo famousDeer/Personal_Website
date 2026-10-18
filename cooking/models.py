@@ -666,6 +666,9 @@ class PantryCategory(models.Model):
     # Kategorie wbudowane mają kod, po którym "Przywróć domyślne reguły"
     # rozpoznaje je także po zmianie nazwy. Dodane przez domowników: brak kodu.
     code = models.SlugField(max_length=40, unique=True, null=True, blank=True)
+    # Produkty z tej kategorii (domyślnie nabiał) dostają przy dodaniu
+    # obowiązkowy termin przydatności - każde opakowanie może być z innej partii.
+    requires_expiry = models.BooleanField(default=False, verbose_name='Termin przydatności obowiązkowy')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -924,3 +927,31 @@ class ReceiptAlias(models.Model):
     def __str__(self):
         target = 'pomijaj' if self.ignore else (self.product or self.group)
         return f'{self.normalized_text} → {target}'
+
+
+
+class PantryBatch(models.Model):
+    """Partia produktu z terminem przydatności („jogurty kupione 17.10, ważne do 27.10”).
+
+    Stan produktu dalej liczy ``PantryProduct.current_quantity``. Partie mówią
+    tylko, *z jakim terminem* jest ta ilość. Zużycie zdejmuje najpierw partię
+    z najkrótszym terminem (services/pantry_batches.reconcile), więc nie trzeba
+    pytać, które opakowanie poszło.
+    """
+
+    product = models.ForeignKey(PantryProduct, on_delete=models.CASCADE, related_name='batches')
+    quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    expires_on = models.DateField()
+    purchased_on = models.DateField(default=timezone.localdate)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'pantry_batches'
+        ordering = ['expires_on', 'created_at']
+
+    def __str__(self):
+        return f'{self.product.name}: {self.quantity} do {self.expires_on:%d.%m.%Y}'
+
+    @property
+    def days_left(self):
+        return (self.expires_on - timezone.localdate()).days

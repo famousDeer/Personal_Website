@@ -60,6 +60,12 @@ Kontekst: card (słownik z PantryListView), product = card.product.
                     </span>
                 {% endif %}
             </p>
+            {% if card.expires_on %}
+                <span class="ex-badge{% if card.expires_in < 0 %} is-expired{% elif card.expires_in <= 3 %} is-soon{% endif %}">
+                    <i class="bi bi-calendar-check" aria-hidden="true"></i>
+                    {% if card.expires_in < 0 %}po terminie {{ card.expires_on|date:"d.m" }}{% else %}ważne do {{ card.expires_on|date:"d.m" }}{% endif %}
+                </span>
+            {% endif %}
             {% if card.price and card.price.last %}
                 {% with last=card.price.last %}
                     <a class="pantry-price" href="{% url 'cooking:product-prices' product.id %}" title="Historia cen">

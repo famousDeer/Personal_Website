@@ -1,17 +1,18 @@
 {% extends 'cooking/index.html' %}
 {% load static ui %}
 
-{% block title %}Kody z paragonu – spiżarnia{% endblock %}
+{% block title %}Rozpakuj zakupy – spiżarnia{% endblock %}
 {% block cooking_editor_assets %}{% endblock %}
 
 {% block content_cooking %}
 {% url 'cooking:receipt-detail' receipt.uuid as receipt_url %}
-{% page_head title="Zeskanuj kody" eyebrow=receipt.store.name|default:"Paragon" icon="bi-upc-scan" sub="Skanuj opakowania po kolei, w dowolnej kolejności. Kod sam trafi do właściwego produktu – zapytamy tylko, gdy nie będzie pewności." back=receipt_url back_label="Wróć do paragonu" %}{% endpage_head %}
+{% page_head title="Rozpakuj zakupy" eyebrow=receipt.store.name|default:"Paragon" icon="bi-box-seam" sub="Skanuj opakowania w dowolnej kolejności, wkładając je do szafki. Kod sam trafi do produktu; przy nabiale dotknij daty z opakowania." back=receipt_url back_label="Wróć do paragonu" %}{% endpage_head %}
 
 <div class="pc-page animate-fade-in-up" id="receipt-barcodes"
      data-scan-url="{% url 'cooking:receipt-barcodes' receipt.uuid %}"
      data-zxing-url="{% static 'cooking/vendor/zxing-browser-0.2.1.min.js' %}"
-     data-done-url="{{ receipt_url }}">
+     data-done-url="{{ receipt_url }}"
+     data-quick-dates="{% for day in quick_dates %}{{ day|date:'Y-m-d' }}{% if not forloop.last %}|{% endif %}{% endfor %}">
     <form class="d-none" data-csrf>{% csrf_token %}</form>
 
     <section class="pc-card rb-camera" data-camera>
@@ -31,15 +32,25 @@
         <button type="button" class="btn btn-link btn-sm mt-2" data-choose-skip>To nie jest produkt z tego paragonu</button>
     </section>
 
+    <section class="pc-card rb-date" data-date hidden>
+        <p class="fw-bold mb-1"><span data-date-product></span> – ważne do:</p>
+        <div class="ex-chips" data-date-chips></div>
+        <div class="ex-custom mt-2">
+            <input type="date" class="form-control form-control-sm" data-date-input aria-label="Inna data">
+            <button type="button" class="btn btn-primary btn-sm" data-date-ok>OK</button>
+        </div>
+    </section>
+
     <section class="pc-group" aria-labelledby="rb-remaining-title">
         <div class="pc-group-head">
-            <h2 class="pc-group-title" id="rb-remaining-title">Bez kodu <span data-remaining-count>{{ remaining|length }}</span></h2>
+            <h2 class="pc-group-title" id="rb-remaining-title">Do rozpakowania <span data-remaining-count>{{ remaining|length }}</span></h2>
         </div>
         <ul class="rb-list" data-remaining>
-            {% for product in remaining %}<li data-product-id="{{ product.pk }}">{{ product.name }}</li>{% endfor %}
+            {% for item in remaining %}<li data-product-id="{{ item.id }}" data-needs-code="{{ item.needs_code|yesno:'1,' }}" data-needs-date="{{ item.needs_date|yesno:'1,' }}">{{ item.name }}</li>{% endfor %}
         </ul>
         <ul class="rb-list is-done" data-done></ul>
-        <p class="pc-empty" data-all-done {% if remaining %}hidden{% endif %}>Wszystkie produkty z tego paragonu mają już kody. Następny skan rozpozna je od razu.</p>
+        <p class="pc-hint" data-remaining-hint>🔢 brak kodu · 📅 brak terminu – produkt bez kodu (np. ser z lady) dotknij na liście, żeby wpisać termin.</p>
+        <p class="pc-empty" data-all-done {% if remaining %}hidden{% endif %}>Wszystko rozpakowane: produkty mają kody i terminy.</p>
     </section>
 
     <form class="rb-manual" data-manual>

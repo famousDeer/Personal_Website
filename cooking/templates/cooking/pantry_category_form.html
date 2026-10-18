@@ -31,6 +31,12 @@
             </div>
             <div class="form-text">„Dom” to produkty niejadalne – kosmetyki i chemia z bazy nie trafią do kategorii spożywczej.</div>
         </fieldset>
+        <div class="form-check form-switch mb-4">
+            <input class="form-check-input" type="checkbox" role="switch" id="category-requires-expiry" name="requires_expiry"
+                   {% if form_values.requires_expiry == 'on' %}checked{% endif %} aria-describedby="category-expiry-help">
+            <label class="form-check-label fw-bold" for="category-requires-expiry">Termin przydatności obowiązkowy</label>
+            <div class="form-text" id="category-expiry-help">Przy dodawaniu produktu z tej kategorii trzeba wybrać datę z opakowania (np. nabiał).</div>
+        </div>
         <div class="pc-form-actions">
             <a class="btn btn-outline-danger me-auto" href="{% url 'cooking:pantry-category-delete' category.pk %}">
                 <i class="bi bi-trash3" aria-hidden="true"></i> Usuń

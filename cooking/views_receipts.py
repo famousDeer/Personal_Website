@@ -19,8 +19,9 @@ from .services.receipt_parser import parse_receipt
 from .services.receipt_prices import chart_data, price_summaries, price_summary
 from .services.receipts import (
     ACTION_ADD, ACTION_IGNORE, ACTION_SKIP, LineDecision, apply_ocr_text, confirm_receipt,
-    default_quantity, receipt_products_without_barcode, scan_receipt_barcode, start_processing,
+    default_quantity, receipt_unpack_items, scan_receipt_barcode, start_processing,
 )
+from .services.pantry_batches import date_undated_stock, parse_expiry, quick_dates
 from .views import normalize_pantry_barcode
 
 MAX_PHOTOS = 4
@@ -126,9 +127,7 @@ class ReceiptDetailView(LoginRequiredMixin, View):
             'counts': counts,
             'photos': [photo for photo in receipt.photos.all() if photo.image],
             'names': _datalist_names() if receipt.status == Receipt.STATUS_REVIEW else [],
-            'without_barcode': (
-                receipt_products_without_barcode(receipt) if receipt.status == Receipt.STATUS_DONE else []
-            ),
+            'unpack_items': receipt_unpack_items(receipt) if receipt.status == Receipt.STATUS_DONE else [],
             'lines_total': receipt.lines_total,
         })
 
@@ -156,9 +155,12 @@ class ReceiptDetailView(LoginRequiredMixin, View):
             parts.append(f'{polish_count(linked, "pozycja była", "pozycje były", "pozycji było")} już dodane skanem')
         if ticked:
             parts.append(f'odhaczono na liście zakupów: {ticked}')
-        missing = len(receipt_products_without_barcode(receipt))
+        missing = len(receipt_unpack_items(receipt))
         if missing:
-            parts.append(f'{polish_count(missing, "produkt nie ma", "produkty nie mają", "produktów nie ma")} jeszcze kodu kreskowego')
+            parts.append(
+                f'{polish_count(missing, "produkt czeka", "produkty czekają", "produktów czeka")} '
+                'na kod kreskowy albo termin - „Rozpakuj zakupy”'
+            )
         messages.success(request, '. '.join(parts) + '.')
         for warning in warnings[:5]:
             messages.warning(request, warning)
@@ -238,8 +240,9 @@ class ProductPriceView(LoginRequiredMixin, View):
 
 
 class ReceiptBarcodesView(LoginRequiredMixin, View):
-    """Tryb „Zeskanuj kody nowych produktów”: aparat działa cały czas,
-    a każdy zeskanowany kod sam trafia do produktu z paragonu."""
+    """„Rozpakuj zakupy”: aparat działa cały czas, każdy zeskanowany kod sam
+    trafia do produktu z paragonu, a przy nabiale od razu pada pytanie o termin
+    (jedno dotknięcie daty)."""
 
     template_name = 'cooking/receipt_barcodes.html'
 
@@ -247,21 +250,29 @@ class ReceiptBarcodesView(LoginRequiredMixin, View):
         receipt = get_object_or_404(Receipt.objects.select_related('store'), uuid=receipt_uuid)
         return render(request, self.template_name, {
             'receipt': receipt,
-            'remaining': receipt_products_without_barcode(receipt),
+            'remaining': receipt_unpack_items(receipt),
+            'quick_dates': quick_dates(),
         })
 
     def post(self, request, receipt_uuid):
         receipt = get_object_or_404(Receipt, uuid=receipt_uuid)
         try:
             payload = json.loads(request.body or b'{}')
-            barcode = normalize_pantry_barcode(payload.get('barcode'))
             product_id = int(payload.get('product_id') or 0) or None
-            result = scan_receipt_barcode(receipt, barcode, product_id)
+            if payload.get('action') == 'date':
+                product = get_object_or_404(PantryProduct, pk=product_id)
+                expires_on = parse_expiry(payload.get('expires_on'))
+                if expires_on is None:
+                    raise ValueError('Wybierz datę przydatności.')
+                date_undated_stock(product, expires_on)
+                result = {'status': 'dated', 'product': product.name, 'product_id': product.pk,
+                          'expires_on': expires_on.isoformat()}
+            else:
+                barcode = normalize_pantry_barcode(payload.get('barcode'))
+                result = scan_receipt_barcode(receipt, barcode, product_id)
+                result['barcode'] = barcode
         except (ValueError, TypeError) as exc:
             return JsonResponse({'ok': False, 'error': str(exc) or 'Niepoprawny kod.'}, status=400)
         result['ok'] = True
-        result['barcode'] = barcode
-        result['remaining'] = [
-            {'id': product.pk, 'name': product.name} for product in receipt_products_without_barcode(receipt)
-        ]
+        result['remaining'] = receipt_unpack_items(receipt)
         return JsonResponse(result)

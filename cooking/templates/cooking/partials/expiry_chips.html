@@ -1,0 +1,6 @@
+{# Szybki wybór terminu: jedno dotknięcie zapisuje datę. Kontekst: quick_dates, name (nazwa pola). #}
+<div class="ex-chips">
+    {% for day in quick_dates %}
+        <button type="submit" class="btn btn-outline-primary btn-sm" name="{{ name|default:'expires_on' }}" value="{{ day|date:'Y-m-d' }}">{{ day|date:"D j.m" }}</button>
+    {% endfor %}
+</div>

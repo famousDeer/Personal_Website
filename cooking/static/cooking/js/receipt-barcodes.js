@@ -1,8 +1,9 @@
-/* Tryb „Zeskanuj kody nowych produktów” po zatwierdzeniu paragonu.
+/* „Rozpakuj zakupy” po zatwierdzeniu paragonu.
  *
  * Aparat działa bez przerwy. Każdy kod idzie na serwer, który sam wybiera
  * produkt (jedyny pozostały albo pasujący do nazwy z Open Food Facts).
- * Użytkownik dotyka ekranu tylko wtedy, gdy serwer nie jest pewny.
+ * Użytkownik dotyka ekranu tylko wtedy, gdy serwer nie jest pewny, i przy
+ * nabiale - raz, wybierając datę z opakowania.
  */
 (function () {
     'use strict';
@@ -22,6 +23,11 @@
     const doneList = select('[data-done]');
     const remainingCount = select('[data-remaining-count]');
     const allDone = select('[data-all-done]');
+    const dateBox = select('[data-date]');
+    const dateProduct = select('[data-date-product]');
+    const dateChips = select('[data-date-chips]');
+    const dateInput = select('[data-date-input]');
+    const quickDates = (root.dataset.quickDates || '').split('|').filter(Boolean);
     const csrfToken = select('[data-csrf] input[name="csrfmiddlewaretoken"]').value;
     const formats = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'];
     const REPEAT_MS = 4000;
@@ -39,11 +45,21 @@
         }
     }
 
+    function itemLabel(item) {
+        return `${item.name}${item.needs_code ? ' 🔢' : ''}${item.needs_date ? ' 📅' : ''}`;
+    }
+
     function renderRemaining(items, linkedName) {
         remainingList.replaceChildren(...items.map((item) => {
             const li = document.createElement('li');
             li.dataset.productId = item.id;
-            li.textContent = item.name;
+            li.textContent = itemLabel(item);
+            if (item.needs_date) {
+                li.tabIndex = 0;
+                li.setAttribute('role', 'button');
+                li.classList.add('is-clickable');
+                li.addEventListener('click', () => askDate(item.id, item.name));
+            }
             return li;
         }));
         if (linkedName) {
@@ -55,16 +71,61 @@
         allDone.hidden = items.length > 0;
         if (!items.length) {
             stopCamera();
-            setStatus('Gotowe – wszystkie kody przypisane.', 'ok');
+            setStatus('Gotowe – wszystko rozpakowane.', 'ok');
         }
     }
 
-    async function send(barcode, productId = null) {
+    function dateLabel(isoDate) {
+        const day = new Date(`${isoDate}T12:00:00`);
+        return day.toLocaleDateString('pl-PL', { weekday: 'short', day: 'numeric', month: 'numeric' });
+    }
+
+    function askDate(productId, name) {
+        state.paused = true;
+        state.dateProductId = productId;
+        dateProduct.textContent = name;
+        dateInput.value = '';
+        dateChips.replaceChildren(...quickDates.map((isoDate) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn btn-outline-success';
+            button.textContent = dateLabel(isoDate);
+            button.addEventListener('click', () => saveDate(isoDate));
+            return button;
+        }));
+        chooseBox.hidden = true;
+        dateBox.hidden = false;
+        setStatus(`${name}: dotknij daty z opakowania.`);
+        dateBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    async function saveDate(isoDate) {
+        if (!isoDate) {
+            dateInput.reportValidity();
+            return;
+        }
+        try {
+            const result = await post({ action: 'date', product_id: state.dateProductId, expires_on: isoDate });
+            dateBox.hidden = true;
+            state.paused = false;
+            feedback();
+            setStatus(`✓ ${result.product}: ważne do ${dateLabel(isoDate)} – skanuj następny`, 'ok');
+            renderRemaining(result.remaining);
+        } catch (error) {
+            setStatus(error.message, 'error');
+        }
+    }
+
+    function send(barcode, productId = null) {
+        return post({ barcode, product_id: productId });
+    }
+
+    async function post(body) {
         const response = await fetch(root.dataset.scanUrl, {
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken, Accept: 'application/json' },
-            body: JSON.stringify({ barcode, product_id: productId }),
+            body: JSON.stringify(body),
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok || payload.ok === false) {
@@ -108,8 +169,15 @@
     function handleResult(barcode, result) {
         if (result.status === 'linked') {
             feedback();
-            setStatus(`✓ ${result.product} – skanuj następny`, 'ok');
             renderRemaining(result.remaining, result.product);
+            if (result.needs_date) {
+                askDate(result.product_id, result.product);
+            } else {
+                setStatus(`✓ ${result.product} – skanuj następny`, 'ok');
+            }
+        } else if (result.status === 'date') {
+            feedback();
+            askDate(result.product_id, result.product);
         } else if (result.status === 'known') {
             setStatus(`Ten kod już jest w spiżarni: ${result.product}.`);
         } else if (result.candidates && result.candidates.length) {
@@ -227,6 +295,13 @@
     }
 
     startButton.addEventListener('click', startCamera);
+    select('[data-date-ok]').addEventListener('click', () => saveDate(dateInput.value));
+    remainingList.querySelectorAll('[data-needs-date="1"]').forEach((li) => {
+        li.tabIndex = 0;
+        li.setAttribute('role', 'button');
+        li.classList.add('is-clickable');
+        li.addEventListener('click', () => askDate(Number(li.dataset.productId), li.dataset.name || li.textContent.trim()));
+    });
     select('[data-choose-skip]').addEventListener('click', () => {
         hideChoice();
         setStatus('Pominięto. Skanuj następny produkt.');
@@ -240,8 +315,15 @@
     });
     window.addEventListener('pagehide', stopCamera);
 
-    if (remainingList.children.length) {
+    remainingList.querySelectorAll('li').forEach((li) => {
+        li.dataset.name = li.textContent.trim();
+        li.textContent = `${li.textContent.trim()}${li.dataset.needsCode ? ' 🔢' : ''}${li.dataset.needsDate ? ' 📅' : ''}`;
+    });
+    if (remainingList.querySelector('[data-needs-code="1"]')) {
         startCamera();
+    } else if (remainingList.children.length) {
+        startButton.hidden = false;
+        setStatus('Dotknij produktu na liście, żeby wpisać termin – albo zeskanuj opakowanie.');
     } else {
         setStatus('Wszystkie produkty z tego paragonu mają już kody.', 'ok');
     }

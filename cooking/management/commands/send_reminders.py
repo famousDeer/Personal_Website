@@ -31,7 +31,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--dry-run', action='store_true', help='Pokaż, co poszłoby na telefony.')
         parser.add_argument(
-            '--kind', choices=['spizarnia', 'lista', 'wszystko'], default='wszystko',
+            '--kind', choices=['spizarnia', 'lista', 'termin', 'wszystko'], default='wszystko',
             help='Ogranicz do jednego rodzaju powiadomienia.',
         )
 
@@ -52,6 +52,8 @@ class Command(BaseCommand):
             sent += self.pantry_reminder(dry_run)
         if kind in ('lista', 'wszystko'):
             sent += self.shopping_list_reminder(dry_run)
+        if kind in ('termin', 'wszystko'):
+            sent += self.expiry_reminder(dry_run)
         if not dry_run:
             prune_notification_log()
         self.stdout.write(self.style.SUCCESS(
@@ -82,6 +84,40 @@ class Command(BaseCommand):
             url=reverse('cooking:shopping-app'),
             # Ten sam zestaw produktów nie przypomni się drugi raz.
             once_per='|'.join(sorted(names)),
+        )
+
+    # --- terminy przydatności ---------------------------------------------
+
+    def expiry_reminder(self, dry_run):
+        """Raz dziennie: co kończy się dziś albo jutro (i co już po terminie)."""
+        from datetime import timedelta
+
+        from cooking.models import PantryBatch
+        from cooking.services.pantry_batches import expiry_overview
+
+        today = timezone.localdate()
+        expiry_overview()   # dopasowuje partie do stanu (zużyte nie przypominają się)
+        batches = list(
+            PantryBatch.objects.filter(expires_on__lte=today + timedelta(days=1), product__current_quantity__gt=0)
+            .select_related('product').order_by('expires_on', 'product__name')
+        )
+        if not batches:
+            self.stdout.write('Terminy: nic się nie kończy.')
+            return 0
+        names = list(dict.fromkeys(batch.product.name for batch in batches))
+        shown = ', '.join(names[:MAX_NAMES])
+        rest = len(names) - MAX_NAMES
+        body = shown + (f' i {polish_count(rest, "inny", "inne", "innych")}' if rest > 0 else '')
+        title = 'Zjedz najpierw: kończy się termin'
+        self.stdout.write(f'Terminy: {title} - {body}')
+        if dry_run:
+            return 0
+        return notify(
+            kind='termin',
+            title=title,
+            body=body,
+            url=reverse('cooking:pantry'),
+            once_per=f'{today.isoformat()}:' + '|'.join(sorted(names)),
         )
 
     # --- lista zakupów -----------------------------------------------------

@@ -35,6 +35,12 @@
         knownConsumeLabel: select('[data-known-consume-label]'),
         knownPurchaseLabel: select('[data-known-purchase-label]'),
         knownCount: select('[data-known-count]'),
+        knownExpiry: select('[data-known-expiry]'),
+        knownExpiryChips: select('[data-known-expiry-chips]'),
+        knownExpiryInput: select('[data-known-expiry-input]'),
+        knownExpiryHelp: select('[data-known-expiry-help]'),
+        registerExpiry: select('[data-register-expiry]'),
+        registerExpiryLabel: select('[data-register-expiry-label]'),
         knownCatalogMeta: select('[data-known-catalog-meta]'),
         knownDescription: select('[data-known-description]'),
         knownSource: select('[data-known-source]'),
@@ -1633,6 +1639,9 @@
         syncRegisterQuantityStep();
         elements.registerCount.value = '2';
         elements.registerCategory.value = '';
+        if (elements.registerExpiry) {
+            elements.registerExpiry.value = '';
+        }
         resetProductPhoto();
         resetCatalogPresentation();
         showPanel('scanning');
@@ -1764,10 +1773,52 @@
         await resolveBarcode();
     }
 
+    // Terminy przydatności: kategorie z obowiązkowym terminem i gotowe daty
+    // (dziś + 3, 7, 10, 14, 21 dni) przychodzą z serwera w atrybutach data-*.
+    const expiryCategories = new Set((root.dataset.expiryCategories || '').split('|').filter(Boolean));
+    const quickDates = (root.dataset.quickDates || '').split('|').filter(Boolean);
+
+    function dateLabel(isoDate) {
+        const day = new Date(`${isoDate}T12:00:00`);
+        return day.toLocaleDateString('pl-PL', { weekday: 'short', day: 'numeric', month: 'numeric' });
+    }
+
+    function renderKnownExpiry(product) {
+        if (!elements.knownExpiry) {
+            return;
+        }
+        state.expiresOn = '';
+        elements.knownExpiryInput.value = '';
+        elements.knownExpiryHelp.classList.remove('text-danger');
+        elements.knownExpiryHelp.textContent = 'Ten produkt ma obowiązkowy termin. Dotknij daty z opakowania – od razu doda się do stanu.';
+        elements.knownExpiry.hidden = !product?.requires_expiry;
+        elements.knownExpiryChips.replaceChildren(...quickDates.map((isoDate) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn btn-outline-success btn-sm';
+            button.textContent = dateLabel(isoDate);
+            button.addEventListener('click', () => {
+                state.expiresOn = isoDate;
+                performKnownAction('purchase');
+            });
+            return button;
+        }));
+    }
+
+    function syncRegisterExpiry() {
+        if (!elements.registerExpiry) {
+            return;
+        }
+        const required = expiryCategories.has(elements.registerCategory.value);
+        elements.registerExpiry.required = required;
+        elements.registerExpiryLabel.textContent = required ? 'Ważne do (obowiązkowo)' : 'Ważne do (opcjonalnie)';
+    }
+
     function presentKnownProduct(product, catalog, timeout = state.autoActionTimeoutMs) {
         cancelCountdown();
         state.product = product;
         state.catalog = catalog || null;
+        renderKnownExpiry(product);
         showPanel('known');
         setCameraStatus('Kod rozpoznany');
         const scanQuantity = formatQuantity(product.quantity_per_scan, product.unit_label);
@@ -1964,6 +2015,15 @@
             elements.knownCount?.reportValidity();
             return;
         }
+        const expiresOn = action === 'purchase' ? (state.expiresOn || elements.knownExpiryInput?.value || '') : '';
+        if (action === 'purchase' && state.product?.requires_expiry && !expiresOn) {
+            elements.knownExpiry.hidden = false;
+            elements.knownExpiryHelp.textContent = 'Najpierw wybierz termin przydatności z opakowania.';
+            elements.knownExpiryHelp.classList.add('text-danger');
+            elements.knownExpiryChips.querySelector('button')?.focus();
+            announce('Wybierz termin przydatności.');
+            return;
+        }
         state.actionLocked = true;
         state.lastActionCount = count;
         cancelCountdown();
@@ -1981,6 +2041,7 @@
                     scan_id: state.scanId,
                     action,
                     count,
+                    expires_on: expiresOn,
                 }),
             });
             state.actionLocked = false;
@@ -2013,6 +2074,7 @@
         elements.registerCount.value = isMany ? '2' : '1';
         elements.registerSubmitLabel.textContent = isMany ? 'Dodaj do spiżarni' : 'Dodaj produkt';
         updateRegisterCatalogNote(state.catalog);
+        syncRegisterExpiry();
         elements.registerName.focus({ preventScroll: false });
         if (catalogNeedsPolishName(state.catalog)) {
             // Obca nazwa jest zaznaczona - pierwsze naciśnięcie klawisza ją zastępuje.
@@ -2047,6 +2109,7 @@
             unit: elements.registerUnit.value,
             count,
             category: elements.registerCategory.value,
+            expires_on: elements.registerExpiry?.value || '',
         };
         const retry = () => registerProduct(options);
 
@@ -2789,4 +2852,6 @@
         cleanupCrop();
         resetProductPhoto();
     });
+    elements.registerCategory?.addEventListener('change', syncRegisterExpiry);
+    syncRegisterExpiry();
 })();

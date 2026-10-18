@@ -792,7 +792,7 @@ class ReceiptBarcodeScanModeTests(TestCase):
 
     def test_done_page_offers_scan_mode_without_weighted_items(self):
         page = self.client.get(reverse('cooking:receipt-detail', args=[self.receipt.uuid]))
-        self.assertContains(page, 'Zeskanuj kody nowych produktów (2)')   # cytryny luzem bez kodu
+        self.assertContains(page, 'Rozpakuj zakupy (2)')   # cytryny luzem bez kodu
         scan_page = self.client.get(self.url)
         self.assertContains(scan_page, 'Mrożone maliny')
         self.assertNotContains(scan_page, 'data-product-id="%d"' % PantryProduct.objects.get(name='Cytryny luz').pk)
@@ -814,3 +814,89 @@ class ReceiptBarcodeScanModeTests(TestCase):
         with patch('cooking.services.receipts._catalog_name', return_value='Mutti Polpa pomidory'):
             result = self._scan('8005110070600')
         self.assertEqual((result['status'], result['product']), ('linked', 'Mutti Pomidory polpa'))
+
+
+class ExpiryTests(TestCase):
+    """Terminy przydatności: obowiązkowe dla nabiału, partie od najkrótszego terminu."""
+
+    def setUp(self):
+        from datetime import timedelta
+
+        self.user = User.objects.create_user(username='terminy', password='pass12345')
+        self.client.force_login(self.user)
+        self.today = timezone.localdate()
+        self.in_days = lambda days: self.today + timedelta(days=days)
+        self.yogurt = PantryProduct.objects.create(
+            created_by=self.user, name='Jogurt Pilos', category='Nabiał', barcode='5900000000999',
+            unit=PantryProduct.UNIT_GRAM, quantity_per_scan=Decimal('400'),
+        )
+
+    def _scan(self, action, expires_on=''):
+        from uuid import uuid4
+
+        return self.client.post(reverse('cooking:pantry-barcode-action'), data=json.dumps({
+            'barcode': self.yogurt.barcode, 'scan_id': str(uuid4()), 'action': action, 'count': 1,
+            'expires_on': expires_on,
+        }), content_type='application/json')
+
+    def test_dairy_needs_date_and_consumption_takes_shortest_date_first(self):
+        from .models import PantryBatch
+        from .services.pantry_batches import expiry_overview
+
+        self.assertEqual(self._scan('purchase').status_code, 400)
+        self.assertEqual(self._scan('purchase', self.in_days(10).isoformat()).status_code, 200)
+        self.assertEqual(self._scan('purchase', self.in_days(2).isoformat()).status_code, 200)
+        self.assertEqual(PantryBatch.objects.count(), 2)
+        self.assertEqual(self._scan('consume').status_code, 200)              # bez pytania o partię
+        self.yogurt.refresh_from_db()
+        overview = expiry_overview()
+        remaining = list(PantryBatch.objects.values_list('expires_on', flat=True))
+        self.assertEqual(remaining, [self.in_days(10)])                        # zeszła partia z krótszym terminem
+        self.assertEqual(overview.eat_first, [])
+        self.assertEqual(overview.missing, [])
+
+    def test_pantry_page_eat_first_and_missing_date(self):
+        from .services.pantry_batches import add_batch
+
+        milk = PantryProduct.objects.create(created_by=self.user, name='Mleko', category='Nabiał',
+                                            current_quantity=Decimal('2'))
+        self.yogurt.current_quantity = Decimal('400')
+        self.yogurt.save()
+        add_batch(self.yogurt, Decimal('400'), self.in_days(1))
+        page = self.client.get(reverse('cooking:pantry'))
+        self.assertContains(page, 'Zjedz najpierw')
+        self.assertContains(page, 'jutro')
+        self.assertContains(page, 'Uzupełnij termin')
+        self.assertContains(page, reverse('cooking:pantry-expiry', args=[milk.pk]))
+
+        self.client.post(reverse('cooking:pantry-expiry', args=[milk.pk]), {'expires_on': self.in_days(7).isoformat()})
+        self.assertEqual(milk.batches.get().expires_on, self.in_days(7))
+        self.assertNotContains(self.client.get(reverse('cooking:pantry')), 'Uzupełnij termin')
+
+    def test_unpack_mode_asks_date_for_dairy_from_receipt(self):
+        receipt = apply_ocr_text(Receipt.objects.create(), BIEDRONKA)
+        line = receipt.lines.get(name='Jogurt nat. Pilos 400g')
+        confirm_receipt(receipt, {line.pk: LineDecision(action=ACTION_ADD, target='Jogurt Pilos', quantity=Decimal('1'))})
+        url = reverse('cooking:receipt-barcodes', args=[receipt.uuid])
+        page = self.client.get(url)
+        self.assertContains(page, 'data-needs-date="1"')
+        self.assertContains(self.client.get(reverse('cooking:receipt-detail', args=[receipt.uuid])), 'Rozpakuj zakupy (1)')
+
+        scan = self.client.post(url, data=json.dumps({'barcode': self.yogurt.barcode}), content_type='application/json').json()
+        self.assertEqual((scan['status'], scan['product_id']), ('date', self.yogurt.pk))
+        dated = self.client.post(url, data=json.dumps({
+            'action': 'date', 'product_id': self.yogurt.pk, 'expires_on': self.in_days(14).isoformat(),
+        }), content_type='application/json').json()
+        self.assertEqual(dated['status'], 'dated')
+        self.assertEqual(dated['remaining'], [])
+        self.assertEqual(self.yogurt.batches.get().expires_on, self.in_days(14))
+
+    def test_category_switch(self):
+        from .models import PantryCategory
+
+        bread = PantryCategory.objects.get(code='pieczywo')
+        self.client.post(reverse('cooking:pantry-category-edit', args=[bread.pk]),
+                         {'name': bread.name, 'group': bread.group, 'requires_expiry': 'on'})
+        bread.refresh_from_db()
+        self.assertTrue(bread.requires_expiry)
+        self.assertTrue(PantryCategory.objects.get(code='nabial').requires_expiry)

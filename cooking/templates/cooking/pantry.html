@@ -12,6 +12,8 @@
      data-action-url="{% url 'cooking:pantry-barcode-action' %}"
      data-register-url="{% url 'cooking:pantry-barcode-register' %}"
      data-link-url="{% url 'cooking:pantry-barcode-link' %}"
+     data-expiry-categories="{{ expiry_category_names|join:'|' }}"
+     data-quick-dates="{% for day in quick_dates %}{{ day|date:'Y-m-d' }}{% if not forloop.last %}|{% endif %}{% endfor %}"
      data-zxing-url="{% static 'cooking/vendor/zxing-browser-0.2.1.min.js' %}">
     <form class="d-none" data-scanner-csrf>{% csrf_token %}</form>
 
@@ -88,6 +90,8 @@
             </span>
         </article>
     </section>
+
+    {% include 'cooking/partials/pantry_expiry.html' %}
 
     <details class="pantry-filter-panel mb-4 animate-fade-in-up" {% if current_search or current_category or current_status %}open{% endif %}>
         <summary>
@@ -538,6 +542,13 @@
                                 <small>Wybierz liczbę opakowań, a następnie „Zużyto” albo „Dodano”.</small>
                             </div>
 
+                            <div class="pantry-scan-expiry mt-3" data-known-expiry hidden>
+                                <p class="small fw-bold mb-1">Dodano – ważne do:</p>
+                                <div class="ex-chips" data-known-expiry-chips></div>
+                                <input type="date" class="form-control mt-2" data-known-expiry-input aria-label="Inna data przydatności">
+                                <small class="text-muted" data-known-expiry-help>Ten produkt ma obowiązkowy termin. Dotknij daty z opakowania – od razu doda się do stanu.</small>
+                            </div>
+
                             <div class="pantry-scan-choice-grid mt-3">
                                 <button class="btn btn-outline-danger pantry-scan-choice" type="button" data-known-action="consume">
                                     <i class="bi bi-dash-circle-fill"></i>
@@ -713,6 +724,10 @@
                                     <label for="scanner-product-category">Kategoria (opcjonalnie)</label>
                                 </div>
 
+                                <div class="form-floating mt-2" data-register-expiry-wrap>
+                                    <input class="form-control" type="date" id="scanner-product-expiry" data-register-expiry>
+                                    <label for="scanner-product-expiry" data-register-expiry-label>Ważne do (opcjonalnie)</label>
+                                </div>
                                 <div class="small text-muted mt-3"><i class="bi bi-upc me-1"></i><span data-register-code></span></div>
                                 <button class="btn btn-success btn-lg w-100 mt-4" type="submit" data-register-submit>
                                     <span class="spinner-border spinner-border-sm me-2 d-none" data-button-spinner></span>

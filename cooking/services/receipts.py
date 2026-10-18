@@ -11,6 +11,7 @@ deploy/receipts_upload.sh przenosi je na Dysk Google (rclone move).
 from __future__ import annotations
 
 import logging
+import os
 import re
 import threading
 from dataclasses import dataclass
@@ -396,6 +397,12 @@ def confirm_receipt(receipt: Receipt, decisions: dict[int, LineDecision], user=N
 def archive_dir() -> Path:
     path = Path(settings.RECEIPT_ARCHIVE_DIR)
     path.mkdir(parents=True, exist_ok=True)
+    # Kontener działa jako root, a rclone na Pi - jako zwykły użytkownik.
+    # Bez tego `rclone move` wyśle plik, ale nie usunie go z karty SD.
+    try:
+        os.chmod(path, 0o777)
+    except OSError:
+        pass
     return path
 
 
@@ -415,6 +422,7 @@ def archive_photos(receipt_id):
         source = Path(photo.image.path)
         try:
             source.replace(target_dir / name)
+            os.chmod(target_dir / name, 0o666)
         except OSError:
             logger.exception('Nie udało się przenieść zdjęcia paragonu %s', receipt.pk)
             continue
@@ -485,6 +493,37 @@ def receipt_products_without_barcode(receipt: Receipt) -> list[PantryProduct]:
     return products
 
 
+def receipt_unpack_items(receipt: Receipt) -> list[dict]:
+    """„Rozpakuj zakupy”: produkty z paragonu, którym brakuje kodu kreskowego
+    albo obowiązkowego terminu przydatności (nabiał)."""
+    from .pantry_batches import expiry_category_names, requires_expiry, undated_quantity
+
+    names = expiry_category_names()
+    seen, items = set(), []
+    lines = (
+        receipt.lines.filter(match_status__in=[ReceiptLine.MATCH_AUTO, ReceiptLine.MATCH_CONFIRMED])
+        .exclude(product=None).select_related('product').order_by('position')
+    )
+    for line in lines:
+        product = line.product
+        if product.pk in seen:
+            continue
+        seen.add(product.pk)
+        needs_code = not line.is_weighted and not product.barcode
+        needs_date = (
+            requires_expiry(product, names) and product.current_quantity > 0 and undated_quantity(product) > 0
+        )
+        if needs_code or needs_date:
+            items.append({'id': product.pk, 'name': product.name, 'needs_code': needs_code, 'needs_date': needs_date})
+    return items
+
+
+def _needs_date(product: PantryProduct) -> bool:
+    from .pantry_batches import requires_expiry, undated_quantity
+
+    return requires_expiry(product) and product.current_quantity > 0 and undated_quantity(product) > 0
+
+
 def _catalog_name(barcode: str) -> str:
     from .product_catalog import CatalogUnavailable, lookup_product_catalog
 
@@ -506,6 +545,8 @@ def scan_receipt_barcode(receipt: Receipt, barcode: str, product_id: int | None 
     remaining = receipt_products_without_barcode(receipt)
     owner = PantryProduct.objects.filter(barcode=barcode).first()
     if owner is not None:
+        if _needs_date(owner):
+            return {'status': 'date', 'product': owner.name, 'product_id': owner.pk}
         return {'status': 'known', 'product': owner.name}
 
     if product_id:
@@ -513,8 +554,9 @@ def scan_receipt_barcode(receipt: Receipt, barcode: str, product_id: int | None 
         product = product or PantryProduct.objects.filter(pk=product_id).first()
         if product is None:
             raise ValueError('Nie ma takiego produktu.')
-        assign_barcode(product, barcode)
-        return {'status': 'linked', 'product': product.name, 'product_id': product.pk}
+        product = assign_barcode(product, barcode)
+        return {'status': 'linked', 'product': product.name, 'product_id': product.pk,
+                'needs_date': _needs_date(product)}
 
     if not remaining:
         return {'status': 'choose', 'catalog_name': '', 'candidates': []}
@@ -527,8 +569,9 @@ def scan_receipt_barcode(receipt: Receipt, barcode: str, product_id: int | None 
     best_score, _index, best = scored[0]
     second = scored[1][0] if len(scored) > 1 else 0.0
     if len(remaining) == 1 or (best_score >= AUTO_LINK_SCORE and best_score - second >= AUTO_LINK_MARGIN):
-        assign_barcode(best, barcode)
-        return {'status': 'linked', 'product': best.name, 'product_id': best.pk, 'catalog_name': catalog_name}
+        best = assign_barcode(best, barcode)
+        return {'status': 'linked', 'product': best.name, 'product_id': best.pk, 'catalog_name': catalog_name,
+                'needs_date': _needs_date(best)}
     return {
         'status': 'choose',
         'catalog_name': catalog_name,

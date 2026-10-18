@@ -114,12 +114,12 @@
             </div>
         </form>
     {% else %}
-        {% if without_barcode %}
+        {% if unpack_items %}
             <a class="pc-card rc-barcodes-cta" href="{% url 'cooking:receipt-barcodes' receipt.uuid %}">
-                <i class="bi bi-upc-scan" aria-hidden="true"></i>
+                <i class="bi bi-box-seam" aria-hidden="true"></i>
                 <span>
-                    <strong>Zeskanuj kody nowych produktów ({{ without_barcode|length }})</strong>
-                    <small>Przy wkładaniu do szafki: aparat działa cały czas, kod sam trafi do właściwego produktu.</small>
+                    <strong>Rozpakuj zakupy ({{ unpack_items|length }})</strong>
+                    <small>Przy wkładaniu do szafki: skanuj opakowania, kod sam trafi do produktu, a przy nabiale dotknij daty z opakowania.</small>
                 </span>
                 <i class="bi bi-arrow-right" aria-hidden="true"></i>
             </a>

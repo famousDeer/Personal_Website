@@ -1,0 +1,42 @@
+{% load pantry_extras %}
+{# Terminy przydatności: „Zjedz najpierw” i „Uzupełnij termin” (services/pantry_batches.py). #}
+{% if expiry.eat_first or expiry.missing %}
+<section class="ex-panel animate-fade-in-up" aria-label="Terminy przydatności">
+    {% if expiry.eat_first %}
+        <div class="pc-card ex-eat-first">
+            <h3 class="pc-card-title"><i class="bi bi-alarm" aria-hidden="true"></i> Zjedz najpierw</h3>
+            <ul class="ex-list">
+                {% for batch in expiry.eat_first %}
+                    <li class="{% if batch.days_left < 0 %}is-expired{% elif batch.days_left <= 1 %}is-soon{% endif %}">
+                        <a href="#product-{{ batch.product_id }}">{{ batch.product.name }}</a>
+                        <span class="rc-num">{{ batch.quantity|qty }} {{ batch.product.display_unit }}</span>
+                        <strong>
+                            {% if batch.days_left < 0 %}po terminie ({{ batch.expires_on|date:"d.m" }})
+                            {% elif batch.days_left == 0 %}dziś
+                            {% elif batch.days_left == 1 %}jutro
+                            {% else %}do {{ batch.expires_on|date:"D d.m" }}{% endif %}
+                        </strong>
+                    </li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endif %}
+    {% if expiry.missing %}
+        <div class="pc-card ex-missing">
+            <h3 class="pc-card-title"><i class="bi bi-calendar-plus" aria-hidden="true"></i> Uzupełnij termin</h3>
+            <p class="pc-hint mt-0">Te produkty mają obowiązkowy termin, a część zapasu nie ma daty. Dotknij daty z opakowania.</p>
+            {% for product in expiry.missing %}
+                <form method="post" action="{% url 'cooking:pantry-expiry' product.pk %}" class="ex-missing-row">
+                    {% csrf_token %}
+                    <strong>{{ product.name }}</strong>
+                    {% include 'cooking/partials/expiry_chips.html' %}
+                    <span class="ex-custom">
+                        <input type="date" class="form-control form-control-sm" name="custom_expires_on" aria-label="Inna data dla {{ product.name }}">
+                        <button type="submit" class="btn btn-primary btn-sm">OK</button>
+                    </span>
+                </form>
+            {% endfor %}
+        </div>
+    {% endif %}
+</section>
+{% endif %}

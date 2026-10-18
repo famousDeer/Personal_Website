@@ -2938,3 +2938,21 @@ form:has(#one-off:checked) .pantry-restock-fields { opacity: 0.45; }
 .rb-list.is-done li { background: var(--income-bg); color: var(--income-ink); }
 .rb-list.is-done li::before { content: '✓ '; }
 .rb-manual { display: flex; gap: var(--sp-2); max-width: 24rem; }
+/* --- Terminy przydatności --- */
+.ex-panel { display: grid; gap: var(--sp-3); grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); margin-bottom: var(--sp-4); }
+.ex-panel .pc-card-title .bi { color: var(--brand-500); margin-right: 4px; }
+.ex-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.ex-list li { display: grid; grid-template-columns: 1fr auto auto; gap: var(--sp-2); align-items: baseline; font-size: var(--fs-sm); }
+.ex-list a { color: var(--ink-1); text-decoration: none; font-weight: 600; }
+.ex-list strong { color: var(--ink-2); }
+.ex-list li.is-soon strong { color: var(--invest-ink); }
+.ex-list li.is-expired strong { color: var(--expense-ink); }
+.ex-missing-row { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-2) 0; border-top: 1px solid var(--line-1); }
+.ex-chips { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.ex-custom { display: flex; gap: var(--sp-1); max-width: 16rem; }
+.ex-badge { display: inline-flex; align-items: center; gap: 4px; margin-top: var(--sp-1); margin-right: var(--sp-2); padding: 0 8px; border-radius: var(--r-pill); background: var(--surface-2); color: var(--ink-2); font-size: var(--fs-caption); font-weight: 600; }
+.ex-badge.is-soon { background: var(--invest-bg); color: var(--invest-ink); }
+.ex-badge.is-expired { background: var(--expense-bg); color: var(--expense-ink); }
+.pantry-scan-expiry .ex-chips .btn { flex: 1 1 auto; }
+.rb-list li.is-clickable { cursor: pointer; outline-offset: 2px; box-shadow: inset 0 0 0 1px var(--brand-300); }
+.rb-date .ex-chips .btn { flex: 1 1 5rem; }

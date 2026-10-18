@@ -139,7 +139,10 @@ class PantryCategoryEditView(LoginRequiredMixin, View):
         ]
         return render(request, self.template_name, {
             'category': category,
-            'form_values': form_values or {'name': category.name, 'group': category.group},
+            'form_values': form_values or {
+                'name': category.name, 'group': category.group,
+                'requires_expiry': 'on' if category.requires_expiry else '',
+            },
             'group_choices': PantryCategory.GROUP_CHOICES,
             'rules': rules,
             'product_count': PantryProduct.objects.filter(category=category.name).count(),
@@ -156,6 +159,10 @@ class PantryCategoryEditView(LoginRequiredMixin, View):
         except service.CategoryError as error:
             messages.error(request, str(error))
             return self._render(request, category, form_values=request.POST, status=400)
+        requires_expiry = request.POST.get('requires_expiry') == 'on'
+        if category.requires_expiry != requires_expiry:
+            category.requires_expiry = requires_expiry
+            category.save(update_fields=['requires_expiry', 'updated_at'])
         if old_name != category.name:
             messages.success(
                 request,

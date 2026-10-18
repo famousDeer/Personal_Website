@@ -1238,6 +1238,8 @@ class PantryBarcodeTests(TestCase):
             'unit': PantryProduct.UNIT_LITER,
             'count': 4,
             'category': 'Nabiał',
+            # Nabiał ma obowiązkowy termin przydatności (cooking.0027).
+            'expires_on': (timezone.localdate() + timedelta(days=7)).isoformat(),
         })
 
         self.assertEqual(response.status_code, 201)
@@ -1421,6 +1423,8 @@ class PantryBarcodeTests(TestCase):
                 'unit': PantryProduct.UNIT_MILLILITER,
                 'count': '5',
                 'category': 'Nabiał',
+                # Nabiał ma obowiązkowy termin przydatności (cooking.0027).
+                'expires_on': (timezone.localdate() + timedelta(days=7)).isoformat(),
                 'image': make_test_image(),
             })
 
