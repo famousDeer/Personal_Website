@@ -98,7 +98,51 @@ def process_receipt(receipt_id):
         receipt.error = str(exc)[:255]
         receipt.save(update_fields=['status', 'error', 'updated_at'])
         return receipt
-    apply_ocr_text(receipt, text)
+    apply_ocr_text(receipt, text, engine='tesseract')
+    return receipt
+
+
+def start_ai_reading(receipt: Receipt):
+    """„Odczytaj przez AI”: ten sam przebieg co OCR, ale tekst daje Claude API."""
+    previous = receipt.status
+    receipt.status = Receipt.STATUS_PROCESSING
+    receipt.processing_started_at = timezone.now()
+    receipt.error = ''
+    receipt.save(update_fields=['status', 'processing_started_at', 'error', 'updated_at'])
+    if getattr(settings, 'RECEIPT_OCR_ASYNC', True):
+        threading.Thread(target=_ai_in_thread, args=(receipt.pk, previous), daemon=True).start()
+    else:
+        process_receipt_ai(receipt.pk, previous)
+
+
+def _ai_in_thread(receipt_id, previous_status):
+    close_old_connections()
+    try:
+        process_receipt_ai(receipt_id, previous_status)
+    except Exception:  # noqa: BLE001
+        logger.exception('Odczyt AI paragonu %s nie powiódł się', receipt_id)
+        Receipt.objects.filter(pk=receipt_id).update(status=previous_status, error='Nieoczekiwany błąd odczytu AI.')
+    finally:
+        close_old_connections()
+
+
+def process_receipt_ai(receipt_id, previous_status=Receipt.STATUS_FAILED):
+    from .receipt_ai import ReceiptAiError, call_claude
+
+    receipt = Receipt.objects.prefetch_related('photos').get(pk=receipt_id)
+    paths = [photo.image.path for photo in receipt.photos.all() if photo.image]
+    try:
+        if not paths:
+            raise ReceiptAiError('Ten paragon nie ma zdjęcia.')
+        text, usage = call_claude(paths)
+    except ReceiptAiError as exc:
+        # Nieudany odczyt AI nie kasuje tego, co już odczytało Pi.
+        receipt.status = previous_status if receipt.lines.exists() else Receipt.STATUS_FAILED
+        receipt.error = str(exc)[:255]
+        receipt.save(update_fields=['status', 'error', 'updated_at'])
+        return receipt
+    logger.info('Paragon %s odczytany przez AI, tokeny: %s', receipt.pk, usage)
+    apply_ocr_text(receipt, text, engine='ai')
     return receipt
 
 
@@ -123,11 +167,12 @@ def best_ocr_text(paths) -> str:
 
 
 @transaction.atomic
-def apply_ocr_text(receipt: Receipt, text: str):
+def apply_ocr_text(receipt: Receipt, text: str, engine: str = 'text'):
     """Tekst z OCR → sklep, pozycje i propozycje produktów."""
     parsed = parse_receipt(text)
     store = store_for(parsed)
     receipt.ocr_text = text
+    receipt.ocr_engine = engine
     receipt.store = store
     if parsed.purchased_at:
         receipt.purchased_at = timezone.make_aware(parsed.purchased_at)

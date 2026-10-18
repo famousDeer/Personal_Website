@@ -17,7 +17,7 @@ Logika w `services/`:
 - `product_catalog.py` – Open Food Facts, z limitem zapytań.
 - `product_groups.py`.
 - `recipe_form.py`, `recipe_pantry.py`, `recipe_units.py`.
-- `receipt_parser.py` (czyste funkcje, próbki Lidl/Biedronka w testach), `receipt_ocr.py` (Tesseract `pol`, lokalnie; `RECEIPT_OCR_ENABLED`), `receipt_matching.py` (aliasy, propozycje), `receipts.py` (odczyt w wątku, zatwierdzanie, archiwum zdjęć). Paragon NIE tworzy wydatków w Finansach. Zdjęcia po zatwierdzeniu → `RECEIPT_ARCHIVE_DIR` → `deploy/receipts_upload.sh` (rclone move na Dysk Google).
+- `receipt_parser.py` (czyste funkcje, próbki Lidl/Biedronka w testach), `receipt_ocr.py` (Tesseract `pol`, lokalnie; `RECEIPT_OCR_ENABLED`), `receipt_matching.py` (aliasy, propozycje), `receipts.py` (odczyt w wątku, zatwierdzanie, archiwum zdjęć). Zapasowy odczyt `receipt_ai.py` (Claude API, Haiku, tylko na żądanie – przycisk „Odczytaj przez AI”, flaga `RECEIPT_AI_ENABLED` + `ANTHROPIC_API_KEY`, w testach wyłączony, HTTP mockowany); model zwraca tekst w układzie, który czyta ten sam parser. Paragon NIE tworzy wydatków w Finansach. Zdjęcia po zatwierdzeniu → `RECEIPT_ARCHIVE_DIR` → `deploy/receipts_upload.sh` (rclone move na Dysk Google).
 - `shopping_sync.py`, `push.py` (pywebpush), `polish.py` (odmiana).
 
 Komendy: `send_reminders` (cron), `process_receipts` (cron: zawieszone odczyty, osierocone zdjęcia), `learn_pantry_catalog`, `generate_vapid_keys`, `preview_shared_pantry`.

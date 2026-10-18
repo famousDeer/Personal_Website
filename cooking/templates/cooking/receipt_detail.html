@@ -29,7 +29,7 @@
         <span class="spinner-border text-primary" aria-hidden="true"></span>
         <div>
             <strong>Czytam paragon…</strong>
-            <p class="pc-hint">Na serwerze w domu trwa to zwykle kilkanaście sekund. Strona odświeży się sama.</p>
+            <p class="pc-hint">Zwykle trwa to kilkanaście sekund. Strona odświeży się sama.</p>
         </div>
     </div>
 {% elif receipt.status == 'failed' %}
@@ -39,13 +39,19 @@
             <strong>Nie udało się odczytać paragonu</strong>
             <p class="pc-hint">{{ receipt.error }}</p>
             <div class="pc-form-actions">
+                {% if ai_available %}
+                    <form method="post" action="{% url 'cooking:receipt-ai' receipt.uuid %}">
+                        {% csrf_token %}
+                        <button class="btn btn-primary" type="submit"><i class="bi bi-stars" aria-hidden="true"></i> Odczytaj przez AI</button>
+                    </form>
+                {% endif %}
                 {% if photos %}
                     <form method="post" action="{% url 'cooking:receipt-retry' receipt.uuid %}">
                         {% csrf_token %}
                         <button class="btn btn-outline-primary" type="submit"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> Spróbuj ponownie</button>
                     </form>
                 {% endif %}
-                <a class="btn btn-primary" href="{{ receipts_url }}"><i class="bi bi-camera" aria-hidden="true"></i> Nowe zdjęcie</a>
+                <a class="btn btn-outline-primary" href="{{ receipts_url }}"><i class="bi bi-camera" aria-hidden="true"></i> Nowe zdjęcie</a>
             </div>
         </div>
     </div>
@@ -54,10 +60,20 @@
         <div><small>Data</small><strong>{{ receipt.purchased_on|date:"j E Y" }}{% if receipt.purchased_at %}, {{ receipt.purchased_at|date:"H:i" }}{% endif %}</strong></div>
         <div><small>Suma z paragonu</small><strong class="rc-num">{% if receipt.total is not None %}{{ receipt.total }} zł{% else %}–{% endif %}</strong></div>
         <div><small>Suma pozycji</small><strong class="rc-num">{{ lines_total }} zł</strong></div>
+        {% if receipt.error %}
+            <p class="rc-check is-warn"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i> {{ receipt.error }}</p>
+        {% endif %}
         {% if receipt.total_matches %}
-            <p class="rc-check is-ok"><i class="bi bi-check-circle" aria-hidden="true"></i> Sumy się zgadzają – odczyt jest pełny.</p>
+            <p class="rc-check is-ok"><i class="bi bi-check-circle" aria-hidden="true"></i> Sumy się zgadzają – odczyt jest pełny.{% if receipt.ocr_engine == 'ai' %} Odczytano przez AI.{% endif %}</p>
         {% else %}
             <p class="rc-check is-warn"><i class="bi bi-exclamation-circle" aria-hidden="true"></i> Sumy się różnią – część pozycji mogła się nie odczytać. Sprawdź listę ze zdjęciem. Przy pogniecionym paragonie pomaga nowe zdjęcie po rozprostowaniu albo wklejenie tekstu skopiowanego ze zdjęcia w telefonie (Live Text, Obiektyw Google).</p>
+            {% if ai_available %}
+                <form method="post" action="{% url 'cooking:receipt-ai' receipt.uuid %}" class="rc-ai">
+                    {% csrf_token %}
+                    <button class="btn btn-primary" type="submit"><i class="bi bi-stars" aria-hidden="true"></i> Odczytaj przez AI</button>
+                    <small>Zdjęcie zostanie wysłane do Claude API; koszt to ułamek grosza.</small>
+                </form>
+            {% endif %}
         {% endif %}
     </section>
 

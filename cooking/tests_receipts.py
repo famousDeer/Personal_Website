@@ -900,3 +900,110 @@ class ExpiryTests(TestCase):
         bread.refresh_from_db()
         self.assertTrue(bread.requires_expiry)
         self.assertTrue(PantryCategory.objects.get(code='nabial').requires_expiry)
+
+
+# Odpowiedź Claude API w układzie z promptu (receipt_ai.PROMPT) dla pogniecionego paragonu z Aldka.
+ALDEK_AI = '''Aldek
+NIP 5862061930
+Data 2026-10-09 08:41
+nr wydr.: 282369
+PARAGON FISKALNY
+CDS PAPRYKA JALAPENO ZIEL KROJ 670G   1 x 11,69 11,69 C
+LIMINI SOK Z LIMONKI 200ML   1 x 5,89 5,89 C
+MLEKOVITA ML W PROSZKU INST 250G   1 x 8,89 8,89 C
+KONKOL GROSZEK PTYSIOWY 50G   1 x 3,19 3,19 C
+LORENZ POPCORN 100G SOLONY   1 x 5,39 5,39 C
+LOTUS BISCOFF 250G CIASTKA   1 x 7,89 7,89 C
+KONKOL GROSZEK PTYSIOWY 50G   1 x 3,19 3,19 C
+WEDEL CRUSH 25G PRECEL PEANUTS   3 x 2,65 7,95 A
+KONKOL GROSZEK PTYSIOWY 50G   1 x 3,19 3,19 C
+SUMA PLN 57,27'''
+
+
+@override_settings(RECEIPT_AI_ENABLED=True, ANTHROPIC_API_KEY='test-key', RECEIPT_AI_MODEL='claude-haiku-5-5')
+class ReceiptAiTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='ai', password='pass12345')
+        self.client.force_login(self.user)
+        self.media = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.media, ignore_errors=True)
+
+    def _receipt_with_photo(self, ocr_text):
+        buffer = io.BytesIO()
+        Image.new('RGB', (400, 900), 'white').save(buffer, format='JPEG')
+        upload = SimpleUploadedFile('paragon.jpg', buffer.getvalue(), content_type='image/jpeg')
+        with patch('cooking.services.receipts.read_text', return_value=ocr_text):
+            self.client.post(reverse('cooking:receipts'), {'photos': [upload]})
+        return Receipt.objects.get()
+
+    def test_ai_format_parses_completely(self):
+        receipt = parse_receipt(ALDEK_AI)
+        self.assertEqual(receipt.store_name, 'Aldek')
+        self.assertEqual(receipt.purchased_at, datetime(2026, 10, 9, 8, 41))
+        self.assertEqual(receipt.receipt_no, '282369')
+        self.assertEqual(len(receipt.lines), 9)
+        self.assertTrue(receipt.total_matches)
+
+    def test_button_only_when_pi_fails_and_ai_reads_it(self):
+        with override_settings(PRIVATE_MEDIA_ROOT=Path(self.media)):
+            receipt = self._receipt_with_photo('nieczytelny tekst')
+            self.assertEqual(receipt.status, Receipt.STATUS_FAILED)
+            page = self.client.get(reverse('cooking:receipt-detail', args=[receipt.uuid]))
+            self.assertContains(page, 'Odczytaj przez AI')
+            with patch('cooking.services.receipt_ai.call_claude', return_value=(ALDEK_AI, {'input_tokens': 5000})) as api:
+                self.client.post(reverse('cooking:receipt-ai', args=[receipt.uuid]))
+            api.assert_called_once()
+            receipt.refresh_from_db()
+            self.assertEqual((receipt.status, receipt.ocr_engine), (Receipt.STATUS_REVIEW, 'ai'))
+            self.assertTrue(receipt.total_matches)
+            page = self.client.get(reverse('cooking:receipt-detail', args=[receipt.uuid]))
+            self.assertContains(page, 'Odczytano przez AI')
+            self.assertNotContains(page, 'receipt-ai')
+            self.assertNotContains(page, reverse('cooking:receipt-ai', args=[receipt.uuid]))
+
+    def test_no_button_when_pi_read_it_well(self):
+        with override_settings(PRIVATE_MEDIA_ROOT=Path(self.media)):
+            receipt = self._receipt_with_photo(LIDL)
+        page = self.client.get(reverse('cooking:receipt-detail', args=[receipt.uuid]))
+        self.assertNotContains(page, reverse('cooking:receipt-ai', args=[receipt.uuid]))
+
+    def test_ai_error_keeps_pi_result(self):
+        from .services.receipt_ai import ReceiptAiError
+
+        broken = LIDL.replace('5,11 C', 'x,11 C')
+        with override_settings(PRIVATE_MEDIA_ROOT=Path(self.media)):
+            receipt = self._receipt_with_photo(broken)
+            self.assertFalse(receipt.total_matches)
+            with patch('cooking.services.receipt_ai.call_claude', side_effect=ReceiptAiError('Brak środków na koncie Claude API.')):
+                self.client.post(reverse('cooking:receipt-ai', args=[receipt.uuid]))
+        receipt.refresh_from_db()
+        self.assertEqual(receipt.status, Receipt.STATUS_REVIEW)
+        self.assertEqual(receipt.lines.count(), 3)
+        self.assertContains(self.client.get(reverse('cooking:receipt-detail', args=[receipt.uuid])), 'Brak środków')
+
+    def test_api_request(self):
+        from .services import receipt_ai
+
+        path = Path(self.media) / 'p.jpg'
+        Image.new('RGB', (3000, 6000), 'white').save(path, format='JPEG')
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return json.dumps({'content': [{'type': 'text', 'text': ALDEK_AI}],
+                                   'usage': {'input_tokens': 4800, 'output_tokens': 400}}).encode()
+
+        with patch('urllib.request.urlopen', return_value=Response()) as urlopen:
+            text, usage = receipt_ai.call_claude([path])
+        request = urlopen.call_args.args[0]
+        body = json.loads(request.data)
+        self.assertEqual(body['model'], 'claude-haiku-5-5')
+        self.assertEqual(request.get_header('X-api-key'), 'test-key')
+        self.assertEqual(body['messages'][0]['content'][0]['type'], 'image')
+        self.assertEqual(text, ALDEK_AI)
+        self.assertEqual(usage['input_tokens'], 4800)

@@ -68,7 +68,7 @@ NIP_RE = re.compile(r'NIP[\s:.]*(?:PL)?\s*(?P<nip>\d[\d\- ]{8,14}\d)', re.IGNORE
 DATE_RE = re.compile(r'\b(?:(?P<y>2[08]\d{2})[-./](?P<m>[018]\d)[-./](?P<d>[0-38]\d)|(?P<d2>[0-38]\d)[-./](?P<m2>[018]\d)[-./](?P<y2>2[08]\d{2}))\b')
 TIME_RE = re.compile(r'\b(?P<h>[01]\d|2[0-3]):(?P<mi>[0-5]\d)\b')
 RECEIPT_NO_RE = re.compile(
-    r'(?:nr\s*wydr\w*|wydruku|paragon\w*\s+nr|nr\s*parag\w*|numer\s+transakcji|\bnr\s*:)\s*[:.#]?\s*(?P<no>\d{1,10})|#\s*(?P<no2>\d{2,10})',
+    r'(?:nr\s*wydr\w*|wydruku|paragon\w*\s+nr|nr\s*parag\w*|numer\s+transakcji|\bnr\s*:)[\s:.#]*(?P<no>\d{1,10})|#\s*(?P<no2>\d{2,10})',
     re.IGNORECASE,
 )
 SIZE_RE = re.compile(r'(?P<count>\d{1,2})\s*[xX*]\s*(?P<size>\d+(?:[.,]\d+)?)\s*(?P<unit>KG|G|ML|L)\b|'

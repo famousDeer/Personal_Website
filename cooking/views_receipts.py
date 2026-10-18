@@ -19,8 +19,9 @@ from .services.receipt_parser import parse_receipt
 from .services.receipt_prices import chart_data, price_summaries, price_summary
 from .services.receipts import (
     ACTION_ADD, ACTION_IGNORE, ACTION_SKIP, LineDecision, apply_ocr_text, confirm_receipt,
-    default_quantity, receipt_unpack_items, scan_receipt_barcode, start_processing,
+    default_quantity, receipt_unpack_items, scan_receipt_barcode, start_ai_reading, start_processing,
 )
+from .services.receipt_ai import ai_enabled
 from .services.pantry_batches import date_undated_stock, parse_expiry, quick_dates
 from .views import normalize_pantry_barcode
 
@@ -67,7 +68,7 @@ class ReceiptListView(LoginRequiredMixin, View):
             photo = ReceiptPhoto(receipt=receipt, position=position)
             photo.image.save(f'{receipt.uuid}-{position}.jpg', content, save=True)
         if text:
-            apply_ocr_text(receipt, text)
+            apply_ocr_text(receipt, text, engine='pdf' if pdf_texts and not request.POST.get('text') else 'text')
         else:
             start_processing(receipt)
         return redirect('cooking:receipt-detail', receipt_uuid=receipt.uuid)
@@ -121,6 +122,12 @@ class ReceiptDetailView(LoginRequiredMixin, View):
         receipt = get_object_or_404(Receipt.objects.select_related('store', 'duplicate_of'), uuid=receipt_uuid)
         rows = _line_rows(receipt) if receipt.status in (Receipt.STATUS_REVIEW, Receipt.STATUS_DONE) else []
         counts = {kind: sum(1 for row in rows if row['kind'] == kind) for kind in ('known', 'suggested', 'new', 'ignored')}
+        has_photos = receipt.photos.exclude(image='').exists()
+        ai_available = (
+            ai_enabled() and has_photos and receipt.ocr_engine != 'ai'
+            and (receipt.status == Receipt.STATUS_FAILED
+                 or (receipt.status == Receipt.STATUS_REVIEW and not receipt.total_matches))
+        )
         return render(request, self.template_name, {
             'receipt': receipt,
             'rows': rows,
@@ -129,6 +136,7 @@ class ReceiptDetailView(LoginRequiredMixin, View):
             'names': _datalist_names() if receipt.status == Receipt.STATUS_REVIEW else [],
             'unpack_items': receipt_unpack_items(receipt) if receipt.status == Receipt.STATUS_DONE else [],
             'lines_total': receipt.lines_total,
+            'ai_available': ai_available,
         })
 
     def post(self, request, receipt_uuid):
@@ -276,3 +284,19 @@ class ReceiptBarcodesView(LoginRequiredMixin, View):
         result['ok'] = True
         result['remaining'] = receipt_unpack_items(receipt)
         return JsonResponse(result)
+
+
+class ReceiptAiView(LoginRequiredMixin, View):
+    """„Odczytaj przez AI” - dopiero tu zdjęcie paragonu wychodzi z domu."""
+
+    def post(self, request, receipt_uuid):
+        receipt = get_object_or_404(Receipt, uuid=receipt_uuid)
+        if not ai_enabled():
+            messages.error(request, 'Odczyt przez AI nie jest skonfigurowany (ANTHROPIC_API_KEY w .env).')
+        elif receipt.status in (Receipt.STATUS_DONE, Receipt.STATUS_PROCESSING):
+            messages.error(request, 'Tego paragonu nie można teraz odczytać ponownie.')
+        elif not receipt.photos.exclude(image='').exists():
+            messages.error(request, 'Ten paragon nie ma zdjęcia.')
+        else:
+            start_ai_reading(receipt)
+        return redirect('cooking:receipt-detail', receipt_uuid=receipt.uuid)

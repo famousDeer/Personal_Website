@@ -778,6 +778,8 @@ class Receipt(models.Model):
         'self', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
     )
     ocr_text = models.TextField(blank=True)
+    # Kto odczytał paragon: tesseract (Pi), ai (Claude API), text (wklejony), pdf (tekst z PDF-a).
+    ocr_engine = models.CharField(max_length=12, blank=True)
     error = models.CharField(max_length=255, blank=True)
     processing_started_at = models.DateTimeField(blank=True, null=True)
     confirmed_at = models.DateTimeField(blank=True, null=True)

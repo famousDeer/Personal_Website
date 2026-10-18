@@ -26,6 +26,7 @@ urlpatterns = [
     path('pantry/receipts/', receipt_views.ReceiptListView.as_view(), name='receipts'),
     path('pantry/receipts/<uuid:receipt_uuid>/', receipt_views.ReceiptDetailView.as_view(), name='receipt-detail'),
     path('pantry/receipts/<uuid:receipt_uuid>/barcodes/', receipt_views.ReceiptBarcodesView.as_view(), name='receipt-barcodes'),
+    path('pantry/receipts/<uuid:receipt_uuid>/ai/', receipt_views.ReceiptAiView.as_view(), name='receipt-ai'),
     path('pantry/receipts/<uuid:receipt_uuid>/retry/', receipt_views.ReceiptRetryView.as_view(), name='receipt-retry'),
     path('pantry/receipts/<uuid:receipt_uuid>/delete/', receipt_views.ReceiptDeleteView.as_view(), name='receipt-delete'),
     path('pantry/receipts/<uuid:receipt_uuid>/photo/<int:photo_id>/', receipt_views.ReceiptPhotoView.as_view(), name='receipt-photo'),
