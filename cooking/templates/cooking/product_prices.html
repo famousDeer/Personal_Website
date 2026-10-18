@@ -1,0 +1,106 @@
+{% extends 'cooking/index.html' %}
+{% load static ui %}
+
+{% block title %}{{ product.name }} – ceny{% endblock %}
+{% block cooking_editor_assets %}{% endblock %}
+
+{% block content_cooking %}
+{% url 'cooking:prices' as prices_url %}
+{% page_head title=product.name eyebrow="Ceny" icon="bi-tag" sub="Cena regularna z paragonów; cena po rabacie i rodzaj promocji obok." back=prices_url back_label="Wszystkie ceny" %}
+    <a href="{% url 'cooking:edit-pantry-product' product.pk %}" class="btn btn-outline-primary"><i class="bi bi-pencil" aria-hidden="true"></i> Produkt</a>
+{% endpage_head %}
+
+<div class="pc-page animate-fade-in-up">
+{% with last=price.last %}
+{% if last %}
+    <section class="pc-card rc-summary" aria-label="Podsumowanie cen">
+        <div><small>Ostatnio ({{ last.store }}, {{ last.day|date:"d.m.Y" }})</small><strong class="rc-num">{{ last.regular }} zł/{{ last.base_unit }}</strong>
+            {% include 'cooking/partials/price_change.html' with change=price.change label="od poprzedniego zakupu" %}</div>
+        <div><small>Najniżej / najwyżej w roku</small><strong class="rc-num">{{ price.minimum.regular }} – {{ price.maximum.regular }} zł</strong></div>
+        <div><small>Rok do roku</small><strong class="rc-num">{% if price.year_change is not None %}{% if price.year_change > 0 %}+{% endif %}{{ price.year_change }}%{% else %}za mało danych{% endif %}</strong></div>
+        {% if price.cheapest_store %}<p class="rc-check is-ok"><i class="bi bi-shop" aria-hidden="true"></i> Ostatnio najtaniej: {{ price.cheapest_store }}</p>{% endif %}
+    </section>
+
+    {% if chart.labels|length > 1 %}
+        <section class="pc-card">
+            <h2 class="pc-card-title">Cena regularna w czasie (zł/{{ chart.unit }})</h2>
+            <div class="pr-chart"><canvas id="price-chart" aria-label="Wykres ceny {{ product.name }}"></canvas></div>
+            {{ chart|json_script:"price-chart-data" }}
+        </section>
+    {% endif %}
+
+    <section class="pc-group" aria-labelledby="pr-history">
+        <div class="pc-group-head"><h2 class="pc-group-title" id="pr-history">Zakupy <span>{{ price.observations|length }}</span></h2></div>
+        <ol class="rc-lines">
+            {% for item in price.observations %}
+                <li class="pc-card rc-line is-done">
+                    <div class="rc-line-head">
+                        <a class="rc-raw" href="{% url 'cooking:receipt-detail' item.receipt_uuid %}">{{ item.day|date:"j E Y" }} · {{ item.store }}</a>
+                        <span class="rc-num rc-price">{{ item.regular }} zł/{{ item.base_unit }}</span>
+                    </div>
+                    <p class="rc-price-detail">
+                        <span>„{{ item.line_name }}”</span>
+                        {% if item.has_discount %}<span class="rc-discount" title="{{ item.discount_label }}">{{ item.discount_kind }}</span>
+                        <span>po rabacie <strong class="rc-num">{{ item.paid }} zł/{{ item.base_unit }}</strong></span>{% endif %}
+                    </p>
+                </li>
+            {% endfor %}
+        </ol>
+    </section>
+{% else %}
+    <p class="pc-empty">Ten produkt nie był jeszcze na żadnym zatwierdzonym paragonie.</p>
+{% endif %}
+{% endwith %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if chart.labels|length > 1 %}
+<script src="{% static 'vendor/chart/chart.umd.js' %}"></script>
+<script src="{% static 'js/charts.js' %}"></script>
+<script>
+(function () {
+    const data = JSON.parse(document.getElementById('price-chart-data').textContent);
+    const canvas = document.getElementById('price-chart');
+    if (!window.AppCharts || !canvas) { return; }
+    const price = (value) => new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN' }).format(value);
+    AppCharts.register(function () {
+        const palette = AppCharts.palette();
+        const options = AppCharts.baseOptions();
+        options.plugins.legend.display = data.series.length > 1;
+        options.scales = options.scales || {};
+        options.scales.y = Object.assign({}, options.scales.y, { ticks: Object.assign({}, (options.scales.y || {}).ticks, { callback: price }) });
+        options.plugins.tooltip.callbacks = {
+            label: function (context) {
+                const point = data.series[context.datasetIndex].points.find((item) => item.day === data.labels[context.dataIndex]);
+                if (!point) { return ''; }
+                let text = `${context.dataset.label}: ${price(point.regular)}/${data.unit}`;
+                if (point.discount && point.paid !== null) { text += ` (${point.discount}: ${price(point.paid)})`; }
+                return text;
+            },
+        };
+        return new Chart(canvas, {
+            type: 'line',
+            data: {
+                labels: data.labels.map((day) => new Date(day).toLocaleDateString('pl-PL', { day: 'numeric', month: 'short', year: '2-digit' })),
+                datasets: data.series.map(function (series, index) {
+                    const color = palette.categories[index % palette.categories.length];
+                    const byDay = Object.fromEntries(series.points.map((point) => [point.day, point.regular]));
+                    return {
+                        label: series.store,
+                        data: data.labels.map((day) => byDay[day] ?? null),
+                        borderColor: color,
+                        backgroundColor: color,
+                        spanGaps: true,
+                        stepped: 'before',
+                        pointRadius: 4,
+                    };
+                }),
+            },
+            options: options,
+        });
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}

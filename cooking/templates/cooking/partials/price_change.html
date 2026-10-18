@@ -1,0 +1,6 @@
+{# Zmiana ceny regularnej: change (procent, Decimal albo None), label - opis porównania. #}
+{% if change is not None %}
+    {% if change > 0 %}<span class="pr-change is-up" title="{{ label }}"><i class="bi bi-arrow-up-right" aria-hidden="true"></i> +{{ change }}%<span class="visually-hidden"> drożej, {{ label }}</span></span>
+    {% elif change < 0 %}<span class="pr-change is-down" title="{{ label }}"><i class="bi bi-arrow-down-right" aria-hidden="true"></i> {{ change }}%<span class="visually-hidden"> taniej, {{ label }}</span></span>
+    {% else %}<span class="pr-change" title="{{ label }}">bez zmian</span>{% endif %}
+{% endif %}

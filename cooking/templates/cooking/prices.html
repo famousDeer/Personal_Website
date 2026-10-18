@@ -1,0 +1,46 @@
+{% extends 'cooking/index.html' %}
+{% load ui %}
+
+{% block title %}Ceny – spiżarnia{% endblock %}
+{% block cooking_editor_assets %}{% endblock %}
+
+{% block content_cooking %}
+{% url 'cooking:pantry' as pantry_url %}
+{% page_head title="Ceny" eyebrow="Spiżarnia" icon="bi-tag" sub="Ceny regularne z paragonów, za kg, litr albo sztukę. Promocje i kupony nie zmieniają ceny w sklepie, więc pokazujemy je osobno." back=pantry_url back_label="Wróć do spiżarni" %}
+    <a href="{% url 'cooking:receipts' %}" class="btn btn-primary"><i class="bi bi-receipt" aria-hidden="true"></i> Paragon</a>
+{% endpage_head %}
+
+<div class="pc-page animate-fade-in-up">
+    <form method="get" class="pr-search" role="search">
+        <input class="form-control" type="search" name="q" value="{{ query }}" placeholder="Szukaj produktu" aria-label="Szukaj produktu">
+    </form>
+    {% if rows %}
+        <p class="pc-hint mt-0">
+            Od poprzedniego zakupu podrożało: <strong>{{ up_count }}</strong> · potaniało: <strong>{{ down_count }}</strong>
+        </p>
+        <ul class="rc-list">
+            {% for row in rows %}
+                {% with price=row.price last=row.price.last %}
+                <li>
+                    <a class="pc-card rc-list-item" href="{% url 'cooking:product-prices' row.product.pk %}">
+                        <span class="rc-list-main">
+                            <strong>{{ row.product.name }}</strong>
+                            <small>{{ last.store }}, {{ last.day|date:"j E Y" }}{% if price.cheapest_store and price.cheapest_store != last.store %} · najtaniej: {{ price.cheapest_store }}{% endif %}</small>
+                        </span>
+                        <span class="rc-list-side">
+                            <strong class="rc-num">{{ last.regular }} zł/{{ last.base_unit }}</strong>
+                            <span>
+                                {% include 'cooking/partials/price_change.html' with change=price.change label="od poprzedniego zakupu" %}
+                                {% if price.year_change is not None %}<small class="pr-year">r/r {% if price.year_change > 0 %}+{% endif %}{{ price.year_change }}%</small>{% endif %}
+                            </span>
+                        </span>
+                    </a>
+                </li>
+                {% endwith %}
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p class="pc-empty">{% if query %}Brak cen dla „{{ query }}”.{% else %}Ceny pojawią się po pierwszym zatwierdzonym paragonie.{% endif %}</p>
+    {% endif %}
+</div>
+{% endblock %}

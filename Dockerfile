@@ -12,10 +12,15 @@ WORKDIR /app
 # Nowy pakiet systemowy dopisuj tutaj, do listy poniżej.
 #   fonts-dejavu-core - polskie znaki w eksporcie PDF (reportlab)
 #   curl              - używany na Raspberry Pi
+#   tesseract-ocr(-pol) - lokalny odczyt paragonów (cooking.services.receipt_ocr)
+#   poppler-utils     - e-paragony w PDF (pdftotext, pdftoppm)
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         fonts-dejavu-core \
         curl \
+        tesseract-ocr \
+        tesseract-ocr-pol \
+        poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

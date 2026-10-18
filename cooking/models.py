@@ -716,3 +716,211 @@ class PantryCategoryRule(models.Model):
     @property
     def pattern_list(self):
         return [line for line in self.patterns.splitlines() if line.strip()]
+
+
+# ---------------------------------------------------------------------------
+# Paragony: zdjęcie → odczyt (Tesseract na Pi) → sprawdzenie → spiżarnia.
+# Ceny z paragonów są tylko informacją „czy coś podrożało” - paragon nie
+# tworzy ani nie zmienia wydatków w Finansach (spiżarnia i wydatki osobno).
+# ---------------------------------------------------------------------------
+
+
+class ReceiptStore(models.Model):
+    """Sieć sklepów rozpoznana z paragonu (po NIP-ie albo nazwie)."""
+
+    name = models.CharField(max_length=120)
+    nip = models.CharField(max_length=10, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'receipt_stores'
+        ordering = ['name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['nip'], condition=~models.Q(nip=''), name='unique_receipt_store_nip',
+            ),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class Receipt(models.Model):
+    STATUS_PROCESSING = 'processing'
+    STATUS_REVIEW = 'review'
+    STATUS_DONE = 'done'
+    STATUS_FAILED = 'failed'
+    STATUS_CHOICES = [
+        (STATUS_PROCESSING, 'Odczytywanie'),
+        (STATUS_REVIEW, 'Do sprawdzenia'),
+        (STATUS_DONE, 'W spiżarni'),
+        (STATUS_FAILED, 'Nie udało się odczytać'),
+    ]
+
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PROCESSING)
+    store = models.ForeignKey(
+        ReceiptStore, on_delete=models.SET_NULL, null=True, blank=True, related_name='receipts',
+    )
+    purchased_at = models.DateTimeField(blank=True, null=True)
+    total = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    receipt_no = models.CharField(max_length=40, blank=True)
+    # Sklep + data i godzina + suma + nr wydruku. Ten sam paragon
+    # sfotografowany drugi raz nie trafi do spiżarni dwa razy.
+    fingerprint = models.CharField(max_length=64, blank=True)
+    duplicate_of = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    ocr_text = models.TextField(blank=True)
+    error = models.CharField(max_length=255, blank=True)
+    processing_started_at = models.DateTimeField(blank=True, null=True)
+    confirmed_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'receipts'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['fingerprint'], condition=~models.Q(fingerprint=''),
+                name='unique_receipt_fingerprint',
+            ),
+        ]
+
+    def __str__(self):
+        store = self.store.name if self.store_id else 'Paragon'
+        return f'{store} {self.purchased_at or self.created_at:%d.%m.%Y}'
+
+    @property
+    def purchased_on(self):
+        moment = self.purchased_at or self.created_at
+        return timezone.localtime(moment).date() if moment else timezone.localdate()
+
+    @property
+    def lines_total(self):
+        return sum((line.paid_price for line in self.lines.all()), Decimal('0.00'))
+
+    @property
+    def total_matches(self):
+        return self.total is not None and self.lines_total == self.total
+
+
+class ReceiptPhoto(models.Model):
+    """Zdjęcie (część) paragonu. Po zatwierdzeniu plik idzie do folderu,
+    z którego skrypt na Pi przenosi go na Dysk Google (deploy/receipts_upload.sh)
+    - na karcie SD nie zostaje."""
+
+    receipt = models.ForeignKey(Receipt, on_delete=models.CASCADE, related_name='photos')
+    position = models.PositiveSmallIntegerField(default=1)
+    image = models.ImageField(upload_to='receipts', storage=private_media_storage, blank=True)
+    archived_name = models.CharField(max_length=160, blank=True)
+
+    class Meta:
+        db_table = 'receipt_photos'
+        ordering = ['position', 'pk']
+
+
+class ReceiptLine(models.Model):
+    MATCH_AUTO = 'auto'
+    MATCH_CONFIRMED = 'confirmed'
+    MATCH_SKIPPED = 'skipped'
+    MATCH_IGNORED = 'ignored'
+    MATCH_UNKNOWN = 'unknown'
+    MATCH_CHOICES = [
+        (MATCH_AUTO, 'Rozpoznana'),
+        (MATCH_CONFIRMED, 'Potwierdzona'),
+        (MATCH_SKIPPED, 'Pominięta'),
+        (MATCH_IGNORED, 'Pomijana zawsze'),
+        (MATCH_UNKNOWN, 'Nowa'),
+    ]
+
+    receipt = models.ForeignKey(Receipt, on_delete=models.CASCADE, related_name='lines')
+    position = models.PositiveSmallIntegerField(default=1)
+    raw_text = models.CharField(max_length=255)
+    name = models.CharField(max_length=160)
+    normalized_text = models.CharField(max_length=160, db_index=True)
+    # Ilość z paragonu: sztuki albo kilogramy (towar ważony).
+    quantity = models.DecimalField(max_digits=10, decimal_places=3, default=Decimal('1.000'))
+    is_weighted = models.BooleanField(default=False)
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    discount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
+    paid_price = models.DecimalField(max_digits=10, decimal_places=2)
+    DISCOUNT_APP = 'app'
+    DISCOUNT_MULTIBUY = 'multibuy'
+    DISCOUNT_PROMO = 'promo'
+    DISCOUNT_CHOICES = [
+        (DISCOUNT_APP, 'Kupon z aplikacji'),
+        (DISCOUNT_MULTIBUY, 'Promocja za kilka sztuk'),
+        (DISCOUNT_PROMO, 'Promocja'),
+    ]
+    # Rodzaj i opis rabatu z paragonu („Lidl Plus kupon”, „Taniej za 2”).
+    discount_kind = models.CharField(max_length=10, choices=DISCOUNT_CHOICES, blank=True)
+    discount_label = models.CharField(max_length=80, blank=True)
+    # Cena za kg / l / szt. - porównywalna między opakowaniami i latami.
+    # Regularna (półkowa, przed rabatami) - do sprawdzania, czy coś podrożało;
+    # po rabatach osobno, bo kupon czy „taniej za 2” nie zmienia ceny w sklepie.
+    price_per_base_unit = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    paid_per_base_unit = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    base_unit = models.CharField(max_length=4, blank=True)
+    product = models.ForeignKey(
+        PantryProduct, on_delete=models.SET_NULL, null=True, blank=True, related_name='receipt_lines',
+    )
+    group = models.ForeignKey(
+        ProductGroup, on_delete=models.SET_NULL, null=True, blank=True, related_name='receipt_lines',
+    )
+    match_status = models.CharField(max_length=20, choices=MATCH_CHOICES, default=MATCH_UNKNOWN)
+    movement = models.ForeignKey(
+        PantryMovement, on_delete=models.SET_NULL, null=True, blank=True, related_name='receipt_lines',
+    )
+
+    class Meta:
+        db_table = 'receipt_lines'
+        ordering = ['receipt', 'position']
+
+    def __str__(self):
+        return f'{self.name} {self.paid_price}'
+
+
+class ReceiptAlias(models.Model):
+    """Słownik domu: skrót z paragonu → produkt, grupa albo „pomijaj zawsze”.
+
+    Uczy się przy każdym zatwierdzonym paragonie, więc ta sama linia z tego
+    samego sklepu nie pyta drugi raz.
+    """
+
+    store = models.ForeignKey(
+        ReceiptStore, on_delete=models.CASCADE, null=True, blank=True, related_name='aliases',
+    )
+    normalized_text = models.CharField(max_length=160)
+    product = models.ForeignKey(
+        PantryProduct, on_delete=models.CASCADE, null=True, blank=True, related_name='receipt_aliases',
+    )
+    group = models.ForeignKey(
+        ProductGroup, on_delete=models.CASCADE, null=True, blank=True, related_name='receipt_aliases',
+    )
+    ignore = models.BooleanField(default=False)
+    # Ile opakowań oznacza jedna sztuka z paragonu (zgrzewka wody = 6).
+    multiplier = models.PositiveSmallIntegerField(default=1)
+    hits = models.PositiveIntegerField(default=0)
+    last_used_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = 'receipt_aliases'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['store', 'normalized_text'], condition=models.Q(store__isnull=False),
+                name='unique_receipt_alias_store_text',
+            ),
+            models.UniqueConstraint(
+                fields=['normalized_text'], condition=models.Q(store__isnull=True),
+                name='unique_receipt_alias_any_store_text',
+            ),
+        ]
+
+    def __str__(self):
+        target = 'pomijaj' if self.ignore else (self.product or self.group)
+        return f'{self.normalized_text} → {target}'

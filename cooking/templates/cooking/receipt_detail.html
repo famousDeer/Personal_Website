@@ -1,0 +1,153 @@
+{% extends 'cooking/index.html' %}
+{% load ui %}
+
+{% block title %}Paragon – spiżarnia{% endblock %}
+{% block cooking_editor_assets %}{% endblock %}
+{% block extra_css %}{% if receipt.status == 'processing' %}<meta http-equiv="refresh" content="3">{% endif %}{% endblock %}
+
+{% block content_cooking %}
+{% url 'cooking:receipts' as receipts_url %}
+{% firstof receipt.store.name "Paragon" as head_title %}
+{% page_head title=head_title eyebrow="Paragon" icon="bi-receipt" sub=receipt.get_status_display back=receipts_url back_label="Wróć do paragonów" %}
+    {% if receipt.status == 'review' and photos %}
+        <form method="post" action="{% url 'cooking:receipt-retry' receipt.uuid %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-primary"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> Odczytaj ponownie</button>
+        </form>
+    {% endif %}
+    {% if receipt.status != 'done' %}
+        <form method="post" action="{% url 'cooking:receipt-delete' receipt.uuid %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-danger"><i class="bi bi-trash3" aria-hidden="true"></i> Usuń</button>
+        </form>
+    {% endif %}
+{% endpage_head %}
+
+<div class="pc-page animate-fade-in-up">
+{% if receipt.status == 'processing' %}
+    <div class="pc-card rc-state" role="status">
+        <span class="spinner-border text-primary" aria-hidden="true"></span>
+        <div>
+            <strong>Czytam paragon…</strong>
+            <p class="pc-hint">Na serwerze w domu trwa to zwykle kilkanaście sekund. Strona odświeży się sama.</p>
+        </div>
+    </div>
+{% elif receipt.status == 'failed' %}
+    <div class="pc-card rc-state is-failed" role="alert">
+        <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
+        <div>
+            <strong>Nie udało się odczytać paragonu</strong>
+            <p class="pc-hint">{{ receipt.error }}</p>
+            <div class="pc-form-actions">
+                {% if photos %}
+                    <form method="post" action="{% url 'cooking:receipt-retry' receipt.uuid %}">
+                        {% csrf_token %}
+                        <button class="btn btn-outline-primary" type="submit"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> Spróbuj ponownie</button>
+                    </form>
+                {% endif %}
+                <a class="btn btn-primary" href="{{ receipts_url }}"><i class="bi bi-camera" aria-hidden="true"></i> Nowe zdjęcie</a>
+            </div>
+        </div>
+    </div>
+{% else %}
+    <section class="pc-card rc-summary" aria-label="Podsumowanie paragonu">
+        <div><small>Data</small><strong>{{ receipt.purchased_on|date:"j E Y" }}{% if receipt.purchased_at %}, {{ receipt.purchased_at|date:"H:i" }}{% endif %}</strong></div>
+        <div><small>Suma z paragonu</small><strong class="rc-num">{% if receipt.total is not None %}{{ receipt.total }} zł{% else %}–{% endif %}</strong></div>
+        <div><small>Suma pozycji</small><strong class="rc-num">{{ lines_total }} zł</strong></div>
+        {% if receipt.total_matches %}
+            <p class="rc-check is-ok"><i class="bi bi-check-circle" aria-hidden="true"></i> Sumy się zgadzają – odczyt jest pełny.</p>
+        {% else %}
+            <p class="rc-check is-warn"><i class="bi bi-exclamation-circle" aria-hidden="true"></i> Sumy się różnią – część pozycji mogła się nie odczytać. Sprawdź listę ze zdjęciem. Przy pogniecionym paragonie pomaga nowe zdjęcie po rozprostowaniu albo wklejenie tekstu skopiowanego ze zdjęcia w telefonie (Live Text, Obiektyw Google).</p>
+        {% endif %}
+    </section>
+
+    {% if receipt.duplicate_of %}
+        <div class="alert alert-warning mb-0">
+            Wygląda na to, że <a href="{% url 'cooking:receipt-detail' receipt.duplicate_of.uuid %}">ten paragon już jest</a>.
+            Jeśli go zatwierdzisz, zakupy trafią do spiżarni drugi raz.
+        </div>
+    {% endif %}
+
+    {% if receipt.status == 'review' %}
+        <form method="post" class="rc-review">
+            {% csrf_token %}
+            <p class="pc-hint mt-0">
+                Rozpoznane: <strong>{{ counts.known }}</strong> · propozycje: <strong>{{ counts.suggested }}</strong> · nowe: <strong>{{ counts.new }}</strong>.
+                Popraw tylko to, co się nie zgadza. Wybory zapamiętujemy na kolejne paragony.
+            </p>
+            <datalist id="rc-products">{% for name in names %}<option value="{{ name }}">{% endfor %}</datalist>
+            <ol class="rc-lines">
+                {% for row in rows %}
+                    <li class="pc-card rc-line is-{{ row.kind }}" data-receipt-line>
+                        <div class="rc-line-head">
+                            <span class="rc-badge">{% if row.kind == 'known' %}Znany{% elif row.kind == 'suggested' %}Propozycja{% elif row.kind == 'ignored' %}Pomijany{% else %}Nowy{% endif %}</span>
+                            <code class="rc-raw" title="Tekst z paragonu">{{ row.line.name }}</code>
+                            <span class="rc-num rc-price">{{ row.line.paid_price }} zł</span>
+                        </div>
+                        {% include 'cooking/partials/receipt_line_price.html' with line=row.line %}
+                        <div class="rc-line-fields">
+                            <label class="rc-field rc-field-target">
+                                <span>Produkt w spiżarni</span>
+                                <input class="form-control" name="target_{{ row.line.pk }}" list="rc-products"
+                                       value="{{ row.target }}" placeholder="Wpisz produkt albo nową nazwę" autocomplete="off">
+                            </label>
+                            <label class="rc-field rc-field-qty">
+                                <span>{% if row.line.is_weighted %}kg{% else %}Opakowania{% endif %}</span>
+                                <input class="form-control" name="qty_{{ row.line.pk }}" inputmode="decimal" value="{{ row.quantity }}">
+                            </label>
+                            <label class="rc-field rc-field-action">
+                                <span>Co zrobić</span>
+                                <select class="form-select" name="action_{{ row.line.pk }}">
+                                    <option value="add" {% if row.action == 'add' %}selected{% endif %}>Do spiżarni</option>
+                                    <option value="skip" {% if row.action == 'skip' %}selected{% endif %}>Pomiń tym razem</option>
+                                    <option value="ignore" {% if row.action == 'ignore' %}selected{% endif %}>Pomijaj zawsze</option>
+                                </select>
+                            </label>
+                        </div>
+                    </li>
+                {% endfor %}
+            </ol>
+            <div class="rc-actions">
+                <button type="submit" class="btn btn-primary btn-lg">
+                    <i class="bi bi-box-arrow-in-down" aria-hidden="true"></i> Dodaj do spiżarni
+                </button>
+            </div>
+        </form>
+    {% else %}
+        {% if without_barcode %}
+            <a class="pc-card rc-barcodes-cta" href="{% url 'cooking:receipt-barcodes' receipt.uuid %}">
+                <i class="bi bi-upc-scan" aria-hidden="true"></i>
+                <span>
+                    <strong>Zeskanuj kody nowych produktów ({{ without_barcode|length }})</strong>
+                    <small>Przy wkładaniu do szafki: aparat działa cały czas, kod sam trafi do właściwego produktu.</small>
+                </span>
+                <i class="bi bi-arrow-right" aria-hidden="true"></i>
+            </a>
+        {% endif %}
+        <ol class="rc-lines">
+            {% for row in rows %}
+                <li class="pc-card rc-line is-done">
+                    <div class="rc-line-head">
+                        <code class="rc-raw">{{ row.line.name }}</code>
+                        <span class="rc-num rc-price">{{ row.line.paid_price }} zł</span>
+                    </div>
+                    <p class="pc-hint mt-1">
+                        {% if row.line.movement %}→ {% if row.line.product_id %}<a href="{% url 'cooking:product-prices' row.line.product_id %}">{{ row.target }}</a>{% else %}{{ row.target }}{% endif %}{% elif row.line.match_status == 'ignored' %}Pomijany zawsze{% else %}Pominięty{% endif %}
+                    </p>
+                    {% include 'cooking/partials/receipt_line_price.html' with line=row.line %}
+                </li>
+            {% endfor %}
+        </ol>
+    {% endif %}
+
+    {% if photos %}
+        <details class="pc-card rc-photos">
+            <summary>Zdjęcie paragonu</summary>
+            {% for photo in photos %}
+                <img src="{% url 'cooking:receipt-photo' receipt.uuid photo.pk %}" alt="Zdjęcie paragonu, część {{ photo.position }}" loading="lazy">
+            {% endfor %}
+        </details>
+    {% endif %}
+{% endif %}
+</div>
+{% endblock %}

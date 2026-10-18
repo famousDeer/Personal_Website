@@ -69,6 +69,8 @@ from .services.pantry_editing import (
 )
 from .services.pantry_sharing import UNIT_BASE
 from .services.polish import completion_message, polish_count, polish_number
+from .services.receipt_prices import barcode_link_candidates, price_summaries
+from .services.receipts import assign_barcode
 from .services.shopping_sync import (
     complete_shopping_list,
     refresh_pantry_purchase,
@@ -840,6 +842,7 @@ class PantryListView(LoginRequiredMixin, View):
                 return False
             return group_packages.get(product.group_id, 0) > product.group.minimum_packages
 
+        prices = price_summaries([product.pk for product in visible_products])
         for product in visible_products:
             forecast = forecasts[product.pk]
             average_daily = forecast.rate
@@ -856,6 +859,7 @@ class PantryListView(LoginRequiredMixin, View):
                 'restock_in_days': restock_in_days,
                 'catalog_entry': catalog_by_barcode.get(product.barcode),
                 'forecast': forecast,
+                'price': prices.get(product.pk),
                 'manual_consume_id': uuid4(),
                 'manual_purchase_id': uuid4(),
                 'group_covered': covered_by_group(product),
@@ -969,12 +973,18 @@ class PantryBarcodeLookupView(LoginRequiredMixin, View):
                 product = PantryProduct.objects.filter(
                     pk=product.pk,
                 ).first()
+        catalog_json = pantry_catalog_json(catalog)
         response = JsonResponse({
             'ok': True,
             'status': 'known' if product else 'unknown',
             'barcode': barcode,
             'product': pantry_product_json(product) if product else None,
-            'catalog': pantry_catalog_json(catalog),
+            'catalog': catalog_json,
+            # Nieznany kod: produkty bez kodu (najpierw z ostatnich paragonów),
+            # do których można go przypisać jednym dotknięciem.
+            'link_candidates': [] if product else barcode_link_candidates(
+                (catalog_json or {}).get('name') or '',
+            ),
             'auto_action_enabled': PANTRY_SCANNER_AUTO_ACTION_ENABLED,
             'default_action': (
                 PantryMovement.CONSUME
@@ -2631,3 +2641,26 @@ class CookView(LoginRequiredMixin, View):
                 })
 
         return redirect('cooking:pantry')
+
+
+class PantryBarcodeLinkView(LoginRequiredMixin, View):
+    """Przypisuje zeskanowany kod do produktu, który już jest w spiżarni bez
+    kodu (najczęściej dodanego z paragonu). Kolejny skan rozpozna go od razu."""
+
+    def post(self, request):
+        try:
+            payload = parse_scanner_request(request)
+            barcode = normalize_pantry_barcode(payload.get('barcode'))
+            product_id = int(payload.get('product_id') or 0)
+        except (ValueError, TypeError) as exc:
+            return JsonResponse({'ok': False, 'error': str(exc) or 'Niepoprawne dane.'}, status=400)
+        if PantryProduct.objects.filter(barcode=barcode).exists():
+            return JsonResponse({'ok': False, 'error': 'Ten kod ma już inny produkt w spiżarni.'}, status=409)
+        product = PantryProduct.objects.filter(pk=product_id).first()
+        if product is None:
+            return JsonResponse({'ok': False, 'error': 'Nie ma takiego produktu.'}, status=404)
+        try:
+            product = assign_barcode(product, barcode)
+        except ValueError as exc:
+            return JsonResponse({'ok': False, 'error': str(exc)}, status=409)
+        return JsonResponse({'ok': True, 'status': 'known', 'product': pantry_product_json(product)})

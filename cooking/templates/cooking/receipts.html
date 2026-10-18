@@ -1,0 +1,74 @@
+{% extends 'cooking/index.html' %}
+{% load ui %}
+
+{% block title %}Paragony – spiżarnia{% endblock %}
+{% block cooking_editor_assets %}{% endblock %}
+
+{% block content_cooking %}
+{% url 'cooking:pantry' as pantry_url %}
+{% page_head title="Paragony" eyebrow="Spiżarnia" icon="bi-receipt" sub="Zdjęcie paragonu dodaje całe zakupy do spiżarni. Skróty nazw z paragonu zapamiętujemy, więc z każdym paragonem pytań jest mniej." back=pantry_url back_label="Wróć do spiżarni" %}{% endpage_head %}
+
+<div class="pc-page animate-fade-in-up">
+    <form method="post" enctype="multipart/form-data" class="pc-card rc-upload">
+        {% csrf_token %}
+        <h2 class="pc-card-title">Nowy paragon</h2>
+        <label class="rc-drop" for="receipt-photos">
+            <i class="bi bi-camera" aria-hidden="true"></i>
+            <strong>Zrób zdjęcie paragonu</strong>
+            <small>Rozprostuj paragon, połóż na płasko i zrób zdjęcie prosto z góry, przy dobrym świetle. Długi paragon: do 4 zdjęć. Najpewniej czyta się e-paragon (zrzut ekranu albo PDF).</small>
+            <input class="visually-hidden" type="file" id="receipt-photos" name="photos"
+                   accept="image/*,application/pdf" multiple data-receipt-photos>
+        </label>
+        <p class="pc-hint" data-receipt-chosen hidden></p>
+        <details class="rc-paste">
+            <summary>albo wklej tekst paragonu</summary>
+            <textarea class="form-control mt-2" name="text" rows="6"
+                      placeholder="Np. tekst skopiowany ze zdjęcia (Live Text na iPhonie, Obiektyw Google na Androidzie)"></textarea>
+        </details>
+        <div class="pc-form-actions">
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-upload" aria-hidden="true"></i> Odczytaj paragon
+            </button>
+        </div>
+    </form>
+
+    <section class="pc-group" aria-labelledby="rc-list-title">
+        <div class="pc-group-head">
+            <h2 class="pc-group-title" id="rc-list-title">Ostatnie paragony <span>{{ receipts|length }}</span></h2>
+        </div>
+        {% if receipts %}
+            <ul class="rc-list">
+                {% for receipt in receipts %}
+                    <li>
+                        <a class="pc-card rc-list-item" href="{% url 'cooking:receipt-detail' receipt.uuid %}">
+                            <span class="rc-list-main">
+                                <strong>{{ receipt.store.name|default:"Paragon" }}</strong>
+                                <small>{{ receipt.purchased_on|date:"j E Y" }} · {{ receipt.lines.all|length|pl:"pozycja,pozycje,pozycji" }}</small>
+                            </span>
+                            <span class="rc-list-side">
+                                {% if receipt.total is not None %}<strong class="rc-num">{{ receipt.total }} zł</strong>{% endif %}
+                                <span class="rc-status is-{{ receipt.status }}">{{ receipt.get_status_display }}</span>
+                            </span>
+                        </a>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="pc-empty">Nie ma jeszcze paragonów. Pierwszy paragon z danego sklepu wymaga wskazania produktów - każdy kolejny pójdzie szybciej.</p>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.querySelectorAll('[data-receipt-photos]').forEach((input) => {
+    const info = document.querySelector('[data-receipt-chosen]');
+    input.addEventListener('change', () => {
+        const count = input.files.length;
+        info.hidden = !count;
+        info.textContent = count === 1 ? 'Wybrano 1 plik.' : `Wybrane pliki: ${count}.`;
+    });
+});
+</script>
+{% endblock %}

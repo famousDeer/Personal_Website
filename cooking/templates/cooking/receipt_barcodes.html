@@ -1,0 +1,57 @@
+{% extends 'cooking/index.html' %}
+{% load static ui %}
+
+{% block title %}Kody z paragonu – spiżarnia{% endblock %}
+{% block cooking_editor_assets %}{% endblock %}
+
+{% block content_cooking %}
+{% url 'cooking:receipt-detail' receipt.uuid as receipt_url %}
+{% page_head title="Zeskanuj kody" eyebrow=receipt.store.name|default:"Paragon" icon="bi-upc-scan" sub="Skanuj opakowania po kolei, w dowolnej kolejności. Kod sam trafi do właściwego produktu – zapytamy tylko, gdy nie będzie pewności." back=receipt_url back_label="Wróć do paragonu" %}{% endpage_head %}
+
+<div class="pc-page animate-fade-in-up" id="receipt-barcodes"
+     data-scan-url="{% url 'cooking:receipt-barcodes' receipt.uuid %}"
+     data-zxing-url="{% static 'cooking/vendor/zxing-browser-0.2.1.min.js' %}"
+     data-done-url="{{ receipt_url }}">
+    <form class="d-none" data-csrf>{% csrf_token %}</form>
+
+    <section class="pc-card rb-camera" data-camera>
+        <video playsinline muted autoplay data-video aria-label="Podgląd aparatu"></video>
+        <div class="rb-frame" aria-hidden="true"></div>
+        <button type="button" class="btn btn-primary rb-start" data-start hidden>
+            <i class="bi bi-camera-video" aria-hidden="true"></i> Włącz aparat
+        </button>
+    </section>
+
+    <p class="rb-status" role="status" aria-live="polite" data-status>Uruchamiam aparat…</p>
+
+    <section class="pc-card rb-choose" data-choose hidden>
+        <p class="fw-bold mb-1">Który to produkt?</p>
+        <p class="pc-hint mt-0 mb-2" data-choose-hint></p>
+        <div class="pr-link-candidates" data-choose-list></div>
+        <button type="button" class="btn btn-link btn-sm mt-2" data-choose-skip>To nie jest produkt z tego paragonu</button>
+    </section>
+
+    <section class="pc-group" aria-labelledby="rb-remaining-title">
+        <div class="pc-group-head">
+            <h2 class="pc-group-title" id="rb-remaining-title">Bez kodu <span data-remaining-count>{{ remaining|length }}</span></h2>
+        </div>
+        <ul class="rb-list" data-remaining>
+            {% for product in remaining %}<li data-product-id="{{ product.pk }}">{{ product.name }}</li>{% endfor %}
+        </ul>
+        <ul class="rb-list is-done" data-done></ul>
+        <p class="pc-empty" data-all-done {% if remaining %}hidden{% endif %}>Wszystkie produkty z tego paragonu mają już kody. Następny skan rozpozna je od razu.</p>
+    </section>
+
+    <form class="rb-manual" data-manual>
+        <label class="visually-hidden" for="rb-manual-code">Kod kreskowy</label>
+        <input class="form-control" id="rb-manual-code" inputmode="numeric" autocomplete="off" placeholder="Albo wpisz kod ręcznie">
+        <button class="btn btn-outline-primary" type="submit">Dodaj</button>
+    </form>
+
+    <a class="btn btn-primary btn-lg" href="{{ receipt_url }}">Gotowe</a>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'cooking/js/receipt-barcodes.js' %}" defer></script>
+{% endblock %}

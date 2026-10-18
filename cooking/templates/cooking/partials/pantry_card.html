@@ -60,6 +60,16 @@ Kontekst: card (słownik z PantryListView), product = card.product.
                     </span>
                 {% endif %}
             </p>
+            {% if card.price and card.price.last %}
+                {% with last=card.price.last %}
+                    <a class="pantry-price" href="{% url 'cooking:product-prices' product.id %}" title="Historia cen">
+                        <i class="bi bi-tag" aria-hidden="true"></i>
+                        <strong>{{ last.regular }} zł/{{ last.base_unit }}</strong>
+                        <span>{{ last.store }}, {{ last.day|date:"d.m" }}</span>
+                        {% include 'cooking/partials/price_change.html' with change=card.price.change label="od poprzedniego zakupu" %}
+                    </a>
+                {% endwith %}
+            {% endif %}
         </div>
     </div>
 

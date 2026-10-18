@@ -403,3 +403,13 @@ LOGIN_URL = 'login'
 # patrz README: "Server maintenance").
 SESSION_ENGINE = 'django.contrib.sessions.backends.cached_db'
 SESSION_COOKIE_AGE = 1209600  # 2 weeks in sec
+
+# Paragony w spiżarni (cooking.services.receipts): odczyt lokalnie Tesseractem.
+# Zdjęcie po zatwierdzeniu trafia do RECEIPT_ARCHIVE_DIR, a stamtąd
+# deploy/receipts_upload.sh (cron na Pi, rclone move) przenosi je na Dysk Google.
+RECEIPT_OCR_ENABLED = env_bool('RECEIPT_OCR_ENABLED', not RUNNING_TESTS)
+RECEIPT_OCR_ASYNC = env_bool('RECEIPT_OCR_ASYNC', not RUNNING_TESTS)
+RECEIPT_TESSERACT_CMD = os.environ.get('RECEIPT_TESSERACT_CMD', 'tesseract')
+RECEIPT_OCR_LANG = os.environ.get('RECEIPT_OCR_LANG', 'pol')
+RECEIPT_OCR_TIMEOUT = int(os.environ.get('RECEIPT_OCR_TIMEOUT', '120'))
+RECEIPT_ARCHIVE_DIR = os.environ.get('RECEIPT_ARCHIVE_DIR', str(PRIVATE_MEDIA_ROOT / 'receipts_outbox'))

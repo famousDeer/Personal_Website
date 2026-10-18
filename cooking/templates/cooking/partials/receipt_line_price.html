@@ -1,0 +1,12 @@
+{# Cena pozycji paragonu: regularna (do historii cen) i po rabacie, z rodzajem rabatu. #}
+<p class="rc-price-detail">
+    <span class="rc-num">{{ line.quantity|floatformat:"-3" }}{% if line.is_weighted %} kg{% endif %} × {{ line.unit_price }} zł</span>
+    {% if line.discount %}
+        <span class="rc-discount is-{{ line.discount_kind|default:'promo' }}" title="{{ line.discount_label }}">
+            {{ line.get_discount_kind_display|default:"Rabat" }} −{{ line.discount }} zł
+        </span>
+    {% endif %}
+    {% if line.price_per_base_unit %}
+        <span>cena regularna <strong class="rc-num">{{ line.price_per_base_unit }} zł/{{ line.base_unit }}</strong>{% if line.discount and line.paid_per_base_unit %}, po rabacie <span class="rc-num">{{ line.paid_per_base_unit }} zł/{{ line.base_unit }}</span>{% endif %}</span>
+    {% endif %}
+</p>

@@ -1,6 +1,6 @@
 # cooking/urls.py
 from django.urls import path
-from . import shopping_app_views, views, views_categories as category_views
+from . import shopping_app_views, views, views_categories as category_views, views_receipts as receipt_views
 
 app_name = 'cooking'
 
@@ -15,11 +15,20 @@ urlpatterns = [
     path('pantry/add/', views.AddPantryProductView.as_view(), name='add-pantry-product'),
     path('pantry/barcode/lookup/', views.PantryBarcodeLookupView.as_view(), name='pantry-barcode-lookup'),
     path('pantry/barcode/action/', views.PantryBarcodeActionView.as_view(), name='pantry-barcode-action'),
+    path('pantry/barcode/link/', views.PantryBarcodeLinkView.as_view(), name='pantry-barcode-link'),
+    path('pantry/prices/', receipt_views.PriceListView.as_view(), name='prices'),
+    path('pantry/prices/<int:product_id>/', receipt_views.ProductPriceView.as_view(), name='product-prices'),
     path('pantry/barcode/register/', views.PantryBarcodeRegisterView.as_view(), name='pantry-barcode-register'),
     path('pantry/catalog/image/<int:entry_id>/', views.PantryCatalogImageView.as_view(), name='pantry-catalog-image'),
     path('pantry/<int:product_id>/image/', views.PantryProductImageView.as_view(), name='pantry-product-image'),
     path('pantry/<int:product_id>/image/upload/', views.PantryProductImageUploadView.as_view(), name='pantry-product-image-upload'),
     # Kategorie i reguły automatycznego wyboru kategorii (cooking/views_categories.py)
+    path('pantry/receipts/', receipt_views.ReceiptListView.as_view(), name='receipts'),
+    path('pantry/receipts/<uuid:receipt_uuid>/', receipt_views.ReceiptDetailView.as_view(), name='receipt-detail'),
+    path('pantry/receipts/<uuid:receipt_uuid>/barcodes/', receipt_views.ReceiptBarcodesView.as_view(), name='receipt-barcodes'),
+    path('pantry/receipts/<uuid:receipt_uuid>/retry/', receipt_views.ReceiptRetryView.as_view(), name='receipt-retry'),
+    path('pantry/receipts/<uuid:receipt_uuid>/delete/', receipt_views.ReceiptDeleteView.as_view(), name='receipt-delete'),
+    path('pantry/receipts/<uuid:receipt_uuid>/photo/<int:photo_id>/', receipt_views.ReceiptPhotoView.as_view(), name='receipt-photo'),
     path('pantry/categories/', category_views.PantryCategoriesView.as_view(), name='pantry-categories'),
     path('pantry/categories/add/', category_views.PantryCategoryCreateView.as_view(), name='pantry-category-add'),
     path('pantry/categories/<int:category_id>/', category_views.PantryCategoryEditView.as_view(), name='pantry-category-edit'),

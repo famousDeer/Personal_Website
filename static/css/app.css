@@ -2854,3 +2854,87 @@ form:has(#one-off:checked) .pantry-restock-fields { opacity: 0.45; }
     .hm-delta:empty { display: none; }
     .ha-month-nav .u-btn { padding-inline: .6rem; }
 }
+
+/* --- Paragony w spiżarni (cooking/receipts*.html) --- */
+.rc-drop {
+    display: flex; flex-direction: column; align-items: center; gap: var(--sp-1);
+    padding: var(--sp-5) var(--sp-4); text-align: center; cursor: pointer;
+    border: 2px dashed var(--line-2); border-radius: var(--r-lg);
+    background: var(--surface-2); color: var(--ink-2);
+}
+.rc-drop:hover, .rc-drop:focus-within { border-color: var(--brand-500); color: var(--ink-1); }
+.rc-drop .bi { font-size: 2rem; color: var(--brand-500); }
+.rc-drop small { color: var(--ink-3); }
+.rc-paste { margin-top: var(--sp-3); color: var(--ink-2); }
+.rc-paste summary { cursor: pointer; font-size: var(--fs-sm); }
+.rc-list, .rc-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.rc-list-item { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); color: inherit; text-decoration: none; }
+.rc-list-main, .rc-list-side { display: flex; flex-direction: column; gap: 2px; }
+.rc-list-side { align-items: flex-end; }
+.rc-list-main small { color: var(--ink-3); }
+.rc-num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.rc-status { font-size: var(--fs-caption); padding: 2px 8px; border-radius: var(--r-pill); background: var(--neutral-bg); color: var(--ink-2); }
+.rc-status.is-review { background: var(--invest-bg); color: var(--invest-ink); }
+.rc-status.is-done { background: var(--income-bg); color: var(--income-ink); }
+.rc-status.is-failed { background: var(--expense-bg); color: var(--expense-ink); }
+.rc-state { display: flex; gap: var(--sp-3); align-items: flex-start; }
+.rc-state.is-failed > .bi { font-size: 1.5rem; color: var(--expense); }
+.rc-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-3); }
+.rc-summary small { display: block; color: var(--ink-3); font-size: var(--fs-caption); }
+.rc-check { grid-column: 1 / -1; margin: 0; font-size: var(--fs-sm); }
+.rc-check.is-ok { color: var(--income-ink); }
+.rc-check.is-warn { color: var(--expense-ink); }
+.rc-line { padding: var(--sp-3); border-left: 4px solid var(--line-2); }
+.rc-line.is-known { border-left-color: var(--income); }
+.rc-line.is-suggested { border-left-color: var(--invest); }
+.rc-line.is-new { border-left-color: var(--expense); }
+.rc-line.is-ignored { opacity: 0.7; }
+.rc-line-head { display: flex; align-items: baseline; gap: var(--sp-2); flex-wrap: wrap; }
+.rc-raw { color: var(--ink-1); background: none; padding: 0; font-size: var(--fs-sm); flex: 1 1 12rem; min-width: 0; overflow-wrap: anywhere; }
+.rc-price { margin-left: auto; font-weight: 600; }
+.rc-badge { font-size: var(--fs-caption); font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: var(--tracking-caps); }
+.rc-line-fields { display: grid; grid-template-columns: minmax(0, 1fr) 6.5rem 11rem; gap: var(--sp-2); margin-top: var(--sp-2); }
+.rc-field { display: flex; flex-direction: column; gap: 2px; margin: 0; }
+.rc-field > span { font-size: var(--fs-caption); color: var(--ink-3); }
+.rc-actions { position: sticky; bottom: var(--sp-3); display: flex; justify-content: flex-end; margin-top: var(--sp-3); }
+.rc-photos img { display: block; width: 100%; max-width: 28rem; margin: var(--sp-3) auto 0; border-radius: var(--r-md); }
+.rc-photos summary { cursor: pointer; font-weight: 600; }
+@media (max-width: 600px) {
+    .rc-summary { grid-template-columns: 1fr 1fr; }
+    .rc-line-fields { grid-template-columns: 1fr 1fr; }
+    .rc-field-target { grid-column: 1 / -1; }
+    .rc-actions .btn { width: 100%; }
+}
+.rc-price-detail { display: flex; flex-wrap: wrap; gap: 2px var(--sp-3); margin: var(--sp-1) 0 0; color: var(--ink-3); font-size: var(--fs-sm); }
+.rc-price-detail strong { color: var(--ink-2); }
+.rc-discount { padding: 0 6px; border-radius: var(--r-pill); background: var(--invest-bg); color: var(--invest-ink); font-size: var(--fs-caption); font-weight: 600; }
+.rc-discount.is-multibuy { background: var(--income-bg); color: var(--income-ink); }
+.pr-search { max-width: 24rem; }
+.pr-change { font-size: var(--fs-caption); font-weight: 600; color: var(--ink-3); white-space: nowrap; }
+.pr-change.is-up { color: var(--expense-ink); }
+.pr-change.is-down { color: var(--income-ink); }
+.pr-year { margin-left: var(--sp-2); color: var(--ink-3); }
+.pr-chart { position: relative; height: 16rem; }
+.pantry-price { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px var(--sp-2); margin-top: var(--sp-1); color: var(--ink-3); font-size: var(--fs-sm); text-decoration: none; }
+.pantry-price strong { color: var(--ink-2); font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.pantry-price:hover strong { color: var(--brand-600); }
+.pr-link-candidates { display: grid; gap: var(--sp-2); }
+.pr-link-candidates .btn { display: flex; justify-content: space-between; gap: var(--sp-2); text-align: left; }
+.pr-link-candidates small { color: var(--ink-3); }
+.rc-barcodes-cta { display: flex; align-items: center; gap: var(--sp-3); color: inherit; text-decoration: none; border-left: 4px solid var(--brand-500); }
+.rc-barcodes-cta > .bi:first-child { font-size: 1.75rem; color: var(--brand-500); }
+.rc-barcodes-cta span { display: flex; flex-direction: column; flex: 1; }
+.rc-barcodes-cta small { color: var(--ink-3); }
+.rb-camera { position: relative; padding: 0; overflow: hidden; aspect-ratio: 4 / 3; background: #000; }
+.rb-camera video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.rb-frame { position: absolute; inset: 30% 12%; border: 2px solid rgba(255, 255, 255, 0.85); border-radius: var(--r-md); pointer-events: none; }
+.rb-start { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+.rb-status { margin: 0; font-weight: 600; color: var(--ink-2); min-height: 1.5em; }
+.rb-status[data-tone="ok"] { color: var(--income-ink); }
+.rb-status[data-tone="error"] { color: var(--expense-ink); }
+.rb-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.rb-list li { padding: 4px 10px; border-radius: var(--r-pill); background: var(--surface-2); color: var(--ink-1); font-size: var(--fs-sm); }
+.rb-list.is-done { margin-top: var(--sp-2); }
+.rb-list.is-done li { background: var(--income-bg); color: var(--income-ink); }
+.rb-list.is-done li::before { content: '✓ '; }
+.rb-manual { display: flex; gap: var(--sp-2); max-width: 24rem; }

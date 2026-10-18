@@ -50,6 +50,8 @@
         unknownCountdownLabel: select('[data-unknown-countdown-label]'),
         unknownHelp: select('[data-unknown-help]'),
         unknownCode: select('[data-unknown-code]'),
+        linkWrap: select('[data-link-wrap]'),
+        linkCandidates: select('[data-link-candidates]'),
         unknownPhotoWrap: select('[data-unknown-photo-wrap]'),
         registerForm: select('[data-register-form]'),
         registerTitle: select('[data-register-title]'),
@@ -99,6 +101,7 @@
 
     const endpoints = {
         lookup: root.dataset.lookupUrl,
+        link: root.dataset.linkUrl,
         action: root.dataset.actionUrl,
         register: root.dataset.registerUrl,
     };
@@ -1694,9 +1697,48 @@
                 presentKnownProduct(data.product, data.catalog, state.autoActionTimeoutMs);
             } else {
                 presentUnknownProduct(data.barcode, data.catalog, state.autoActionTimeoutMs);
+                renderLinkCandidates(data.barcode, data.link_candidates || []);
             }
         } catch (error) {
             showError(error.message, resolveBarcode);
+        }
+    }
+
+    // Nieznany kod, a w spiżarni są produkty bez kodu (np. dodane z paragonu):
+    // jedno dotknięcie przypisuje kod i od razu pokazuje znany produkt.
+    function renderLinkCandidates(barcode, candidates) {
+        if (!elements.linkWrap || !elements.linkCandidates) {
+            return;
+        }
+        elements.linkCandidates.replaceChildren();
+        elements.linkWrap.hidden = !candidates.length || !endpoints.link;
+        candidates.forEach((candidate) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn btn-outline-primary btn-sm';
+            const name = document.createElement('span');
+            name.textContent = candidate.name;
+            const hint = document.createElement('small');
+            hint.textContent = candidate.hint ? `z paragonu: ${candidate.hint}` : (candidate.category || '');
+            button.append(name, hint);
+            button.addEventListener('click', () => linkBarcode(barcode, candidate.id));
+            elements.linkCandidates.append(button);
+        });
+    }
+
+    async function linkBarcode(barcode, productId) {
+        cancelCountdown();
+        setCameraStatus('Przypisuję kod…', true);
+        try {
+            const data = await fetchJson(endpoints.link, {
+                method: 'POST',
+                body: JSON.stringify({ barcode, product_id: productId }),
+            });
+            elements.linkWrap.hidden = true;
+            announce(`Kod przypisany do: ${data.product.name}.`);
+            presentKnownProduct(data.product, state.catalog, state.autoActionTimeoutMs);
+        } catch (error) {
+            showError(error.message, () => linkBarcode(barcode, productId));
         }
     }
 
