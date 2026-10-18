@@ -1,8 +1,8 @@
-"""Zapasowy odczyt paragonu przez Claude API (model Haiku), na żądanie.
+"""Odczyt zdjęcia paragonu przez Claude API (model Haiku).
 
-Pi czyta paragon Tesseractem. Gdy się nie uda albo sumy się nie zgadzają,
-strona paragonu pokazuje przycisk „Odczytaj przez AI” - dopiero wtedy
-zdjęcie wychodzi z domu. Model przepisuje paragon w stałym układzie, który
+Od 18.10.2026 to domyślny odczyt zdjęć (receipts.process_receipt); Tesseract
+na Pi zostaje awaryjnie, gdy API nie odpowiada. Przycisk „Odczytaj przez AI”
+pojawia się, gdy paragon odczytano awaryjnie. Model przepisuje paragon w stałym układzie, który
 rozumie zwykły parser (receipt_parser.py), więc słownik domu, rabaty
 i kontrola sumy działają tak samo jak przy odczycie lokalnym.
 

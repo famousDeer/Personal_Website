@@ -414,9 +414,9 @@ RECEIPT_OCR_LANG = os.environ.get('RECEIPT_OCR_LANG', 'pol')
 RECEIPT_OCR_TIMEOUT = int(os.environ.get('RECEIPT_OCR_TIMEOUT', '120'))
 RECEIPT_ARCHIVE_DIR = os.environ.get('RECEIPT_ARCHIVE_DIR', str(PRIVATE_MEDIA_ROOT / 'receipts_outbox'))
 
-# Zapasowy odczyt paragonu przez Claude API - tylko na żądanie (przycisk
-# „Odczytaj przez AI”, gdy Tesseract nie dał rady). Klucz z Claude Console;
-# subskrypcja Claude nie obejmuje API. W testach wyłączone.
+# Odczyt zdjęć paragonów przez Claude API - domyślny, gdy jest klucz
+# (Tesseract tylko awaryjnie). Klucz z Claude Console; subskrypcja Claude
+# nie obejmuje API. W testach wyłączone.
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
 RECEIPT_AI_ENABLED = env_bool('RECEIPT_AI_ENABLED', bool(ANTHROPIC_API_KEY) and not RUNNING_TESTS)
 RECEIPT_AI_MODEL = os.environ.get('RECEIPT_AI_MODEL', 'claude-haiku-5-5')

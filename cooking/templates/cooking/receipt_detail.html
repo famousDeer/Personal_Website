@@ -66,7 +66,7 @@
         {% if receipt.total_matches %}
             <p class="rc-check is-ok"><i class="bi bi-check-circle" aria-hidden="true"></i> Sumy się zgadzają – odczyt jest pełny.{% if receipt.ocr_engine == 'ai' %} Odczytano przez AI.{% endif %}</p>
         {% else %}
-            <p class="rc-check is-warn"><i class="bi bi-exclamation-circle" aria-hidden="true"></i> Sumy się różnią – część pozycji mogła się nie odczytać. Sprawdź listę ze zdjęciem. Przy pogniecionym paragonie pomaga nowe zdjęcie po rozprostowaniu albo wklejenie tekstu skopiowanego ze zdjęcia w telefonie (Live Text, Obiektyw Google).</p>
+            <p class="rc-check is-warn"><i class="bi bi-exclamation-circle" aria-hidden="true"></i> Sumy się różnią – część pozycji mogła się nie odczytać. Porównaj listę ze zdjęciem i popraw albo pomiń brakujące pozycje.</p>
             {% if ai_available %}
                 <form method="post" action="{% url 'cooking:receipt-ai' receipt.uuid %}" class="rc-ai">
                     {% csrf_token %}

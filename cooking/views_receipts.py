@@ -126,7 +126,7 @@ class ReceiptDetailView(LoginRequiredMixin, View):
         ai_available = (
             ai_enabled() and has_photos and receipt.ocr_engine != 'ai'
             and (receipt.status == Receipt.STATUS_FAILED
-                 or (receipt.status == Receipt.STATUS_REVIEW and not receipt.total_matches))
+                 or (receipt.status == Receipt.STATUS_REVIEW and (not receipt.total_matches or receipt.error)))
         )
         return render(request, self.template_name, {
             'receipt': receipt,

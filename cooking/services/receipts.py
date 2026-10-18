@@ -89,16 +89,37 @@ def store_for(parsed) -> ReceiptStore | None:
 
 
 def process_receipt(receipt_id):
+    """Zdjęcia paragonu → tekst. Domyślnie Claude API (decyzja 18.10.2026:
+    lokalny OCR myli się na papierze). Tesseract na Pi tylko awaryjnie, gdy
+    API nie jest skonfigurowane albo nie odpowiada - paragon da się wtedy
+    i tak dodać, a na stronie jest przycisk „Odczytaj przez AI”."""
+    from .receipt_ai import ReceiptAiError, ai_enabled, call_claude
+
     receipt = Receipt.objects.prefetch_related('photos').get(pk=receipt_id)
     paths = [photo.image.path for photo in receipt.photos.all() if photo.image]
+    ai_error = ''
+    if ai_enabled() and paths:
+        try:
+            text, usage = call_claude(paths)
+        except ReceiptAiError as exc:
+            ai_error = str(exc)
+            logger.warning('Paragon %s: AI niedostępne (%s), odczyt lokalny', receipt.pk, exc)
+        else:
+            logger.info('Paragon %s odczytany przez AI, tokeny: %s', receipt.pk, usage)
+            apply_ocr_text(receipt, text, engine='ai')
+            return receipt
     try:
         text = best_ocr_text(paths)
     except ReceiptOcrError as exc:
         receipt.status = Receipt.STATUS_FAILED
-        receipt.error = str(exc)[:255]
+        receipt.error = (f'{ai_error} ' if ai_error else '') + str(exc)
+        receipt.error = receipt.error[:255]
         receipt.save(update_fields=['status', 'error', 'updated_at'])
         return receipt
     apply_ocr_text(receipt, text, engine='tesseract')
+    if ai_error:
+        receipt.error = f'{ai_error} Odczytano awaryjnie na serwerze w domu - sprawdź pozycje.'[:255]
+        receipt.save(update_fields=['error', 'updated_at'])
     return receipt
 
 

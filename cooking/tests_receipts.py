@@ -1042,3 +1042,43 @@ class PricePerPieceTests(TestCase):
         self.assertContains(page, '7,48 zł/kg')
         self.assertContains(page, 'data-chart-mode="base"')
         self.assertContains(page, 'price-chart-data')          # wykres także przy jednym zakupie
+
+
+@override_settings(RECEIPT_AI_ENABLED=True, ANTHROPIC_API_KEY='test-key')
+class ReceiptAiDefaultTests(TestCase):
+    """Zdjęcia czyta domyślnie Claude API; Tesseract tylko awaryjnie."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='aidomyslnie', password='pass12345')
+        self.client.force_login(self.user)
+        self.media = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.media, ignore_errors=True)
+
+    def _upload(self):
+        buffer = io.BytesIO()
+        Image.new('RGB', (400, 900), 'white').save(buffer, format='JPEG')
+        upload = SimpleUploadedFile('paragon.jpg', buffer.getvalue(), content_type='image/jpeg')
+        self.client.post(reverse('cooking:receipts'), {'photos': [upload]})
+        return Receipt.objects.get()
+
+    def test_photo_goes_to_ai_without_local_ocr(self):
+        with override_settings(PRIVATE_MEDIA_ROOT=Path(self.media)), \
+                patch('cooking.services.receipt_ai.call_claude', return_value=(ALDEK_AI, {})) as api, \
+                patch('cooking.services.receipts.read_text') as local:
+            receipt = self._upload()
+        api.assert_called_once()
+        local.assert_not_called()
+        self.assertEqual((receipt.status, receipt.ocr_engine), (Receipt.STATUS_REVIEW, 'ai'))
+        self.assertTrue(receipt.total_matches)
+
+    def test_ai_down_falls_back_to_local_ocr(self):
+        from .services.receipt_ai import ReceiptAiError
+
+        with override_settings(PRIVATE_MEDIA_ROOT=Path(self.media)), \
+                patch('cooking.services.receipt_ai.call_claude', side_effect=ReceiptAiError('Brak połączenia z Claude API.')), \
+                patch('cooking.services.receipts.read_text', return_value=LIDL):
+            receipt = self._upload()
+        self.assertEqual((receipt.status, receipt.ocr_engine), (Receipt.STATUS_REVIEW, 'tesseract'))
+        self.assertIn('awaryjnie', receipt.error)
+        page = self.client.get(reverse('cooking:receipt-detail', args=[receipt.uuid]))
+        self.assertContains(page, 'Brak połączenia z Claude API')
