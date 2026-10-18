@@ -1007,3 +1007,38 @@ class ReceiptAiTests(TestCase):
         self.assertEqual(body['messages'][0]['content'][0]['type'], 'image')
         self.assertEqual(text, ALDEK_AI)
         self.assertEqual(usage['input_tokens'], 4800)
+
+
+class PricePerPieceTests(TestCase):
+    """Cena główna za sztukę (opakowanie z kodem), za kg tylko towar ważony; za kg/l dodatkowo."""
+
+    def test_piece_price_is_primary_and_per_kg_is_extra(self):
+        from .services.receipt_prices import chart_data, price_summary
+
+        user = User.objects.create_user(username='sztuki', password='pass12345')
+        self.client.force_login(user)
+        yogurt = PantryProduct.objects.create(name='Jogurt Pilos', barcode='5900000000777', unit=PantryProduct.UNIT_GRAM,
+                                              quantity_per_scan=Decimal('400'))
+        bananas = PantryProduct.objects.create(name='Banany', unit=PantryProduct.UNIT_GRAM)
+        receipt = apply_ocr_text(Receipt.objects.create(), BIEDRONKA)
+        decisions = {
+            receipt.lines.get(name='Jogurt nat. Pilos 400g').pk: LineDecision(ACTION_ADD, 'Jogurt Pilos', Decimal('1')),
+            receipt.lines.get(name='Banany luz').pk: LineDecision(ACTION_ADD, 'Banany', Decimal('0.754')),
+        }
+        confirm_receipt(receipt, decisions)
+
+        last = price_summary(yogurt).last
+        self.assertEqual((last.regular, last.unit), (Decimal('2.99'), 'szt'))
+        self.assertEqual((last.per_base, last.base_unit), (Decimal('7.48'), 'kg'))
+        self.assertEqual(last.paid, Decimal('1.99'))
+        chart = chart_data(price_summary(yogurt))
+        self.assertEqual((chart['unit'], chart['base_unit']), ('szt', 'kg'))
+
+        last = price_summary(bananas).last
+        self.assertEqual((last.regular, last.unit, last.per_base), (Decimal('5.99'), 'kg', None))
+
+        page = self.client.get(reverse('cooking:product-prices', args=[yogurt.pk]))
+        self.assertContains(page, '2,99 zł/szt')
+        self.assertContains(page, '7,48 zł/kg')
+        self.assertContains(page, 'data-chart-mode="base"')
+        self.assertContains(page, 'price-chart-data')          # wykres także przy jednym zakupie

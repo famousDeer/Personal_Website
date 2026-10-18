@@ -70,7 +70,7 @@ Kontekst: card (słownik z PantryListView), product = card.product.
                 {% with last=card.price.last %}
                     <a class="pantry-price" href="{% url 'cooking:product-prices' product.id %}" title="Historia cen">
                         <i class="bi bi-tag" aria-hidden="true"></i>
-                        <strong>{{ last.regular }} zł/{{ last.base_unit }}</strong>
+                        <strong>{{ last.regular }} zł/{{ last.unit }}</strong>{% if last.per_base %}<span>({{ last.per_base }} zł/{{ last.base_unit }})</span>{% endif %}
                         <span>{{ last.store }}, {{ last.day|date:"d.m" }}</span>
                         {% include 'cooking/partials/price_change.html' with change=card.price.change label="od poprzedniego zakupu" %}
                     </a>

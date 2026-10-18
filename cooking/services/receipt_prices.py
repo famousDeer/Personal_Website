@@ -1,8 +1,12 @@
 """Ceny produktów z zatwierdzonych paragonów.
 
-Porównujemy **cenę regularną** (półkową) za kg / l / szt. - kupon czy
-„taniej za 2” nie zmienia ceny w sklepie, więc nie udaje podwyżki ani
-obniżki. Cenę po rabacie pokazujemy obok, jako informację.
+Porównujemy **cenę regularną** (półkową) - kupon czy „taniej za 2” nie
+zmienia ceny w sklepie, więc nie udaje podwyżki ani obniżki. Cenę po
+rabacie pokazujemy obok, jako informację.
+
+Cena główna to cena **za sztukę (opakowanie)** - produkt z kodem kreskowym
+to zawsze to samo opakowanie. Towar ważony liczy się za kg. Cenę za kg / l
+pokazujemy dodatkowo: wyłapuje „mniejsze opakowanie za tę samą cenę”.
 """
 from __future__ import annotations
 
@@ -22,8 +26,11 @@ YEAR = timedelta(days=365)
 class PriceObservation:
     day: date
     store: str
-    regular: Decimal
-    paid: Decimal | None
+    regular: Decimal            # cena główna: za szt. albo za kg (ważone)
+    paid: Decimal | None        # to samo po rabatach
+    unit: str                   # 'szt' albo 'kg'
+    per_base: Decimal | None    # dodatkowo za kg / l (z gramatury), gdy znana
+    per_base_paid: Decimal | None
     base_unit: str
     discount_kind: str
     discount_label: str
@@ -47,7 +54,7 @@ class PriceSummary:
         """Ostatnia wcześniejsza cena w tej samej jednostce, z innego dnia."""
         last = self.last
         for item in self.observations[1:]:
-            if item.base_unit == last.base_unit and item.day != last.day:
+            if item.unit == last.unit and item.day != last.day:
                 return item
         return None
 
@@ -69,7 +76,7 @@ class PriceSummary:
         if not last:
             return None
         limit = last.day - YEAR + timedelta(days=45)
-        older = [item for item in self.observations if item.base_unit == last.base_unit and item.day <= limit]
+        older = [item for item in self.observations if item.unit == last.unit and item.day <= limit]
         return older[0] if older else None
 
     @property
@@ -84,7 +91,7 @@ class PriceSummary:
         if not last:
             return []
         limit = timezone.localdate() - YEAR
-        return [item for item in self.observations if item.base_unit == last.base_unit and item.day >= limit]
+        return [item for item in self.observations if item.unit == last.unit and item.day >= limit]
 
     @property
     def minimum(self):
@@ -101,7 +108,7 @@ class PriceSummary:
         """Sklep z najniższą ostatnią ceną regularną (gdy kupujecie w kilku)."""
         by_store = {}
         for item in self.observations:
-            if item.base_unit == self.last.base_unit:
+            if item.unit == self.last.unit:
                 by_store.setdefault(item.store, item)
         if len(by_store) < 2:
             return ''
@@ -121,7 +128,6 @@ def _lines(product_ids=None):
         .filter(receipt__status=Receipt.STATUS_DONE)
         .filter(Q(match_status=ReceiptLine.MATCH_AUTO) | Q(match_status=ReceiptLine.MATCH_CONFIRMED))
         .exclude(product=None)
-        .exclude(price_per_base_unit=None)
         .select_related('receipt__store')
     )
     if product_ids is not None:
@@ -131,12 +137,17 @@ def _lines(product_ids=None):
 
 def _observation(line) -> PriceObservation:
     receipt = line.receipt
+    quantity = line.quantity if line.quantity and line.quantity > 0 else Decimal('1')
+    has_base = bool(line.base_unit) and line.base_unit != 'szt' and not line.is_weighted
     return PriceObservation(
         day=receipt.purchased_on,
         store=receipt.store.name if receipt.store_id else 'Sklep',
-        regular=line.price_per_base_unit,
-        paid=line.paid_per_base_unit,
-        base_unit=line.base_unit,
+        regular=line.unit_price,
+        paid=(line.paid_price / quantity).quantize(Decimal('0.01')),
+        unit='kg' if line.is_weighted else 'szt',
+        per_base=line.price_per_base_unit if has_base else None,
+        per_base_paid=line.paid_per_base_unit if has_base else None,
+        base_unit=line.base_unit if has_base else '',
         discount_kind=line.get_discount_kind_display() if line.discount_kind else '',
         discount_label=line.discount_label,
         receipt_uuid=str(receipt.uuid),
@@ -162,14 +173,17 @@ def price_summary(product: PantryProduct) -> PriceSummary:
 
 
 def chart_data(summary: PriceSummary) -> dict:
-    """Seria na sklep (kolor = sklep), cena regularna; promocje osobno w podpowiedzi."""
+    """Seria na sklep (kolor = sklep): cena regularna za szt. (albo kg),
+    dodatkowo za kg / l, gdy znamy gramaturę. Promocje w podpowiedzi."""
     last = summary.last
     if not last:
         return {}
-    points = [item for item in reversed(summary.observations) if item.base_unit == last.base_unit]
+    points = [item for item in reversed(summary.observations) if item.unit == last.unit]
     stores = sorted({item.store for item in points})
+    base_units = {item.base_unit for item in points if item.base_unit}
     return {
-        'unit': last.base_unit,
+        'unit': last.unit,
+        'base_unit': base_units.pop() if len(base_units) == 1 else '',
         'labels': sorted({item.day.isoformat() for item in points}),
         'series': [
             {
@@ -179,6 +193,8 @@ def chart_data(summary: PriceSummary) -> dict:
                         'day': item.day.isoformat(),
                         'regular': float(item.regular),
                         'paid': float(item.paid) if item.paid is not None else None,
+                        'per_base': float(item.per_base) if item.per_base is not None else None,
+                        'per_base_paid': float(item.per_base_paid) if item.per_base_paid is not None else None,
                         'discount': item.discount_kind,
                     }
                     for item in points if item.store == store

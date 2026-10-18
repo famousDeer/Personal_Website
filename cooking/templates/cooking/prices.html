@@ -28,7 +28,7 @@
                             <small>{{ last.store }}, {{ last.day|date:"j E Y" }}{% if price.cheapest_store and price.cheapest_store != last.store %} · najtaniej: {{ price.cheapest_store }}{% endif %}</small>
                         </span>
                         <span class="rc-list-side">
-                            <strong class="rc-num">{{ last.regular }} zł/{{ last.base_unit }}</strong>
+                            <strong class="rc-num">{{ last.regular }} zł/{{ last.unit }}</strong>{% if last.per_base %}<small class="rc-num pr-base">{{ last.per_base }} zł/{{ last.base_unit }}</small>{% endif %}
                             <span>
                                 {% include 'cooking/partials/price_change.html' with change=price.change label="od poprzedniego zakupu" %}
                                 {% if price.year_change is not None %}<small class="pr-year">r/r {% if price.year_change > 0 %}+{% endif %}{{ price.year_change }}%</small>{% endif %}

@@ -2958,3 +2958,5 @@ form:has(#one-off:checked) .pantry-restock-fields { opacity: 0.45; }
 .rb-date .ex-chips .btn { flex: 1 1 5rem; }
 .rc-ai { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); }
 .rc-ai small { color: var(--ink-3); }
+.pr-chart-head { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: var(--sp-3); }
+.pr-base { color: var(--ink-3); }
