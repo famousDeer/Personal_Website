@@ -284,7 +284,9 @@ class PantryMovementReturnTests(UndoTestCase):
         self.assertContains(page, f'id="product-{self.product.pk}"')
         self.assertContains(page, f'id="manual-{self.product.pk}"')
         self.assertContains(page, 'data-optimistic="pantry-movement"')
-        self.assertContains(page, 'id="pantry-metrics"')
+        # Liczniki są teraz w pasku „dziś”, a produkt ma też kompaktowy wiersz listy.
+        self.assertContains(page, 'id="pantry-today"')
+        self.assertContains(page, f'id="pantry-row-{self.product.pk}"')
 
     def test_product_delete_uses_the_shared_confirmation(self):
         page = self.client.get(reverse('cooking:edit-pantry-product', args=[self.product.pk]))

@@ -285,7 +285,9 @@ def resolve_target(name: str, user, line: ReceiptLine):
     name = re.sub(r'\s+', ' ', name or '').strip()[:160]
     if not name:
         return None, None
-    product = PantryProduct.objects.filter(name__iexact=name).first()
+    from .pantry_merge import find_product_by_name
+
+    product = find_product_by_name(name)
     if product:
         return product, None
     group = ProductGroup.objects.filter(name__iexact=name).first()
@@ -603,14 +605,43 @@ def _catalog_name(barcode: str) -> str:
     return ' '.join(part for part in [entry.brand, entry.product_name] if part).strip()
 
 
-def scan_receipt_barcode(receipt: Receipt, barcode: str, product_id: int | None = None) -> dict:
+def _merged(source, owner):
+    from .pantry_merge import merge_products
+
+    merged_name = source.name
+    owner = merge_products(source, owner)
+    return {'status': 'merged', 'product': owner.name, 'product_id': owner.pk, 'merged': merged_name,
+            'needs_date': _needs_date(owner)}
+
+
+def scan_receipt_barcode(receipt: Receipt, barcode: str, product_id: int | None = None, merge: bool = False) -> dict:
     """Jeden skan w trybie „Zeskanuj kody”. Zwraca status:
-    linked (przypisany), known (kod już jest w spiżarni), choose (trzeba wskazać produkt)."""
+    linked (przypisany), merged (produkt z paragonu połączony z tym, który ma już ten kod),
+    merge (kod ma już inny produkt - zapytaj, czy to ten sam), known (kod już jest w spiżarni),
+    date (trzeba wpisać termin), choose (trzeba wskazać produkt)."""
+    from .pantry_merge import same_name
     from .receipt_matching import name_score
 
     remaining = receipt_products_without_barcode(receipt)
     owner = PantryProduct.objects.filter(barcode=barcode).first()
     if owner is not None:
+        # Produkt z paragonu dostał nową nazwę, a ten towar już stoi w spiżarni z kodem:
+        # to duplikat. Ta sama nazwa (bez ogonków i wielkości liter) - łączymy od razu,
+        # inna - jedno pytanie z listą produktów z paragonu.
+        if merge and product_id:
+            source = next((item for item in remaining if item.pk == product_id), None)
+            if source is None:
+                raise ValueError('Tego produktu nie ma już na liście z paragonu.')
+            return _merged(source, owner)
+        twin = next((item for item in remaining if same_name(item.name, owner.name)), None)
+        if twin is not None:
+            return _merged(twin, owner)
+        if remaining and not merge:
+            scored = sorted(remaining, key=lambda item: -name_score(owner.name, item.name))
+            return {
+                'status': 'merge', 'product': owner.name, 'product_id': owner.pk,
+                'candidates': [{'id': item.pk, 'name': item.name} for item in scored],
+            }
         if _needs_date(owner):
             return {'status': 'date', 'product': owner.name, 'product_id': owner.pk}
         return {'status': 'known', 'product': owner.name}

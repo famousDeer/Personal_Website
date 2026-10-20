@@ -17,7 +17,10 @@
     const statusLine = select('[data-status]');
     const startButton = select('[data-start]');
     const chooseBox = select('[data-choose]');
+    const chooseTitle = select('[data-choose-title]');
     const chooseHint = select('[data-choose-hint]');
+    const chooseSkip = select('[data-choose-skip]');
+    const chooseTexts = { title: chooseTitle.textContent, skip: chooseSkip.textContent };
     const chooseList = select('[data-choose-list]');
     const remainingList = select('[data-remaining]');
     const doneList = select('[data-done]');
@@ -32,7 +35,7 @@
     const formats = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'];
     const REPEAT_MS = 4000;
 
-    const state = { busy: false, paused: false, lastCode: '', lastAt: 0, stream: null, controls: null, timer: null };
+    const state = { busy: false, paused: false, lastCode: '', lastAt: 0, stream: null, controls: null, timer: null, merge: null };
 
     function setStatus(text, tone = '') {
         statusLine.textContent = text;
@@ -116,8 +119,8 @@
         }
     }
 
-    function send(barcode, productId = null) {
-        return post({ barcode, product_id: productId });
+    function send(barcode, productId = null, merge = false) {
+        return post({ barcode, product_id: productId, merge });
     }
 
     async function post(body) {
@@ -134,31 +137,39 @@
         return payload;
     }
 
-    function showChoice(barcode, result) {
+    function showChoice(barcode, result, merge = false) {
         state.paused = true;
-        chooseHint.textContent = result.catalog_name
-            ? `Kod ${barcode} – w katalogu: „${result.catalog_name}”.`
-            : `Kod ${barcode}.`;
+        state.merge = merge ? barcode : null;
+        chooseTitle.textContent = merge ? `Ten kod ma już „${result.product}”` : chooseTexts.title;
+        chooseSkip.textContent = merge ? 'Żaden – to inny produkt' : chooseTexts.skip;
+        if (merge) {
+            chooseHint.textContent = 'Który produkt z paragonu to ten sam? Połączę je w jeden (stan, ceny i historia).';
+        } else {
+            chooseHint.textContent = result.catalog_name
+                ? `Kod ${barcode} – w katalogu: „${result.catalog_name}”.`
+                : `Kod ${barcode}.`;
+        }
         chooseList.replaceChildren(...(result.candidates || []).map((candidate) => {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'btn btn-outline-primary';
             button.textContent = candidate.name;
-            button.addEventListener('click', () => choose(barcode, candidate.id));
+            button.addEventListener('click', () => choose(barcode, candidate.id, merge));
             return button;
         }));
         chooseBox.hidden = false;
-        setStatus('Wskaż produkt – potem skanuj dalej.');
+        setStatus(merge ? 'Wskaż ten sam produkt z paragonu – albo „Żaden”.' : 'Wskaż produkt – potem skanuj dalej.');
     }
 
     function hideChoice() {
         chooseBox.hidden = true;
         state.paused = false;
+        state.merge = null;
     }
 
-    async function choose(barcode, productId) {
+    async function choose(barcode, productId, merge = false) {
         try {
-            const result = await send(barcode, productId);
+            const result = await send(barcode, productId, merge);
             hideChoice();
             handleResult(barcode, result);
         } catch (error) {
@@ -175,6 +186,16 @@
             } else {
                 setStatus(`✓ ${result.product} – skanuj następny`, 'ok');
             }
+        } else if (result.status === 'merged') {
+            feedback();
+            renderRemaining(result.remaining, `${result.merged} → ${result.product}`);
+            if (result.needs_date) {
+                askDate(result.product_id, result.product);
+            } else {
+                setStatus(`✓ Połączono „${result.merged}” z „${result.product}” – skanuj następny`, 'ok');
+            }
+        } else if (result.status === 'merge') {
+            showChoice(barcode, result, true);
         } else if (result.status === 'date') {
             feedback();
             askDate(result.product_id, result.product);
@@ -302,8 +323,18 @@
         li.classList.add('is-clickable');
         li.addEventListener('click', () => askDate(Number(li.dataset.productId), li.dataset.name || li.textContent.trim()));
     });
-    select('[data-choose-skip]').addEventListener('click', () => {
+    chooseSkip.addEventListener('click', async () => {
+        const barcode = state.merge;
         hideChoice();
+        if (barcode) {
+            // „Żaden”: produkt ze spiżarni zostaje osobno; serwer najwyżej poprosi o termin.
+            try {
+                handleResult(barcode, await send(barcode, null, true));
+            } catch (error) {
+                setStatus(error.message, 'error');
+            }
+            return;
+        }
         setStatus('Pominięto. Skanuj następny produkt.');
     });
     select('[data-manual]').addEventListener('submit', (event) => {

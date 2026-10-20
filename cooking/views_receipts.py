@@ -277,7 +277,7 @@ class ReceiptBarcodesView(LoginRequiredMixin, View):
                           'expires_on': expires_on.isoformat()}
             else:
                 barcode = normalize_pantry_barcode(payload.get('barcode'))
-                result = scan_receipt_barcode(receipt, barcode, product_id)
+                result = scan_receipt_barcode(receipt, barcode, product_id, merge=bool(payload.get('merge')))
                 result['barcode'] = barcode
         except (ValueError, TypeError) as exc:
             return JsonResponse({'ok': False, 'error': str(exc) or 'Niepoprawny kod.'}, status=400)

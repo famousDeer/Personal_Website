@@ -1082,3 +1082,76 @@ class ReceiptAiDefaultTests(TestCase):
         self.assertIn('awaryjnie', receipt.error)
         page = self.client.get(reverse('cooking:receipt-detail', args=[receipt.uuid]))
         self.assertContains(page, 'Brak połączenia z Claude API')
+
+
+class ReceiptDuplicateMergeTests(TestCase):
+    """Produkt z paragonu, który już stoi w spiżarni z kodem, łączy się w jeden."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='duplikaty', password='pass12345')
+        self.client.force_login(self.user)
+        self.existing = PantryProduct.objects.create(
+            created_by=self.user, name='Pomidory krojone Mutti', category='Konserwy', barcode='8005110070600',
+            unit=PantryProduct.UNIT_GRAM, quantity_per_scan=Decimal('400'), current_quantity=Decimal('400'),
+            current_package_count=1,
+        )
+        self.receipt = apply_ocr_text(Receipt.objects.create(), LIDL_E_RECEIPT_OCR)
+        self.line = self.receipt.lines.get(name='Mutti Pomidory polpa')
+        self.url = reverse('cooking:receipt-barcodes', args=[self.receipt.uuid])
+
+    def _confirm(self, target):
+        confirm_receipt(self.receipt, {self.line.pk: LineDecision(action=ACTION_ADD, target=target, quantity=Decimal('2'))},
+                        user=self.user)
+
+    def _scan(self, product_id=None, merge=False):
+        return self.client.post(self.url, data=json.dumps({
+            'barcode': self.existing.barcode, 'product_id': product_id, 'merge': merge,
+        }), content_type='application/json').json()
+
+    def test_name_without_diacritics_or_case_links_existing_product(self):
+        self._confirm('POMIDORY  krojone mutti')
+        self.line.refresh_from_db()
+        self.assertEqual(self.line.product_id, self.existing.pk)
+        self.assertEqual(PantryProduct.objects.count(), 1)
+
+        maslo = PantryProduct.objects.create(created_by=self.user, name='Masło extra')
+        from .services.pantry_merge import find_product_by_name
+        self.assertEqual(find_product_by_name('maslo Extra'), maslo)
+
+    def test_different_name_asks_once_and_merges_stock_prices_and_alias(self):
+        self._confirm('Passata Mutti z paragonu')
+        duplicate = PantryProduct.objects.get(name='Passata Mutti z paragonu')
+        self.assertEqual(duplicate.current_quantity, Decimal('2'))
+
+        asked = self._scan()
+        self.assertEqual(asked['status'], 'merge')
+        self.assertEqual(asked['product'], 'Pomidory krojone Mutti')
+        self.assertEqual([item['id'] for item in asked['candidates']], [duplicate.pk])
+
+        merged = self._scan(duplicate.pk, merge=True)
+        self.assertEqual((merged['status'], merged['merged'], merged['product_id']),
+                         ('merged', 'Passata Mutti z paragonu', self.existing.pk))
+        self.assertEqual(merged['remaining'], [])
+        self.assertFalse(PantryProduct.objects.filter(pk=duplicate.pk).exists())
+        self.existing.refresh_from_db()
+        self.assertEqual(self.existing.current_quantity, Decimal('1200'))   # 400 g + 2 opak. × 400 g
+        self.assertEqual(self.existing.current_package_count, 3)
+        self.line.refresh_from_db()
+        self.assertEqual(self.line.product_id, self.existing.pk)          # historia cen przy produkcie z kodem
+        movement = self.existing.movements.get()
+        self.assertEqual(movement.quantity, Decimal('800'))
+        self.assertEqual(ReceiptAlias.objects.get(normalized_text=self.line.normalized_text).product_id, self.existing.pk)
+
+    def test_same_name_after_folding_merges_without_asking(self):
+        self._confirm('Passata Mutti')
+        PantryProduct.objects.filter(name='Passata Mutti').update(name='Pomidory krojone Mutti ')
+        PantryProduct.objects.filter(pk=self.existing.pk).update(name='Pomidory krojone MUTTI.')
+        result = self._scan()
+        self.assertEqual(result['status'], 'merged')
+        self.assertEqual(PantryProduct.objects.count(), 1)
+
+    def test_declining_merge_keeps_both_products(self):
+        self._confirm('Passata Mutti')
+        result = self._scan(merge=True)
+        self.assertEqual(result['status'], 'known')
+        self.assertEqual(PantryProduct.objects.count(), 2)

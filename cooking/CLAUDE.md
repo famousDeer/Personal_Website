@@ -12,7 +12,7 @@ Widoki:
 
 Logika w `services/`:
 - `categories.py` – reguły kategorii.
-- `pantry_editing.py`, `pantry_quantities.py`, `pantry_sharing.py`.
+- `pantry_editing.py`, `pantry_quantities.py`, `pantry_sharing.py`, `pantry_merge.py` (łączenie duplikatów: ruchy, partie, linie paragonów, aliasy, listy; `find_product_by_name` porównuje nazwy po `normalize_text`). W „Rozpakuj zakupy” kod należący już do innego produktu łączy duplikat z paragonu (ta sama nazwa – od razu, inna – status `merge` z pytaniem).
 - `pantry_batches.py` – terminy przydatności: `PantryBatch` (partie z datą), obowiązkowe dla kategorii z `requires_expiry` (nabiał); stan dalej w `current_quantity`, `reconcile` przycina partie od najkrótszego terminu (zużycie nie pyta o partię). „Zjedz najpierw”, „Uzupełnij termin”, push `termin` w `send_reminders`.
 - `pantry_forecast.py` – prognoza zużycia i automatyczna lista.
 - `product_catalog.py` – Open Food Facts, z limitem zapytań.
