@@ -3,10 +3,91 @@ Self-hosted household dashboard for a home LAN, built with Django, PostgreSQL an
 Bootstrap and running in Docker on a Raspberry Pi 4. Five modules: household budget,
 brokerage portfolio, kitchen (recipes, pantry, shopping lists), car upkeep and habits.
 
-Demo image:
 <p align="center">
-  <img src="img/presentation.gif" alt="preview" />
+  <img src="docs/preview/hero.png" alt="Website-Finance on a laptop and a phone: the monthly finance overview and the pantry list" width="100%" />
 </p>
+
+## Preview
+
+Screenshots use made-up demo data (a two-person household, about a year of history).
+The interface is in Polish. Click any image to open it full size.
+
+### Finance
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/preview/finance-dashboard.png" alt="Monthly finance overview" /><br>
+      <b>Month at a glance.</b> Income, spending and investments day by day, savings rate,
+      end-of-month projection and where the money goes.</td>
+    <td width="50%" valign="top"><img src="docs/preview/finance-analysis.png" alt="Household analysis" /><br>
+      <b>Household analysis.</b> Personal and shared accounts together: the monthly cost of living,
+      essential vs. other spending and how many months your savings would last.</td>
+  </tr>
+  <tr>
+    <td valign="top"><img src="docs/preview/finance-gem.png" alt="Brokerage portfolio with the GEM strategy" /><br>
+      <b>Investments.</b> The GEM momentum strategy: this month's signal and 12-month returns of
+      four ETFs. Next to it: XTB import, positions with FIFO cost and tax, portfolio value history.</td>
+    <td valign="top"><img src="docs/preview/finance-travel.png" alt="Travel map" /><br>
+      <b>Travel.</b> Holidays and business trips on a map, with budgets, dates and the number
+      of business-trip days per year.</td>
+  </tr>
+</table>
+
+### Kitchen
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/preview/kitchen-pantry.png" alt="Pantry list" /><br>
+      <b>Pantry.</b> One list for the whole household. Live search, filters by state and category,
+      and a "today" bar: eat first, buy, add an expiry date, no barcode. Use −/+ right in the row.</td>
+    <td width="50%" valign="top"><img src="docs/preview/kitchen-pantry-detail.png" alt="Product details" /><br>
+      <b>Product details.</b> Expiry dates per batch, stock in packages and grams, a purchase forecast
+      from your own usage, and the last price.</td>
+  </tr>
+  <tr>
+    <td valign="top"><img src="docs/preview/kitchen-receipt.png" alt="Checking a scanned receipt" /><br>
+      <b>Receipts.</b> Photo, PDF or e-receipt from Lidl, Biedronka or Aldek. The AI reads it, products
+      are matched from what the household has bought before, and discounts are kept separate.</td>
+    <td valign="top"><img src="docs/preview/kitchen-prices.png" alt="Price history of a product" /><br>
+      <b>Price history.</b> Regular price per item and per kg/l, by shop, year on year,
+      and where it was cheapest.</td>
+  </tr>
+  <tr>
+    <td valign="top"><img src="docs/preview/kitchen-recipes.png" alt="Recipes" /><br>
+      <b>Recipes.</b> Shared by everyone at home, editable only by the author, with steps and
+      ingredients that can be taken off the pantry stock while cooking.</td>
+    <td valign="top"><img src="docs/preview/kitchen-shopping.png" alt="Shopping lists" /><br>
+      <b>Shopping lists.</b> Built from the pantry forecast in one click or written by hand;
+      checking off a product restocks the pantry.</td>
+  </tr>
+</table>
+
+### Car and dark mode
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/preview/car-dashboard.png" alt="Car dashboard" /><br>
+      <b>Car.</b> Fuel log with consumption, cost per km, services with parts,
+      summer and winter tyres, service history as PDF.</td>
+    <td width="50%" valign="top"><img src="docs/preview/dark-dashboard.png" alt="Dark mode" /><br>
+      <b>Dark mode</b> on every page, following the system setting or chosen by hand.</td>
+  </tr>
+</table>
+
+### On the phone
+
+<table>
+  <tr>
+    <td width="25%" valign="top"><img src="docs/preview/phone-pantry.gif" alt="Pantry on a phone: filters, live search, details, adding a package" /><br>
+      <sub>Pantry: "eat first", live search, details sheet, +1 package</sub></td>
+    <td width="25%" valign="top"><img src="docs/preview/phone-shopping.png" alt="Offline shopping mode" /><br>
+      <sub>Shopping mode works offline in the shop and syncs at home</sub></td>
+    <td width="25%" valign="top"><img src="docs/preview/phone-cook.png" alt="Cooking mode" /><br>
+      <sub>Cooking step by step, taking ingredients off the pantry</sub></td>
+    <td width="25%" valign="top"><img src="docs/preview/phone-dashboard.png" alt="Finance on a phone" /><br>
+      <sub>Finance overview with the bottom tab bar</sub></td>
+  </tr>
+</table>
 
 ## Features
 
@@ -29,6 +110,8 @@ Demo image:
   positions match it (see [GEM strategy](#gem-strategy))
 - Travel log split into holiday and business trips, geocoded and shown on a map
 - Reports and a dashboard with end-of-month spending projection
+- Household analysis across personal and shared accounts: cost of living, essential vs.
+  other spending, savings buffer; members choose whether their personal totals are shared
 
 **Kitchen** (`cooking`)
 - Recipes visible to everyone, editable only by their author, with structured steps
@@ -55,6 +138,14 @@ Demo image:
 - Offline shopping mode for phones (installable web app): check off, add, change
   quantities and delete items without a connection to the home server; changes sync
   when the phone is back on the home network (see [Offline shopping mode](#offline-shopping-mode))
+- Pantry list built for many products: live search (name, brand, barcode, receipt
+  abbreviation), filters by state and category, sorting, −/+ in the row, details in a side sheet
+- Expiry dates per batch, required for dairy and entered when putting things away;
+  "eat first" list and a push reminder
+- Receipts from Lidl, Biedronka and Aldek (photo, PDF or pasted text), read by the Claude API
+  and matched against the household's own dictionary of receipt abbreviations; price history
+  per item and per kg, regular price kept apart from app coupons and multi-buy discounts.
+  Receipts never create expenses in Finance
 
 **Car** (`cars`)
 - Fuel log with computed consumption, service history with itemised parts
