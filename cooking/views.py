@@ -8,7 +8,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Min, Prefetch, Q, Sum
+from django.db.models import Count, Max, Min, Prefetch, Q, Sum
 from django.http import FileResponse, Http404, JsonResponse
 from django.urls import reverse
 from django.utils.http import urlencode
@@ -28,6 +28,7 @@ from .constants import (
     PANTRY_SCANNER_AUTO_ACTION_TIMEOUT_MS,
 )
 from .models import (
+    ReceiptAlias,
     PantryBatch,
     PantryMovement,
     PantryProduct,
@@ -794,6 +795,63 @@ def _low_count(cards):
     return sum(1 for card in cards if card.get('needs_restock'))
 
 
+def pantry_row_context(product, card, batches, undated, last_purchase, receipt_names):
+    """Dane wiersza listy spiżarni: flagi do filtrów, poziom koloru, klucze
+    sortowania i tekst wyszukiwania (pantry-list.js filtruje bez przeładowania)."""
+    expires_in = card.get('expires_in')
+    forecast = card['forecast']
+    empty = product.current_quantity <= 0
+    flags = []
+    if empty:
+        flags.append('empty')
+    if product.stock_status == 'low':
+        flags.append('low')
+    if card['needs_restock']:
+        flags.append('buy')
+    if expires_in is not None and expires_in <= 3:
+        flags.append('expiring')
+    if expires_in is not None and expires_in < 0:
+        flags.append('expired')
+    if undated:
+        flags.append('undated')
+    if not product.barcode and product.unit != PantryProduct.UNIT_KILOGRAM:
+        flags.append('nobarcode')
+    if product.skips_restock:
+        flags.append('oneoff')
+    if not (empty or card['needs_restock'] or 'expiring' in flags):
+        flags.append('ok')
+
+    if 'expired' in flags or (empty and not product.skips_restock and not card['group_covered']):
+        level = 'danger'
+    elif 'expiring' in flags or card['needs_restock'] or undated:
+        level = 'warn'
+    elif product.skips_restock and empty:
+        level = 'muted'
+    else:
+        level = 'ok'
+
+    catalog = card.get('catalog_entry')
+    search = [product.name, product.category, product.barcode,
+              getattr(catalog, 'brand', '') or '', product.group.name if product.group_id else '', *receipt_names]
+    price = card.get('price')
+    price_change = price.change if price and price.change is not None else 0
+    days_left = card.get('days_left')
+    return {
+        'flags': ' '.join(flags),
+        'level': level,
+        'batches': batches,
+        'undated': undated,
+        'last_purchase': last_purchase,
+        'search_text': ' '.join(part for part in search if part).casefold(),
+        'sort_days_left': 0 if empty else (days_left if days_left is not None else 9999),
+        'sort_expires': card['expires_on'].isoformat() if card.get('expires_on') else '9999-12-31',
+        'sort_buy': forecast.buy_date.isoformat() if forecast.buy_date else '9999-12-31',
+        'sort_last': last_purchase.isoformat() if last_purchase else '0000-00-00',
+        'sort_usage': float(forecast.rate or 0),
+        'sort_price_change': float(price_change),
+    }
+
+
 class PantryListView(LoginRequiredMixin, View):
     def get(self, request):
         today = timezone.localdate()
@@ -855,6 +913,21 @@ class PantryListView(LoginRequiredMixin, View):
             PantryBatch.objects.filter(product__in=visible_products)
             .values('product').annotate(first=Min('expires_on')).values_list('product', 'first')
         )
+        # Lista spiżarni (pantry_row.html + pantry-list.js): partie, ostatni zakup
+        # i skróty z paragonów do wyszukiwania - po jednym zapytaniu dla wszystkich.
+        batches_by_product = defaultdict(list)
+        for batch in PantryBatch.objects.filter(product__in=visible_products).order_by('expires_on'):
+            batches_by_product[batch.product_id].append(batch)
+        undated_ids = {product.pk for product in expiry.missing}
+        last_purchase = dict(
+            PantryMovement.objects.filter(product__in=visible_products, movement_type=PantryMovement.PURCHASE)
+            .values('product').annotate(last=Max('occurred_on')).values_list('product', 'last')
+        )
+        receipt_names = defaultdict(list)
+        for product_id, text in ReceiptAlias.objects.filter(product__in=visible_products).values_list(
+            'product_id', 'normalized_text',
+        ):
+            receipt_names[product_id].append(text)
         for product in visible_products:
             forecast = forecasts[product.pk]
             average_daily = forecast.rate
@@ -885,12 +958,18 @@ class PantryListView(LoginRequiredMixin, View):
                 and (product.stock_status in ['low', 'empty'] or forecast.is_due)
             )
             card['needs_restock'] = needs_restock
+            card.update(pantry_row_context(
+                product, card, batches_by_product.get(product.pk, []), product.pk in undated_ids,
+                last_purchase.get(product.pk), receipt_names.get(product.pk, []),
+            ))
             if status_filter == 'low':
                 matches_status = needs_restock
             elif status_filter == 'ok':
                 matches_status = not needs_restock
             elif status_filter == 'jednorazowe':
                 matches_status = product.skips_restock
+            elif status_filter in ('expiring', 'undated', 'nobarcode'):
+                matches_status = status_filter in card['flags'].split()
             else:
                 matches_status = not status_filter or product.stock_status == status_filter
             if matches_status:
@@ -946,6 +1025,12 @@ class PantryListView(LoginRequiredMixin, View):
             'total_restocked': movement_stats['total_restocked'] or Decimal('0'),
             'movement_count': movement_stats['movement_count'] or 0,
             'expiry': expiry,
+            'today_counts': {
+                'expiring': sum(1 for card in product_cards if 'expiring' in card['flags']),
+                'buy': sum(1 for card in product_cards if 'buy' in card['flags']),
+                'undated': sum(1 for card in product_cards if 'undated' in card['flags']),
+                'nobarcode': sum(1 for card in product_cards if 'nobarcode' in card['flags']),
+            },
             'quick_dates': quick_dates(today),
             'expiry_category_names': sorted(expiry_category_names()),
             'scanner_auto_action_enabled': PANTRY_SCANNER_AUTO_ACTION_ENABLED,

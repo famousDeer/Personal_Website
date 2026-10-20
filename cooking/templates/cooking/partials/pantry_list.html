@@ -1,0 +1,46 @@
+{% comment %}
+Lista spiżarni po kategoriach: kompaktowe wiersze (domyślnie) albo kafelki.
+Kafelki są zawsze w HTML - to także treść panelu szczegółów (pantry-list.js
+przenosi #product-N do panelu i z powrotem). Dzięki temu formularze kafelka
+i odświeżanie w tle (app-actions.js) działają bez zmian.
+{% endcomment %}
+<noscript><style>.pt-list .pt-tiles { display: grid !important; } .pt-list .pt-rows { display: none !important; }</style></noscript>
+<div class="pt-list" data-pantry-list data-layout="list">
+    <section class="pt-section pt-flat" data-flat-section hidden aria-label="Wszystkie produkty">
+        <ul class="pt-rows" data-flat-rows></ul>
+        <div class="pantry-product-grid pt-tiles" data-flat-tiles></div>
+    </section>
+    {% for group in product_groups %}
+        <section class="pt-section" data-section="{{ forloop.counter }}" data-section-name="{{ group.name }}"
+                 aria-labelledby="pt-section-{{ forloop.counter }}">
+            <h3 class="pt-section-head" id="pt-section-{{ forloop.counter }}">
+                <span>{{ group.name }}</span>
+                <span class="pt-section-count" data-section-count>{{ group.count }}</span>
+            </h3>
+            <ul class="pt-rows" data-section-rows>
+                {% for card in group.cards %}
+                    {% with product=card.product %}{% include 'cooking/partials/pantry_row.html' %}{% endwith %}
+                {% endfor %}
+            </ul>
+            <div class="pantry-product-grid pt-tiles" data-section-tiles>
+                {% for card in group.cards %}
+                    {% with product=card.product %}{% include 'cooking/partials/pantry_card.html' %}{% endwith %}
+                {% endfor %}
+            </div>
+        </section>
+    {% endfor %}
+    <div class="pantry-empty-state" data-filter-empty hidden>
+        <div class="pantry-empty-icon"><i class="bi bi-search" aria-hidden="true"></i></div>
+        <h3>Nic nie pasuje do filtrów</h3>
+        <p>Zmień wyszukiwanie albo wyczyść filtry.</p>
+        <button type="button" class="btn btn-outline-primary rounded-pill px-4" data-filter-clear>Wyczyść filtry</button>
+    </div>
+</div>
+
+<div class="offcanvas offcanvas-bottom pt-detail" tabindex="-1" id="pantry-detail" aria-labelledby="pantry-detail-title" data-pantry-detail>
+    <div class="offcanvas-header">
+        <h2 class="offcanvas-title h5" id="pantry-detail-title">Szczegóły</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Zamknij"></button>
+    </div>
+    <div class="offcanvas-body" data-pantry-detail-body></div>
+</div>

@@ -1,0 +1,76 @@
+{% load l10n pantry_extras %}
+{% comment %}
+Wiersz listy spiżarni (widok domyślny). Dotknięcie otwiera szczegóły - kafelek
+#product-N przenoszony do panelu (pantry-list.js). −/+ działa od razu, w tle
+(data-partial), i odświeża wiersz, kafelek oraz pasek „dziś”.
+Atrybuty data-* służą do filtrów i sortowania bez przeładowania.
+Kontekst: card (słownik z PantryListView), product = card.product.
+{% endcomment %}
+<li class="pt-row is-{{ card.level }}" id="pantry-row-{{ product.id }}" data-pantry-row="{{ product.id }}"
+    data-flags="{{ card.flags }}" data-category="{{ product.category|default:'Inne' }}" data-search="{{ card.search_text }}"
+    data-name="{{ product.name|lower }}" data-days-left="{{ card.sort_days_left|unlocalize }}"
+    data-expires="{{ card.sort_expires }}" data-buy="{{ card.sort_buy }}" data-last="{{ card.sort_last }}"
+    data-usage="{{ card.sort_usage|unlocalize }}" data-price-change="{{ card.sort_price_change|unlocalize }}">
+    <a class="pt-row-main" href="#product-{{ product.id }}" data-open-detail="{{ product.id }}"
+       aria-label="{{ product.name }} – szczegóły">
+        <span class="pt-thumb" aria-hidden="true">
+            {% if product.image %}
+                <img src="{% url 'cooking:pantry-product-image' product.id %}" alt="" loading="lazy">
+            {% elif card.catalog_entry.image %}
+                <img src="{% url 'cooking:pantry-catalog-image' card.catalog_entry.id %}" alt="" loading="lazy">
+            {% else %}
+                <i class="bi bi-box-seam"></i>
+            {% endif %}
+        </span>
+        <span class="pt-text">
+            <strong class="pt-name">{{ product.name }}</strong>
+            <small class="pt-meta">
+                {% if product.tracks_packages %}{{ product.current_package_count }} opak.{% if product.unit != 'szt' and product.unit != 'opak' %} · {{ product.current_quantity|qty }} {{ product.display_unit }}{% endif %}
+                {% else %}{{ product.current_quantity|qty }} {{ product.display_unit }}{% endif %}
+                {% if card.price and card.price.last %} · {{ card.price.last.regular }} zł/{{ card.price.last.unit }}{% if card.price.trend == 'up' %} <span class="pt-up" title="drożej niż poprzednio">▲</span>{% elif card.price.trend == 'down' %} <span class="pt-down" title="taniej niż poprzednio">▼</span>{% endif %}{% endif %}
+            </small>
+        </span>
+        <span class="pt-key">
+            {% if 'expired' in card.flags %}<span class="is-danger">po terminie {{ card.expires_on|date:"d.m" }}</span>
+            {% elif 'expiring' in card.flags %}<span class="is-warn">termin: {% if card.expires_in == 0 %}dziś{% elif card.expires_in == 1 %}jutro{% else %}{{ card.expires_on|date:"D d.m" }}{% endif %}</span>
+            {% elif card.undated %}<span class="is-warn">bez terminu</span>
+            {% elif product.skips_restock %}<span class="is-muted">{% if product.current_quantity <= 0 %}zużyty{% else %}nie kupuję ponownie{% endif %}</span>
+            {% elif 'empty' in card.flags and not card.group_covered %}<span class="is-danger">brak</span>
+            {% elif card.group_covered and 'empty' in card.flags %}<span class="is-muted">inna marka w domu</span>
+            {% elif card.needs_restock %}<span class="is-warn">{% if card.forecast.is_due %}kup teraz{% else %}kup ok. {{ card.forecast.buy_date|date:"d.m" }}{% endif %}</span>
+            {% elif card.expires_on %}<span>do {{ card.expires_on|date:"d.m" }}</span>
+            {% elif card.forecast.buy_date %}<span>kup ok. {{ card.forecast.buy_date|date:"d.m" }}</span>
+            {% else %}<span class="is-muted">w zapasie</span>{% endif %}
+        </span>
+    </a>
+    {% if card.undated %}
+        <form method="post" action="{% url 'cooking:pantry-expiry' product.id %}" class="pt-date"
+              data-partial="#pantry-row-{{ product.id }}, #product-{{ product.id }}, #pantry-today">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <label class="visually-hidden" for="pt-date-{{ product.id }}">Ważne do: {{ product.name }}</label>
+            <select class="form-select form-select-sm" id="pt-date-{{ product.id }}" name="expires_on" data-autosubmit>
+                <option value="">Ważne do…</option>
+                {% for day in quick_dates %}<option value="{{ day|date:'Y-m-d' }}">{{ day|date:"D j.m" }}</option>{% endfor %}
+            </select>
+        </form>
+    {% endif %}
+    {% if product.tracks_packages %}
+        <form method="post" action="{% url 'cooking:pantry-movement' product.id %}" class="pt-quick"
+              data-partial="#pantry-row-{{ product.id }}, #product-{{ product.id }}, #pantry-today{% if product.group_id %}, [data-group-id=&quot;{{ product.group_id }}&quot;]{% endif %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <input type="hidden" name="operation_id_consume" value="{{ card.manual_consume_id }}">
+            <input type="hidden" name="operation_id_purchase" value="{{ card.manual_purchase_id }}">
+            <input type="hidden" name="package_count" value="1">
+            <button type="submit" name="movement_type" value="consume" class="pt-step"
+                    aria-label="Zużyj 1 opak.: {{ product.name }}" {% if product.current_package_count <= 0 %}disabled{% endif %}>
+                <i class="bi bi-dash-lg" aria-hidden="true"></i>
+            </button>
+            <button type="submit" name="movement_type" value="purchase" class="pt-step"
+                    aria-label="Dodaj 1 opak.: {{ product.name }}">
+                <i class="bi bi-plus-lg" aria-hidden="true"></i>
+            </button>
+        </form>
+    {% endif %}
+</li>

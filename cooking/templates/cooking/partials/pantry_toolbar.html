@@ -1,0 +1,58 @@
+{% load pantry_extras ui %}
+{% comment %}
+Przyklejony pasek: wyszukiwanie na żywo, chipy stanu i kategorii, sortowanie,
+grupowanie i układ (pantry-list.js). Bez JavaScriptu to zwykły formularz GET
+(q, status, category), który filtruje po stronie serwera.
+{% endcomment %}
+<form method="get" class="pt-toolbar" data-pantry-toolbar role="search">
+    <div class="pt-toolbar-row">
+        <label class="pt-search">
+            <i class="bi bi-search" aria-hidden="true"></i>
+            <span class="visually-hidden">Szukaj w spiżarni</span>
+            <input type="search" name="q" value="{{ current_search }}" placeholder="Szukaj: nazwa, marka, kod, skrót z paragonu"
+                   autocomplete="off" data-filter-search>
+        </label>
+        <label class="pt-select">
+            <i class="bi bi-sort-down pt-select-icon" aria-hidden="true"></i>
+            <span class="visually-hidden">Sortuj</span>
+            <select class="form-select form-select-sm" data-filter-sort aria-label="Sortuj">
+                <option value="category">Kolejność kategorii</option>
+                <option value="name">Nazwa A–Z</option>
+                <option value="stock">Najmniej zapasu</option>
+                <option value="expires">Najbliższy termin</option>
+                <option value="buy">Termin zakupu</option>
+                <option value="last">Ostatnio kupione</option>
+                <option value="usage">Najczęściej używane</option>
+                <option value="price">Największy wzrost ceny</option>
+            </select>
+        </label>
+        <div class="pt-toggle" role="group" aria-label="Układ">
+            <button type="button" class="is-active" data-filter-layout="list" aria-pressed="true" title="Lista"><i class="bi bi-list-ul" aria-hidden="true"></i><span class="visually-hidden">Lista</span></button>
+            <button type="button" data-filter-layout="tiles" aria-pressed="false" title="Kafelki"><i class="bi bi-grid-3x2-gap" aria-hidden="true"></i><span class="visually-hidden">Kafelki</span></button>
+        </div>
+    </div>
+    <div class="pt-chips" role="group" aria-label="Stan">
+        <button type="submit" name="status" value="" class="pt-chip{% if not current_status %} is-active{% endif %}" data-filter-status="">Wszystko</button>
+        <button type="submit" name="status" value="empty" class="pt-chip{% if current_status == 'empty' %} is-active{% endif %}" data-filter-status="empty">Brak</button>
+        <button type="submit" name="status" value="low" class="pt-chip{% if current_status == 'low' %} is-active{% endif %}" data-filter-status="buy">Do kupienia</button>
+        <button type="button" class="pt-chip" data-filter-status="expiring">Kończy się termin</button>
+        <button type="button" class="pt-chip" data-filter-status="undated">Bez terminu</button>
+        <button type="button" class="pt-chip" data-filter-status="nobarcode">Bez kodu</button>
+        <button type="submit" name="status" value="ok" class="pt-chip{% if current_status == 'ok' %} is-active{% endif %}" data-filter-status="ok">W zapasie</button>
+        <button type="submit" name="status" value="jednorazowe" class="pt-chip{% if current_status == 'jednorazowe' %} is-active{% endif %}" data-filter-status="oneoff">Nie kupuję ponownie</button>
+    </div>
+    <div class="pt-chips pt-chips-categories" role="group" aria-label="Kategorie">
+        {% for group in product_groups %}
+            <button type="submit" name="category" value="{{ group.name }}" class="pt-chip is-category{% if current_category == group.name %} is-active{% endif %}"
+                    data-filter-category="{{ group.name }}">{{ group.name }} <span>{{ group.count }}</span></button>
+        {% endfor %}
+    </div>
+    <div class="pt-toolbar-foot">
+        <span class="pt-result" data-filter-result aria-live="polite">{{ product_count }} {{ product_count|pl:"produkt,produkty,produktów" }}</span>
+        <label class="pt-group-by">
+            <input type="checkbox" checked data-filter-grouped> Grupuj po kategoriach
+        </label>
+        <button type="button" class="pt-clear" data-filter-clear hidden><i class="bi bi-x-lg" aria-hidden="true"></i> Wyczyść filtry</button>
+        {% if filters_active %}<a class="pt-clear" href="{% url 'cooking:pantry' %}" data-server-clear><i class="bi bi-x-lg" aria-hidden="true"></i> Wyczyść</a>{% endif %}
+    </div>
+</form>

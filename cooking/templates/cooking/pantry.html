@@ -17,154 +17,47 @@
      data-zxing-url="{% static 'cooking/vendor/zxing-browser-0.2.1.min.js' %}">
     <form class="d-none" data-scanner-csrf>{% csrf_token %}</form>
 
-    {% page_head title="Spiżarnia" eyebrow="Kuchnia" icon="bi-egg-fried" sub="Skanuj produkty przy wkładaniu i zużyciu – stan i termin kolejnego zakupu policzą się same." %}
-        <a href="{% url 'cooking:shopping-list' %}" class="btn btn-outline-primary">
-            <i class="bi bi-cart-check" aria-hidden="true"></i> Listy zakupów
-        </a>
+    {% page_head title="Spiżarnia" eyebrow="Kuchnia" icon="bi-egg-fried" %}
+        <button type="button" class="btn btn-success d-none d-md-inline-flex" data-bs-toggle="modal"
+                data-bs-target="#pantryScannerModal" data-open-scanner aria-label="Uruchom skaner produktów">
+            <i class="bi bi-upc-scan" aria-hidden="true"></i> Skanuj
+        </button>
         <a href="{% url 'cooking:receipts' %}" class="btn btn-primary">
             <i class="bi bi-receipt" aria-hidden="true"></i> Paragon
         </a>
-        <a href="{% url 'cooking:prices' %}" class="btn btn-outline-primary">
-            <i class="bi bi-tag" aria-hidden="true"></i> Ceny
-        </a>
-        <a href="{% url 'cooking:add-pantry-product' %}" class="btn btn-outline-primary">
-            <i class="bi bi-plus-lg" aria-hidden="true"></i> Dodaj bez kodu
-        </a>
-        <a href="{% url 'cooking:pantry-categories' %}" class="btn btn-outline-primary">
-            <i class="bi bi-tags" aria-hidden="true"></i> Kategorie
-        </a>
+        <div class="dropdown u-page-actions-icon pt-head-more">
+            <button class="btn btn-outline-primary" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Więcej">
+                <i class="bi bi-three-dots" aria-hidden="true"></i><span class="d-none d-md-inline"> Więcej</span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="{% url 'cooking:shopping-list' %}"><i class="bi bi-cart-check me-2" aria-hidden="true"></i>Listy zakupów</a></li>
+                <li><a class="dropdown-item" href="{% url 'cooking:prices' %}"><i class="bi bi-tag me-2" aria-hidden="true"></i>Ceny</a></li>
+                <li><a class="dropdown-item" href="{% url 'cooking:add-pantry-product' %}"><i class="bi bi-plus-lg me-2" aria-hidden="true"></i>Dodaj bez kodu</a></li>
+                <li><a class="dropdown-item" href="{% url 'cooking:pantry-categories' %}"><i class="bi bi-tags me-2" aria-hidden="true"></i>Kategorie</a></li>
+                <li><a class="dropdown-item" href="{% url 'cooking:pantry' %}?widok=grupy"><i class="bi bi-collection me-2" aria-hidden="true"></i>Grupy marek{% if group_count %} ({{ group_count }}){% endif %}</a></li>
+            </ul>
+        </div>
     {% endpage_head %}
 
-    <section class="pantry-scan-hero animate-fade-in-up" aria-labelledby="pantry-scan-title">
-        <div class="pantry-scan-hero-copy">
-            <span class="pantry-scan-eyebrow"><span aria-hidden="true"></span> Skaner gotowy</span>
-            <h3 id="pantry-scan-title">Jeden skan. Aktualny stan.</h3>
-            <p>Skieruj aparat na kod kreskowy. Rozpoznamy produkt i od razu przygotujemy właściwą operację.</p>
+    {% if has_any_products %}
+    {% include 'cooking/partials/pantry_today.html' %}
+    {% endif %}
 
-            <div class="pantry-scan-modes" aria-label="Dostępne operacje po zeskanowaniu">
-                <span class="is-consume">
-                    <i class="bi bi-dash-lg" aria-hidden="true"></i>
-                    <span><strong>Zużywasz</strong><small>{% if scanner_auto_action_enabled %}domyślna akcja po {{ scanner_auto_action_timeout_seconds }} s{% else %}potwierdzasz ręcznie po skanie{% endif %}</small></span>
-                </span>
-                <span class="is-add">
-                    <i class="bi bi-plus-lg" aria-hidden="true"></i>
-                    <span><strong>Dodajesz</strong><small>jedno lub wiele opakowań</small></span>
-                </span>
-            </div>
-        </div>
-
-        <div class="pantry-scan-action">
-            <button type="button" class="btn pantry-scan-launch-button" aria-label="Uruchom skaner produktów" data-bs-toggle="modal"
-                    data-bs-target="#pantryScannerModal" data-open-scanner>
-                <span class="pantry-scan-button-icon"><i class="bi bi-upc-scan" aria-hidden="true"></i></span>
-                <span>
-                    <strong>Skanuj produkt</strong>
-                    <small>Uruchom aparat lub użyj zdjęcia</small>
-                </span>
-                <i class="bi bi-arrow-right" aria-hidden="true"></i>
-            </button>
-            <p class="pantry-scan-privacy"><i class="bi bi-shield-check" aria-hidden="true"></i> Aparat działa tylko podczas skanowania</p>
-        </div>
-    </section>
-
-    <section class="pantry-metrics animate-fade-in-up" id="pantry-metrics" aria-label="Podsumowanie spiżarni">
-        <article class="pantry-metric">
-            <span class="pantry-metric-icon bg-primary-subtle text-primary"><i class="bi bi-grid" aria-hidden="true"></i></span>
-            <span>
-                <small>Różne produkty</small>
-                <strong>{{ product_count }}</strong>
-            </span>
-        </article>
-        <article class="pantry-metric {% if low_stock_count %}is-alert{% endif %}">
-            <span class="pantry-metric-icon bg-danger-subtle text-danger"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i></span>
-            <span>
-                <small>Do uzupełnienia</small>
-                <strong>{{ low_stock_count }}</strong>
-            </span>
-        </article>
-        <article class="pantry-metric">
-            <span class="pantry-metric-icon bg-success-subtle text-success"><i class="bi bi-boxes" aria-hidden="true"></i></span>
-            <span>
-                <small>Pełne opakowania</small>
-                <strong>{{ total_package_count }}</strong>
-            </span>
-        </article>
-    </section>
-
-    {% include 'cooking/partials/pantry_expiry.html' %}
-
-    <details class="pantry-filter-panel mb-4 animate-fade-in-up" {% if current_search or current_category or current_status %}open{% endif %}>
-        <summary>
-            <span><i class="bi bi-search me-2"></i>Szukaj i filtruj produkty</span>
-            {% if current_search or current_category or current_status %}<span class="badge text-bg-primary rounded-pill">Aktywne</span>{% endif %}
-        </summary>
-        <div class="p-3 border-top">
-            <form method="get" class="row g-2 align-items-end">
-                <div class="col-lg-5">
-                    <label class="form-label small text-uppercase fw-bold text-muted" for="pantry-filter-search">Szukaj</label>
-                    <input id="pantry-filter-search" type="text" name="q" class="form-control form-control-sm"
-                           placeholder="Nazwa, kategoria lub kod..." value="{{ current_search }}">
-                </div>
-                <div class="col-md-4 col-lg-3">
-                    <label class="form-label small text-uppercase fw-bold text-muted" for="pantry-filter-category">Kategoria</label>
-                    <select id="pantry-filter-category" name="category" class="form-select form-select-sm">
-                        <option value="">Wszystkie</option>
-                        {% pantry_category_options current_category %}
-                    </select>
-                </div>
-                <div class="col-md-4 col-lg-2">
-                    <label class="form-label small text-uppercase fw-bold text-muted" for="pantry-filter-status">Stan</label>
-                    <select id="pantry-filter-status" name="status" class="form-select form-select-sm">
-                        <option value="">Wszystkie</option>
-                        <option value="low" {% if current_status == 'low' %}selected{% endif %}>Do uzupełnienia</option>
-                        <option value="empty" {% if current_status == 'empty' %}selected{% endif %}>Brak</option>
-                        <option value="ok" {% if current_status == 'ok' %}selected{% endif %}>OK</option>
-                        <option value="jednorazowe" {% if current_status == 'jednorazowe' %}selected{% endif %}>Nie kupuję ponownie</option>
-                    </select>
-                </div>
-                <div class="col-md-4 col-lg-2 d-flex gap-2">
-                    <button type="submit" class="btn btn-sm btn-primary w-100">
-                        <i class="bi bi-funnel-fill"></i> Filtruj
-                    </button>
-                    {% if current_search or current_category or current_status %}
-                        <a href="{% url 'cooking:pantry' %}" class="btn btn-sm btn-outline-secondary" title="Wyczyść filtry">
-                            <i class="bi bi-x-lg"></i>
-                        </a>
-                    {% endif %}
-                </div>
-            </form>
-        </div>
-    </details>
-
+    {% if view_mode == 'grupy' %}
     <div class="pantry-section-heading">
         <div>
             <div class="small text-uppercase fw-bold text-muted">Wspólne zapasy domu</div>
-            <h3>Produkty w spiżarni</h3>
-            <p>
-                {% if view_mode == 'grupy' %}
-                    Grupa to ten sam produkt różnych firm — o braku decyduje jej łączny zapas.
-                {% else %}
-                    Termin zakupu jest aktualizowany wraz z każdym zeskanowanym zużyciem.
-                {% endif %}
-            </p>
+            <h3>Grupy marek</h3>
+            <p>Grupa to ten sam produkt różnych firm — o braku decyduje jej łączny zapas.</p>
         </div>
         <div class="pantry-view-tools">
-            <div class="pantry-view-switch" role="group" aria-label="Widok spiżarni" data-segmented>
-                <a href="{% url 'cooking:pantry' %}{% if query_without_view %}?{{ query_without_view }}{% endif %}"
-                   class="{% if view_mode != 'grupy' %}is-active{% endif %}"
-                   {% if view_mode != 'grupy' %}aria-current="page"{% endif %}>
-                    <i class="bi bi-tags" aria-hidden="true"></i> Kategorie
-                </a>
-                <a href="{% url 'cooking:pantry' %}?widok=grupy{% if query_without_view %}&amp;{{ query_without_view }}{% endif %}"
-                   class="{% if view_mode == 'grupy' %}is-active{% endif %}"
-                   {% if view_mode == 'grupy' %}aria-current="page"{% endif %}>
-                    <i class="bi bi-collection" aria-hidden="true"></i> Grupy
-                    {% if group_count %}<span class="pantry-view-count">{{ group_count }}</span>{% endif %}
-                </a>
-            </div>
+            <a class="btn btn-outline-primary btn-sm" href="{% url 'cooking:pantry' %}"><i class="bi bi-list-ul" aria-hidden="true"></i> Wróć do listy</a>
             <span class="pantry-section-count">{{ product_count }} prod.</span>
         </div>
     </div>
+    {% elif has_any_products %}
+    {% include 'cooking/partials/pantry_toolbar.html' %}
+    {% endif %}
 
     {% if view_mode == 'grupy' %}
         {% if proposals %}
@@ -259,7 +152,9 @@
         </section>
     {% endif %}
 
-    {% if product_groups %}
+    {% if product_groups and view_mode != 'grupy' %}
+        {% include 'cooking/partials/pantry_list.html' %}
+    {% elif product_groups %}
         <div class="pantry-category-list animate-fade-in-up">
             {% for group in product_groups %}
                 <section class="pantry-category-panel">
@@ -393,10 +288,10 @@
         </div>
     {% endif %}
 
-    <button type="button" class="btn pantry-mobile-scan-button d-md-none" data-bs-toggle="modal"
-            data-bs-target="#pantryScannerModal" data-open-scanner>
+    <button type="button" class="btn pantry-mobile-scan-button pt-fab d-md-none" data-bs-toggle="modal"
+            data-bs-target="#pantryScannerModal" data-open-scanner aria-label="Uruchom skaner produktów">
         <i class="bi bi-upc-scan" aria-hidden="true"></i>
-        <span>Skanuj produkt</span>
+        <span>Skanuj</span>
     </button>
 
     <p class="small text-muted text-center mt-4 mb-0">
@@ -412,6 +307,7 @@
                     <div>
                         <div class="small text-uppercase fw-bold opacity-75">Spiżarnia</div>
                         <h2 class="modal-title h5 fw-bold mb-0" id="pantryScannerLabel">Skaner produktów</h2>
+                        <div class="small opacity-75">{% if scanner_auto_action_enabled %}Zużycie: domyślna akcja po {{ scanner_auto_action_timeout_seconds }} s{% else %}Po skanie potwierdzasz ręcznie{% endif %}</div>
                     </div>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Zamknij skaner"></button>
                 </div>
@@ -857,4 +753,5 @@
 
 {% block extra_js %}
 <script src="{% static 'cooking/js/pantry-scanner.js' %}"></script>
+<script src="{% static 'cooking/js/pantry-list.js' %}" defer></script>
 {% endblock %}

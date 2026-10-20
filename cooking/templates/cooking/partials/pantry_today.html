@@ -1,0 +1,34 @@
+{% comment %}
+Pasek „dziś”: liczniki, które są jednocześnie filtrami (pantry-list.js).
+Bez JavaScriptu linki filtrują po stronie serwera. Odświeżany po każdej
+zmianie stanu (data-partial="#pantry-today").
+{% endcomment %}
+<nav class="pt-today" id="pantry-today" aria-label="Na dziś">
+    {% if today_counts.expiring %}
+        <a class="pt-today-item is-danger" href="?status=expiring" data-preset="expiring">
+            <i class="bi bi-alarm" aria-hidden="true"></i>
+            <span><strong>{{ today_counts.expiring }}</strong> Zjedz najpierw</span>
+        </a>
+    {% endif %}
+    {% if today_counts.buy %}
+        <a class="pt-today-item is-warn" href="?status=low" data-preset="buy">
+            <i class="bi bi-cart" aria-hidden="true"></i>
+            <span><strong>{{ today_counts.buy }}</strong> Do kupienia</span>
+        </a>
+    {% endif %}
+    {% if today_counts.undated %}
+        <a class="pt-today-item is-warn" href="?status=undated" data-preset="undated">
+            <i class="bi bi-calendar-plus" aria-hidden="true"></i>
+            <span><strong>{{ today_counts.undated }}</strong> Uzupełnij termin</span>
+        </a>
+    {% endif %}
+    {% if today_counts.nobarcode %}
+        <a class="pt-today-item" href="?status=nobarcode" data-preset="nobarcode">
+            <i class="bi bi-upc" aria-hidden="true"></i>
+            <span><strong>{{ today_counts.nobarcode }}</strong> Bez kodu</span>
+        </a>
+    {% endif %}
+    {% if not today_counts.expiring and not today_counts.buy and not today_counts.undated %}
+        <span class="pt-today-item is-ok"><i class="bi bi-check2-circle" aria-hidden="true"></i><span>Wszystko w porządku</span></span>
+    {% endif %}
+</nav>

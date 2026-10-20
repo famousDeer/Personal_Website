@@ -79,6 +79,35 @@ Kontekst: card (słownik z PantryListView), product = card.product.
         </div>
     </div>
 
+    {% if card.batches or card.undated %}
+        <section class="pt-batches" aria-label="Terminy przydatności">
+            <h5><i class="bi bi-calendar-check" aria-hidden="true"></i> Terminy</h5>
+            {% if card.batches %}
+                <ul>
+                    {% for batch in card.batches %}
+                        <li class="{% if batch.days_left < 0 %}is-danger{% elif batch.days_left <= 3 %}is-warn{% endif %}">
+                            <span>{{ batch.quantity|qty }} {{ product.display_unit }}</span>
+                            <strong>{% if batch.days_left < 0 %}po terminie {{ batch.expires_on|date:"d.m" }}{% else %}do {{ batch.expires_on|date:"D d.m.Y" }}{% endif %}</strong>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+            {% if card.undated %}
+                <form method="post" action="{% url 'cooking:pantry-expiry' product.id %}" class="pt-batches-form"
+                      data-partial="#product-{{ product.id }}, #pantry-row-{{ product.id }}, #pantry-today">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <p>Część zapasu nie ma daty – dotknij daty z opakowania:</p>
+                    {% include 'cooking/partials/expiry_chips.html' %}
+                    <span class="ex-custom">
+                        <input type="date" class="form-control form-control-sm" name="custom_expires_on" aria-label="Inna data dla {{ product.name }}">
+                        <button type="submit" class="btn btn-primary btn-sm">OK</button>
+                    </span>
+                </form>
+            {% endif %}
+        </section>
+    {% endif %}
+
     <div class="pantry-product-stock-grid">
         <div class="pantry-product-stock-primary">
             <span class="pantry-product-stock-label">Opakowania</span>
@@ -118,7 +147,7 @@ Kontekst: card (słownik z PantryListView), product = card.product.
                 </span>
             </div>
             <form method="post" action="{% url 'cooking:pantry-restock-toggle' product.id %}" class="pantry-restock-form"
-                  data-partial="#product-{{ product.id }}, #pantry-metrics, [data-panel-badges]">
+                  data-partial="#product-{{ product.id }}, #pantry-metrics, [data-panel-badges], #pantry-row-{{ product.id }}, #pantry-today">
                 {% csrf_token %}
                 <input type="hidden" name="next" value="{{ request.get_full_path }}">
                 <input type="hidden" name="one_off" value="0">
@@ -218,7 +247,7 @@ Kontekst: card (słownik z PantryListView), product = card.product.
             {% endif %}
             {% if not product.group_id %}
             <form method="post" action="{% url 'cooking:pantry-restock-toggle' product.id %}" class="pantry-restock-form"
-                  data-partial="#product-{{ product.id }}, #pantry-metrics, [data-panel-badges]">
+                  data-partial="#product-{{ product.id }}, #pantry-metrics, [data-panel-badges], #pantry-row-{{ product.id }}, #pantry-today">
                 {% csrf_token %}
                 <input type="hidden" name="next" value="{{ request.get_full_path }}">
                 <input type="hidden" name="one_off" value="1">
@@ -244,7 +273,7 @@ Kontekst: card (słownik z PantryListView), product = card.product.
         <div class="pantry-product-manual-body">
             <form method="post" action="{% url 'cooking:pantry-movement' product.id %}" class="pantry-stepper-form"
                   data-manual-movement-form data-no-busy
-                  data-partial="#product-{{ product.id }}, #pantry-metrics, [data-panel-badges]{% if product.group_id %}, [data-group-id=&quot;{{ product.group_id }}&quot;]{% endif %}"
+                  data-partial="#product-{{ product.id }}, #pantry-metrics, [data-panel-badges], #pantry-row-{{ product.id }}, #pantry-today{% if product.group_id %}, [data-group-id=&quot;{{ product.group_id }}&quot;]{% endif %}"
                   data-optimistic="pantry-movement">
                 {% csrf_token %}
                 <input type="hidden" name="next" value="{{ request.get_full_path }}">
