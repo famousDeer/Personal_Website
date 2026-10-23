@@ -526,9 +526,21 @@ AUTO_LINK_SCORE = 0.55
 AUTO_LINK_MARGIN = 0.15
 
 
+def _fetch_catalog_details(barcode: str):
+    """Pobiera wpis Open Food Facts (zdjęcie, marka), żeby spiżarnia pokazała
+    zdjęcie także produktu, któremu kod przypisano z paragonu."""
+    from .product_catalog import CatalogUnavailable, lookup_open_food_facts
+
+    try:
+        lookup_open_food_facts(barcode)
+    except CatalogUnavailable:
+        pass
+
+
 def assign_barcode(product: PantryProduct, barcode: str) -> PantryProduct:
     from .product_catalog import remember_household_product
 
+    _fetch_catalog_details(barcode)
     with transaction.atomic():
         product = PantryProduct.objects.select_for_update().get(pk=product.pk)
         if PantryProduct.objects.filter(barcode=barcode).exclude(pk=product.pk).exists():

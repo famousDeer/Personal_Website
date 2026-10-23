@@ -685,7 +685,13 @@ def lookup_product_catalog(barcode):
             entry=remembered,
             source_entry=cached_open_food_facts_entry(barcode),
         )
+    return lookup_open_food_facts(barcode)
 
+
+def lookup_open_food_facts(barcode):
+    """Wpis Open Food Facts dla kodu (z cache albo z sieci), z pominięciem
+    pamięci domu. Stąd pochodzi zdjęcie produktu w spiżarni."""
+    barcode = str(barcode or '')
     now = timezone.now()
     entry = ProductCatalogEntry.objects.filter(
         source=OPEN_FOOD_FACTS_SOURCE,

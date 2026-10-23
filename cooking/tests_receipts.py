@@ -815,6 +815,15 @@ class ReceiptBarcodeScanModeTests(TestCase):
             result = self._scan('8005110070600')
         self.assertEqual((result['status'], result['product']), ('linked', 'Mutti Pomidory polpa'))
 
+    def test_linking_fetches_catalog_photo(self):
+        # Kod przypisany bez pytania o nazwę (wybór z listy) też pobiera wpis
+        # Open Food Facts - z niego spiżarnia bierze zdjęcie produktu.
+        maliny = PantryProduct.objects.get(name='Mrożone maliny')
+        with patch('cooking.services.product_catalog.lookup_open_food_facts') as lookup:
+            result = self._scan('5900000000017', maliny.pk)
+        self.assertEqual(result['status'], 'linked')
+        lookup.assert_called_once_with('5900000000017')
+
 
 class ExpiryTests(TestCase):
     """Terminy przydatności: obowiązkowe dla nabiału, partie od najkrótszego terminu."""
