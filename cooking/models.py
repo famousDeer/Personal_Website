@@ -430,6 +430,36 @@ class PantryMovement(models.Model):
         return f"{self.product.name}: {self.get_movement_type_display()} {self.quantity} {self.product.unit}"
 
 
+class PantryRating(models.Model):
+    """Ocena produktu ze spiżarni: czy smakował i czy kupić go ponownie.
+
+    Jedna ocena na produkt i domownika - przy kolejnym zużyciu domownik ją
+    poprawia, zamiast dopisywać nową. Do decyzji o zakupie liczy się aktualne
+    zdanie każdego w domu, a nie historia ocen (ta jest w ruchach zużycia).
+    """
+
+    product = models.ForeignKey(PantryProduct, on_delete=models.CASCADE, related_name='ratings')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='pantry_ratings')
+    stars = models.PositiveSmallIntegerField(verbose_name='Gwiazdki')
+    note = models.CharField(max_length=200, blank=True, verbose_name='Notatka')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'pantry_ratings'
+        ordering = ['-updated_at']
+        constraints = [
+            models.UniqueConstraint(fields=['product', 'user'], name='unique_pantry_rating_per_user'),
+            models.CheckConstraint(
+                condition=models.Q(stars__gte=1, stars__lte=5),
+                name='pantry_rating_stars_1_5',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.product.name}: {self.stars}/5 ({self.user})'
+
+
 class ShopLayout(models.Model):
     """Sklep i kolejność alejek: w jakiej kolejności pokazywać kategorie.
 

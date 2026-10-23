@@ -2292,7 +2292,8 @@
                 state.needsReload = false;
                 window.location.reload();
             } else {
-                const cards = ids.map((id) => `#product-${id}`).join(', ');
+                // Wiersz też: po zużyciu do zera pokazuje „Oceń”.
+                const cards = ids.map((id) => `#product-${id}, #pantry-row-${id}`).join(', ');
                 window.AppPartial.refresh(`${cards}, #pantry-metrics, [data-panel-badges]`)
                     .catch(() => window.location.reload());
             }

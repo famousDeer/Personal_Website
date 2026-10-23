@@ -3108,6 +3108,38 @@ a.pt-today-item:hover { border-color: var(--line-2); color: var(--ink-1); }
 .pt-batches-form { margin-top: var(--sp-2); display: flex; flex-direction: column; gap: var(--sp-2); }
 .pt-batches-form p { margin: 0; font-size: var(--fs-caption); color: var(--ink-3); }
 
+/* Ocena produktu (pantry_rating.html): gwiazdki = jeden kolor (--cat-4), jak „uwaga” w liście. */
+.pt-rating { margin: var(--sp-3) 0; padding: var(--sp-3); border-radius: var(--r-md); background: var(--surface-2); }
+.pt-rating.is-prompt { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cat-4) 60%, transparent); }
+.pt-rating h5 { display: flex; align-items: baseline; gap: var(--sp-2); font-size: var(--fs-sm); font-weight: 700; margin: 0 0 var(--sp-2); }
+.pt-rating-avg { margin-left: auto; font-weight: 600; color: var(--ink-2); }
+.pt-rating-avg [aria-hidden], .pt-row-rating [aria-hidden], .pt-stars { color: var(--cat-4); }
+.pt-rating-list { list-style: none; margin: 0 0 var(--sp-2); padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm); }
+.pt-rating-list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--sp-2); }
+.pt-rating-list small { margin-left: auto; color: var(--ink-3); }
+.pt-rating-note { color: var(--ink-2); }
+.pt-rating-form { display: flex; flex-direction: column; gap: var(--sp-2); margin: 0; }
+.pt-rating-hint { margin: 0; font-size: var(--fs-caption); color: var(--ink-3); }
+.pt-star-buttons { display: flex; gap: 4px; }
+.pt-star {
+    width: 44px; height: 44px; padding: 0; border: 0; background: transparent; font-size: 1.75rem; line-height: 1;
+    color: color-mix(in srgb, var(--ink-3) 45%, transparent); border-radius: var(--r-md);
+}
+.pt-star.is-on { color: var(--cat-4); }
+/* Podgląd wyboru: gwiazdki do wskazanej włącznie. */
+@media (hover: hover) {
+    .pt-star-buttons:hover .pt-star { color: var(--cat-4); }
+    .pt-star-buttons .pt-star:hover ~ .pt-star { color: color-mix(in srgb, var(--ink-3) 45%, transparent); }
+}
+.pt-rating-note-row { display: flex; align-items: center; gap: var(--sp-2); }
+.pt-rating-note-row .form-control { flex: 1; min-width: 0; }
+.pt-rate {
+    flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: var(--r-pill);
+    border: 1px solid color-mix(in srgb, var(--cat-4) 60%, var(--line-2)); color: var(--ink-1); font-size: var(--fs-caption);
+    text-decoration: none; background: var(--surface-1);
+}
+.pt-rate .bi { color: var(--cat-4); }
+
 .pantry-mobile-scan-button.pt-fab {
     left: auto; right: var(--sp-4); z-index: 1035; min-height: 3.25rem; padding: 0 1.25rem;
     bottom: calc(var(--tabbar-h) + var(--sp-3) + env(safe-area-inset-bottom, 0px));

@@ -1,0 +1,65 @@
+{% load pantry_extras ui %}
+{% comment %}
+Ocena produktu w kafelku / panelu szczegółów (PantryRatingView). Jedna ocena
+na domownika: dotknięcie gwiazdki od razu zapisuje (razem z notatką),
+kolejne dotknięcie poprawia. Wiersz listy kieruje tu przyciskiem „Oceń”,
+gdy produkt się skończył (#rating-N).
+Kontekst: card, product.
+{% endcomment %}
+{% with rating=card.rating mine=card.rating.mine %}
+<section class="pt-rating{% if 'rate' in card.flags %} is-prompt{% endif %}" id="rating-{{ product.id }}"
+         aria-label="Ocena produktu {{ product.name }}">
+    <h5>
+        <i class="bi bi-star" aria-hidden="true"></i> Ocena
+        {% if rating %}
+            <span class="pt-rating-avg" title="Średnia ocen domowników">
+                <span aria-hidden="true">★</span> {{ rating.average }} · {{ rating.count|pl:"ocena,oceny,ocen" }}
+            </span>
+        {% endif %}
+    </h5>
+    {% if rating %}
+        <ul class="pt-rating-list">
+            {% for item in rating.ratings %}
+                <li>
+                    <span class="pt-stars" aria-label="{{ item.stars }} na 5">{{ item.stars|stars }}</span>
+                    <strong>{% if item.user_id == request.user.pk %}Ty{% else %}{{ item.user.first_name|default:item.user.username }}{% endif %}</strong>
+                    {% if item.note %}<span class="pt-rating-note">{{ item.note }}</span>{% endif %}
+                    <small>{{ item.updated_at|date:"d.m.Y" }}</small>
+                </li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+    <form method="post" action="{% url 'cooking:pantry-rating' product.id %}" class="pt-rating-form"
+          data-partial="#product-{{ product.id }}, #pantry-row-{{ product.id }}">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        {# Enter w notatce zapisuje bieżącą ocenę, a nie „1 gwiazdkę” (pierwszy przycisk). #}
+        {% if mine %}
+            <button type="submit" name="stars" value="{{ mine.stars }}" hidden aria-hidden="true" tabindex="-1"></button>
+        {% else %}
+            <button type="submit" disabled hidden aria-hidden="true" tabindex="-1"></button>
+        {% endif %}
+        <p class="pt-rating-hint">
+            {% if mine %}Twoja ocena – dotknij gwiazdki, żeby zmienić.
+            {% elif product.current_quantity <= 0 %}Skończył się. Jak wypadł? Ocena podpowie, czy kupić ponownie.
+            {% else %}Oceń, czy warto kupić ponownie.{% endif %}
+        </p>
+        <div class="pt-star-buttons" role="group" aria-label="Twoja ocena: {{ product.name }}">
+            {% for _ in "12345" %}
+                <button type="submit" name="stars" value="{{ forloop.counter }}" id="rate-{{ product.id }}-{{ forloop.counter }}"
+                        class="pt-star{% if mine and mine.stars >= forloop.counter %} is-on{% endif %}"
+                        aria-label="{{ forloop.counter }} na 5"{% if mine and mine.stars == forloop.counter %} aria-pressed="true"{% endif %}>★</button>
+            {% endfor %}
+        </div>
+        <div class="pt-rating-note-row">
+            <label class="visually-hidden" for="rating-note-{{ product.id }}">Notatka do oceny</label>
+            <input type="text" class="form-control form-control-sm" id="rating-note-{{ product.id }}" name="note"
+                   maxlength="200" value="{{ mine.note|default:'' }}" placeholder="Notatka (opcjonalnie), np. za słodki">
+            {% if mine %}
+                <button type="submit" name="stars" value="{{ mine.stars }}" class="btn btn-outline-secondary btn-sm">Zapisz</button>
+                <button type="submit" name="remove" value="1" class="btn btn-link btn-sm">Usuń</button>
+            {% endif %}
+        </div>
+    </form>
+</section>
+{% endwith %}

@@ -1,6 +1,6 @@
 # cooking – przepisy, wspólna spiżarnia, listy zakupów, push
 
-Modele: Recipe → RecipeStep, RecipeStepIngredient (`ingredient_items`, krok opcjonalny). PantryProduct (+ PantryMovement, ProductGroup, PantryCategory + PantryCategoryRule), ProductCatalogEntry / ProductCatalogQuota (cache Open Food Facts), ShoppingList → ShoppingListItem, ShopLayout, ShoppingSyncOperation (offline), PushSubscription, SentNotification, paragony: ReceiptStore, Receipt → ReceiptPhoto, ReceiptLine, ReceiptAlias (słownik domu: skrót z paragonu → produkt/grupa/pomijaj).
+Modele: Recipe → RecipeStep, RecipeStepIngredient (`ingredient_items`, krok opcjonalny). PantryProduct (+ PantryMovement, PantryRating – ocena 1–5 per produkt i domownik, ProductGroup, PantryCategory + PantryCategoryRule), ProductCatalogEntry / ProductCatalogQuota (cache Open Food Facts), ShoppingList → ShoppingListItem, ShopLayout, ShoppingSyncOperation (offline), PushSubscription, SentNotification, paragony: ReceiptStore, Receipt → ReceiptPhoto, ReceiptLine, ReceiptAlias (słownik domu: skrót z paragonu → produkt/grupa/pomijaj).
 Przepisy edytuje tylko autor. Spiżarnia, kategorie i listy zakupów są wspólne dla całego domu.
 
 Widoki:
@@ -13,6 +13,7 @@ Widoki:
 Logika w `services/`:
 - `categories.py` – reguły kategorii.
 - `pantry_editing.py`, `pantry_quantities.py`, `pantry_sharing.py`, `pantry_merge.py` (łączenie duplikatów: ruchy, partie, linie paragonów, aliasy, listy; `find_product_by_name` porównuje nazwy po `normalize_text`). W „Rozpakuj zakupy” kod należący już do innego produktu łączy duplikat z paragonu (ta sama nazwa – od razu, inna – status `merge` z pytaniem).
+- `pantry_ratings.py` – oceny: zapis (`PantryRatingView`, sekcja `partials/pantry_rating.html` w kafelku), `rating_summaries` dla listy (★ średnia w wierszu, sort „Najlepiej ocenione”, flaga `rate` + „Oceń”, gdy produkt się skończył, a domownik go nie ocenił), `merge_ratings` przy łączeniu duplikatów.
 - `pantry_batches.py` – terminy przydatności: `PantryBatch` (partie z datą), obowiązkowe dla kategorii z `requires_expiry` (nabiał); stan dalej w `current_quantity`, `reconcile` przycina partie od najkrótszego terminu (zużycie nie pyta o partię). „Zjedz najpierw”, „Uzupełnij termin”, push `termin` w `send_reminders`.
 - `pantry_forecast.py` – prognoza zużycia i automatyczna lista.
 - `product_catalog.py` – Open Food Facts, z limitem zapytań.
@@ -22,5 +23,5 @@ Logika w `services/`:
 - `shopping_sync.py`, `push.py` (pywebpush), `polish.py` (odmiana).
 
 Komendy: `send_reminders` (cron), `process_receipts` (cron: zawieszone odczyty, osierocone zdjęcia), `learn_pantry_catalog`, `generate_vapid_keys`, `preview_shared_pantry`.
-Testy: `cooking/tests.py`, `tests_categories.py`, `tests_recipe_form.py`, `tests_recipe_js.py` (Node), `tests_shopping_scan.py`, `tests_shopping_suggestions.py`, `tests_receipts.py`, `tests_pantry_list.py`.
+Testy: `cooking/tests.py`, `tests_categories.py`, `tests_recipe_form.py`, `tests_recipe_js.py` (Node), `tests_shopping_scan.py`, `tests_shopping_suggestions.py`, `tests_receipts.py`, `tests_pantry_list.py`, `tests_pantry_ratings.py`.
 Zależności: `utils` (undo, navigation). Zdjęcia użytkowników trafiają do `private_media` (`storage.py`). Domyślne kategorie: `category_defaults.py`.

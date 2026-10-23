@@ -32,6 +32,7 @@ from .models import (
     PantryBatch,
     PantryMovement,
     PantryProduct,
+    PantryRating,
     ProductCatalogEntry,
     ProductGroup,
     ShopLayout,
@@ -70,6 +71,7 @@ from .services.pantry_editing import (
     units_are_convertible,
 )
 from .services.pantry_sharing import UNIT_BASE
+from .services.pantry_ratings import rating_summaries, save_rating
 from .services.polish import completion_message, polish_count, polish_number
 from .services.receipt_prices import barcode_link_candidates, price_summaries
 from .services.receipts import assign_barcode
@@ -818,6 +820,10 @@ def pantry_row_context(product, card, batches, undated, last_purchase, receipt_n
         flags.append('nobarcode')
     if product.skips_restock:
         flags.append('oneoff')
+    rating = card.get('rating')
+    # Skończył się, a ten domownik go jeszcze nie ocenił: wiersz proponuje „Oceń”.
+    if empty and not (rating and rating['mine']):
+        flags.append('rate')
     if not (empty or card['needs_restock'] or 'expiring' in flags):
         flags.append('ok')
 
@@ -849,6 +855,7 @@ def pantry_row_context(product, card, batches, undated, last_purchase, receipt_n
         'sort_last': last_purchase.isoformat() if last_purchase else '0000-00-00',
         'sort_usage': float(forecast.rate or 0),
         'sort_price_change': float(price_change),
+        'sort_rating': float(rating['average']) if rating else 0,
     }
 
 
@@ -928,6 +935,7 @@ class PantryListView(LoginRequiredMixin, View):
             'product_id', 'normalized_text',
         ):
             receipt_names[product_id].append(text)
+        ratings = rating_summaries([product.pk for product in visible_products], request.user)
         for product in visible_products:
             forecast = forecasts[product.pk]
             average_daily = forecast.rate
@@ -951,6 +959,7 @@ class PantryListView(LoginRequiredMixin, View):
                 'manual_purchase_id': uuid4(),
                 'group_covered': covered_by_group(product),
                 'group_packages': group_packages.get(product.group_id, 0),
+                'rating': ratings.get(product.pk),
             }
             needs_restock = (
                 not card['group_covered']
@@ -1990,6 +1999,28 @@ class PantryRestockToggleView(LoginRequiredMixin, View):
             )
         else:
             messages.success(request, f'„{product.name}” znów ma prognozę zakupu.')
+        return pantry_redirect_back(request, product)
+
+
+class PantryRatingView(LoginRequiredMixin, View):
+    """Ocena produktu (1–5 gwiazdek + krótka notatka) z panelu szczegółów.
+
+    Każdy domownik ma jedną ocenę produktu i poprawia ją przy kolejnym
+    zużyciu. ``remove=1`` usuwa własną ocenę.
+    """
+
+    def post(self, request, product_id):
+        product = get_object_or_404(PantryProduct, id=product_id)
+        if request.POST.get('remove') == '1':
+            PantryRating.objects.filter(product=product, user=request.user).delete()
+            messages.success(request, f'Usunięto Twoją ocenę: {product.name}.')
+            return pantry_redirect_back(request, product)
+        try:
+            rating = save_rating(product, request.user, request.POST.get('stars'), request.POST.get('note', ''))
+        except ValueError as exc:
+            messages.error(request, str(exc))
+        else:
+            messages.success(request, f'Oceniono „{product.name}”: {rating.stars}/5.')
         return pantry_redirect_back(request, product)
 
 

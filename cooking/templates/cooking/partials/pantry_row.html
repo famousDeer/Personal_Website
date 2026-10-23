@@ -1,4 +1,4 @@
-{% load l10n pantry_extras %}
+{% load l10n pantry_extras ui %}
 {% comment %}
 Wiersz listy spiżarni (widok domyślny). Dotknięcie otwiera szczegóły - kafelek
 #product-N przenoszony do panelu (pantry-list.js). −/+ działa od razu, w tle
@@ -10,7 +10,8 @@ Kontekst: card (słownik z PantryListView), product = card.product.
     data-flags="{{ card.flags }}" data-category="{{ product.category|default:'Inne' }}" data-search="{{ card.search_text }}"
     data-name="{{ product.name|lower }}" data-days-left="{{ card.sort_days_left|unlocalize }}"
     data-expires="{{ card.sort_expires }}" data-buy="{{ card.sort_buy }}" data-last="{{ card.sort_last }}"
-    data-usage="{{ card.sort_usage|unlocalize }}" data-price-change="{{ card.sort_price_change|unlocalize }}">
+    data-usage="{{ card.sort_usage|unlocalize }}" data-price-change="{{ card.sort_price_change|unlocalize }}"
+    data-rating="{{ card.sort_rating|unlocalize }}">
     <a class="pt-row-main" href="#product-{{ product.id }}" data-open-detail="{{ product.id }}"
        aria-label="{{ product.name }} – szczegóły">
         <span class="pt-thumb" aria-hidden="true">
@@ -28,6 +29,7 @@ Kontekst: card (słownik z PantryListView), product = card.product.
                 {% if product.tracks_packages %}{{ product.current_package_count }} opak.{% if product.unit != 'szt' and product.unit != 'opak' %} · {{ product.current_quantity|qty }} {{ product.display_unit }}{% endif %}
                 {% else %}{{ product.current_quantity|qty }} {{ product.display_unit }}{% endif %}
                 {% if card.price and card.price.last %} · {{ card.price.last.regular }} zł/{{ card.price.last.unit }}{% if card.price.trend == 'up' %} <span class="pt-up" title="drożej niż poprzednio">▲</span>{% elif card.price.trend == 'down' %} <span class="pt-down" title="taniej niż poprzednio">▼</span>{% endif %}{% endif %}
+                {% if card.rating %} · <span class="pt-row-rating" title="Średnia ocen: {{ card.rating.count|pl:'ocena,oceny,ocen' }}"><span aria-hidden="true">★</span> {{ card.rating.average }}</span>{% endif %}
             </small>
         </span>
         <span class="pt-key">
@@ -43,6 +45,13 @@ Kontekst: card (słownik z PantryListView), product = card.product.
             {% else %}<span class="is-muted">w zapasie</span>{% endif %}
         </span>
     </a>
+    {% if 'rate' in card.flags %}
+        {# Skończył się, a ten domownik go nie ocenił: jedno dotknięcie otwiera ocenę w panelu. #}
+        <a class="pt-rate" href="#rating-{{ product.id }}" data-open-detail="{{ product.id }}"
+           aria-label="Oceń: {{ product.name }}">
+            <i class="bi bi-star" aria-hidden="true"></i> Oceń
+        </a>
+    {% endif %}
     {% if card.undated %}
         <form method="post" action="{% url 'cooking:pantry-expiry' product.id %}" class="pt-date"
               data-partial="#pantry-row-{{ product.id }}, #product-{{ product.id }}, #pantry-today">

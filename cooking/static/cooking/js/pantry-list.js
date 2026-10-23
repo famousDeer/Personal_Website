@@ -113,8 +113,9 @@
         last: (row) => row.dataset.last || '0000',
         usage: (row) => Number(row.dataset.usage || 0),
         price: (row) => Number(row.dataset.priceChange || 0),
+        rating: (row) => Number(row.dataset.rating || 0),
     };
-    const DESCENDING = new Set(['last', 'usage', 'price']);
+    const DESCENDING = new Set(['last', 'usage', 'price', 'rating']);
 
     function compare(a, b) {
         const key = SORTS[state.sort] || SORTS.category;
@@ -311,6 +312,11 @@
         const opener = event.target.closest('[data-open-detail]');
         if (opener && list.dataset.layout === 'list' && openDetail(opener.dataset.openDetail)) {
             event.preventDefault();
+            // „Oceń” w wierszu: panel od razu przy sekcji oceny.
+            const hash = opener.getAttribute('href') || '';
+            if (hash.startsWith('#rating-')) {
+                document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'center' });
+            }
         }
     });
     detail?.addEventListener('hidden.bs.offcanvas', returnCard);

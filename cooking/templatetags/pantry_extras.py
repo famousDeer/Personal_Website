@@ -93,3 +93,13 @@ def qty(value):
         integer = ' '.join(groups)
     text = integer + (f',{fraction}' if fraction else '')
     return f'-{text}' if negative and text.strip('0, ') else text
+
+
+@register.filter
+def stars(value):
+    """Ocena jako gwiazdki: 3.6 → „★★★★☆” (zaokrąglone do pełnej gwiazdki)."""
+    try:
+        full = max(0, min(5, int(Decimal(str(value)) + Decimal('0.5'))))
+    except (ArithmeticError, TypeError, ValueError):
+        return ''
+    return '★' * full + '☆' * (5 - full)

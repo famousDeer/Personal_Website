@@ -48,6 +48,7 @@ urlpatterns = [
     path('pantry/<int:product_id>/delete/', views.DeletePantryProductView.as_view(), name='delete-pantry-product'),
     path('pantry/<int:product_id>/expiry/', views.PantryExpiryView.as_view(), name='pantry-expiry'),
     path('pantry/<int:product_id>/movement/', views.PantryMovementView.as_view(), name='pantry-movement'),
+    path('pantry/<int:product_id>/rating/', views.PantryRatingView.as_view(), name='pantry-rating'),
     path('pantry/<int:product_id>/restock/', views.PantryRestockToggleView.as_view(), name='pantry-restock-toggle'),
     path('shopping/', views.ShoppingListView.as_view(), name='shopping-list'),
     # Tryb zakupów offline (PWA). Service worker leży pod /shopping/app/,
