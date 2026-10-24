@@ -3053,6 +3053,8 @@ a.pt-today-item:hover { border-color: var(--line-2); color: var(--ink-1); }
 .pt-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .pt-text { display: flex; flex-direction: column; min-width: 0; }
 .pt-name { font-weight: 600; color: var(--ink-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Firma (marka) obok nazwy: „Masło Łaciate” vs „Masło Mlekovita”. */
+.pt-brand, .pantry-product-brand { font-weight: 400; color: var(--ink-3); }
 .pt-meta { color: var(--ink-3); font-size: var(--fs-caption); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pt-up { color: var(--expense-ink); }
 .pt-down { color: var(--income-ink); }

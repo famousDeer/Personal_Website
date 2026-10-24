@@ -634,7 +634,7 @@ def cached_open_food_facts_entry(barcode):
     ).first()
 
 
-def remember_household_product(barcode, *, name, category, unit, quantity_per_scan):
+def remember_household_product(barcode, *, name, category, unit, quantity_per_scan, brand=''):
     """Zapamiętuje dane produktu dla kodu kreskowego, dla całego domu.
 
     Wywoływane przy dodaniu produktu ze skanera i przy edycji produktu
@@ -652,6 +652,7 @@ def remember_household_product(barcode, *, name, category, unit, quantity_per_sc
         'status': ProductCatalogEntry.STATUS_FOUND,
         'canonical_barcode': barcode,
         'product_name': name,
+        'brand': _clean_text(brand, max_length=160),
         'name_language': '',
         'suggested_category': category,
         'suggested_unit': unit or '',

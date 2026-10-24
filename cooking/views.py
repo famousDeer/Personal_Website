@@ -70,6 +70,7 @@ from .services.pantry_editing import (
     sync_open_shopping_items,
     units_are_convertible,
 )
+from .services.pantry_names import name_taken, product_label
 from .services.pantry_sharing import UNIT_BASE
 from .services.pantry_ratings import rating_summaries, save_rating
 from .services.polish import completion_message, polish_count, polish_number
@@ -143,6 +144,17 @@ def parse_scanner_request(request):
     return parse_json_request(request)
 
 
+def parse_pantry_brand(value):
+    """Firma (marka) produktu: pusta albo do 120 znaków, bez nawiasów -
+    nawias zamyka etykietę „Masło (Łaciate)”."""
+    brand = ' '.join(str(value or '').split())
+    if len(brand) > 120:
+        raise ValueError('Firma może mieć maksymalnie 120 znaków.')
+    if '(' in brand or ')' in brand:
+        raise ValueError('Firma nie może zawierać nawiasów.')
+    return brand
+
+
 def parse_pantry_category(value, default=''):
     category = str(value or '').strip()
     if not category:
@@ -157,6 +169,8 @@ def pantry_product_json(product):
     return {
         'id': product.id,
         'name': product.name,
+        'brand': product.brand,
+        'label': product.label,
         'barcode': product.barcode,
         'category': product.category,
         'unit': product.unit,
@@ -207,7 +221,8 @@ def pantry_catalog_json(result):
         'name': entry.product_name,
         'name_language': name_language,
         'name_is_polish': name_is_polish,
-        'brand': details.brand if details else '',
+        # Firma wpisana w domu wygrywa z tą z Open Food Facts.
+        'brand': (entry.brand if remembered else '') or (details.brand if details else ''),
         'description': details.description if details else '',
         'ingredients': details.ingredients if details else '',
         'quantity_text': details.quantity_text if details else '',
@@ -356,7 +371,7 @@ def build_shopping_suggestions():
             'status': product.stock_status if product.stock_status in ['empty', 'low'] else 'forecast',
             'product': product,
             'group': None,
-            'name': product.name,
+            'name': product.label,
             'category': product.category,
             'quantity': quantity,
             'unit': unit,
@@ -473,6 +488,10 @@ def get_pantry_form_context(**extra_context):
         'units': PantryProduct.UNIT_CHOICES,
         'today': timezone.localdate(),
         'product_groups': ProductGroup.objects.all(),
+        # Podpowiedź firm, które już są w spiżarni.
+        'brands': sorted(
+            set(PantryProduct.objects.exclude(brand='').values_list('brand', flat=True)), key=str.casefold,
+        ),
     }
     context.update(extra_context)
     return context
@@ -837,7 +856,7 @@ def pantry_row_context(product, card, batches, undated, last_purchase, receipt_n
         level = 'ok'
 
     catalog = card.get('catalog_entry')
-    search = [product.name, product.category, product.barcode,
+    search = [product.name, product.brand, product.category, product.barcode,
               getattr(catalog, 'brand', '') or '', product.group.name if product.group_id else '', *receipt_names]
     price = card.get('price')
     price_change = price.change if price and price.change is not None else 0
@@ -875,7 +894,7 @@ class PantryListView(LoginRequiredMixin, View):
             normalized_search = search_query.casefold()
             products = [
                 product for product in products
-                if normalized_search in product.name.casefold()
+                if normalized_search in product.label.casefold()
                 or normalized_search in product.category.casefold()
                 or normalized_search in product.barcode.casefold()
             ]
@@ -1299,6 +1318,7 @@ class PantryBarcodeRegisterView(LoginRequiredMixin, View):
                 raise ValueError('Podaj nazwę produktu.')
             if len(name) > 160:
                 raise ValueError('Nazwa produktu może mieć maksymalnie 160 znaków.')
+            brand = parse_pantry_brand(payload.get('brand'))
             requested_category = parse_pantry_category(payload.get('category'))
             expires_on = parse_expiry(payload.get('expires_on'))
             if expires_on is None and requested_category and requested_category in expiry_category_names():
@@ -1359,14 +1379,22 @@ class PantryBarcodeRegisterView(LoginRequiredMixin, View):
                     status=409,
                 )
 
-            product = PantryProduct.objects.select_for_update().filter(
-                name__iexact=name,
-            ).first()
+            # Ta sama nazwa i firma. Produkt bez firmy i bez kodu (np. z paragonu)
+            # to ten sam towar - dostaje kod i firmę ze skanu.
+            named = PantryProduct.objects.select_for_update().filter(name__iexact=name)
+            product = named.filter(brand__iexact=brand).first()
+            if product is None and brand:
+                product = named.filter(brand='', barcode='').first()
+                if product is not None:
+                    product.brand = brand
             created = product is None
             if product:
                 if product.barcode:
                     return JsonResponse(
-                        {'ok': False, 'error': 'Produkt o tej nazwie ma już inny kod kreskowy.'},
+                        {'ok': False, 'error': (
+                            f'Produkt „{product.label}” ma już inny kod kreskowy. '
+                            'Wpisz firmę, jeśli to inny produkt.'
+                        )},
                         status=409,
                     )
                 quantity_per_scan = convert_pantry_quantity(quantity_per_scan, unit, product.unit)
@@ -1382,6 +1410,7 @@ class PantryBarcodeRegisterView(LoginRequiredMixin, View):
                 product = PantryProduct(
                     created_by=request.user,
                     name=name,
+                    brand=brand,
                     barcode=barcode,
                     quantity_per_scan=quantity_per_scan,
                     category=category,
@@ -1406,6 +1435,7 @@ class PantryBarcodeRegisterView(LoginRequiredMixin, View):
             remember_household_product(
                 barcode,
                 name=product.name,
+                brand=product.brand,
                 category=product.category,
                 unit=product.unit,
                 quantity_per_scan=product.quantity_per_scan,
@@ -1450,6 +1480,12 @@ class AddPantryProductView(LoginRequiredMixin, View):
             name = request.POST.get('name', '').strip()
             if not name:
                 raise ValueError('Nazwa produktu jest wymagana.')
+            brand = parse_pantry_brand(request.POST.get('brand'))
+            if name_taken(name, brand):
+                raise ValueError(
+                    f'w spiżarni jest już produkt „{product_label(name, brand)}”.'
+                    + ('' if brand else ' Wpisz firmę, żeby odróżnić produkty.')
+                )
 
             unit = request.POST.get('unit') or PantryProduct.UNIT_PIECE
             barcode = normalize_pantry_barcode(request.POST.get('barcode'), required=False)
@@ -1498,6 +1534,7 @@ class AddPantryProductView(LoginRequiredMixin, View):
                 product = PantryProduct.objects.create(
                     created_by=request.user,
                     name=name,
+                    brand=brand,
                     group=group,
                     barcode=barcode,
                     quantity_per_scan=quantity_per_scan,
@@ -1524,11 +1561,12 @@ class AddPantryProductView(LoginRequiredMixin, View):
                     remember_household_product(
                         barcode,
                         name=product.name,
+                        brand=product.brand,
                         category=product.category,
                         unit=product.unit,
                         quantity_per_scan=product.quantity_per_scan,
                     )
-            messages.success(request, f'Dodano produkt: {product.name}.')
+            messages.success(request, f'Dodano produkt: {product.label}.')
             return redirect('cooking:pantry')
         except Exception as exc:
             messages.error(request, f'Nie udało się dodać produktu: {exc}')
@@ -1551,7 +1589,7 @@ class EditPantryProductView(LoginRequiredMixin, View):
 
     template_name = 'cooking/pantry_edit.html'
     editable_fields = [
-        'name', 'barcode', 'category', 'unit', 'quantity_per_scan', 'current_quantity',
+        'name', 'brand', 'barcode', 'category', 'unit', 'quantity_per_scan', 'current_quantity',
         'current_package_count', 'minimum_quantity', 'restock_lead_days', 'notes', 'group_id',
         'one_off',
     ]
@@ -1610,7 +1648,7 @@ class EditPantryProductView(LoginRequiredMixin, View):
             return self._render_error(
                 request,
                 product_id,
-                'Nie udało się zapisać zmian: nazwa albo kod kreskowy należy już do innego produktu.',
+                'Nie udało się zapisać zmian: nazwa z firmą albo kod kreskowy należy już do innego produktu.',
                 409,
             )
         messages.success(request, summary)
@@ -1631,7 +1669,7 @@ class EditPantryProductView(LoginRequiredMixin, View):
 
     def _save(self, request, product):
         post = request.POST
-        old_name = product.name
+        old_name = product.label
         old_barcode = product.barcode
         old_category = product.category
         old_unit = product.unit
@@ -1644,8 +1682,12 @@ class EditPantryProductView(LoginRequiredMixin, View):
             raise ValueError('Nazwa produktu jest wymagana.')
         if len(name) > 160:
             raise ValueError('Nazwa produktu może mieć maksymalnie 160 znaków.')
-        if PantryProduct.objects.filter(name__iexact=name).exclude(pk=product.pk).exists():
-            raise ValueError('W spiżarni jest już produkt o tej nazwie.')
+        brand = parse_pantry_brand(post.get('brand')) if 'brand' in post else product.brand
+        if name_taken(name, brand, exclude_pk=product.pk):
+            raise ValueError(
+                f'W spiżarni jest już produkt „{product_label(name, brand)}”.'
+                + ('' if brand else ' Wpisz firmę, żeby odróżnić produkty.')
+            )
 
         barcode = (
             normalize_pantry_barcode(post.get('barcode'), required=False)
@@ -1734,6 +1776,7 @@ class EditPantryProductView(LoginRequiredMixin, View):
         remove_image = post.get('remove_image') == '1' and not new_image
 
         product.name = name
+        product.brand = brand
         product.barcode = barcode
         product.category = category
         product.unit = unit
@@ -1787,6 +1830,7 @@ class EditPantryProductView(LoginRequiredMixin, View):
             remember_household_product(
                 product.barcode,
                 name=product.name,
+                brand=product.brand,
                 category=product.category,
                 unit=product.unit,
                 quantity_per_scan=product.quantity_per_scan,
@@ -1805,7 +1849,7 @@ class EditPantryProductView(LoginRequiredMixin, View):
             notes.append('zmiana stanu zapisana jako korekta')
         if product.barcode:
             notes.append('następny skan tego kodu podpowie te dane całemu domowi')
-        summary = f'Zapisano: {product.name}.'
+        summary = f'Zapisano: {product.label}.'
         if notes:
             details = '; '.join(notes)
             summary += f' {details[0].upper()}{details[1:]}.'
@@ -1944,7 +1988,7 @@ class PantryMovementView(LoginRequiredMixin, View):
                         if tracks_packages(product)
                         else None
                     )
-                message = f'Zapisano zużycie: {product.name}.'
+                message = f'Zapisano zużycie: {product.label}.'
             elif movement_type == PantryMovement.PURCHASE:
                 fulfilled_quantity = requested_quantity
                 fulfilled_package_count = requested_package_count
@@ -1955,7 +1999,7 @@ class PantryMovementView(LoginRequiredMixin, View):
                     product.current_package_count = before_package_count + requested_package_count
                 else:
                     sync_package_count_from_quantity(product)
-                message = f'Uzupełniono produkt: {product.name}.'
+                message = f'Uzupełniono produkt: {product.label}.'
             else:
                 raise ValueError('Nieznany typ operacji.')
 
@@ -1995,10 +2039,10 @@ class PantryRestockToggleView(LoginRequiredMixin, View):
         if one_off:
             messages.success(
                 request,
-                f'„{product.name}” nie trafi już na listę zakupów. Stan i historia zostają.',
+                f'„{product.label}” nie trafi już na listę zakupów. Stan i historia zostają.',
             )
         else:
-            messages.success(request, f'„{product.name}” znów ma prognozę zakupu.')
+            messages.success(request, f'„{product.label}” znów ma prognozę zakupu.')
         return pantry_redirect_back(request, product)
 
 
@@ -2013,14 +2057,14 @@ class PantryRatingView(LoginRequiredMixin, View):
         product = get_object_or_404(PantryProduct, id=product_id)
         if request.POST.get('remove') == '1':
             PantryRating.objects.filter(product=product, user=request.user).delete()
-            messages.success(request, f'Usunięto Twoją ocenę: {product.name}.')
+            messages.success(request, f'Usunięto Twoją ocenę: {product.label}.')
             return pantry_redirect_back(request, product)
         try:
             rating = save_rating(product, request.user, request.POST.get('stars'), request.POST.get('note', ''))
         except ValueError as exc:
             messages.error(request, str(exc))
         else:
-            messages.success(request, f'Oceniono „{product.name}”: {rating.stars}/5.')
+            messages.success(request, f'Oceniono „{product.label}”: {rating.stars}/5.')
         return pantry_redirect_back(request, product)
 
 
@@ -2822,7 +2866,7 @@ class PantryExpiryView(LoginRequiredMixin, View):
             messages.error(request, str(exc))
             return redirect_back(request, reverse('cooking:pantry'))
         if date_undated_stock(product, expires_on):
-            messages.success(request, f'{product.name}: ważne do {expires_on:%d.%m.%Y}.')
+            messages.success(request, f'{product.label}: ważne do {expires_on:%d.%m.%Y}.')
         return redirect_back(request, reverse('cooking:pantry'))
 
 
@@ -2846,6 +2890,6 @@ class PantryBatchExpiryView(LoginRequiredMixin, View):
         change_batch_expiry(batch, expires_on)
         if old_date != expires_on:
             messages.success(
-                request, f'{batch.product.name}: termin zmieniony z {old_date:%d.%m.%Y} na {expires_on:%d.%m.%Y}.',
+                request, f'{batch.product.label}: termin zmieniony z {old_date:%d.%m.%Y} na {expires_on:%d.%m.%Y}.',
             )
         return redirect_back(request, reverse('cooking:pantry'))

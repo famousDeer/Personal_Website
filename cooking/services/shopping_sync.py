@@ -327,7 +327,8 @@ def shopping_item_for_product(product):
         }
     quantity, unit = shopping_item_defaults(product)
     return {
-        'name': product.name,
+        # Z firmą: „Masło (Łaciate)” i „Masło (Mlekovita)” to dwie pozycje listy.
+        'name': product.label,
         'quantity': quantity,
         'unit': unit,
         'category': product.category,
@@ -340,7 +341,9 @@ def pantry_product_json(product):
     own_quantity, own_unit = shopping_item_defaults(product)
     return {
         'id': product.id,
-        'name': product.name,
+        # Etykieta z firmą - telefon szuka produktu po nazwie (podpowiedzi, lista).
+        'name': product.label,
+        'brand': product.brand,
         'barcode': product.barcode,
         'unit': product.unit,
         'unit_label': UNIT_LABELS.get(product.unit, product.unit),

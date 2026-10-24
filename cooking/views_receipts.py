@@ -12,6 +12,7 @@ from django.views import View
 from utils.undo import delete_with_undo
 
 from .models import PantryProduct, ProductGroup, Receipt, ReceiptAlias, ReceiptLine, ReceiptPhoto
+from .services.pantry_names import product_label
 from .services.pantry_quantities import parse_pantry_decimal
 from .services.polish import polish_count
 from .services.receipt_ocr import ReceiptOcrError, compress_upload, is_pdf, pdf_pages
@@ -75,7 +76,8 @@ class ReceiptListView(LoginRequiredMixin, View):
 
 
 def _datalist_names():
-    names = list(PantryProduct.objects.order_by('name').values_list('name', flat=True))
+    # Etykiety z firmą: „Masło (Łaciate)” wskazuje jeden produkt (resolve_target).
+    names = [product_label(name, brand) for name, brand in PantryProduct.objects.values_list('name', 'brand')]
     names += list(ProductGroup.objects.order_by('name').values_list('name', flat=True))
     return sorted(set(names), key=str.lower)
 
@@ -103,7 +105,7 @@ def _line_rows(receipt):
             action = ACTION_ADD
         rows.append({
             'line': line,
-            'target': target.name if target else '',
+            'target': target.label if target else '',
             'quantity': default_quantity(line, multiplier),
             'action': action,
             'kind': (
@@ -273,7 +275,7 @@ class ReceiptBarcodesView(LoginRequiredMixin, View):
                 if expires_on is None:
                     raise ValueError('Wybierz datę przydatności.')
                 date_undated_stock(product, expires_on)
-                result = {'status': 'dated', 'product': product.name, 'product_id': product.pk,
+                result = {'status': 'dated', 'product': product.label, 'product_id': product.pk,
                           'expires_on': expires_on.isoformat()}
             else:
                 barcode = normalize_pantry_barcode(payload.get('barcode'))

@@ -5,6 +5,7 @@
 - resolve_pantry_product(): który produkt zdjąć ze stanu przy gotowaniu.
   Rozpoznaje też nazwę grupy - wtedy schodzi marka, której jest najwięcej.
   Dzięki temu składnik „Jogurt naturalny” nie zakłada pustego produktu.
+  Sama nazwa produktu dostępnego w kilku firmach („Masło”) działa tak samo.
 - ingredient_category(): kategoria dla składnika, którego nie podano
   ręcznie: z produktu lub grupy w spiżarni, a dla nowego produktu
   z reguł słów kluczowych (strona „Kategorie” w spiżarni).
@@ -13,6 +14,7 @@ from collections import Counter
 
 from ..models import PantryProduct, ProductGroup
 from .categories import match_text, searchable_text, taxonomy
+from .pantry_names import find_product_by_name, product_label
 from .product_groups import restock_target
 
 
@@ -34,9 +36,16 @@ def pantry_index():
             'kind': 'group',
             'members': len(members),
         }
-    for name, unit, category in PantryProduct.objects.order_by('name').values_list('name', 'unit', 'category'):
+    for name, brand, unit, category in PantryProduct.objects.order_by('name', 'brand').values_list(
+        'name', 'brand', 'unit', 'category',
+    ):
         # Produkt o tej samej nazwie co grupa ma pierwszeństwo przy gotowaniu.
-        entries[name.casefold()] = {'name': name, 'unit': unit, 'category': category, 'kind': 'product'}
+        # Kilka firm pod jedną nazwą: każda pod etykietą „Masło (Łaciate)”.
+        label = product_label(name, brand)
+        entries[label.casefold()] = {'name': label, 'unit': unit, 'category': category, 'kind': 'product'}
+        # Przepis zwykle mówi po prostu „Masło” - przy gotowaniu schodzi
+        # firma, której jest najwięcej (resolve_pantry_product).
+        entries.setdefault(name.casefold(), {'name': name, 'unit': unit, 'category': category, 'kind': 'product'})
     return sorted(entries.values(), key=lambda entry: entry['name'].casefold())
 
 
@@ -52,7 +61,8 @@ def find_group(name):
 def resolve_pantry_product(name):
     """Produkt do zużycia przy gotowaniu albo None (nieznana nazwa)."""
     name = name.strip()
-    product = PantryProduct.objects.filter(name__iexact=name).first()
+    # Sama nazwa albo etykieta z firmą; kilka firm - ta, której jest najwięcej.
+    product = find_product_by_name(name)
     if product is not None:
         return product
     group = find_group(name)
@@ -68,7 +78,7 @@ def resolve_pantry_product(name):
 
 
 def ingredient_category(name):
-    product = PantryProduct.objects.filter(name__iexact=name.strip()).only('category').first()
+    product = find_product_by_name(name)
     if product is not None and product.category:
         return product.category
     group = find_group(name)

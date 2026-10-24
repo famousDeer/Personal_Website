@@ -121,6 +121,7 @@ class Command(BaseCommand):
             remember_household_product(
                 product.barcode,
                 name=product.name,
+                brand=product.brand,
                 category=product.category,
                 unit=product.unit,
                 quantity_per_scan=product.quantity_per_scan,

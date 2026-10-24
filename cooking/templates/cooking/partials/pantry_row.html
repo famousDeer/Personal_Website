@@ -8,12 +8,12 @@ Kontekst: card (słownik z PantryListView), product = card.product.
 {% endcomment %}
 <li class="pt-row is-{{ card.level }}" id="pantry-row-{{ product.id }}" data-pantry-row="{{ product.id }}"
     data-flags="{{ card.flags }}" data-category="{{ product.category|default:'Inne' }}" data-search="{{ card.search_text }}"
-    data-name="{{ product.name|lower }}" data-days-left="{{ card.sort_days_left|unlocalize }}"
+    data-name="{{ product.label|lower }}" data-days-left="{{ card.sort_days_left|unlocalize }}"
     data-expires="{{ card.sort_expires }}" data-buy="{{ card.sort_buy }}" data-last="{{ card.sort_last }}"
     data-usage="{{ card.sort_usage|unlocalize }}" data-price-change="{{ card.sort_price_change|unlocalize }}"
     data-rating="{{ card.sort_rating|unlocalize }}">
     <a class="pt-row-main" href="#product-{{ product.id }}" data-open-detail="{{ product.id }}"
-       aria-label="{{ product.name }} – szczegóły">
+       aria-label="{{ product.label }} – szczegóły">
         <span class="pt-thumb" aria-hidden="true">
             {% if product.image %}
                 <img src="{% url 'cooking:pantry-product-image' product.id %}" alt="" loading="lazy">
@@ -24,7 +24,7 @@ Kontekst: card (słownik z PantryListView), product = card.product.
             {% endif %}
         </span>
         <span class="pt-text">
-            <strong class="pt-name">{{ product.name }}</strong>
+            <strong class="pt-name">{{ product.name }}{% if product.brand %} <span class="pt-brand">{{ product.brand }}</span>{% endif %}</strong>
             <small class="pt-meta">
                 {% if product.tracks_packages %}{{ product.current_package_count }} opak.{% if product.unit != 'szt' and product.unit != 'opak' %} · {{ product.current_quantity|qty }} {{ product.display_unit }}{% endif %}
                 {% else %}{{ product.current_quantity|qty }} {{ product.display_unit }}{% endif %}
@@ -48,7 +48,7 @@ Kontekst: card (słownik z PantryListView), product = card.product.
     {% if 'rate' in card.flags %}
         {# Skończył się, a ten domownik go nie ocenił: jedno dotknięcie otwiera ocenę w panelu. #}
         <a class="pt-rate" href="#rating-{{ product.id }}" data-open-detail="{{ product.id }}"
-           aria-label="Oceń: {{ product.name }}">
+           aria-label="Oceń: {{ product.label }}">
             <i class="bi bi-star" aria-hidden="true"></i> Oceń
         </a>
     {% endif %}
@@ -57,7 +57,7 @@ Kontekst: card (słownik z PantryListView), product = card.product.
               data-partial="#pantry-row-{{ product.id }}, #product-{{ product.id }}, #pantry-today">
             {% csrf_token %}
             <input type="hidden" name="next" value="{{ request.get_full_path }}">
-            <label class="visually-hidden" for="pt-date-{{ product.id }}">Ważne do: {{ product.name }}</label>
+            <label class="visually-hidden" for="pt-date-{{ product.id }}">Ważne do: {{ product.label }}</label>
             <select class="form-select form-select-sm" id="pt-date-{{ product.id }}" name="expires_on" data-autosubmit>
                 <option value="">Ważne do…</option>
                 {% for day in quick_dates %}<option value="{{ day|date:'Y-m-d' }}">{{ day|date:"D j.m" }}</option>{% endfor %}
@@ -73,11 +73,11 @@ Kontekst: card (słownik z PantryListView), product = card.product.
             <input type="hidden" name="operation_id_purchase" value="{{ card.manual_purchase_id }}">
             <input type="hidden" name="package_count" value="1">
             <button type="submit" name="movement_type" value="consume" class="pt-step"
-                    aria-label="Zużyj 1 opak.: {{ product.name }}" {% if product.current_package_count <= 0 %}disabled{% endif %}>
+                    aria-label="Zużyj 1 opak.: {{ product.label }}" {% if product.current_package_count <= 0 %}disabled{% endif %}>
                 <i class="bi bi-dash-lg" aria-hidden="true"></i>
             </button>
             <button type="submit" name="movement_type" value="purchase" class="pt-step"
-                    aria-label="Dodaj 1 opak.: {{ product.name }}">
+                    aria-label="Dodaj 1 opak.: {{ product.label }}">
                 <i class="bi bi-plus-lg" aria-hidden="true"></i>
             </button>
         </form>

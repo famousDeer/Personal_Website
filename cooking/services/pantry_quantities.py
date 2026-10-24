@@ -116,4 +116,7 @@ def normalize_shopping_quantity(quantity, unit):
 
 
 def find_pantry_product(name):
-    return PantryProduct.objects.filter(name__iexact=name).first()
+    """Produkt po nazwie albo etykiecie „Masło (Łaciate)” (services/pantry_names.py)."""
+    from .pantry_names import find_product_by_name
+
+    return find_product_by_name(name)

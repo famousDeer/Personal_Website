@@ -14,30 +14,9 @@ from django.db import transaction
 from ..models import PantryBatch, PantryMovement, PantryProduct, ReceiptAlias, ReceiptLine, ShoppingListItem
 from .pantry_ratings import merge_ratings
 from .pantry_quantities import convert_pantry_quantity, counts_in_packages, sync_package_count_from_quantity
-from .receipt_parser import normalize_text
+from .pantry_names import find_product_by_name, name_taken, same_product  # noqa: F401 - receipts.py importuje stąd
 
 COUNTED = (PantryProduct.UNIT_PIECE, PantryProduct.UNIT_PACKAGE)
-
-
-def same_name(first: str, second: str) -> bool:
-    """„Masło Extra” = „maslo  extra” – bez wielkości liter, ogonków i interpunkcji."""
-    first, second = normalize_text(first or ''), normalize_text(second or '')
-    return bool(first) and first == second
-
-
-def find_product_by_name(name: str) -> PantryProduct | None:
-    """Produkt o tej samej nazwie. Najpierw dokładnie (bez wielkości liter),
-    potem po normalizacji, żeby „Maslo” trafiło w „Masło”."""
-    product = PantryProduct.objects.filter(name__iexact=name).first()
-    if product is not None:
-        return product
-    key = normalize_text(name or '')
-    if not key:
-        return None
-    for candidate in PantryProduct.objects.only('id', 'name'):
-        if normalize_text(candidate.name) == key:
-            return PantryProduct.objects.get(pk=candidate.pk)
-    return None
 
 
 def merge_factor(source: PantryProduct, target: PantryProduct) -> Decimal:
@@ -98,5 +77,10 @@ def merge_products(source: PantryProduct, target: PantryProduct) -> PantryProduc
         target.group_id = source.group_id
         fields.append('group')
     target.save(update_fields=fields)
+    source_brand = source.brand
     source.delete()
+    # Produkt bez firmy przejmuje firmę duplikatu - o ile nie ma już takiej pary nazwa + firma.
+    if not target.brand and source_brand and not name_taken(target.name, source_brand, exclude_pk=target.pk):
+        target.brand = source_brand
+        target.save(update_fields=['brand', 'updated_at'])
     return target

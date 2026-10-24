@@ -33,7 +33,7 @@ class Candidate:
 
     @property
     def label(self):
-        return (self.group or self.product).name
+        return (self.group or self.product).label
 
 
 def find_alias(store, normalized: str):
@@ -114,7 +114,10 @@ class MatchContext:
 def suggest(line_name: str, context: MatchContext) -> Candidate | None:
     best = None
     for product in context.products:
+        # Paragon często podaje firmę („MASLO LACIATE”) - liczy się lepsza ocena.
         score = name_score(line_name, product.name)
+        if product.brand:
+            score = max(score, name_score(line_name, product.label))
         if score < 0.3:
             continue
         reasons = []

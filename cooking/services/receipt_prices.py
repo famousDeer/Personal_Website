@@ -235,5 +235,5 @@ def barcode_link_candidates(hint_name: str = '', limit: int = 6):
         if line:
             store = line.receipt.store.name if line.receipt.store_id else 'paragon'
             hint = f'{store}, {line.receipt.purchased_on:%d.%m}'
-        result.append({'id': product.pk, 'name': product.name, 'category': product.category, 'hint': hint})
+        result.append({'id': product.pk, 'name': product.label, 'category': product.category, 'hint': hint})
     return result

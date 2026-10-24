@@ -152,6 +152,11 @@ class ProductGroup(models.Model):
     def __str__(self):
         return self.name
 
+    @property
+    def label(self):
+        # Ta sama nazwa właściwości co PantryProduct.label (paragony, listy).
+        return self.name
+
     def members(self):
         cached = getattr(self, '_prefetched_objects_cache', {}).get('products')
         return list(cached) if cached is not None else list(self.products.all())
@@ -174,7 +179,7 @@ class ProductGroup(models.Model):
 
     @property
     def brand_names(self):
-        return [product.name for product in self.members()]
+        return [product.label for product in self.members()]
 
 
 class PantryProduct(models.Model):
@@ -201,6 +206,10 @@ class PantryProduct(models.Model):
         verbose_name='Dodane przez',
     )
     name = models.CharField(max_length=160)
+    # Firma (marka): „Masło” Łaciate i „Masło” Mlekovita to dwa produkty.
+    # Pusta, kiedy marka nie ma znaczenia. Tekst, nie grupa - o łącznym
+    # zapasie kilku marek decyduje ProductGroup.
+    brand = models.CharField(max_length=120, blank=True, verbose_name='Firma')
     # Grupa „ten sam produkt, inna firma”. Kiedy jest ustawiona, to ona decyduje
     # o brakach i o tym, co trafia na listę zakupów.
     group = models.ForeignKey(
@@ -241,9 +250,9 @@ class PantryProduct(models.Model):
         db_table = 'pantry_products'
         ordering = ['name']
         constraints = [
-            # Jedna spiżarnia = jedna pozycja na nazwę (bez względu na wielkość
-            # liter) i jedna na kod kreskowy.
-            models.UniqueConstraint(Lower('name'), name='unique_pantry_product_name_ci'),
+            # Jedna spiżarnia = jedna pozycja na nazwę i firmę (bez względu na
+            # wielkość liter) i jedna na kod kreskowy.
+            models.UniqueConstraint(Lower('name'), Lower('brand'), name='unique_pantry_product_name_brand_ci'),
             models.UniqueConstraint(
                 fields=['barcode'],
                 condition=~models.Q(barcode=''),
@@ -256,7 +265,15 @@ class PantryProduct(models.Model):
         ]
 
     def __str__(self):
-        return self.name
+        return self.label
+
+    @property
+    def label(self):
+        """Nazwa z firmą: „Masło (Łaciate)”. Jednoznaczna w całym domu - pod nią
+        produkt trafia na listę zakupów i do podpowiedzi."""
+        from .services.pantry_names import product_label
+
+        return product_label(self.name, self.brand)
 
     @property
     def display_unit(self):

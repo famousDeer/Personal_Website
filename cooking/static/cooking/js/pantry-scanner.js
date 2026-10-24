@@ -62,6 +62,7 @@
         registerForm: select('[data-register-form]'),
         registerTitle: select('[data-register-title]'),
         registerName: select('[data-register-name]'),
+        registerBrand: select('[data-register-brand]'),
         registerQuantityPerScan: select('[data-register-quantity-per-scan]'),
         registerUnit: select('[data-register-unit]'),
         registerCountWrap: select('[data-register-count-wrap]'),
@@ -1634,6 +1635,9 @@
         state.pendingPhotoRequest = null;
         elements.manualCode.value = '';
         elements.registerName.value = '';
+        if (elements.registerBrand) {
+            elements.registerBrand.value = '';
+        }
         elements.registerQuantityPerScan.value = '1';
         elements.registerUnit.value = 'szt';
         syncRegisterQuantityStep();
@@ -1744,7 +1748,7 @@
                 body: JSON.stringify({ barcode, product_id: productId }),
             });
             elements.linkWrap.hidden = true;
-            announce(`Kod przypisany do: ${data.product.name}.`);
+            announce(`Kod przypisany do: ${data.product.label || data.product.name}.`);
             presentKnownProduct(data.product, state.catalog, state.autoActionTimeoutMs);
         } catch (error) {
             showError(error.message, () => linkBarcode(barcode, productId));
@@ -1825,7 +1829,7 @@
         if (elements.knownCount) {
             elements.knownCount.value = '1';
         }
-        elements.knownName.textContent = product.name;
+        elements.knownName.textContent = product.label || product.name;
         if (elements.knownPackageStock) {
             elements.knownPackageStock.textContent = formatNumber(product.current_package_count);
         }
@@ -1877,12 +1881,21 @@
         elements.registerQuantityPerScan.min = integerOnly ? '1' : '0.01';
     }
 
+    // Open Food Facts podaje kilka firm po przecinku („Łaciate, Mlekpol”) -
+    // bierzemy pierwszą, bez nawiasów (nawias zamyka etykietę „Masło (Łaciate)”).
+    function catalogBrand(catalog) {
+        return String(catalog?.brand || '').split(',')[0].replace(/[()]/g, '').trim().slice(0, 120);
+    }
+
     function applyCatalogSuggestion(catalog) {
         const catalogFound = ['found', 'found_incomplete'].includes(catalog?.status);
         if (!catalogFound) {
             return;
         }
         elements.registerName.value = catalog.name || '';
+        if (elements.registerBrand) {
+            elements.registerBrand.value = catalogBrand(catalog);
+        }
         elements.registerQuantityPerScan.value = catalog.suggested_quantity_per_scan || '1';
         elements.registerUnit.value = catalog.suggested_unit || 'opak';
         syncRegisterQuantityStep();
@@ -2105,6 +2118,7 @@
             barcode: state.activeBarcode,
             scan_id: state.scanId,
             name: elements.registerName.value,
+            brand: elements.registerBrand?.value || '',
             quantity_per_scan: elements.registerQuantityPerScan.value,
             unit: elements.registerUnit.value,
             count,
@@ -2155,7 +2169,7 @@
         resetButtons();
         const wasConsumed = data.action === 'consume';
         elements.successEyebrow.textContent = wasConsumed ? 'Zapisano zużycie' : 'Dodano do spiżarni';
-        elements.successTitle.textContent = data.product.name;
+        elements.successTitle.textContent = data.product.label || data.product.name;
         const delta = formatQuantity(data.quantity, data.product.unit_label);
         const fulfilledCount = Number(data.count ?? state.lastActionCount ?? 1);
         const requestedCount = Number(data.requested_count ?? fulfilledCount);

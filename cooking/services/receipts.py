@@ -294,12 +294,15 @@ def resolve_target(name: str, user, line: ReceiptLine):
     if group:
         members = group.members()
         return restock_target(group) or (members[0] if members else None), group
+    from .pantry_names import split_label
     from .product_catalog import suggest_category_from_name
 
+    # „Masło (Mlekovita)” wpisane przy pozycji: nazwa + firma.
+    name, brand = split_label(name) or (name, '')
     size = package_size(line.name)
     unit = PantryProduct.UNIT_KILOGRAM if line.is_weighted else PantryProduct.UNIT_PIECE
     product = PantryProduct.objects.create(
-        created_by=user, name=name,
+        created_by=user, name=name, brand=brand[:120],
         category=suggest_category_from_name(name) or PANTRY_CATEGORY_OTHER,
         unit=unit,
         notes=f'Dodany z paragonu: {line.name}'[:255] if size else '',
@@ -551,7 +554,7 @@ def assign_barcode(product: PantryProduct, barcode: str) -> PantryProduct:
             product.barcode = barcode
             product.save(update_fields=['barcode', 'updated_at'])
         remember_household_product(
-            barcode, name=product.name, category=product.category,
+            barcode, name=product.name, brand=product.brand, category=product.category,
             unit=product.unit, quantity_per_scan=product.quantity_per_scan,
         )
     return product
@@ -594,7 +597,7 @@ def receipt_unpack_items(receipt: Receipt) -> list[dict]:
             requires_expiry(product, names) and product.current_quantity > 0 and undated_quantity(product) > 0
         )
         if needs_code or needs_date:
-            items.append({'id': product.pk, 'name': product.name, 'needs_code': needs_code, 'needs_date': needs_date})
+            items.append({'id': product.pk, 'name': product.label, 'needs_code': needs_code, 'needs_date': needs_date})
     return items
 
 
@@ -620,9 +623,9 @@ def _catalog_name(barcode: str) -> str:
 def _merged(source, owner):
     from .pantry_merge import merge_products
 
-    merged_name = source.name
+    merged_name = source.label
     owner = merge_products(source, owner)
-    return {'status': 'merged', 'product': owner.name, 'product_id': owner.pk, 'merged': merged_name,
+    return {'status': 'merged', 'product': owner.label, 'product_id': owner.pk, 'merged': merged_name,
             'needs_date': _needs_date(owner)}
 
 
@@ -631,32 +634,32 @@ def scan_receipt_barcode(receipt: Receipt, barcode: str, product_id: int | None 
     linked (przypisany), merged (produkt z paragonu połączony z tym, który ma już ten kod),
     merge (kod ma już inny produkt - zapytaj, czy to ten sam), known (kod już jest w spiżarni),
     date (trzeba wpisać termin), choose (trzeba wskazać produkt)."""
-    from .pantry_merge import same_name
+    from .pantry_merge import same_product
     from .receipt_matching import name_score
 
     remaining = receipt_products_without_barcode(receipt)
     owner = PantryProduct.objects.filter(barcode=barcode).first()
     if owner is not None:
         # Produkt z paragonu dostał nową nazwę, a ten towar już stoi w spiżarni z kodem:
-        # to duplikat. Ta sama nazwa (bez ogonków i wielkości liter) - łączymy od razu,
-        # inna - jedno pytanie z listą produktów z paragonu.
+        # to duplikat. Ta sama nazwa (bez ogonków i wielkości liter) i firma - łączymy
+        # od razu; inna nazwa albo inna firma - jedno pytanie z listą produktów z paragonu.
         if merge and product_id:
             source = next((item for item in remaining if item.pk == product_id), None)
             if source is None:
                 raise ValueError('Tego produktu nie ma już na liście z paragonu.')
             return _merged(source, owner)
-        twin = next((item for item in remaining if same_name(item.name, owner.name)), None)
+        twin = next((item for item in remaining if same_product(item, owner)), None)
         if twin is not None:
             return _merged(twin, owner)
         if remaining and not merge:
             scored = sorted(remaining, key=lambda item: -name_score(owner.name, item.name))
             return {
-                'status': 'merge', 'product': owner.name, 'product_id': owner.pk,
-                'candidates': [{'id': item.pk, 'name': item.name} for item in scored],
+                'status': 'merge', 'product': owner.label, 'product_id': owner.pk,
+                'candidates': [{'id': item.pk, 'name': item.label} for item in scored],
             }
         if _needs_date(owner):
-            return {'status': 'date', 'product': owner.name, 'product_id': owner.pk}
-        return {'status': 'known', 'product': owner.name}
+            return {'status': 'date', 'product': owner.label, 'product_id': owner.pk}
+        return {'status': 'known', 'product': owner.label}
 
     if product_id:
         product = next((item for item in remaining if item.pk == product_id), None)
@@ -664,7 +667,7 @@ def scan_receipt_barcode(receipt: Receipt, barcode: str, product_id: int | None 
         if product is None:
             raise ValueError('Nie ma takiego produktu.')
         product = assign_barcode(product, barcode)
-        return {'status': 'linked', 'product': product.name, 'product_id': product.pk,
+        return {'status': 'linked', 'product': product.label, 'product_id': product.pk,
                 'needs_date': _needs_date(product)}
 
     if not remaining:
@@ -684,5 +687,5 @@ def scan_receipt_barcode(receipt: Receipt, barcode: str, product_id: int | None 
     return {
         'status': 'choose',
         'catalog_name': catalog_name,
-        'candidates': [{'id': item.pk, 'name': item.name} for _score, _index, item in scored],
+        'candidates': [{'id': item.pk, 'name': item.label} for _score, _index, item in scored],
     }

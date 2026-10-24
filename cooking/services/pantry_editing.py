@@ -69,8 +69,9 @@ def sync_open_shopping_items(product, *, old_name, old_category, old_unit, shopp
     changed = []
     for item in items:
         fields = []
-        if old_name and item.name.casefold() == old_name.casefold() and item.name != product.name:
-            item.name = product.name
+        # Nazwa pozycji to etykieta z firmą (PantryProduct.label).
+        if old_name and item.name.casefold() == old_name.casefold() and item.name != product.label:
+            item.name = product.label
             fields.append('name')
         if item.category == old_category and item.category != product.category:
             item.category = product.category

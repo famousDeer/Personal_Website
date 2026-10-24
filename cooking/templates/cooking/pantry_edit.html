@@ -25,6 +25,15 @@
                         <label for="name">Nazwa produktu</label>
                     </div>
 
+                    <div class="form-floating mb-3">
+                        <input type="text" class="form-control" id="brand" name="brand" maxlength="120"
+                               list="pantry-brands" autocomplete="off"
+                               value="{{ form_values.brand|default:'' }}" placeholder="Firma">
+                        <label for="brand">Firma (opcjonalnie, np. Łaciate)</label>
+                        <div class="form-text">Ta sama nazwa i inna firma to osobne produkty.</div>
+                        <datalist id="pantry-brands">{% for brand in brands %}<option value="{{ brand }}">{% endfor %}</datalist>
+                    </div>
+
                     <div class="row g-3 mb-3">
                         <div class="col-md-7">
                             <div class="form-floating">
