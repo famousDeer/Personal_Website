@@ -1,0 +1,395 @@
+/* Strona aktywności (habits). Kolor = dyscyplina, w kolejności kolorów
+   kategorii z tokens.css - te same w kalendarzu, liście, legendzie i na wykresach. */
+.act-k-swim { --act-color: var(--cat-1); }
+.act-k-run { --act-color: var(--cat-2); }
+.act-k-gym { --act-color: var(--cat-3); }
+.act-k-other { --act-color: var(--cat-4); }
+
+.u-legend-swatch[class*="act-k-"] { background: var(--act-color); }
+
+.act-status { white-space: nowrap; }
+
+/* --- Ten tydzień ------------------------------------------------------- */
+.act-goal {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    margin: 0;
+    font-size: var(--fs-sm);
+    color: var(--ink-3);
+}
+
+.act-goal .form-select { width: auto; }
+
+.act-week-grid {
+    display: grid;
+    gap: var(--sp-5);
+    grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 992px) {
+    .act-week-grid { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); align-items: start; }
+}
+
+.act-week-count { display: flex; align-items: baseline; gap: var(--sp-2); flex-wrap: wrap; }
+.act-week-of { color: var(--ink-3); font-size: var(--fs-sm); }
+
+.act-days {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: var(--sp-2);
+    list-style: none;
+    margin: var(--sp-4) 0 0;
+    padding: 0;
+}
+
+.act-day {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: var(--fs-caption);
+    color: var(--ink-3);
+}
+
+.act-day-mark {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    width: 100%;
+    max-width: 44px;
+    height: 36px;
+    border-radius: var(--r-sm);
+    background: var(--surface-2);
+    border: 1px solid var(--line-1);
+}
+
+.act-day.is-active .act-day-mark { background: var(--surface-1); border-color: var(--line-2); }
+.act-day.is-today .act-day-name { color: var(--ink-1); font-weight: 700; }
+.act-day.is-today .act-day-mark { box-shadow: 0 0 0 2px var(--brand-ring); }
+.act-day.is-future .act-day-mark { background: transparent; border-style: dashed; }
+
+.act-day-dot {
+    display: inline-block;
+    flex: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--act-color);
+}
+
+.act-motivation {
+    margin: var(--sp-4) 0 0;
+    font-weight: 600;
+    color: var(--ink-1);
+}
+
+.act-motivation.is-met { color: var(--income-ink); }
+
+.act-week-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--sp-3);
+}
+
+@media (max-width: 575.98px) {
+    .act-week-metrics { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* --- Kalendarz aktywności ------------------------------------------------ */
+.act-cal-wrap { position: relative; }
+
+.act-cal {
+    --act-cell: 13px;   /* nadpisuje activity-app.js według szerokości karty */
+    --act-gap: 3px;
+    display: grid;
+    grid-template-columns: max-content max-content;
+    justify-content: start;
+    grid-template-areas: ". months" "weekdays grid";
+    column-gap: var(--sp-2);
+    row-gap: 4px;
+    overflow-x: auto;
+    padding-bottom: var(--sp-2);
+    scrollbar-width: thin;
+}
+
+.act-cal-months,
+.act-cal-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--act-weeks, 53), var(--act-cell));
+    column-gap: var(--act-gap);
+}
+
+.act-cal-months {
+    grid-area: months;
+    font-size: 11px;
+    color: var(--ink-3);
+    height: 14px;
+}
+
+.act-cal-months span { white-space: nowrap; overflow: visible; }
+
+.act-cal-weekdays {
+    grid-area: weekdays;
+    display: grid;
+    grid-template-rows: repeat(7, var(--act-cell));
+    row-gap: var(--act-gap);
+    font-size: 10px;
+    line-height: var(--act-cell);
+    color: var(--ink-3);
+}
+
+.act-cal-grid {
+    grid-area: grid;
+    grid-template-rows: repeat(7, var(--act-cell));
+    grid-auto-flow: column;
+    row-gap: var(--act-gap);
+}
+
+.act-cell {
+    display: block;
+    width: var(--act-cell);
+    height: var(--act-cell);
+    padding: 0;
+    border: 0;
+    border-radius: 3px;
+    background: var(--surface-3);
+}
+
+.act-cell[class*="act-k-"] { background: var(--act-color); cursor: pointer; }
+.act-cell.is-future { background: transparent; }
+
+.act-cell:focus-visible {
+    outline: 2px solid var(--ink-1);
+    outline-offset: 1px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .act-cell[data-iso]:hover { outline: 2px solid var(--ink-2); outline-offset: 1px; }
+}
+
+.act-tooltip {
+    position: absolute;
+    z-index: 5;
+    min-width: 180px;
+    max-width: min(320px, 100%);
+    padding: 0.55rem 0.7rem;
+    border-radius: var(--r-sm);
+    background: var(--chart-tooltip-bg);
+    color: var(--chart-tooltip-ink);
+    border: 1px solid var(--chart-tooltip-line);
+    box-shadow: var(--sh-2);
+    font-size: var(--fs-caption);
+    pointer-events: none;
+}
+
+.act-tooltip-title { font-weight: 700; margin-bottom: 0.25rem; }
+.act-tooltip-row { display: flex; align-items: baseline; gap: 0.45rem; }
+.act-tooltip-row + .act-tooltip-row { margin-top: 0.2rem; }
+.act-tooltip-row.is-muted { opacity: 0.75; }
+.act-tooltip .act-day-dot { width: 8px; height: 8px; transform: translateY(-1px); }
+
+.act-legend { margin-top: var(--sp-3); }
+
+/* --- Postępy -------------------------------------------------------------- */
+.act-progress-head { flex-wrap: wrap; }
+
+.act-tabs {
+    display: inline-flex;
+    padding: 3px;
+    border-radius: var(--r-pill);
+    background: var(--surface-2);
+    border: 1px solid var(--line-1);
+}
+
+.act-tabs button {
+    min-height: 36px;
+    padding: 0 0.9rem;
+    border: 0;
+    border-radius: var(--r-pill);
+    background: transparent;
+    color: var(--ink-3);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+}
+
+.act-tabs button.is-active {
+    background: var(--surface-1);
+    color: var(--ink-1);
+    box-shadow: var(--sh-1);
+}
+
+.act-tabs button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+.act-progress {
+    display: grid;
+    gap: var(--sp-5);
+    grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 992px) {
+    .act-progress { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.act-chart-title {
+    margin: 0 0 var(--sp-2);
+    font-size: var(--fs-sm);
+    font-weight: 650;
+    color: var(--ink-2);
+}
+
+.act-chart-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-2);
+}
+
+.act-chart-title-row .act-chart-title { margin: 0; }
+.act-chart-title-row .form-select { width: auto; max-width: 60%; }
+
+.act-empty {
+    margin: 0;
+    padding: var(--sp-4) 0;
+    color: var(--ink-3);
+    font-size: var(--fs-sm);
+    list-style: none;
+}
+
+.act-records {
+    display: grid;
+    gap: var(--sp-3);
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+}
+
+.act-record {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: var(--sp-3);
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+}
+
+.act-record-label { font-size: var(--fs-caption); color: var(--ink-3); }
+.act-record-value { font-size: 1.15rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink-1); }
+.act-record-detail { font-size: var(--fs-caption); color: var(--ink-3); }
+
+/* --- Lista treningów ------------------------------------------------------ */
+.act-list { list-style: none; margin: 0; padding: 0; }
+
+.act-item {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    width: 100%;
+    min-height: 56px;
+    padding: var(--sp-2) var(--sp-2);
+    border: 0;
+    border-bottom: 1px solid var(--line-1);
+    background: transparent;
+    text-align: left;
+    color: inherit;
+}
+
+.act-list li:last-child .act-item { border-bottom: 0; }
+
+@media (hover: hover) and (pointer: fine) {
+    .act-item:hover { background: var(--surface-2); }
+}
+
+.act-item:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+.act-item-bar {
+    flex: none;
+    align-self: stretch;
+    width: 4px;
+    border-radius: 2px;
+    background: var(--act-color);
+}
+
+.act-item-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.act-item-title { font-weight: 600; color: var(--ink-1); }
+.act-item-sub {
+    font-size: var(--fs-caption);
+    color: var(--ink-3);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.act-item-icons { display: flex; gap: var(--sp-2); color: var(--ink-3); }
+.act-record-icon { color: var(--cat-4); }
+
+/* --- Formularz ------------------------------------------------------------- */
+.act-kind-pick { display: flex; flex-wrap: wrap; gap: var(--sp-2); border: 0; padding: 0; }
+.act-kind-pick legend { float: none; width: 100%; }
+
+.act-kind-option { position: relative; margin: 0; }
+.act-kind-option input { position: absolute; opacity: 0; pointer-events: none; }
+
+.act-kind-option span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-height: 40px;
+    padding: 0 0.9rem;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--line-2);
+    background: var(--surface-1);
+    color: var(--ink-2);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.act-kind-option span::before {
+    content: "";
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--act-color);
+}
+
+.act-kind-option input:checked + span {
+    border-color: var(--act-color);
+    box-shadow: inset 0 0 0 1px var(--act-color);
+    color: var(--ink-1);
+}
+
+.act-kind-option input:focus-visible + span { box-shadow: var(--focus-ring); }
+
+.act-sets { display: flex; flex-direction: column; gap: var(--sp-2); }
+
+.act-set {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 4.5rem 4.5rem 2rem;
+    gap: var(--sp-2);
+    align-items: center;
+}
+
+/* --- Komunikat z „Cofnij” -------------------------------------------------- */
+.act-toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(var(--sp-5) + env(safe-area-inset-bottom, 0px) + 64px);
+    z-index: 1080;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    max-width: calc(100vw - 32px);
+    padding: 0.6rem 0.9rem;
+    border-radius: var(--r-md);
+    background: var(--chart-tooltip-bg);
+    color: var(--chart-tooltip-ink);
+    box-shadow: var(--sh-3);
+    transform: translateX(-50%);
+}
+
+.act-toast[hidden] { display: none; }
+.act-toast .btn-link { color: inherit; font-weight: 700; padding: 0; }
+
+@media (min-width: 992px) {
+    .act-toast { bottom: var(--sp-6); }
+}

@@ -341,6 +341,10 @@ TRAVEL_GEOCODING_USER_AGENT = os.environ.get(
     'Website-Finance travel map geocoder',
 )
 OPEN_FOOD_FACTS_ENABLED = env_bool('OPEN_FOOD_FACTS_ENABLED', True)
+# Treningi z Garmin Connect (habits.services.garmin). Tokeny logowania leżą
+# w private_media (wolumen na Pi), hasło nie jest nigdzie zapisywane.
+GARMIN_ENABLED = env_bool('GARMIN_ENABLED', not RUNNING_TESTS)
+GARMIN_TOKEN_DIR = os.environ.get('GARMIN_TOKEN_DIR', str(PRIVATE_MEDIA_ROOT / 'garmin'))
 OPEN_FOOD_FACTS_TIMEOUT = float(os.environ.get('OPEN_FOOD_FACTS_TIMEOUT', '2.5'))
 OPEN_FOOD_FACTS_RATE_LIMIT = int(os.environ.get('OPEN_FOOD_FACTS_RATE_LIMIT', '12'))
 OPEN_FOOD_FACTS_IMAGE_MAX_BYTES = int(

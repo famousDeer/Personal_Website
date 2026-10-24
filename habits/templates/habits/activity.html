@@ -1,0 +1,221 @@
+{% extends 'base.html' %}
+{% load static ui %}
+{% comment %}
+Strona aktywności. Szablon nie zawiera danych - treningi przychodzą z API
+i są trzymane w telefonie (IndexedDB), a service worker zapisuje tę stronę,
+więc otwiera się i przyjmuje nowe treningi także bez połączenia.
+Wszystko, co zależy od danych, rysuje static/habits/js/activity-app.js.
+{% endcomment %}
+{% block title %}Aktywność{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'habits/css/activity.css' %}">
+{% endblock %}
+
+{% block content %}
+{% page_head title="Aktywność" eyebrow="Nawyki" icon="bi-activity" sub="Pływanie, bieganie i siłownia – z zegarka Garmin i wpisane ręcznie." %}
+    <span class="u-chip act-status" data-act-status role="status">Wczytuję…</span>
+    <button type="button" class="btn btn-outline-secondary" data-act-garmin hidden>
+        <i class="bi bi-smartwatch" aria-hidden="true"></i> <span>Pobierz z Garmina</span>
+    </button>
+    <button type="button" class="btn btn-primary" data-act-add>
+        <i class="bi bi-plus-lg" aria-hidden="true"></i> Dodaj trening
+    </button>
+{% endpage_head %}
+
+<div data-act-banner></div>
+
+<div class="act-app" data-act-app>
+    {# Ten tydzień: cel, seria, zachęta #}
+    <section class="u-card u-card-pad mb-4 act-week" aria-labelledby="act-week-title">
+        <div class="u-section-head">
+            <h2 class="u-section-title" id="act-week-title">Ten tydzień</h2>
+            <label class="act-goal">
+                <span>Cel:</span>
+                <select class="form-select form-select-sm" data-act-goal aria-label="Cel tygodniowy - dni z treningiem">
+                    {% for n in "1234567" %}<option value="{{ n }}">{{ n }} {% if n == "1" %}dzień{% else %}dni{% endif %}</option>{% endfor %}
+                </select>
+                <span class="d-none d-sm-inline">w tygodniu</span>
+            </label>
+        </div>
+        <div class="act-week-grid">
+            <div>
+                <div class="act-week-count"><span class="u-kpi-value" data-act-done>0</span> <span class="act-week-of">z <span data-act-goal-value>3</span> dni z treningiem</span></div>
+                <div class="u-meter" aria-hidden="true"><div class="u-meter-fill" data-act-meter style="width:0%"></div></div>
+                <ol class="act-days" data-act-days aria-label="Dni tego tygodnia"></ol>
+                <p class="act-motivation" data-act-motivation></p>
+            </div>
+            <div class="act-week-metrics">
+                <div class="u-metric">
+                    <div class="u-metric-label"><i class="bi bi-fire" aria-hidden="true"></i> Seria</div>
+                    <div class="u-metric-value" data-act-streak>0</div>
+                    <div class="u-metric-note">tygodnie z celem z rzędu</div>
+                </div>
+                <div class="u-metric">
+                    <div class="u-metric-label"><i class="bi bi-trophy" aria-hidden="true"></i> Najdłuższa seria</div>
+                    <div class="u-metric-value" data-act-best>0</div>
+                    <div class="u-metric-note">tygodni</div>
+                </div>
+                <div class="u-metric">
+                    <div class="u-metric-label"><i class="bi bi-clock-history" aria-hidden="true"></i> Ostatni trening</div>
+                    <div class="u-metric-value" data-act-last>–</div>
+                    <div class="u-metric-note" data-act-last-note></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    {# Kalendarz aktywności z podpowiedzią #}
+    <section class="u-card u-card-pad mb-4" aria-labelledby="act-cal-title">
+        <div class="u-section-head">
+            <h2 class="u-section-title" id="act-cal-title">Kalendarz aktywności</h2>
+            <span class="text-secondary small" data-act-cal-summary></span>
+        </div>
+        <div class="act-cal-wrap">
+            <div class="act-cal" data-act-calendar></div>
+            <div class="act-tooltip" data-act-tooltip role="tooltip" hidden></div>
+        </div>
+        <div class="u-legend act-legend" data-act-legend></div>
+    </section>
+
+    {# Porównanie miesięcy #}
+    <section class="mb-4" aria-labelledby="act-month-title">
+        <div class="u-section-head">
+            <h2 class="u-section-title" id="act-month-title" data-act-month-title>Ten miesiąc</h2>
+        </div>
+        <div class="u-metric-grid" data-act-month></div>
+    </section>
+
+    {# Postępy w dyscyplinach #}
+    <section class="u-card u-card-pad mb-4" aria-labelledby="act-progress-title">
+        <div class="u-section-head act-progress-head">
+            <h2 class="u-section-title" id="act-progress-title">Postępy</h2>
+            <div class="act-tabs" role="tablist" data-act-tabs>
+                <button type="button" role="tab" data-kind="swim">Pływanie</button>
+                <button type="button" role="tab" data-kind="run">Bieganie</button>
+                <button type="button" role="tab" data-kind="gym">Siłownia</button>
+            </div>
+        </div>
+        <div class="act-progress" data-act-progress>
+            <div class="act-chart-block">
+                <h3 class="act-chart-title" data-act-volume-title></h3>
+                <div class="u-chart u-chart-sm"><canvas data-act-volume-chart></canvas></div>
+            </div>
+            <div class="act-chart-block">
+                <div class="act-chart-title-row">
+                    <h3 class="act-chart-title" data-act-trend-title></h3>
+                    <select class="form-select form-select-sm" data-act-exercise hidden aria-label="Ćwiczenie"></select>
+                </div>
+                <div class="u-chart u-chart-sm"><canvas data-act-trend-chart></canvas></div>
+                <p class="act-empty" data-act-trend-empty hidden></p>
+            </div>
+        </div>
+        <h3 class="act-chart-title mt-3">Rekordy</h3>
+        <div class="act-records" data-act-records></div>
+    </section>
+
+    {# Ostatnie treningi #}
+    <section class="u-card u-card-pad mb-4" aria-labelledby="act-list-title">
+        <div class="u-section-head">
+            <h2 class="u-section-title" id="act-list-title">Treningi</h2>
+            <span class="text-secondary small" data-act-list-count></span>
+        </div>
+        <ul class="act-list" data-act-list></ul>
+        <button type="button" class="btn btn-link px-0" data-act-more hidden>Pokaż starsze</button>
+    </section>
+</div>
+
+{# Formularz treningu #}
+<div class="modal fade" id="act-form-modal" tabindex="-1" aria-labelledby="act-form-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable modal-fullscreen-sm-down">
+        <form class="modal-content" data-act-form novalidate>
+            <div class="modal-header">
+                <h2 class="modal-title fs-5" id="act-form-title">Nowy trening</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+            </div>
+            <div class="modal-body">
+                <fieldset class="act-kind-pick mb-3">
+                    <legend class="form-label">Rodzaj</legend>
+                    {% for kind in app_config.kinds %}
+                    <label class="act-kind-option act-k-{{ kind.value }}">
+                        <input type="radio" name="kind" value="{{ kind.value }}"{% if forloop.first %} checked{% endif %}>
+                        <span>{{ kind.label }}</span>
+                    </label>
+                    {% endfor %}
+                </fieldset>
+                <div class="row g-2 mb-3">
+                    <div class="col-7">
+                        <label class="form-label" for="act-date">Data</label>
+                        <input class="form-control" type="date" id="act-date" name="date" required>
+                    </div>
+                    <div class="col-5">
+                        <label class="form-label" for="act-time">Godzina</label>
+                        <input class="form-control" type="time" id="act-time" name="time">
+                    </div>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6" data-act-field="distance">
+                        <label class="form-label" for="act-distance" data-act-distance-label>Dystans (km)</label>
+                        <input class="form-control" type="text" inputmode="decimal" id="act-distance" name="distance" autocomplete="off">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label" for="act-duration">Czas</label>
+                        <input class="form-control" type="text" inputmode="numeric" id="act-duration" name="duration" placeholder="np. 45 albo 28:30" autocomplete="off" aria-describedby="act-duration-help">
+                        <div class="form-text" id="act-duration-help">Liczba = minuty; 28:30 = min:s; 1:05:00 = h:min:s.</div>
+                    </div>
+                </div>
+                <div class="mb-3" data-act-field="sets">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="form-label mb-0">Ćwiczenia</span>
+                    </div>
+                    <div class="act-sets" data-act-sets></div>
+                    <div class="d-flex gap-2 flex-wrap mt-2">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-act-add-set>
+                            <i class="bi bi-plus" aria-hidden="true"></i> Seria
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-act-add-exercise>
+                            <i class="bi bi-plus-square" aria-hidden="true"></i> Nowe ćwiczenie
+                        </button>
+                    </div>
+                    <datalist id="act-exercises" data-act-exercises></datalist>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label" for="act-hr">Śr. tętno</label>
+                        <input class="form-control" type="number" min="30" max="250" id="act-hr" name="avgHr" inputmode="numeric">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label" for="act-title">Nazwa</label>
+                        <input class="form-control" type="text" id="act-title" name="title" maxlength="120" placeholder="opcjonalnie">
+                    </div>
+                </div>
+                <div>
+                    <label class="form-label" for="act-notes">Notatka</label>
+                    <textarea class="form-control" id="act-notes" name="notes" rows="2" placeholder="Jak poszło?"></textarea>
+                </div>
+                <div class="alert alert-danger mt-3 mb-0" data-act-form-error hidden></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-danger me-auto" data-act-delete hidden>Usuń</button>
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Anuluj</button>
+                <button type="submit" class="btn btn-primary">Zapisz</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="act-toast" data-act-toast role="status" aria-live="polite" hidden>
+    <span data-act-toast-text></span>
+    <button type="button" class="btn btn-sm btn-link" data-act-toast-undo hidden>Cofnij</button>
+</div>
+
+{% csrf_token %}
+{{ app_config|json_script:"activity-config" }}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'vendor/chart/chart.umd.js' %}"></script>
+<script src="{% static 'js/charts.js' %}"></script>
+<script src="{% static 'habits/js/activity-stats.js' %}"></script>
+<script src="{% static 'habits/js/activity-app.js' %}"></script>
+{% endblock %}

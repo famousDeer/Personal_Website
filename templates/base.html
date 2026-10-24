@@ -103,9 +103,9 @@
                {% if request.path == cars_url %}aria-current="page"{% elif ns == 'cars' %}aria-current="true"{% endif %}>
                 <i class="bi bi-car-front-fill" aria-hidden="true"></i> Garaż
             </a>
-            <a class="app-nav-link {% if ns == 'habits' %}is-active{% endif %}" href="{% url 'habits:list' %}"
+            <a class="app-nav-link {% if ns == 'habits' %}is-active{% endif %}" href="{% url 'habits:index' %}"
                {% if ns == 'habits' %}aria-current="true"{% endif %}>
-                <i class="bi bi-check2-circle" aria-hidden="true"></i> Nawyki
+                <i class="bi bi-activity" aria-hidden="true"></i> Nawyki
             </a>
             {% endwith %}
 

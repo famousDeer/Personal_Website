@@ -155,10 +155,13 @@ The interface is in Polish. Click any image to open it full size.
 **Accounts** (`accounts`) — login, registration that can be closed after setup,
 shared household account management.
 
-**Habits** (`habits`) — models and CRUD only; not in active use yet.
+**Activity** (`habits`, *Nawyki*) — swimming, running and gym workouts from a Garmin
+watch or entered by hand: a weekly goal with a streak, a year calendar coloured by
+discipline (hover/tap shows the day), progress charts, records and a month-on-month
+comparison. Works offline like the shopping mode. See "Activity and Garmin".
 
 ## Tech stack
-- Python 3.11, Django 5.2
+- Python 3.12, Django 5.2
 - PostgreSQL 15
 - Bootstrap 5, Chart.js
 - Docker + Docker Compose
@@ -166,7 +169,8 @@ shared household account management.
 - reportlab (PDF), pillow (images),
   django-countries (travel), djangorestframework (two authenticated endpoints)
 - No Celery or Redis: scheduled work runs through `manage.py` commands and cron.
-  All external API clients are written on the standard library (`urllib`).
+  External API clients are written on the standard library (`urllib`), except
+  Garmin Connect, which uses the unofficial `garminconnect` library.
 
 ## Quick start (Docker, recommended)
 Prerequisites:
@@ -820,6 +824,29 @@ Momentum strategy (`finance/gem.py`, panel `finance/partials/gem_panel.html`):
   last LSE close (after a failure it waits 30 minutes before trying again).
 - `GEM_PRICES_ENABLED=0` turns all downloads off (it is off in tests).
 
+## Activity and Garmin
+`/habits/` shows swimming, running and gym workouts (`habits.Workout`, gym sets in
+`WorkoutSet`). Like the offline shopping mode, the page holds no data: it loads a
+snapshot from `/habits/api/snapshot/`, keeps it in IndexedDB and queues changes made
+without a connection (`/habits/api/sync/`, idempotent by the workout `uid`). A service
+worker (`/habits/sw.js`) stores the page, so it opens away from home (HTTPS only).
+Statistics (weekly goal in *days with a workout*, week streak, calendar, records) are
+computed in the browser by `habits/static/habits/js/activity-stats.js`.
+
+Garmin has no official API for personal use, so workouts come through the unofficial
+[`garminconnect`](https://pypi.org/project/garminconnect/) library (needs Python 3.12+).
+It can stop working when Garmin changes its login; the error is then shown on the page.
+Connect once, interactively (asks for e-mail, password and the 2FA code; the password
+is not stored, only tokens in `GARMIN_TOKEN_DIR`, by default `private_media/garmin/`):
+```bash
+docker compose exec -it web python manage.py garmin_login --user dawid   # also imports the last 365 days
+docker compose exec -T web python manage.py sync_garmin                 # new workouts (cron)
+```
+Walks are skipped; cycling and other sports are imported as "other activity". Gym sets
+come from the watch's strength-training log (weights converted from grams). A workout
+deleted on the page is only hidden, so the next sync does not bring it back.
+`GARMIN_ENABLED=0` turns the integration off (it is off in tests).
+
 ## Scheduled tasks (cron)
 Market data refresh and price history synchronisation are also available as
 management commands, so they do not have to run inside a web request:
@@ -846,6 +873,8 @@ Example crontab on the Pi:
 0 7 * * 6 cd /path/to/Website-Finance && docker compose exec -T web python manage.py refresh_market_data --dividends
 # Pantry and shopping-list reminders on the phone
 0 8 * * * cd /path/to/Website-Finance && docker compose exec -T web python manage.py send_reminders
+# New workouts from Garmin Connect
+15 * * * * cd /path/to/Website-Finance && docker compose exec -T web python manage.py sync_garmin
 ```
 
 ## Server maintenance (Raspberry Pi)
@@ -930,7 +959,7 @@ Website-Finance/
 │  └─ pdf_utils.py            # Service history PDF
 ├─ accounts/                  # Auth, shared household accounts
 │  └─ templatetags/ui.py      # {% page_head %}: the one page header used everywhere
-├─ habits/                    # Not in active use yet
+├─ habits/                    # Activity: workouts, Garmin sync, offline page
 ├─ templates/                 # base.html, home.html, error pages, partials/page_head.html
 ├─ static/css/                # tokens.css, ui.css, app.css (see "Look and feel")
 ├─ media/                     # Public uploads (recipe and catalog images)
@@ -1083,6 +1112,8 @@ Brokerage market data:
 
 Pantry product catalog:
 - OPEN_FOOD_FACTS_ENABLED: optional, defaults to `1`; set `0` to disable external lookups while keeping the local cache
+- GARMIN_ENABLED: optional, defaults to `1`; `0` turns off Garmin Connect sync
+- GARMIN_TOKEN_DIR: optional, where `garmin_login` stores login tokens; defaults to `private_media/garmin`
 - OPEN_FOOD_FACTS_USER_AGENT: identifies this installation to Open Food Facts; use `AppName/Version (contact URL or email)`
 - OPEN_FOOD_FACTS_TIMEOUT: upstream request timeout in seconds, default `2.5`
 - OPEN_FOOD_FACTS_RATE_LIMIT: shared server-side request budget per minute, default `12` (below the public API limit)
