@@ -175,10 +175,14 @@
             }
             box.innerHTML = '';
             map = L.map(box, { scrollWheelZoom: false, attributionControl: true });
-            // Polityka kafelków OSM: tylko tile.openstreetmap.org, z atrybucją (jak mapa podróży).
+            // Polityka kafelków OSM (jak mapa podróży, finance/travel.html): tylko
+            // tile.openstreetmap.org, widoczna atrybucja i nagłówek Referer. Strona ma
+            // SECURE_REFERRER_POLICY = same-origin, więc bez łagodniejszej polityki na
+            // samych kafelkach OSM dostaje żądanie bez referrera i zwraca 403 „Access blocked”.
             L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 maxZoom: 19,
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
+                referrerPolicy: 'strict-origin-when-cross-origin',
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
             }).addTo(map);
             var color = context.kindColor(w.kind);
             var line = L.polyline(points, { color: color, weight: 4, opacity: 0.9 }).addTo(map);
