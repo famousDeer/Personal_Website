@@ -121,15 +121,28 @@ def _connected(user, client):
 
 
 def friendly_error(exc):
-    """Komunikat dla strony - bez szczegółów technicznych, gdy da się je nazwać."""
-    name = exc.__class__.__name__
-    if name == 'GarminConnectAuthenticationError':
-        return 'Garmin nie przyjął danych logowania (e-mail, hasło albo kod). Spróbuj ponownie.'
-    if name == 'GarminConnectTooManyRequestsError':
-        return 'Garmin chwilowo blokuje logowanie po zbyt wielu próbach. Spróbuj za kilkanaście minut.'
+    """Komunikat dla strony: przyczyna po polsku + oryginalny opis z biblioteki
+    (bez danych logowania - biblioteka sama go czyści). Sam ogólny komunikat
+    nie pozwalał odróżnić złego hasła od zablokowanego konta."""
     if isinstance(exc, GarminError):
         return str(exc)
-    return f'Nie udało się połączyć z Garminem: {exc}'
+    name = exc.__class__.__name__
+    detail = str(exc).strip()[:200]
+    lower = detail.lower()
+    if 'mfa' in lower:
+        reason = 'Garmin nie przyjął kodu weryfikacyjnego (mógł wygasnąć).'
+    elif name == 'GarminConnectAuthenticationError' and 'locked' in lower:
+        reason = ('Konto Garmin jest chwilowo zablokowane po kilku nieudanych logowaniach. '
+                  'Odczekaj ok. 30 minut albo odblokuj je, logując się na connect.garmin.com.')
+    elif name == 'GarminConnectAuthenticationError':
+        reason = ('Garmin odrzucił e-mail lub hasło. Sprawdź je, logując się na connect.garmin.com. '
+                  'Jeśli logujesz się tam przez Google, Apple albo Facebook, konto nie ma hasła Garmin – '
+                  'ustaw je przez „Nie pamiętasz hasła?” i wpisz tutaj.')
+    elif name == 'GarminConnectTooManyRequestsError':
+        reason = 'Garmin chwilowo blokuje logowanie z tego serwera (zbyt wiele prób). Spróbuj za kilkanaście minut.'
+    else:
+        reason = 'Nie udało się połączyć z Garminem.'
+    return f'{reason} (Garmin: {detail})' if detail else reason
 
 
 def login(user, email, password, prompt_mfa):
@@ -154,7 +167,7 @@ def start_login(user, email, password):
             return state
         _connected(user, client)
     except Exception as exc:
-        logger.warning('Garmin: logowanie %s nie powiodło się (%s)', user, exc.__class__.__name__)
+        logger.warning('Garmin: logowanie %s nie powiodło się: %s: %s', user, exc.__class__.__name__, str(exc)[:200])
         raise GarminError(friendly_error(exc)) from exc
     return None
 
@@ -166,7 +179,7 @@ def finish_login(user, state, code):
         client.resume_login(state, code)
         _connected(user, client)
     except Exception as exc:
-        logger.warning('Garmin: kod 2FA %s nie przeszedł (%s)', user, exc.__class__.__name__)
+        logger.warning('Garmin: kod 2FA %s nie przeszedł: %s: %s', user, exc.__class__.__name__, str(exc)[:200])
         raise GarminError(friendly_error(exc)) from exc
 
 

@@ -20,6 +20,16 @@ from .test_activity import fake_garmin_client
 
 User = get_user_model()
 
+
+# Klasy o tych samych nazwach co w garminconnect (rozpoznajemy je po nazwie,
+# bo biblioteka jest importowana leniwie i nie ma jej w testach lokalnych).
+class GarminConnectAuthenticationError(Exception):
+    pass
+
+
+class GarminConnectTooManyRequestsError(Exception):
+    pass
+
 RUN_SUMMARY = {
     'activityId': 201, 'activityName': 'Bieg z interwałami', 'startTimeLocal': '2026-10-20 07:00:00',
     'activityType': {'typeKey': 'running'}, 'distance': 8000.0, 'duration': 2400.0, 'averageHR': 150.0,
@@ -387,16 +397,24 @@ class ConnectionsViewTests(TestCase):
         self.assertTrue(garmin.is_connected(self.user))
         self.assertNotIn('garmin_mfa', self.client.session)
 
-    def test_garmin_wrong_password(self):
-        class GarminConnectAuthenticationError(Exception):
-            pass
-
+    def test_garmin_wrong_password_shows_reason_and_logs_detail(self):
         cls, instance = self.garmin_class()
-        instance.login.side_effect = GarminConnectAuthenticationError('401')
-        with mock.patch.object(garmin, '_garmin_class', return_value=cls), self.assertLogs('habits.services.garmin', 'WARNING'):
+        instance.login.side_effect = GarminConnectAuthenticationError('401 Unauthorized (Invalid Username or Password)')
+        with mock.patch.object(garmin, '_garmin_class', return_value=cls), \
+                self.assertLogs('habits.services.garmin', 'WARNING') as logs:
             response = self.client.post(self.url, {'action': 'garmin-login', 'email': 'a@b.pl', 'password': 'zle'}, follow=True)
-        self.assertContains(response, 'Garmin nie przyjął danych logowania')
+        self.assertContains(response, 'Garmin odrzucił e-mail lub hasło')
+        self.assertContains(response, 'Google, Apple albo Facebook')
+        self.assertContains(response, 'Invalid Username or Password')
+        self.assertIn('Invalid Username or Password', logs.output[0])
+        self.assertNotIn('zle', logs.output[0])
         self.assertFalse(garmin.is_connected(self.user))
+
+    def test_friendly_errors(self):
+        self.assertIn('zablokowane', garmin.friendly_error(GarminConnectAuthenticationError("Widget authentication failed: 'Account Locked'")))
+        self.assertIn('kodu weryfikacyjnego', garmin.friendly_error(GarminConnectAuthenticationError('MFA verification failed: x')))
+        self.assertIn('zbyt wiele prób', garmin.friendly_error(GarminConnectTooManyRequestsError('All login strategies rate limited')))
+        self.assertIn('Cloudflare', garmin.friendly_error(RuntimeError('All login strategies exhausted: HTTP 403 (Cloudflare bot challenge)')))
 
     def test_garmin_disconnect(self):
         Path(self.tmp.name, str(self.user.pk)).mkdir()
