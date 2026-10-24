@@ -88,6 +88,18 @@ Kontekst: card (słownik z PantryListView), product = card.product.
                         <li class="{% if batch.days_left < 0 %}is-danger{% elif batch.days_left <= 3 %}is-warn{% endif %}">
                             <span>{{ batch.quantity|qty }} {{ product.display_unit }}</span>
                             <strong>{% if batch.days_left < 0 %}po terminie {{ batch.expires_on|date:"d.m" }}{% else %}do {{ batch.expires_on|date:"D d.m.Y" }}{% endif %}</strong>
+                            {# Poprawka pomyłki: nowa data tej partii; ta sama data co inna partia → łączą się. #}
+                            <details class="pt-batch-edit">
+                                <summary aria-label="Zmień termin: {{ batch.quantity|qty }} {{ product.display_unit }} {{ product.name }}">Zmień</summary>
+                                <form method="post" action="{% url 'cooking:pantry-batch-expiry' batch.id %}" class="ex-custom"
+                                      data-partial="#product-{{ product.id }}, #pantry-row-{{ product.id }}, #pantry-today">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                    <input type="date" class="form-control form-control-sm" name="expires_on" required
+                                           value="{{ batch.expires_on|date:'Y-m-d' }}" aria-label="Nowy termin">
+                                    <button type="submit" class="btn btn-primary btn-sm">Zapisz</button>
+                                </form>
+                            </details>
                         </li>
                     {% endfor %}
                 </ul>

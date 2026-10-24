@@ -26,6 +26,7 @@ from ..models import PantryBatch, PantryCategory, PantryProduct
 EAT_FIRST_DAYS = 3
 QUICK_OFFSETS = (3, 7, 10, 14, 21)
 MAX_DAYS_AHEAD = 3 * 365
+MAX_DAYS_BACK = 365
 
 
 def expiry_category_names() -> set[str]:
@@ -37,9 +38,10 @@ def requires_expiry(product: PantryProduct, names: set[str] | None = None) -> bo
     return bool(product.category) and product.category in names
 
 
-def parse_expiry(value) -> date | None:
+def parse_expiry(value, allow_past: bool = False) -> date | None:
     """Data z formularza (RRRR-MM-DD). Pusta → None; przeszłość dalej niż wczoraj
-    i daty absurdalnie odległe są błędem."""
+    i daty absurdalnie odległe są błędem. ``allow_past`` (poprawka daty partii)
+    przyjmuje też termin, który już minął - do roku wstecz."""
     value = str(value or '').strip()
     if not value:
         return None
@@ -48,7 +50,7 @@ def parse_expiry(value) -> date | None:
     except ValueError as exc:
         raise ValueError('Podaj poprawną datę przydatności.') from exc
     today = timezone.localdate()
-    if parsed < today - timedelta(days=1):
+    if parsed < today - timedelta(days=MAX_DAYS_BACK if allow_past else 1):
         raise ValueError('Ten termin już minął - sprawdź datę.')
     if parsed > today + timedelta(days=MAX_DAYS_AHEAD):
         raise ValueError('Termin jest zbyt odległy - sprawdź datę.')
@@ -103,6 +105,27 @@ def date_undated_stock(product: PantryProduct, expires_on: date):
     if quantity <= 0:
         return None
     return PantryBatch.objects.create(product=product, quantity=quantity, expires_on=expires_on)
+
+
+@transaction.atomic
+def change_batch_expiry(batch: PantryBatch, expires_on: date) -> PantryBatch:
+    """Poprawka daty istniejącej partii (pomyłka przy wpisywaniu). Jeśli produkt
+    ma już partię z tą datą, ilości się łączą - jedna data, jedna pozycja."""
+    batch = PantryBatch.objects.select_for_update().get(pk=batch.pk)
+    if batch.expires_on == expires_on:
+        return batch
+    twin = (
+        PantryBatch.objects.select_for_update()
+        .filter(product_id=batch.product_id, expires_on=expires_on).exclude(pk=batch.pk).first()
+    )
+    if twin:
+        twin.quantity += batch.quantity
+        twin.save(update_fields=['quantity'])
+        batch.delete()
+        return twin
+    batch.expires_on = expires_on
+    batch.save(update_fields=['expires_on'])
+    return batch
 
 
 @dataclass

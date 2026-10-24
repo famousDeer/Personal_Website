@@ -76,7 +76,7 @@ from .services.polish import completion_message, polish_count, polish_number
 from .services.receipt_prices import barcode_link_candidates, price_summaries
 from .services.receipts import assign_barcode
 from .services.pantry_batches import (
-    add_batch, date_undated_stock, expiry_category_names, expiry_overview, parse_expiry, quick_dates,
+    add_batch, change_batch_expiry, date_undated_stock, expiry_category_names, expiry_overview, parse_expiry, quick_dates,
     requires_expiry,
 )
 from .services.shopping_sync import (
@@ -2823,4 +2823,29 @@ class PantryExpiryView(LoginRequiredMixin, View):
             return redirect_back(request, reverse('cooking:pantry'))
         if date_undated_stock(product, expires_on):
             messages.success(request, f'{product.name}: ważne do {expires_on:%d.%m.%Y}.')
+        return redirect_back(request, reverse('cooking:pantry'))
+
+
+class PantryBatchExpiryView(LoginRequiredMixin, View):
+    """Zmiana terminu partii, która już ma datę (poprawka pomyłki z opakowania)."""
+
+    def post(self, request, batch_id):
+        batch = PantryBatch.objects.select_related('product').filter(pk=batch_id).first()
+        if batch is None:
+            # Partię mogło już zdjąć zużycie (reconcile) w innym oknie.
+            messages.error(request, 'Tej partii już nie ma w spiżarni - odśwież stronę.')
+            return redirect_back(request, reverse('cooking:pantry'))
+        try:
+            expires_on = parse_expiry(request.POST.get('expires_on'), allow_past=True)
+            if expires_on is None:
+                raise ValueError('Wybierz datę przydatności.')
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            return redirect_back(request, reverse('cooking:pantry'))
+        old_date = batch.expires_on
+        change_batch_expiry(batch, expires_on)
+        if old_date != expires_on:
+            messages.success(
+                request, f'{batch.product.name}: termin zmieniony z {old_date:%d.%m.%Y} na {expires_on:%d.%m.%Y}.',
+            )
         return redirect_back(request, reverse('cooking:pantry'))

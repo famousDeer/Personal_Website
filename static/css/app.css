@@ -3102,7 +3102,12 @@ a.pt-today-item:hover { border-color: var(--line-2); color: var(--ink-1); }
 .pt-batches { margin: var(--sp-3) 0; padding: var(--sp-3); border-radius: var(--r-md); background: var(--surface-2); }
 .pt-batches h5 { font-size: var(--fs-sm); font-weight: 700; margin: 0 0 var(--sp-2); }
 .pt-batches ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm); }
-.pt-batches li { display: flex; justify-content: space-between; gap: var(--sp-2); }
+.pt-batches li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-2); }
+.pt-batches li > strong { margin-left: auto; }
+.pt-batch-edit summary { font-size: var(--fs-caption); color: var(--brand-500); cursor: pointer; list-style: none; }
+.pt-batch-edit summary::-webkit-details-marker { display: none; }
+.pt-batch-edit[open] { flex-basis: 100%; }
+.pt-batch-edit[open] summary { display: none; }
 .pt-batches li.is-warn strong { color: color-mix(in srgb, var(--cat-4) 55%, var(--ink-1)); }
 .pt-batches li.is-danger strong { color: var(--expense-ink); }
 .pt-batches-form { margin-top: var(--sp-2); display: flex; flex-direction: column; gap: var(--sp-2); }

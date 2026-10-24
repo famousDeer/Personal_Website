@@ -47,6 +47,7 @@ urlpatterns = [
     path('pantry/<int:product_id>/edit/', views.EditPantryProductView.as_view(), name='edit-pantry-product'),
     path('pantry/<int:product_id>/delete/', views.DeletePantryProductView.as_view(), name='delete-pantry-product'),
     path('pantry/<int:product_id>/expiry/', views.PantryExpiryView.as_view(), name='pantry-expiry'),
+    path('pantry/batch/<int:batch_id>/expiry/', views.PantryBatchExpiryView.as_view(), name='pantry-batch-expiry'),
     path('pantry/<int:product_id>/movement/', views.PantryMovementView.as_view(), name='pantry-movement'),
     path('pantry/<int:product_id>/rating/', views.PantryRatingView.as_view(), name='pantry-rating'),
     path('pantry/<int:product_id>/restock/', views.PantryRestockToggleView.as_view(), name='pantry-restock-toggle'),

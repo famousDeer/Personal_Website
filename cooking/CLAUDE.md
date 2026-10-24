@@ -14,7 +14,7 @@ Logika w `services/`:
 - `categories.py` – reguły kategorii.
 - `pantry_editing.py`, `pantry_quantities.py`, `pantry_sharing.py`, `pantry_merge.py` (łączenie duplikatów: ruchy, partie, linie paragonów, aliasy, listy; `find_product_by_name` porównuje nazwy po `normalize_text`). W „Rozpakuj zakupy” kod należący już do innego produktu łączy duplikat z paragonu (ta sama nazwa – od razu, inna – status `merge` z pytaniem).
 - `pantry_ratings.py` – oceny: zapis (`PantryRatingView`, sekcja `partials/pantry_rating.html` w kafelku), `rating_summaries` dla listy (★ średnia w wierszu, sort „Najlepiej ocenione”, flaga `rate` + „Oceń”, gdy produkt się skończył, a domownik go nie ocenił), `merge_ratings` przy łączeniu duplikatów.
-- `pantry_batches.py` – terminy przydatności: `PantryBatch` (partie z datą), obowiązkowe dla kategorii z `requires_expiry` (nabiał); stan dalej w `current_quantity`, `reconcile` przycina partie od najkrótszego terminu (zużycie nie pyta o partię). „Zjedz najpierw”, „Uzupełnij termin”, push `termin` w `send_reminders`.
+- `pantry_batches.py` – terminy przydatności: `PantryBatch` (partie z datą), obowiązkowe dla kategorii z `requires_expiry` (nabiał); stan dalej w `current_quantity`, `reconcile` przycina partie od najkrótszego terminu (zużycie nie pyta o partię). „Zjedz najpierw”, „Uzupełnij termin”, „Zmień” przy partii w kafelku (`change_batch_expiry`, ta sama data → partie się łączą), push `termin` w `send_reminders`.
 - `pantry_forecast.py` – prognoza zużycia i automatyczna lista.
 - `product_catalog.py` – Open Food Facts, z limitem zapytań.
 - `product_groups.py`.
