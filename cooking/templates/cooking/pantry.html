@@ -318,7 +318,11 @@
                         <div class="pantry-camera-placeholder" data-camera-placeholder>
                             <i class="bi bi-camera-fill"></i>
                         </div>
-                        <div class="pantry-scan-reticle" aria-hidden="true"><span></span></div>
+                        <div class="pantry-scan-reticle" aria-hidden="true" data-scan-reticle><span></span></div>
+                        <button type="button" class="pantry-camera-torch" aria-label="Latarka" aria-pressed="false"
+                                data-camera-torch hidden>
+                            <i class="bi bi-lightning-charge-fill" aria-hidden="true"></i>
+                        </button>
                         <div class="pantry-camera-status" data-camera-status>
                             <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
                             <span data-camera-status-text>Uruchamiam aparat…</span>
@@ -455,6 +459,10 @@
                                     <span><strong>Dodano</strong><small data-known-purchase-label></small></span>
                                 </button>
                             </div>
+                            <a class="btn btn-outline-secondary w-100 mt-3 pantry-scanner-secondary-action" href="#"
+                               data-known-edit hidden>
+                                <i class="bi bi-pencil-square me-2" aria-hidden="true"></i>Edytuj dane produktu
+                            </a>
                         </section>
 
                         <section data-scanner-panel="unknown" hidden>

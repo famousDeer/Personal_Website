@@ -1038,6 +1038,9 @@ class PantryBarcodeTests(TestCase):
         self.assertContains(response, 'data-crop-viewport')
         self.assertContains(response, 'data-countdown-manual="known"')
         self.assertContains(response, 'data-countdown-manual="unknown"')
+        self.assertContains(response, 'data-known-edit')
+        self.assertContains(response, 'data-camera-torch')
+        self.assertContains(response, 'data-scan-reticle')
         self.assertContains(response, reverse('cooking:pantry-barcode-lookup'))
         page_html = response.content.decode()
         self.assertIn('data-countdown="known" hidden', page_html)
@@ -1062,6 +1065,10 @@ class PantryBarcodeTests(TestCase):
         self.assertFalse(known.json()['auto_action_enabled'])
         self.assertIsNone(known.json()['default_action'])
         self.assertEqual(known.json()['timeout_ms'], 5000)
+        self.assertEqual(
+            known.json()['product']['edit_url'],
+            reverse('cooking:edit-pantry-product', args=[self.product.pk]),
+        )
         self.assertEqual(unknown.status_code, 200)
         self.assertEqual(unknown.json()['status'], 'unknown')
         self.assertFalse(unknown.json()['auto_action_enabled'])
@@ -2534,6 +2541,21 @@ class EditPantryProductTests(TestCase):
         )
         self.assertEqual(entry.product_name, 'Płyn do naczyń')
         self.assertEqual(entry.suggested_category, 'Chemia domowa')
+
+    def test_edit_opened_from_scanner_returns_to_scanner(self):
+        back = reverse('cooking:pantry') + '?q=kawa&skaner=1'
+
+        page = self.client.get(self.url, {'next': back})
+        response = self.post(next=back)
+
+        self.assertContains(page, f'name="next" value="{back.replace("&", "&amp;")}"')
+        self.assertContains(page, f'href="{back.replace("&", "&amp;")}" class="btn btn-light')
+        self.assertRedirects(response, back, fetch_redirect_response=False)
+
+    def test_edit_ignores_foreign_next(self):
+        for foreign in ('https://example.com/', '//example.com/', '/finance/'):
+            response = self.post(next=foreign)
+            self.assertRedirects(response, reverse('cooking:pantry'), fetch_redirect_response=False)
 
     def test_edit_without_barcode_does_not_create_memory(self):
         self.product.barcode = ''

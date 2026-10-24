@@ -4281,6 +4281,33 @@ a { text-decoration: none; }
     border-radius: 0 0 16px;
 }
 
+.pantry-camera-torch {
+    position: absolute;
+    left: 0.8rem;
+    bottom: 0.7rem;
+    display: grid;
+    place-items: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+    color: #fff;
+    background: rgba(7, 18, 13, 0.76);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 50%;
+    font-size: 1.15rem;
+    backdrop-filter: blur(8px);
+}
+
+.pantry-camera-torch[hidden] {
+    display: none;
+}
+
+.pantry-camera-torch.is-on {
+    color: #07120d;
+    background: #ffd84d;
+    border-color: #ffd84d;
+}
+
 .pantry-camera-status {
     position: absolute;
     right: 0.8rem;

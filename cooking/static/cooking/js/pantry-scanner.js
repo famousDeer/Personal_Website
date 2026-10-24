@@ -20,6 +20,8 @@
         cameraStatus: select('[data-camera-status]'),
         cameraStatusText: select('[data-camera-status-text]'),
         cameraAlert: select('[data-camera-alert]'),
+        cameraTorch: select('[data-camera-torch]'),
+        scanReticle: select('[data-scan-reticle]'),
         manualDetails: select('[data-manual-details]'),
         manualForm: select('[data-manual-code-form]'),
         manualCode: select('[data-manual-code]'),
@@ -35,6 +37,7 @@
         knownConsumeLabel: select('[data-known-consume-label]'),
         knownPurchaseLabel: select('[data-known-purchase-label]'),
         knownCount: select('[data-known-count]'),
+        knownEdit: select('[data-known-edit]'),
         knownExpiry: select('[data-known-expiry]'),
         knownExpiryChips: select('[data-known-expiry-chips]'),
         knownExpiryInput: select('[data-known-expiry-input]'),
@@ -114,6 +117,17 @@
     };
     const csrfToken = select('[data-scanner-csrf] input[name="csrfmiddlewaretoken"]')?.value || '';
     const barcodeFormats = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'];
+    // Odczyt na żywo: krótka przerwa między klatkami (ZXing domyślnie czeka
+    // 500 ms), wycinek wokół ramki zamiast całego kadru i limit szerokości,
+    // żeby dekoder w JS nie mielił 2 Mpx na klatkę.
+    const scanConfig = {
+        frameDelayMs: 40,
+        maxDecodeWidth: 1280,
+        // Natywny BarcodeDetector nic nie znalazł przez tyle czasu → co drugą
+        // klatkę próbuje też ZXing (inny algorytm, czasem łapie trudny kod).
+        zxingAssistAfterMs: 3000,
+        nativeErrorLimit: 5,
+    };
 
     const state = {
         panel: 'scanning',
@@ -123,8 +137,17 @@
         detectionTimer: null,
         cameraWaitTimer: null,
         zxingReader: null,
-        zxingControls: null,
         zxingPromise: null,
+        scanTrack: null,
+        scanCapabilities: {},
+        torchOn: false,
+        scanCanvas: null,
+        scanContext: null,
+        scanStartedAt: 0,
+        scanFrameIndex: 0,
+        lastFrameTime: -1,
+        nativeErrors: 0,
+        refocusTimer: null,
         cameraGeneration: 0,
         activeBarcode: null,
         scanId: null,
@@ -1201,18 +1224,16 @@
         state.scanning = false;
         window.clearTimeout(state.detectionTimer);
         window.clearTimeout(state.cameraWaitTimer);
+        window.clearTimeout(state.refocusTimer);
         state.detectionTimer = null;
         state.cameraWaitTimer = null;
-
-        if (state.zxingControls) {
-            try {
-                state.zxingControls.stop();
-            } catch (error) {
-                // The scanner may already have released the camera.
-            }
-        }
-        state.zxingControls = null;
+        state.refocusTimer = null;
+        state.detector = null;
         state.zxingReader = null;
+        state.scanTrack = null;
+        state.scanCapabilities = {};
+        state.torchOn = false;
+        updateTorchButton();
 
         const tracks = new Set([
             ...(state.stream?.getTracks?.() || []),
@@ -1494,6 +1515,20 @@
         return state.zxingPromise;
     }
 
+    // Tylko formaty z kodów na produktach. DecodeHintType z @zxing/library
+    // (POSSIBLE_FORMATS = 2, TRY_HARDER = 3) nie jest wystawiony w paczce UMD,
+    // więc klucze podajemy liczbami; BarcodeFormat ma zapasowe wartości z enuma.
+    function createZxingReader(ZXingBrowser) {
+        const format = ZXingBrowser.BarcodeFormat || {
+            CODE_128: 4, EAN_8: 6, EAN_13: 7, UPC_A: 14, UPC_E: 15,
+        };
+        const hints = new Map([
+            [2, [format.EAN_13, format.EAN_8, format.UPC_A, format.UPC_E, format.CODE_128]],
+            [3, true],
+        ]);
+        return new ZXingBrowser.BrowserMultiFormatReader(hints);
+    }
+
     async function supportedNativeDetector() {
         if (!('BarcodeDetector' in window)) {
             return null;
@@ -1507,15 +1542,186 @@
         }
     }
 
-    async function startNativeCamera(detector, generation) {
-        const stream = await navigator.mediaDevices.getUserMedia({
+    // EAN-13 i UPC-A mają cyfrę kontrolną. Odczyt z jednej klatki bywa
+    // przekłamany (rozmyty pasek), więc taki kod odrzucamy i czytamy dalej.
+    // EAN-8/UPC-E i Code 128 sprawdza sam dekoder.
+    function hasValidCheckDigit(code) {
+        if (!/^\d{12,13}$/.test(code)) {
+            return true;
+        }
+        const digits = code.split('').map(Number);
+        const check = digits.pop();
+        const sum = digits.reverse().reduce((total, digit, index) => total + digit * (index % 2 === 0 ? 3 : 1), 0);
+        return (10 - (sum % 10)) % 10 === check;
+    }
+
+    async function openScannerStream() {
+        // Wyższa rozdzielczość = więcej pikseli na kreskę: kod da się
+        // odczytać z dalszej odległości, gdzie aparat jeszcze łapie ostrość.
+        return navigator.mediaDevices.getUserMedia({
             audio: false,
             video: {
                 facingMode: { ideal: 'environment' },
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
+                frameRate: { ideal: 30 },
             },
         });
+    }
+
+    async function applyTrackSetting(track, setting) {
+        try {
+            await track.applyConstraints({ advanced: [setting] });
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    // Ciągły autofokus i lekki zoom (telefon trzymany dalej od kodu ostrzy
+    // pewniej niż przyłożony z bliska). Każde ustawienie osobno – przeglądarka,
+    // która czegoś nie umie, nie blokuje reszty. Safari na iOS zwykle nie
+    // zgłasza tych możliwości i wtedy nic nie zmieniamy.
+    async function tuneScannerTrack(track) {
+        const capabilities = track?.getCapabilities?.() || {};
+        state.scanCapabilities = capabilities;
+        if (capabilities.focusMode?.includes('continuous')) {
+            await applyTrackSetting(track, { focusMode: 'continuous' });
+        }
+        const zoom = capabilities.zoom;
+        if (zoom && Number(zoom.max) >= 1.5) {
+            await applyTrackSetting(track, { zoom: clamp(1.5, Number(zoom.min) || 1, Number(zoom.max)) });
+        }
+        updateTorchButton();
+    }
+
+    function updateTorchButton() {
+        if (!elements.cameraTorch) {
+            return;
+        }
+        elements.cameraTorch.hidden = !(state.scanTrack && state.scanCapabilities.torch);
+        elements.cameraTorch.setAttribute('aria-pressed', state.torchOn ? 'true' : 'false');
+        elements.cameraTorch.classList.toggle('is-on', state.torchOn);
+    }
+
+    async function toggleTorch() {
+        if (!state.scanTrack || !state.scanCapabilities.torch) {
+            return;
+        }
+        const next = !state.torchOn;
+        if (await applyTrackSetting(state.scanTrack, { torch: next })) {
+            state.torchOn = next;
+        }
+        updateTorchButton();
+    }
+
+    // Dotknięcie podglądu: jednorazowe ostrzenie, potem znów ciągłe.
+    async function refocus() {
+        const track = state.scanTrack;
+        const modes = state.scanCapabilities.focusMode || [];
+        if (!track || !modes.includes('single-shot')) {
+            return;
+        }
+        window.clearTimeout(state.refocusTimer);
+        await applyTrackSetting(track, { focusMode: 'single-shot' });
+        if (modes.includes('continuous')) {
+            state.refocusTimer = window.setTimeout(() => {
+                if (state.scanTrack === track) {
+                    applyTrackSetting(track, { focusMode: 'continuous' });
+                }
+            }, 1500);
+        }
+    }
+
+    // Fragment klatki wokół ramki celownika. Podgląd ma object-fit: cover,
+    // więc przeliczamy położenie ramki na piksele klatki i dokładamy zapas,
+    // bo kod nie musi leżeć idealnie w ramce.
+    function scanRegion() {
+        const width = video.videoWidth;
+        const height = video.videoHeight;
+        const box = video.getBoundingClientRect();
+        const frame = elements.scanReticle?.getBoundingClientRect();
+        if (!box.width || !box.height || !frame?.width) {
+            return { x: width * 0.1, y: height * 0.25, width: width * 0.8, height: height * 0.5 };
+        }
+        const scale = Math.max(box.width / width, box.height / height);
+        const offsetX = (width * scale - box.width) / 2;
+        const offsetY = (height * scale - box.height) / 2;
+        const regionWidth = Math.min(box.width, frame.width * 1.25);
+        const regionHeight = Math.min(box.height, Math.max(frame.height * 2, regionWidth * 0.5));
+        const centerX = frame.left + frame.width / 2 - box.left + offsetX;
+        const centerY = frame.top + frame.height / 2 - box.top + offsetY;
+        const x = clamp((centerX - regionWidth / 2) / scale, 0, width - 1);
+        const y = clamp((centerY - regionHeight / 2) / scale, 0, height - 1);
+        return {
+            x,
+            y,
+            width: Math.min(width - x, regionWidth / scale),
+            height: Math.min(height - y, regionHeight / scale),
+        };
+    }
+
+    function grabScanFrame() {
+        const region = scanRegion();
+        const ratio = Math.min(1, scanConfig.maxDecodeWidth / region.width);
+        const width = Math.max(1, Math.round(region.width * ratio));
+        const height = Math.max(1, Math.round(region.height * ratio));
+        if (!state.scanCanvas) {
+            state.scanCanvas = document.createElement('canvas');
+            // ZXing czyta piksele z każdej klatki – płótno w pamięci CPU.
+            state.scanContext = state.scanCanvas.getContext('2d', { willReadFrequently: true });
+        }
+        const canvas = state.scanCanvas;
+        if (canvas.width !== width || canvas.height !== height) {
+            canvas.width = width;
+            canvas.height = height;
+        }
+        state.scanContext.drawImage(video, region.x, region.y, region.width, region.height, 0, 0, width, height);
+        return canvas;
+    }
+
+    async function detectNative(canvas) {
+        try {
+            const results = await state.detector.detect(canvas);
+            state.nativeErrors = 0;
+            return results.map((result) => result.rawValue).find(Boolean) || null;
+        } catch (error) {
+            // Niektóre przeglądarki mają BarcodeDetector, ale detect() rzuca
+            // za każdym razem – wtedy przechodzimy na ZXing.
+            state.nativeErrors += 1;
+            if (state.nativeErrors >= scanConfig.nativeErrorLimit) {
+                state.detector = null;
+                ensureZxingReader(state.cameraGeneration);
+            }
+            return null;
+        }
+    }
+
+    function detectZxing(canvas) {
+        try {
+            const result = state.zxingReader.decodeFromCanvas(canvas);
+            return typeof result.getText === 'function' ? result.getText() : result.text;
+        } catch (error) {
+            // NotFoundException: w tej klatce nie ma czytelnego kodu.
+            return null;
+        }
+    }
+
+    function ensureZxingReader(generation) {
+        if (state.zxingReader) {
+            return Promise.resolve(state.zxingReader);
+        }
+        return loadZxing().then((ZXingBrowser) => {
+            if (generation === state.cameraGeneration && !state.zxingReader) {
+                state.zxingReader = createZxingReader(ZXingBrowser);
+            }
+            return state.zxingReader;
+        }).catch(() => null);
+    }
+
+    async function startLiveScanning(detector, generation) {
+        const zxingReady = detector ? null : ensureZxingReader(generation);
+        const stream = await openScannerStream();
         if (generation !== state.cameraGeneration) {
             stream.getTracks().forEach((track) => track.stop());
             return;
@@ -1524,11 +1730,23 @@
         state.detector = detector;
         video.srcObject = stream;
         await video.play();
+        if (zxingReady && !(await zxingReady)) {
+            throw new Error('Nie udało się wczytać czytnika kodów.');
+        }
         if (generation !== state.cameraGeneration) {
             stream.getTracks().forEach((track) => track.stop());
             return;
         }
+        state.scanTrack = stream.getVideoTracks()[0] || null;
+        await tuneScannerTrack(state.scanTrack);
+        if (generation !== state.cameraGeneration) {
+            return;
+        }
         state.scanning = true;
+        state.scanStartedAt = performance.now();
+        state.scanFrameIndex = 0;
+        state.lastFrameTime = -1;
+        state.nativeErrors = 0;
         window.clearTimeout(state.cameraWaitTimer);
         state.cameraWaitTimer = null;
         showCameraAlert();
@@ -1539,62 +1757,40 @@
             if (!state.scanning || generation !== state.cameraGeneration) {
                 return;
             }
-            try {
-                if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-                    const results = await detector.detect(video);
-                    const barcode = results.find((result) => result.rawValue)?.rawValue;
-                    if (barcode) {
-                        await handleBarcode(barcode);
-                        return;
+            // Ta sama klatka co poprzednio – szkoda pracy na ponowny odczyt.
+            if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.currentTime !== state.lastFrameTime) {
+                state.lastFrameTime = video.currentTime;
+                state.scanFrameIndex += 1;
+                let barcode = null;
+                try {
+                    const canvas = grabScanFrame();
+                    if (state.detector) {
+                        barcode = await detectNative(canvas);
+                        if (
+                            !barcode
+                            && performance.now() - state.scanStartedAt > scanConfig.zxingAssistAfterMs
+                            && state.scanFrameIndex % 2 === 0
+                        ) {
+                            ensureZxingReader(generation);
+                            barcode = state.zxingReader ? detectZxing(canvas) : null;
+                        }
+                    } else if (state.zxingReader) {
+                        barcode = detectZxing(canvas);
                     }
+                } catch (error) {
+                    // Pojedyncza nieczytelna klatka to normalne, gdy produkt się rusza.
                 }
-            } catch (error) {
-                // A single undecodable frame is expected while the product moves.
+                if (barcode && generation === state.cameraGeneration && hasValidCheckDigit(String(barcode).trim())) {
+                    navigator.vibrate?.(40);
+                    await handleBarcode(barcode);
+                    return;
+                }
             }
             if (state.scanning && generation === state.cameraGeneration) {
-                state.detectionTimer = window.setTimeout(detectFrame, 150);
+                state.detectionTimer = window.setTimeout(detectFrame, scanConfig.frameDelayMs);
             }
         };
-        state.detectionTimer = window.setTimeout(detectFrame, 100);
-    }
-
-    async function startZxingCamera(generation) {
-        const ZXingBrowser = await loadZxing();
-        if (generation !== state.cameraGeneration) {
-            return;
-        }
-        const reader = new ZXingBrowser.BrowserMultiFormatReader();
-        state.zxingReader = reader;
-        state.scanning = true;
-        setCameraStatus('Skanowanie aktywne');
-
-        const controls = await reader.decodeFromConstraints({
-            audio: false,
-            video: {
-                facingMode: { ideal: 'environment' },
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-            },
-        }, video, (result, error, callbackControls) => {
-            if (!result || !state.scanning || generation !== state.cameraGeneration) {
-                return;
-            }
-            state.scanning = false;
-            callbackControls.stop();
-            const barcode = typeof result.getText === 'function' ? result.getText() : result.text;
-            handleBarcode(barcode);
-        });
-
-        if (generation !== state.cameraGeneration) {
-            controls.stop();
-            return;
-        }
-        state.zxingControls = controls;
-        state.stream = video.srcObject;
-        window.clearTimeout(state.cameraWaitTimer);
-        state.cameraWaitTimer = null;
-        showCameraAlert();
-        setCameraActive(true);
+        state.detectionTimer = window.setTimeout(detectFrame, scanConfig.frameDelayMs);
     }
 
     function cameraErrorMessage(error) {
@@ -1672,11 +1868,7 @@
             if (generation !== state.cameraGeneration) {
                 return;
             }
-            if (detector) {
-                await startNativeCamera(detector, generation);
-            } else {
-                await startZxingCamera(generation);
-            }
+            await startLiveScanning(detector, generation);
         } catch (error) {
             if (generation !== state.cameraGeneration) {
                 return;
@@ -1818,6 +2010,16 @@
         elements.registerExpiryLabel.textContent = required ? 'Ważne do (obowiązkowo)' : 'Ważne do (opcjonalnie)';
     }
 
+    // Edycja produktu wraca do tej samej spiżarni (z filtrami) z ?skaner=1,
+    // a spiżarnia z tym parametrem od razu otwiera skaner.
+    function productEditUrl(product) {
+        const back = new URL(window.location.href);
+        back.hash = '';
+        back.searchParams.set('skaner', '1');
+        const params = new URLSearchParams({ next: `${back.pathname}${back.search}` });
+        return `${product.edit_url}?${params}`;
+    }
+
     function presentKnownProduct(product, catalog, timeout = state.autoActionTimeoutMs) {
         cancelCountdown();
         state.product = product;
@@ -1834,6 +2036,10 @@
             elements.knownPackageStock.textContent = formatNumber(product.current_package_count);
         }
         elements.knownStock.textContent = formatQuantity(product.current_quantity, product.unit_label);
+        if (elements.knownEdit) {
+            elements.knownEdit.hidden = !product.edit_url;
+            elements.knownEdit.href = product.edit_url ? productEditUrl(product) : '#';
+        }
         elements.knownScanQuantity.textContent = scanQuantity;
         updateKnownActionLabels();
         const catalogFound = ['found', 'found_incomplete'].includes(catalog?.status);
@@ -2218,8 +2424,7 @@
                 barcode = results.find((result) => result.rawValue)?.rawValue || null;
             }
             if (!barcode) {
-                const ZXingBrowser = await loadZxing();
-                const reader = new ZXingBrowser.BrowserMultiFormatReader();
+                const reader = createZxingReader(await loadZxing());
                 const result = await reader.decodeFromImageElement(image);
                 barcode = typeof result.getText === 'function' ? result.getText() : result.text;
             }
@@ -2313,6 +2518,31 @@
             }
         }
     });
+
+    elements.cameraTorch?.addEventListener('click', (event) => {
+        event.stopPropagation();
+        toggleTorch();
+    });
+    elements.cameraStage.addEventListener('click', () => {
+        if (state.scanning) {
+            refocus();
+        }
+    });
+    // Przejście do edycji nie może w tle dokończyć odliczania „Zużyto”.
+    elements.knownEdit?.addEventListener('click', () => {
+        cancelCountdown();
+        stopCamera();
+    });
+
+    // Powrót z edycji produktu (?skaner=1): skaner otwiera się sam,
+    // a parametr znika z adresu, żeby odświeżenie strony go nie powtarzało.
+    const openParams = new URLSearchParams(window.location.search);
+    if (openParams.has('skaner')) {
+        openParams.delete('skaner');
+        const query = openParams.toString();
+        window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+        window.bootstrap?.Modal.getOrCreateInstance(modalElement).show();
+    }
 
     elements.manualForm.addEventListener('submit', async (event) => {
         event.preventDefault();

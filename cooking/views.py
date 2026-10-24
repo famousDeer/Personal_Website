@@ -19,7 +19,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin # Ważne dla bezpiecze
 from django.utils import timezone
 from PIL import Image, UnidentifiedImageError
 
-from utils.navigation import redirect_back
+from utils.navigation import redirect_back, safe_next
 from utils.undo import delete_with_undo
 
 from .constants import (
@@ -181,6 +181,7 @@ def pantry_product_json(product):
         'package_count_is_known': product.package_count_is_known,
         'image_url': image_url,
         'image_upload_url': reverse('cooking:pantry-product-image-upload', args=[product.id]),
+        'edit_url': reverse('cooking:edit-pantry-product', args=[product.id]),
         'stock_status': product.stock_status,
         # Nabiał: „Dodano” wymaga terminu przydatności (services/pantry_batches.py).
         'requires_expiry': requires_expiry(product),
@@ -1629,12 +1630,21 @@ class EditPantryProductView(LoginRequiredMixin, View):
             },
         )
 
+    @staticmethod
+    def _back_url(request):
+        # Skaner otwiera edycję z next=/cooking/pantry/?skaner=1 - po zapisie
+        # albo „Anuluj” spiżarnia od razu znowu uruchamia aparat.
+        pantry_url = reverse('cooking:pantry')
+        return safe_next(request, pantry_url, prefix=pantry_url)
+
     def get(self, request, product_id):
         product = get_object_or_404(
             PantryProduct.objects.select_related('created_by'),
             pk=product_id,
         )
-        return render(request, self.template_name, self._context(product))
+        context = self._context(product)
+        context['back_url'] = self._back_url(request)
+        return render(request, self.template_name, context)
 
     def post(self, request, product_id):
         product = get_object_or_404(PantryProduct, pk=product_id)
@@ -1652,7 +1662,7 @@ class EditPantryProductView(LoginRequiredMixin, View):
                 409,
             )
         messages.success(request, summary)
-        return redirect('cooking:pantry')
+        return redirect(self._back_url(request))
 
     def _render_error(self, request, product_id, message, status):
         messages.error(request, message)
@@ -1660,12 +1670,9 @@ class EditPantryProductView(LoginRequiredMixin, View):
             PantryProduct.objects.select_related('created_by'),
             pk=product_id,
         )
-        return render(
-            request,
-            self.template_name,
-            self._context(product, form_values=request.POST),
-            status=status,
-        )
+        context = self._context(product, form_values=request.POST)
+        context['back_url'] = self._back_url(request)
+        return render(request, self.template_name, context, status=status)
 
     def _save(self, request, product):
         post = request.POST
