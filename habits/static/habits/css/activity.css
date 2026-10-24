@@ -364,9 +364,23 @@
 
 .act-set {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 4.5rem 4.5rem 2rem;
+    grid-template-columns: minmax(0, 1fr) 4.2rem 4.2rem 2.2rem 2rem;
     gap: var(--sp-2);
     align-items: center;
+}
+
+.act-warmup-toggle {
+    min-width: 2.2rem;
+    padding: 0.25rem 0;
+    border: 1px solid var(--line-2);
+    color: var(--ink-3);
+    font-weight: 700;
+}
+
+.act-warmup-toggle[aria-pressed="true"] {
+    background: var(--surface-3);
+    border-color: var(--ink-3);
+    color: var(--ink-1);
 }
 
 /* --- Komunikat z „Cofnij” -------------------------------------------------- */
@@ -393,3 +407,115 @@
 @media (min-width: 992px) {
     .act-toast { bottom: var(--sp-6); }
 }
+
+/* --- Forma i zdrowie ---------------------------------------------------------- */
+.act-tabs-wrap { flex-wrap: wrap; border-radius: var(--r-md); }
+
+.act-race-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: var(--sp-3);
+}
+
+.act-race-item {
+    display: flex;
+    flex-direction: column;
+    padding: var(--sp-3);
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+}
+
+.act-race-item span { font-size: var(--fs-caption); color: var(--ink-3); }
+.act-race-item strong { font-size: 1.15rem; font-variant-numeric: tabular-nums; color: var(--ink-1); }
+
+/* --- Szczegóły treningu ------------------------------------------------------------ */
+.act-detail-sub { margin: 0 0 var(--sp-2); color: var(--ink-3); }
+.act-detail-sources { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-4); }
+
+.act-detail-subtitle,
+.act-subtitle {
+    margin: var(--sp-5) 0 var(--sp-3);
+    font-size: var(--fs-sm);
+    font-weight: 650;
+    color: var(--ink-2);
+}
+
+.act-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: var(--sp-3);
+}
+
+.act-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    padding: var(--sp-3);
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+}
+
+.act-stat-label { font-size: var(--fs-caption); color: var(--ink-3); }
+.act-stat-value { font-size: 1.1rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink-1); }
+.act-stat-note { font-size: var(--fs-caption); color: var(--ink-3); }
+
+/* Strefy tętna: jedna barwa od jasnej do ciemnej (wielkość, nie tożsamość). */
+.act-zone-1 { --act-zone: color-mix(in oklab, var(--expense) 22%, var(--surface-3)); }
+.act-zone-2 { --act-zone: color-mix(in oklab, var(--expense) 42%, var(--surface-3)); }
+.act-zone-3 { --act-zone: color-mix(in oklab, var(--expense) 62%, var(--surface-3)); }
+.act-zone-4 { --act-zone: color-mix(in oklab, var(--expense) 82%, var(--surface-3)); }
+.act-zone-5 { --act-zone: var(--expense); }
+
+.act-zones {
+    display: flex;
+    gap: 2px;
+    height: 14px;
+    border-radius: var(--r-pill);
+    overflow: hidden;
+    background: var(--surface-2);
+}
+
+.act-zone { background: var(--act-zone); }
+
+.act-zone-list {
+    list-style: none;
+    margin: var(--sp-3) 0 0;
+    padding: 0;
+    display: grid;
+    gap: 0.3rem;
+    font-size: var(--fs-sm);
+}
+
+.act-zone-list li { display: flex; align-items: center; gap: var(--sp-2); }
+.act-zone-dot { width: 10px; height: 10px; border-radius: 2px; background: var(--act-zone); flex: none; }
+.act-zone-time { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+
+.act-laps td, .act-laps th { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.act-map {
+    height: clamp(220px, 45vw, 340px);
+    border-radius: var(--r-md);
+    overflow: hidden;
+    background: var(--surface-2);
+}
+
+.act-map .act-empty { padding: var(--sp-4); }
+
+.act-exercise + .act-exercise { margin-top: var(--sp-3); }
+.act-exercise-name { font-weight: 650; color: var(--ink-1); margin-bottom: 0.25rem; }
+
+.act-set-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.2rem;
+    font-size: var(--fs-sm);
+    font-variant-numeric: tabular-nums;
+}
+
+.act-set-list li { display: flex; align-items: baseline; gap: var(--sp-2); }
+.act-set-list li.is-warmup { color: var(--ink-3); }
+.act-set-no { min-width: 1.4rem; color: var(--ink-3); font-weight: 600; }
+.act-set-type { font-size: var(--fs-caption); color: var(--ink-3); }
+.act-notes { white-space: pre-line; margin: 0; }

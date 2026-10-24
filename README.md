@@ -156,9 +156,11 @@ The interface is in Polish. Click any image to open it full size.
 shared household account management.
 
 **Activity** (`habits`, *Nawyki*) — swimming, running and gym workouts from a Garmin
-watch or entered by hand: a weekly goal with a streak, a year calendar coloured by
-discipline (hover/tap shows the day), progress charts, records and a month-on-month
-comparison. Works offline like the shopping mode. See "Activity and Garmin".
+watch, from Hevy or entered by hand: a weekly goal with a streak, a year calendar
+coloured by discipline (hover/tap shows the day), progress charts, records, workout
+details with laps and a route map, fitness (VO2max, readiness, race predictions) and
+daily health (sleep, resting HR, HRV, Body Battery, steps). Works offline like the
+shopping mode. See "Activity, Garmin and Hevy".
 
 ## Tech stack
 - Python 3.12, Django 5.2
@@ -824,7 +826,7 @@ Momentum strategy (`finance/gem.py`, panel `finance/partials/gem_panel.html`):
   last LSE close (after a failure it waits 30 minutes before trying again).
 - `GEM_PRICES_ENABLED=0` turns all downloads off (it is off in tests).
 
-## Activity and Garmin
+## Activity, Garmin and Hevy
 `/habits/` shows swimming, running and gym workouts (`habits.Workout`, gym sets in
 `WorkoutSet`). Like the offline shopping mode, the page holds no data: it loads a
 snapshot from `/habits/api/snapshot/`, keeps it in IndexedDB and queues changes made
@@ -833,19 +835,40 @@ worker (`/habits/sw.js`) stores the page, so it opens away from home (HTTPS only
 Statistics (weekly goal in *days with a workout*, week streak, calendar, records) are
 computed in the browser by `habits/static/habits/js/activity-stats.js`.
 
-Garmin has no official API for personal use, so workouts come through the unofficial
-[`garminconnect`](https://pypi.org/project/garminconnect/) library (needs Python 3.12+).
-It can stop working when Garmin changes its login; the error is then shown on the page.
-Connect once, interactively (asks for e-mail, password and the 2FA code; the password
-is not stored, only tokens in `GARMIN_TOKEN_DIR`, by default `private_media/garmin/`):
+Each household member connects their own accounts on **Połączenia**
+(`/habits/polaczenia/`, the plug button on the activity page):
+
+- **Garmin Connect** – e-mail and password (plus the 2FA code when the account has one).
+  The password only goes to Garmin; the site keeps login tokens in `GARMIN_TOKEN_DIR`
+  (default `private_media/garmin/<user id>/`). Right after connecting, a background
+  thread imports a year of workouts and 30 days of health data. Garmin has no official
+  API for personal use, so this uses the unofficial
+  [`garminconnect`](https://pypi.org/project/garminconnect/) library (Python 3.12+); it can
+  stop working when Garmin changes its login – the error is then shown on the page.
+  What is fetched:
+  - workouts with heart-rate zones, Training Effect, training load, cadence, elevation,
+    VO2max, pool length / SWOLF / strokes (from the activity summary, no extra requests);
+  - laps and the GPS route (two requests per workout, a few per run, newest first –
+    shown on a Leaflet/OpenStreetMap map, online only);
+  - daily health: sleep and sleep score, resting heart rate, HRV, Body Battery, steps,
+    stress, intensity minutes, Training Readiness;
+  - fitness: VO2max trend, training status, race predictions (5 km to marathon).
+  Raw Garmin responses are stored, so `sync_garmin --reparse` can rebuild the fields
+  without new requests if Garmin renames something.
+- **Hevy** – the official API needs Hevy Pro: paste the key from
+  <https://hevy.com/settings?developer>. Without Pro, upload the CSV export (Hevy →
+  Settings → Export & import data); re-uploading a newer export does not duplicate
+  anything. A gym session recorded both on the watch and in Hevy becomes one workout:
+  time, heart rate and calories from Garmin, exercises and sets from Hevy (warm-up sets
+  do not count towards records).
+
 ```bash
-docker compose exec -it web python manage.py garmin_login --user dawid   # also imports the last 365 days
-docker compose exec -T web python manage.py sync_garmin                 # new workouts (cron)
+docker compose exec -T web python manage.py sync_garmin                  # workouts, laps/routes, health (cron)
+docker compose exec -T web python manage.py sync_garmin --health-days 30 # backfill health
+docker compose exec -T web python manage.py sync_hevy                    # Hevy changes (cron)
+docker compose exec -it web python manage.py garmin_login --user dawid   # fallback: log in from a terminal
 ```
-Walks are skipped; cycling and other sports are imported as "other activity". Gym sets
-come from the watch's strength-training log (weights converted from grams). A workout
-deleted on the page is only hidden, so the next sync does not bring it back.
-`GARMIN_ENABLED=0` turns the integration off (it is off in tests).
+`GARMIN_ENABLED=0` / `HEVY_ENABLED=0` turn the integrations off (both are off in tests).
 
 ## Scheduled tasks (cron)
 Market data refresh and price history synchronisation are also available as
@@ -873,8 +896,9 @@ Example crontab on the Pi:
 0 7 * * 6 cd /path/to/Website-Finance && docker compose exec -T web python manage.py refresh_market_data --dividends
 # Pantry and shopping-list reminders on the phone
 0 8 * * * cd /path/to/Website-Finance && docker compose exec -T web python manage.py send_reminders
-# New workouts from Garmin Connect
+# Workouts and health from Garmin Connect, gym sessions from Hevy (Hevy asks for a non-round minute)
 15 * * * * cd /path/to/Website-Finance && docker compose exec -T web python manage.py sync_garmin
+37 * * * * cd /path/to/Website-Finance && docker compose exec -T web python manage.py sync_hevy
 ```
 
 ## Server maintenance (Raspberry Pi)
@@ -1113,7 +1137,10 @@ Brokerage market data:
 Pantry product catalog:
 - OPEN_FOOD_FACTS_ENABLED: optional, defaults to `1`; set `0` to disable external lookups while keeping the local cache
 - GARMIN_ENABLED: optional, defaults to `1`; `0` turns off Garmin Connect sync
-- GARMIN_TOKEN_DIR: optional, where `garmin_login` stores login tokens; defaults to `private_media/garmin`
+- GARMIN_TOKEN_DIR: optional, where Garmin login tokens are stored; defaults to `private_media/garmin`
+- GARMIN_IMPORT_ASYNC: optional, defaults to `1`; history import after connecting runs in a background thread
+- HEVY_ENABLED: optional, defaults to `1`; `0` turns off the Hevy API sync
+- HEVY_TIMEOUT: optional, seconds per Hevy API request; defaults to `15`
 - OPEN_FOOD_FACTS_USER_AGENT: identifies this installation to Open Food Facts; use `AppName/Version (contact URL or email)`
 - OPEN_FOOD_FACTS_TIMEOUT: upstream request timeout in seconds, default `2.5`
 - OPEN_FOOD_FACTS_RATE_LIMIT: shared server-side request budget per minute, default `12` (below the public API limit)

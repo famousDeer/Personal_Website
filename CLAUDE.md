@@ -9,7 +9,7 @@ Stack: Python 3.12, Django 5.2, DRF, PostgreSQL 15, Gunicorn + WhiteNoise, Caddy
 - `cooking/` – przepisy, spiżarnia, listy zakupów, push → `cooking/CLAUDE.md`.
 - `cars/` – auta, tankowania, serwisy (PDF), opony → `cars/CLAUDE.md`.
 - `accounts/` – logowanie, rejestracja, profil, konta wspólne; tagi szablonów `ui` → `accounts/CLAUDE.md`.
-- `habits/` – aktywność fizyczna (pływanie, bieganie, siłownia), Garmin, tryb offline → `habits/CLAUDE.md`.
+- `habits/` – aktywność fizyczna (pływanie, bieganie, siłownia), Garmin (treningi, zdrowie), Hevy, tryb offline → `habits/CLAUDE.md`.
 - `utils/` – `undo.py` (usuwanie z „Cofnij”), `navigation.py` (`redirect_back`), `tools.py` (`parse_decimal`, `parse_date_input`, `month_start`).
 - `templates/` – `base.html`, `partials/page_head.html`; `static/css/tokens.css` (kolory, motyw), `app.css`, `ui.css`; `static/js/charts.js` (`AppCharts`).
 - `deploy/` – `update.sh`, `reboot.sh`, `Caddyfile`. `db_backups/` – backup na Pi → Google Drive. **Pomijaj.**
@@ -24,7 +24,8 @@ docker compose run --rm web-test python manage.py test finance   # Postgres jak 
 python manage.py test finance --settings=config.test_settings     # lokalnie, SQLite
 python manage.py test finance.tests.test_gem -v 1 2>&1 | tail -30 # pojedynczy moduł
 docker compose exec -T web python manage.py sync_price_history    # cron: historia cen + GEM
-docker compose exec -T web python manage.py sync_garmin           # cron: nowe treningi z Garmina
+docker compose exec -T web python manage.py sync_garmin           # cron: treningi i zdrowie z Garmina
+docker compose exec -T web python manage.py sync_hevy             # cron: siłownia z Hevy
 ```
 
 ## Konwencje (widoczne w repo)
@@ -34,7 +35,7 @@ docker compose exec -T web python manage.py sync_garmin           # cron: nowe t
 - Komunikaty `django.contrib.messages` po polsku. Liczby i daty w formacie pl (`USE_THOUSAND_SEPARATOR`). Odmiana: `{{ n|pl:"rachunek,rachunki,rachunków" }}`.
 - Szablony: `{% load ui %}`, nagłówek `{% page_head ... %}{% endpage_head %}`, partiale w `<app>/templates/<app>/partials/`. Haki JS przez atrybuty `data-*`. JS per funkcja w `<app>/static/js/`, bez bundlera.
 - CSS: tokeny z `tokens.css`, ciemny motyw przez `[data-theme="dark"]`. Wykresy Chart.js przez `AppCharts`: jedna oś, kolor = tożsamość serii.
-- Modele mają jawne `db_table`. Zewnętrzne API mają flagę w settings i są wyłączone w testach (`GEM_PRICES_ENABLED`, `OPEN_FOOD_FACTS_ENABLED`, `TRAVEL_GEOCODING_ENABLED`, `GARMIN_ENABLED`).
+- Modele mają jawne `db_table`. Zewnętrzne API mają flagę w settings i są wyłączone w testach (`GEM_PRICES_ENABLED`, `OPEN_FOOD_FACTS_ENABLED`, `TRAVEL_GEOCODING_ENABLED`, `GARMIN_ENABLED`, `HEVY_ENABLED`).
 - Testy: `finance/tests/test_*.py`, `cooking/tests*.py`, `habits/tests/test_*.py`, `<app>/tests.py`. Sieć zawsze mockowana (`unittest.mock.patch`).
 
 ## Zasady pracy (oszczędzaj tokeny)

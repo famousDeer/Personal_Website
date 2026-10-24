@@ -140,19 +140,34 @@
         return NaN;
     }
 
+    /** Seria: [ćwiczenie, powtórzenia, kg] albo [..., rodzaj ('warmup'...), czas w s]. */
+    function isWarmup(row) {
+        return row[3] === 'warmup';
+    }
+
+    function workingSets(sets) {
+        return (sets || []).filter(function (row) { return !isWarmup(row); });
+    }
+
     function setsSummary(sets) {
         // 3 × 8 × 60 kg - kolejne identyczne serie zwinięte w jedną pozycję.
+        // Rozgrzewki pomijamy; ćwiczenie na czas (deska) pokazuje sekundy.
         var groups = [];
-        (sets || []).forEach(function (row) {
+        workingSets(sets).forEach(function (row) {
             var last = groups[groups.length - 1];
-            if (last && last.reps === row[1] && last.kg === row[2]) {
+            var seconds = row[4] || null;
+            if (last && last.reps === row[1] && last.kg === row[2] && last.seconds === seconds) {
                 last.count += 1;
             } else {
-                groups.push({ count: 1, reps: row[1], kg: row[2] });
+                groups.push({ count: 1, reps: row[1], kg: row[2], seconds: seconds });
             }
         });
         return groups.map(function (g) {
-            var text = (g.count > 1 ? g.count + ' × ' : '') + (g.reps || '–');
+            var prefix = g.count > 1 ? g.count + ' × ' : '';
+            if (!g.reps && g.seconds) {
+                return prefix + formatDuration(g.seconds) + (g.kg ? ' × ' + formatWeight(g.kg) : '');
+            }
+            var text = prefix + (g.reps || '–');
             return g.kg ? text + ' × ' + formatWeight(g.kg) : text + ' powt.';
         }).join(', ');
     }
@@ -173,10 +188,11 @@
         if (workout.duration) { parts.push(formatDuration(workout.duration)); }
         var p = pace(workout);
         if (p) { parts.push(formatPace(workout.kind, p)); }
-        if (workout.kind === 'gym' && workout.sets && workout.sets.length) {
+        var working = workingSets(workout.sets);
+        if (workout.kind === 'gym' && working.length) {
             var names = exercisesOf(workout);
             parts.push(names.length + ' ' + plural(names.length, 'ćwiczenie', 'ćwiczenia', 'ćwiczeń')
-                + ', ' + workout.sets.length + ' ' + plural(workout.sets.length, 'seria', 'serie', 'serii'));
+                + ', ' + working.length + ' ' + plural(working.length, 'seria', 'serie', 'serii'));
         }
         return parts.join(' · ');
     }
@@ -435,7 +451,7 @@
             .filter(function (w) { return w.kind === 'gym'; })
             .sort(byDate)
             .map(function (w) {
-                var sets = (w.sets || []).filter(function (row) { return row[0] === name; });
+                var sets = workingSets(w.sets).filter(function (row) { return row[0] === name; });
                 if (!sets.length) { return null; }
                 var maxWeight = 0;
                 var volume = 0;
@@ -480,7 +496,7 @@
         var lifts = {};
         workouts.forEach(function (w) {
             if (w.kind !== 'gym') { return; }
-            (w.sets || []).forEach(function (row) {
+            workingSets(w.sets).forEach(function (row) {
                 var kg = row[2] || 0;
                 var current = lifts[row[0]];
                 if (kg > 0 && (!current || kg > current.weight || (kg === current.weight && (row[1] || 0) > current.reps))) {
@@ -504,7 +520,116 @@
         };
     }
 
+    // --- Zdrowie i forma (dane dzienne z zegarka) ---------------------------
+    var TRAINING_STATUS = {
+        PRODUCTIVE: 'Produktywny', MAINTAINING: 'Utrzymanie formy', RECOVERY: 'Regeneracja',
+        UNPRODUCTIVE: 'Nieproduktywny', DETRAINING: 'Spadek formy', PEAKING: 'Szczyt formy',
+        OVERREACHING: 'Przeciążenie', STRAINED: 'Przemęczenie', NO_STATUS: 'Brak statusu'
+    };
+    var READINESS_LEVELS = { PRIME: 'Świetna', HIGH: 'Wysoka', MODERATE: 'Umiarkowana', LOW: 'Niska', POOR: 'Bardzo niska' };
+    var HRV_STATUS = { BALANCED: 'w normie', UNBALANCED: 'poza normą', LOW: 'niskie', POOR: 'bardzo niskie' };
+    var TE_LABELS = {
+        RECOVERY: 'Regeneracja', AEROBIC_BASE: 'Baza tlenowa', TEMPO: 'Tempo',
+        LACTATE_THRESHOLD: 'Próg mleczanowy', VO2MAX: 'VO2max', ANAEROBIC_CAPACITY: 'Pojemność beztlenowa',
+        SPRINT: 'Sprint', NO_BENEFIT: 'Bez efektu'
+    };
+
+    function label(map, key) {
+        if (!key) { return ''; }
+        return map[key] || map[String(key).replace(/_\d+$/, '')] ||
+            String(key).toLowerCase().replace(/_/g, ' ');
+    }
+
+    /** Najnowszy dzień z wartością `key`: {date, value} albo null. */
+    function latestHealth(health, key) {
+        for (var i = (health || []).length - 1; i >= 0; i--) {
+            var value = health[i][key];
+            if (value !== undefined && value !== null && value !== '') {
+                return { date: health[i].date, value: value };
+            }
+        }
+        return null;
+    }
+
+    /** Dzień po dniu z ostatnich `days` dni (brak pomiaru = null). */
+    function healthSeries(health, key, today, days) {
+        var byDate = {};
+        (health || []).forEach(function (row) { byDate[row.date] = row[key]; });
+        var end = dayNumber(today);
+        var result = [];
+        for (var day = end - (days || 30) + 1; day <= end; day++) {
+            var iso = isoFromDay(day);
+            var value = byDate[iso];
+            result.push({ date: iso, value: value === undefined ? null : value });
+        }
+        return result;
+    }
+
+    function average(values) {
+        var list = values.filter(function (v) { return v !== null && v !== undefined; });
+        if (!list.length) { return null; }
+        return list.reduce(function (a, b) { return a + b; }, 0) / list.length;
+    }
+
+    /** VO2max w czasie: z danych dziennych i z biegów (zegarek liczy go po biegu). */
+    function vo2Series(workouts, health) {
+        var byDate = {};
+        (workouts || []).forEach(function (w) {
+            if (w.details && w.details.vo2max) { byDate[w.date] = w.details.vo2max; }
+        });
+        (health || []).forEach(function (row) {
+            if (row.vo2max) { byDate[row.date] = row.vo2max; }
+        });
+        return Object.keys(byDate).sort().map(function (date) { return { date: date, value: byDate[date] }; });
+    }
+
+    /** Wartość sprzed ok. `days` dni (do porównania „↑ 1,2 w 90 dni”). */
+    function valueBefore(series, today, days) {
+        var limit = isoFromDay(dayNumber(today) - days);
+        var found = null;
+        series.forEach(function (point) { if (point.date <= limit) { found = point; } });
+        return found;
+    }
+
+    function formatRaceTime(seconds) {
+        return seconds ? formatDuration(seconds) : '';
+    }
+
+    function formatSleep(seconds) {
+        if (!seconds) { return ''; }
+        var minutes = Math.round(seconds / 60);
+        return Math.floor(minutes / 60) + ' h ' + pad2(minutes % 60) + ' min';
+    }
+
+    /** Udział stref tętna w procentach (zaokrąglone, suma ~100). */
+    function zoneShares(zones) {
+        var total = (zones || []).reduce(function (a, b) { return a + (b || 0); }, 0);
+        if (!total) { return []; }
+        return zones.map(function (value) { return Math.round((value || 0) / total * 100); });
+    }
+
+    function lapPace(kind, lap) {
+        if (!lap.d || !lap.t) { return ''; }
+        return formatPace(kind, kind === 'swim' ? lap.t / (lap.d / 100) : lap.t / (lap.d / 1000));
+    }
+
     return {
+        TRAINING_STATUS: TRAINING_STATUS,
+        READINESS_LEVELS: READINESS_LEVELS,
+        HRV_STATUS: HRV_STATUS,
+        TE_LABELS: TE_LABELS,
+        label: label,
+        latestHealth: latestHealth,
+        healthSeries: healthSeries,
+        average: average,
+        vo2Series: vo2Series,
+        valueBefore: valueBefore,
+        formatRaceTime: formatRaceTime,
+        formatSleep: formatSleep,
+        zoneShares: zoneShares,
+        lapPace: lapPace,
+        isWarmup: isWarmup,
+        workingSets: workingSets,
         KINDS: KINDS,
         KIND_LABELS: KIND_LABELS,
         WEEKDAYS_SHORT: WEEKDAYS_SHORT,

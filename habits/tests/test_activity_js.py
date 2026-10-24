@@ -136,3 +136,33 @@ class ActivityStatsJsTests(SimpleTestCase):
         self.assertEqual(records['run']['longest']['date'], '2026-10-05')
         self.assertEqual(records['run']['fastest']['date'], '2026-10-05')
         self.assertEqual([(r['exercise'], r['weight']) for r in records['gym']], [('Przysiad', 90), ('Wiosłowanie', 40)])
+
+    def test_warmups_do_not_count(self):
+        workouts = [w('2026-10-02', 'gym', sets=[['Przysiad', 10, 120, 'warmup', None], ['Przysiad', 5, 90], ['Przysiad', 5, 90]])]
+        self.assertEqual(self.run_js('S.records(list).gym', workouts), [{'exercise': 'Przysiad', 'weight': 90, 'reps': 5, 'date': '2026-10-02'}])
+        self.assertEqual(self.run_js('S.exerciseProgress(list, "Przysiad")[0].maxWeight', workouts), 90)
+        self.assertEqual(self.run_js('S.setsSummary(list[0].sets)', workouts), '2 × 5 × 90 kg')
+        self.assertIn('2 serie', self.run_js('S.summarize(list[0])', workouts))
+        self.assertEqual(self.run_js('S.setsSummary([["Deska", null, null, "", 60], ["Deska", null, null, "", 60]])'), '2 × 1:00')
+
+    def test_health_helpers(self):
+        health = [
+            {'date': '2026-10-20', 'restingHr': 54, 'vo2max': 50.2, 'status': 'PRODUCTIVE'},
+            {'date': '2026-10-22', 'restingHr': 52},
+        ]
+        series = self.run_js('S.healthSeries(' + json.dumps(health) + ', "restingHr", "2026-10-22", 3)')
+        self.assertEqual(series, [{'date': '2026-10-20', 'value': 54}, {'date': '2026-10-21', 'value': None}, {'date': '2026-10-22', 'value': 52}])
+        self.assertEqual(self.run_js('S.latestHealth(' + json.dumps(health) + ', "vo2max")'), {'date': '2026-10-20', 'value': 50.2})
+        self.assertEqual(self.run_js('S.average([54, null, 52])'), 53)
+        vo2 = self.run_js('S.vo2Series(list, ' + json.dumps(health) + ')', [
+            w('2026-07-01', details={'vo2max': 48}), w('2026-10-20', details={'vo2max': 49}),
+        ])
+        self.assertEqual(vo2, [{'date': '2026-07-01', 'value': 48}, {'date': '2026-10-20', 'value': 50.2}])   # dzienny wygrywa
+        self.assertEqual(self.run_js('S.valueBefore(' + json.dumps(vo2) + ', "2026-10-22", 90)'), {'date': '2026-07-01', 'value': 48})
+        self.assertEqual(self.run_js('S.label(S.TRAINING_STATUS, "PRODUCTIVE_6")'), 'Produktywny')
+        self.assertEqual(self.run_js('S.label(S.TE_LABELS, "NEW_THING")'), 'new thing')
+        self.assertEqual(self.run_js('S.zoneShares([60, 120, 0, 0, 20])'), [30, 60, 0, 0, 10])
+        self.assertEqual(self.run_js('S.lapPace("run", {d: 1000, t: 300})'), '5:00/km')
+        self.assertEqual(self.run_js('S.formatSleep(26400)'), '7 h 20 min')
+        self.assertEqual(self.run_js('S.formatRaceTime(6610)'), '1:50:10')
+

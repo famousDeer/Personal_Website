@@ -196,6 +196,20 @@ class GarminMappingTests(TestCase):
         ])
 
 
+def fake_garmin_client(**overrides):
+    """Klient Garmina bez sieci; każda metoda zwraca pustą odpowiedź, chyba że podano inaczej."""
+    client = mock.Mock()
+    client.get_activities_by_date.return_value = ACTIVITIES
+    client.get_activity_exercise_sets.return_value = EXERCISE_SETS
+    for name in ('get_activity_splits', 'get_activity_map_details', 'get_user_summary', 'get_sleep_data',
+                 'get_hrv_data', 'get_training_status', 'get_max_metrics', 'get_race_predictions'):
+        getattr(client, name).return_value = {}
+    client.get_training_readiness.return_value = []
+    for name, value in overrides.items():
+        getattr(client, name).return_value = value
+    return client
+
+
 @override_settings(GARMIN_ENABLED=True)
 class GarminSyncTests(TestCase):
     def setUp(self):
@@ -207,10 +221,7 @@ class GarminSyncTests(TestCase):
         self.addCleanup(self.settings_override.disable)
 
     def fake_client(self):
-        client = mock.Mock()
-        client.get_activities_by_date.return_value = ACTIVITIES
-        client.get_activity_exercise_sets.return_value = EXERCISE_SETS
-        return client
+        return fake_garmin_client()
 
     def test_sync_creates_new_and_skips_known(self):
         Workout.objects.create(user=self.user, kind='run', date=date(2026, 10, 19), source='garmin', garmin_id=102, is_deleted=True)
@@ -254,20 +265,19 @@ class GarminSyncTests(TestCase):
         self.assertFalse(WorkoutSet.objects.exists())
         self.assertTrue(Workout.objects.filter(garmin_id=103).exists())
 
-    def test_api_button_without_connection(self):
+    def test_refresh_button_without_connection(self):
         self.client.force_login(self.user)
-        with self.assertLogs('habits.services.garmin', 'WARNING'):
-            response = self.client.post(reverse('habits:api-garmin'))
-        self.assertEqual(response.status_code, 502)
-        self.assertIn('garmin_login', response.json()['message'])
+        response = self.client.post(reverse('habits:api-refresh'))
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('połącz', response.json()['message'])
 
-    def test_api_button_syncs(self):
+    def test_refresh_button_syncs(self):
         Path(self.tmp.name, str(self.user.pk)).mkdir()
         Path(self.tmp.name, str(self.user.pk), 'garmin_tokens.json').write_text('{}')
         self.client.force_login(self.user)
         with mock.patch.object(garmin, 'connect', return_value=self.fake_client()):
-            response = self.client.post(reverse('habits:api-garmin'))
+            response = self.client.post(reverse('habits:api-refresh'))
         data = response.json()
-        self.assertEqual(data['message'], 'Pobrano nowe treningi z Garmina: 3.')
+        self.assertEqual(data['message'], 'Garmin: nowe treningi 3.')
         self.assertTrue(data['snapshot']['settings']['garmin']['connected'])
         self.assertEqual(len(data['snapshot']['workouts']), 3)

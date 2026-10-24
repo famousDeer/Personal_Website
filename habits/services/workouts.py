@@ -4,17 +4,27 @@ Statystyki (seria tygodni, rekordy, kalendarz) liczy przeglądarka
 (`static/habits/js/activity-stats.js`), bo muszą działać także dla treningów
 dopisanych bez połączenia. Serwer tylko przechowuje i waliduje dane.
 """
-from datetime import date, time
+from datetime import date, time, timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
+from django.utils import timezone
 
-from ..models import ActivitySettings, Workout, WorkoutSet
-from . import garmin
+from ..models import ActivitySettings, DailyHealth, Workout, WorkoutSet
+from . import garmin, garmin_health, hevy
 
 KINDS = {value for value, _ in Workout.KIND_CHOICES}
 MAX_SETS = 200
 MAX_OPS = 500
+HEALTH_DAYS = 120
+SET_TYPES = {'', 'warmup', 'failure', 'dropset'}
+
+
+def serialize_set(item):
+    row = [item.exercise, item.reps, float(item.weight_kg) if item.weight_kg is not None else None]
+    if item.set_type or item.duration_s:
+        row += [item.set_type, item.duration_s]
+    return row
 
 
 def serialize_workout(workout):
@@ -30,10 +40,11 @@ def serialize_workout(workout):
         'calories': workout.calories,
         'notes': workout.notes,
         'source': workout.source,
-        'sets': [
-            [item.exercise, item.reps, float(item.weight_kg) if item.weight_kg is not None else None]
-            for item in workout.sets.all()
-        ],
+        'garmin': workout.garmin_id is not None,
+        'hevy': workout.hevy_id is not None,
+        'details': workout.details or {},
+        # [ćwiczenie, powtórzenia, kg] albo [..., rodzaj serii, czas w s].
+        'sets': [serialize_set(item) for item in workout.sets.all()],
     }
 
 
@@ -44,11 +55,15 @@ def activity_snapshot(user):
         .prefetch_related('sets')
         .order_by('-date', '-start_time', '-id')
     )
+    since = timezone.localdate() - timedelta(days=HEALTH_DAYS)
+    health = DailyHealth.objects.filter(user=user, date__gte=since).order_by('date')
     return {
         'workouts': [serialize_workout(workout) for workout in workouts],
+        'health': [garmin_health.serialize(row) for row in health],
         'settings': {
             'weeklyGoal': settings_row.weekly_goal,
             'garmin': garmin.status(user, settings_row),
+            'hevy': hevy.status(user, settings_row),
         },
     }
 
@@ -122,7 +137,11 @@ def clean_workout(data):
             continue
         reps = _optional_int(row[1] if len(row) > 1 else None, 'powtórzenia', 1000)
         weight = _optional_weight(row[2] if len(row) > 2 else None)
-        sets.append((exercise, reps, weight))
+        set_type = str(row[3] or '') if len(row) > 3 else ''
+        if set_type not in SET_TYPES:
+            raise ValueError('Nieznany rodzaj serii.')
+        duration = _optional_int(row[4] if len(row) > 4 else None, 'czas serii', 24 * 3600)
+        sets.append((exercise, reps, weight, set_type, duration))
     return uid, fields, sets
 
 
@@ -141,8 +160,11 @@ def save_workout(user, data):
         workout.save()
         workout.sets.all().delete()
         WorkoutSet.objects.bulk_create([
-            WorkoutSet(workout=workout, position=index, exercise=exercise, reps=reps, weight_kg=weight)
-            for index, (exercise, reps, weight) in enumerate(sets)
+            WorkoutSet(
+                workout=workout, position=index, exercise=exercise, reps=reps,
+                weight_kg=weight, set_type=set_type, duration_s=duration,
+            )
+            for index, (exercise, reps, weight, set_type, duration) in enumerate(sets)
         ])
     return workout
 
@@ -151,7 +173,8 @@ def delete_workout(user, uid):
     workout = Workout.objects.filter(user=user, uid=str(uid or '')).first()
     if workout is None:
         return
-    if workout.source == Workout.GARMIN:
+    if workout.garmin_id or workout.hevy_id:
+        # Ślad, żeby kolejna synchronizacja nie pobrała treningu ponownie.
         workout.is_deleted = True
         workout.save(update_fields=['is_deleted', 'updated_at'])
     else:

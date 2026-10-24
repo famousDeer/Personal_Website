@@ -1,26 +1,38 @@
 """Pobieranie treningów z Garmin Connect (nieoficjalna biblioteka garminconnect).
 
-Hasło do Garmina nie jest nigdzie zapisywane: jednorazowe logowanie
-(`manage.py garmin_login`) zapisuje tokeny w `GARMIN_TOKEN_DIR/<id osoby>/`,
-a cron (`manage.py sync_garmin`) i przycisk na stronie używają już tylko ich.
+Każdy domownik łączy własne konto na stronie /habits/garmin/ (albo komendą
+`manage.py garmin_login`). Hasło do Garmina nie jest nigdzie zapisywane:
+logowanie zapisuje tylko tokeny w `GARMIN_TOKEN_DIR/<id osoby>/`, a cron
+(`manage.py sync_garmin`) i przycisk na stronie używają już tylko ich.
 Biblioteka nie jest oficjalnym API - po zmianach u Garmina potrafi przestać
 działać; wtedy błąd trafia do `ActivitySettings.garmin_error` i na stronę.
 """
 import logging
 import os
+import shutil
+import threading
 from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
 from django.conf import settings
-from django.db import transaction
+from django.db import IntegrityError, close_old_connections, transaction
 from django.utils import timezone
 
-from ..models import ActivitySettings, Workout, WorkoutSet
+from ..models import ActivitySettings, Workout, WorkoutRoute, WorkoutSet
+from .merge import find_match
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_DAYS = 30
+# Historia pobierana zaraz po połączeniu konta.
+IMPORT_DAYS = 365
+HEALTH_IMPORT_DAYS = 30
+# Okrążenia i trasa to osobne zapytania - dobieramy je po kilka na
+# synchronizację (od najnowszych), żeby rok historii nie zablokował konta.
+EXTRAS_PER_RUN = 8
+ROUTE_MAX_POINTS = 400
+MAX_LAPS = 100
 OVERLAP_DAYS = 3
 
 # Rodzaje aktywności Garmina (activityType.typeKey), których nie pobieramy:
@@ -94,14 +106,96 @@ def _garmin_class():
     return Garmin
 
 
-def login(user, email, password, prompt_mfa):
-    """Logowanie z hasłem (komenda garmin_login). Zapisuje tokeny na dysku."""
+def _prepare_token_dir(user):
     path = token_dir(user)
     path.mkdir(parents=True, exist_ok=True)
     os.chmod(path, 0o700)
+    return path
+
+
+def _connected(user, client):
+    """Zapis tokenów po udanym logowaniu. W trybie return_on_mfa biblioteka
+    sama ich nie zapisuje; później odświeża je już w tym samym pliku."""
+    client.client.dump(str(_prepare_token_dir(user)))
+    ActivitySettings.objects.update_or_create(user=user, defaults={'garmin_error': ''})
+
+
+def friendly_error(exc):
+    """Komunikat dla strony - bez szczegółów technicznych, gdy da się je nazwać."""
+    name = exc.__class__.__name__
+    if name == 'GarminConnectAuthenticationError':
+        return 'Garmin nie przyjął danych logowania (e-mail, hasło albo kod). Spróbuj ponownie.'
+    if name == 'GarminConnectTooManyRequestsError':
+        return 'Garmin chwilowo blokuje logowanie po zbyt wielu próbach. Spróbuj za kilkanaście minut.'
+    if isinstance(exc, GarminError):
+        return str(exc)
+    return f'Nie udało się połączyć z Garminem: {exc}'
+
+
+def login(user, email, password, prompt_mfa):
+    """Logowanie z hasłem w terminalu (komenda garmin_login)."""
+    path = _prepare_token_dir(user)
     client = _garmin_class()(email, password, prompt_mfa=prompt_mfa)
     client.login(str(path))
     return client
+
+
+def start_login(user, email, password):
+    """Pierwszy krok logowania ze strony.
+
+    Zwraca None, gdy konto jest już połączone, albo stan logowania czekającego
+    na kod 2FA (słownik do JSON - zawiera ciasteczka sesji Garmina, więc trzymamy
+    go w sesji Django tylko do wpisania kodu). Błąd -> GarminError.
+    """
+    try:
+        client = _garmin_class()(email, password, return_on_mfa=True)
+        result, state = client.login()
+        if result == 'needs_mfa':
+            return state
+        _connected(user, client)
+    except Exception as exc:
+        logger.warning('Garmin: logowanie %s nie powiodło się (%s)', user, exc.__class__.__name__)
+        raise GarminError(friendly_error(exc)) from exc
+    return None
+
+
+def finish_login(user, state, code):
+    """Drugi krok: kod 2FA z SMS/e-maila/aplikacji."""
+    try:
+        client = _garmin_class()()
+        client.resume_login(state, code)
+        _connected(user, client)
+    except Exception as exc:
+        logger.warning('Garmin: kod 2FA %s nie przeszedł (%s)', user, exc.__class__.__name__)
+        raise GarminError(friendly_error(exc)) from exc
+
+
+def disconnect(user):
+    """Usuwa tokeny z dysku. Pobrane treningi zostają."""
+    shutil.rmtree(token_dir(user), ignore_errors=True)
+    ActivitySettings.objects.update_or_create(user=user, defaults={'garmin_error': '', 'garmin_synced_at': None})
+
+
+def _import_in_thread(user_pk, days):
+    from django.contrib.auth import get_user_model
+
+    close_old_connections()
+    try:
+        user = get_user_model().objects.get(pk=user_pk)
+        sync_all(user, days=days, health_days=HEALTH_IMPORT_DAYS, extras_limit=30)
+    except Exception:  # błąd jest już zapisany w ActivitySettings
+        logger.warning('Garmin: import historii nie powiódł się', exc_info=True)
+    finally:
+        close_old_connections()
+
+
+def start_import(user, days=IMPORT_DAYS):
+    """Historia po połączeniu konta - w tle, bo rok treningów (z seriami
+    z siłowni) to kilkadziesiąt zapytań, dłużej niż timeout gunicorna."""
+    if settings.GARMIN_IMPORT_ASYNC:
+        threading.Thread(target=_import_in_thread, args=(user.pk, days), daemon=True).start()
+    else:
+        _import_in_thread(user.pk, days)
 
 
 def connect(user):
@@ -109,7 +203,7 @@ def connect(user):
     if not settings.GARMIN_ENABLED:
         raise GarminError('Pobieranie z Garmina jest wyłączone (GARMIN_ENABLED).')
     if not is_connected(user):
-        raise GarminError('Brak połączenia z Garminem - uruchom manage.py garmin_login.')
+        raise GarminError('Konto Garmin nie jest połączone - połącz je na stronie Aktywność → Garmin.')
     client = _garmin_class()()
     try:
         client.login(str(token_dir(user)))
@@ -139,6 +233,68 @@ def _positive_int(value):
     return number if number > 0 else None
 
 
+def _number(value, digits=1):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number or number <= 0:   # NaN, brak danych
+        return None
+    return int(round(number)) if digits == 0 else round(number, digits)
+
+
+# Pola widoku treningu: klucz na stronie -> pola podsumowania Garmina (pierwsze
+# niepuste) i liczba miejsc po przecinku. Nazwy z listy aktywności Garmin Connect;
+# brakujące pole po prostu nie pojawia się na stronie.
+DETAIL_FIELDS = {
+    'maxHr': (['maxHR'], 0),
+    'elevationGain': (['elevationGain'], 0),
+    'elevationLoss': (['elevationLoss'], 0),
+    'cadence': (['averageRunningCadenceInStepsPerMinute', 'averageSwimCadenceInStrokesPerMinute'], 0),
+    'aerobicTE': (['aerobicTrainingEffect'], 1),
+    'anaerobicTE': (['anaerobicTrainingEffect'], 1),
+    'trainingLoad': (['activityTrainingLoad'], 0),
+    'vo2max': (['vO2MaxValue'], 1),
+    'avgPower': (['avgPower'], 0),
+    'maxSpeed': (['maxSpeed'], 2),
+    'movingDuration': (['movingDuration'], 0),
+    'steps': (['steps'], 0),
+    'lengths': (['activeLengths'], 0),
+    'swolf': (['averageSwolf'], 0),
+    'strokes': (['totalNumberOfStrokes', 'strokes'], 0),
+    'avgStrokes': (['avgStrokes', 'averageStrokes'], 1),
+}
+
+
+def parse_details(raw):
+    """Podsumowanie aktywności z Garmina -> słownik do widoku treningu."""
+    raw = raw or {}
+    details = {}
+    for key, (names, digits) in DETAIL_FIELDS.items():
+        for name in names:
+            value = _number(raw.get(name), digits)
+            if value is not None:
+                details[key] = value
+                break
+    zones = [_number(raw.get(f'hrTimeInZone_{index}'), 0) or 0 for index in range(1, 6)]
+    if any(zones):
+        details['hrZones'] = zones
+    label = raw.get('trainingEffectLabel')
+    if label:
+        details['teLabel'] = str(label)[:40]
+    pool = _number(raw.get('poolLength'), 2)
+    if pool:
+        factor = _number((raw.get('unitOfPoolLength') or {}).get('factor'), 2)
+        # Garmin podaje długość basenu w centymetrach (factor 100).
+        pool = pool / factor if factor else (pool / 100 if pool > 100 else pool)
+        details['poolLength'] = round(pool, 1)
+    if raw.get('locationName'):
+        details['location'] = str(raw['locationName'])[:80]
+    if raw.get('hasPolyline'):
+        details['hasRoute'] = True
+    return details
+
+
 def map_activity(activity):
     """Aktywność z listy Garmina -> pola Workout. None = pomijamy."""
     type_key = (activity.get('activityType') or {}).get('typeKey', '')
@@ -163,6 +319,8 @@ def map_activity(activity):
         'distance_m': _positive_int(activity.get('distance')) if kind != Workout.GYM else None,
         'avg_hr': _positive_int(activity.get('averageHR')),
         'calories': _positive_int(activity.get('calories')),
+        'details': parse_details(activity),
+        'garmin_raw': activity,
     }
 
 
@@ -203,6 +361,121 @@ def map_sets(payload):
     return rows
 
 
+def parse_laps(payload):
+    """Okrążenia (lapDTOs) -> [{'d': m, 't': s, 'hr', 'elev', 'cad'}]."""
+    laps = []
+    for lap in (payload or {}).get('lapDTOs') or []:
+        row = {
+            'd': _number(lap.get('distance'), 0),
+            't': _number(lap.get('duration'), 0),
+            'hr': _number(lap.get('averageHR'), 0),
+            'elev': _number(lap.get('elevationGain'), 0),
+            'cad': _number(lap.get('averageRunCadence'), 0),
+        }
+        row = {key: value for key, value in row.items() if value is not None}
+        if row.get('t'):
+            laps.append(row)
+    return laps[:MAX_LAPS]
+
+
+def decode_polyline(text):
+    """Polilinia w kodowaniu Google (pole gPolyline) -> [[lat, lng], ...]."""
+    points, index, lat, lng = [], 0, 0, 0
+    while index < len(text):
+        values = []
+        for _ in range(2):
+            shift = result = 0
+            while True:
+                byte = ord(text[index]) - 63
+                index += 1
+                result |= (byte & 0x1F) << shift
+                shift += 5
+                if byte < 0x20:
+                    break
+            values.append(~(result >> 1) if result & 1 else result >> 1)
+        lat += values[0]
+        lng += values[1]
+        points.append([lat / 1e5, lng / 1e5])
+    return points
+
+
+def parse_route(payload):
+    """Trasa z mapdetails (geoPolylineDTO.polyline) albo polyline (gPolyline),
+    przerzedzona do ROUTE_MAX_POINTS punktów."""
+    payload = payload or {}
+    points = []
+    for point in (payload.get('geoPolylineDTO') or {}).get('polyline') or []:
+        lat, lng = point.get('lat'), point.get('lon', point.get('lng'))
+        if isinstance(lat, (int, float)) and isinstance(lng, (int, float)) and (lat or lng):
+            points.append([lat, lng])
+    encoded = payload.get('gPolyline') or payload.get('polyline')
+    if not points and isinstance(encoded, str) and encoded:
+        try:
+            points = decode_polyline(encoded)
+        except (IndexError, ValueError):
+            points = []
+    if len(points) > ROUTE_MAX_POINTS:
+        step = len(points) / ROUTE_MAX_POINTS
+        points = [points[int(i * step)] for i in range(ROUTE_MAX_POINTS)] + [points[-1]]
+    return [[round(lat, 5), round(lng, 5)] for lat, lng in points]
+
+
+def fetch_extras(client, workout):
+    """Okrążenia i trasa jednego treningu (2 zapytania)."""
+    details = dict(workout.details or {})
+    if workout.kind != Workout.GYM:
+        laps = parse_laps(client.get_activity_splits(workout.garmin_id))
+        if len(laps) > 1:
+            details['laps'] = laps
+    if details.get('hasRoute'):
+        points = parse_route(client.get_activity_map_details(workout.garmin_id, maxpoly=ROUTE_MAX_POINTS, max_heat_map=0))
+        if len(points) > 1:
+            WorkoutRoute.objects.update_or_create(workout=workout, defaults={'points': points})
+        else:
+            details.pop('hasRoute', None)
+    workout.details = details
+    workout.extras_synced = True
+    workout.save(update_fields=['details', 'extras_synced', 'updated_at'])
+
+
+def sync_extras(client, user, limit=EXTRAS_PER_RUN):
+    """Dobiera okrążenia i trasy dla najnowszych treningów, które ich nie mają."""
+    pending = (
+        Workout.objects.filter(user=user, garmin_id__isnull=False, extras_synced=False, is_deleted=False)
+        .order_by('-date', '-start_time')[:limit]
+    )
+    done = 0
+    for workout in pending:
+        try:
+            fetch_extras(client, workout)
+            done += 1
+        except Exception as exc:
+            if exc.__class__.__name__ == 'GarminConnectTooManyRequestsError':
+                break
+            logger.warning('Garmin: brak okrążeń/trasy dla %s', workout.garmin_id, exc_info=True)
+            workout.extras_synced = True   # nie próbujemy w nieskończoność
+            workout.save(update_fields=['extras_synced'])
+    return done
+
+
+def _attach_to_hevy(user, fields):
+    """Siłownia z zegarka w czasie sesji z Hevy: dopisujemy dane zegarka do
+    istniejącego treningu (serie zostają z Hevy). True = połączono."""
+    candidates = Workout.objects.filter(
+        user=user, kind=Workout.GYM, date=fields['date'],
+        hevy_id__isnull=False, garmin_id__isnull=True,
+    )
+    start = datetime.combine(fields['date'], fields['start_time']) if fields['start_time'] else None
+    end = start + timedelta(seconds=fields['duration_s'] or 3600) if start else None
+    match = find_match(candidates, start, end)
+    if match is None:
+        return False
+    for name in ('garmin_id', 'garmin_type', 'start_time', 'duration_s', 'avg_hr', 'calories', 'details', 'garmin_raw'):
+        setattr(match, name, fields[name])
+    match.save()
+    return True
+
+
 def sync_user(user, days=None, client=None):
     """Pobiera nowe aktywności. Zwraca liczbę dodanych treningów.
 
@@ -219,7 +492,7 @@ def sync_user(user, days=None, client=None):
             start = today - timedelta(days=days)
         else:
             last = (
-                Workout.objects.filter(user=user, source=Workout.GARMIN)
+                Workout.objects.filter(user=user, garmin_id__isnull=False)
                 .order_by('-date').values_list('date', flat=True).first()
             )
             start = (last - timedelta(days=OVERLAP_DAYS)) if last else today - timedelta(days=DEFAULT_DAYS)
@@ -232,19 +505,26 @@ def sync_user(user, days=None, client=None):
             fields = map_activity(activity)
             if fields is None or fields['garmin_id'] in known:
                 continue
+            known.add(fields['garmin_id'])
+            if fields['kind'] == Workout.GYM and _attach_to_hevy(user, fields):
+                added += 1
+                continue
             sets = []
             if fields['kind'] == Workout.GYM:
                 try:
                     sets = map_sets(client.get_activity_exercise_sets(fields['garmin_id']))
                 except Exception:  # serie są dodatkiem - trening zapisujemy bez nich
                     logger.warning('Garmin: brak serii dla %s', fields['garmin_id'], exc_info=True)
-            with transaction.atomic():
-                workout = Workout.objects.create(user=user, source=Workout.GARMIN, **fields)
-                WorkoutSet.objects.bulk_create([
-                    WorkoutSet(workout=workout, position=index, exercise=name, reps=reps, weight_kg=kg)
-                    for index, (name, reps, kg) in enumerate(sets)
-                ])
-            known.add(fields['garmin_id'])
+            try:
+                with transaction.atomic():
+                    workout = Workout.objects.create(user=user, source=Workout.GARMIN, **fields)
+                    WorkoutSet.objects.bulk_create([
+                        WorkoutSet(workout=workout, position=index, exercise=name, reps=reps, weight_kg=kg)
+                        for index, (name, reps, kg) in enumerate(sets)
+                    ])
+            except IntegrityError:
+                # Równoległa synchronizacja (import w tle + przycisk) już go zapisała.
+                continue
             added += 1
     except Exception as exc:
         logger.warning('Garmin: synchronizacja %s nie powiodła się', user, exc_info=True)
@@ -255,3 +535,48 @@ def sync_user(user, days=None, client=None):
     settings_row.garmin_error = ''
     settings_row.save(update_fields=['garmin_synced_at', 'garmin_error'])
     return added
+
+
+def sync_all(user, days=None, health_days=None, extras_limit=EXTRAS_PER_RUN, force_health=False, client=None):
+    """Treningi, potem dodatki (okrążenia, trasy) i zdrowie. Błąd dodatków
+    albo zdrowia nie psuje synchronizacji treningów. Zwraca liczbę nowych treningów."""
+    from . import garmin_health
+
+    if client is None:
+        try:
+            client = connect(user)
+        except GarminError as exc:
+            ActivitySettings.objects.update_or_create(user=user, defaults={'garmin_error': str(exc)[:255]})
+            raise
+    added = sync_user(user, days=days, client=client)
+    try:
+        sync_extras(client, user, limit=extras_limit)
+    except Exception:
+        logger.warning('Garmin: dodatki %s', user, exc_info=True)
+    try:
+        garmin_health.sync_health(user, client, days=health_days, force=force_health)
+    except Exception:
+        logger.warning('Garmin: zdrowie %s', user, exc_info=True)
+    return added
+
+
+def reparse(user=None):
+    """Przelicza `details` z zapisanych podsumowań (po zmianie DETAIL_FIELDS),
+    zachowując okrążenia. Bez zapytań do Garmina."""
+    workouts = Workout.objects.filter(garmin_raw__isnull=False)
+    if user is not None:
+        workouts = workouts.filter(user=user)
+    count = 0
+    for workout in workouts.iterator():
+        details = parse_details(workout.garmin_raw)
+        if 'laps' in (workout.details or {}):
+            details['laps'] = workout.details['laps']
+        if WorkoutRoute.objects.filter(workout=workout).exists():
+            details['hasRoute'] = True
+        elif workout.extras_synced:
+            details.pop('hasRoute', None)
+        if details != workout.details:
+            workout.details = details
+            workout.save(update_fields=['details'])
+            count += 1
+    return count

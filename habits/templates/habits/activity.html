@@ -15,9 +15,12 @@ Wszystko, co zależy od danych, rysuje static/habits/js/activity-app.js.
 {% block content %}
 {% page_head title="Aktywność" eyebrow="Nawyki" icon="bi-activity" sub="Pływanie, bieganie i siłownia – z zegarka Garmin i wpisane ręcznie." %}
     <span class="u-chip act-status" data-act-status role="status">Wczytuję…</span>
-    <button type="button" class="btn btn-outline-secondary" data-act-garmin hidden>
-        <i class="bi bi-smartwatch" aria-hidden="true"></i> <span>Pobierz z Garmina</span>
+    <button type="button" class="btn btn-outline-secondary" data-act-refresh hidden>
+        <i class="bi bi-arrow-repeat" aria-hidden="true"></i> <span>Pobierz teraz</span>
     </button>
+    <a class="btn btn-outline-secondary" href="{% url 'habits:connections' %}" title="Garmin i Hevy">
+        <i class="bi bi-plug" aria-hidden="true"></i> <span class="d-none d-sm-inline">Połączenia</span>
+    </a>
     <button type="button" class="btn btn-primary" data-act-add>
         <i class="bi bi-plus-lg" aria-hidden="true"></i> Dodaj trening
     </button>
@@ -65,6 +68,20 @@ Wszystko, co zależy od danych, rysuje static/habits/js/activity-app.js.
         </div>
     </section>
 
+    {# Forma z zegarka (VO2max, status, gotowość, prognozy) - activity-health.js #}
+    <section class="u-card u-card-pad mb-4" data-act-fitness hidden aria-labelledby="act-fitness-title">
+        <div class="u-section-head">
+            <h2 class="u-section-title" id="act-fitness-title">Forma</h2>
+            <span class="text-secondary small">z zegarka Garmin</span>
+        </div>
+        <div class="u-metric-grid" data-act-fitness-tiles></div>
+        <div class="mt-3" data-act-race hidden></div>
+        <div class="act-chart-block mt-3" data-act-vo2-block hidden>
+            <h3 class="act-chart-title">VO2max w czasie</h3>
+            <div class="u-chart u-chart-sm"><canvas data-act-vo2-chart></canvas></div>
+        </div>
+    </section>
+
     {# Kalendarz aktywności z podpowiedzią #}
     <section class="u-card u-card-pad mb-4" aria-labelledby="act-cal-title">
         <div class="u-section-head">
@@ -76,6 +93,17 @@ Wszystko, co zależy od danych, rysuje static/habits/js/activity-app.js.
             <div class="act-tooltip" data-act-tooltip role="tooltip" hidden></div>
         </div>
         <div class="u-legend act-legend" data-act-legend></div>
+    </section>
+
+    {# Sen, tętno spoczynkowe, HRV, Body Battery, kroki, stres - activity-health.js #}
+    <section class="u-card u-card-pad mb-4" data-act-health hidden aria-labelledby="act-health-title">
+        <div class="u-section-head">
+            <h2 class="u-section-title" id="act-health-title">Regeneracja i zdrowie</h2>
+            <span class="text-secondary small">ostatnie 30 dni</span>
+        </div>
+        <div class="u-metric-grid" data-act-health-tiles></div>
+        <div class="act-tabs act-tabs-wrap mt-3 mb-2" role="tablist" data-act-health-metrics></div>
+        <div class="u-chart u-chart-sm"><canvas data-act-health-chart></canvas></div>
     </section>
 
     {# Porównanie miesięcy #}
@@ -204,6 +232,25 @@ Wszystko, co zależy od danych, rysuje static/habits/js/activity-app.js.
     </div>
 </div>
 
+{# Szczegóły treningu - activity-detail.js #}
+<div class="modal fade" id="act-detail-modal" tabindex="-1" aria-labelledby="act-detail-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable modal-lg modal-fullscreen-sm-down">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5" id="act-detail-title"></h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+            </div>
+            <div class="modal-body" data-act-detail-body></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary me-auto" data-act-detail-edit>
+                    <i class="bi bi-pencil" aria-hidden="true"></i> Edytuj
+                </button>
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Zamknij</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="act-toast" data-act-toast role="status" aria-live="polite" hidden>
     <span data-act-toast-text></span>
     <button type="button" class="btn btn-sm btn-link" data-act-toast-undo hidden>Cofnij</button>
@@ -217,5 +264,7 @@ Wszystko, co zależy od danych, rysuje static/habits/js/activity-app.js.
 <script src="{% static 'vendor/chart/chart.umd.js' %}"></script>
 <script src="{% static 'js/charts.js' %}"></script>
 <script src="{% static 'habits/js/activity-stats.js' %}"></script>
+<script src="{% static 'habits/js/activity-detail.js' %}"></script>
+<script src="{% static 'habits/js/activity-health.js' %}"></script>
 <script src="{% static 'habits/js/activity-app.js' %}"></script>
 {% endblock %}

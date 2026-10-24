@@ -345,6 +345,11 @@ OPEN_FOOD_FACTS_ENABLED = env_bool('OPEN_FOOD_FACTS_ENABLED', True)
 # w private_media (wolumen na Pi), hasło nie jest nigdzie zapisywane.
 GARMIN_ENABLED = env_bool('GARMIN_ENABLED', not RUNNING_TESTS)
 GARMIN_TOKEN_DIR = os.environ.get('GARMIN_TOKEN_DIR', str(PRIVATE_MEDIA_ROOT / 'garmin'))
+# Import historii po połączeniu konta - w wątku (w testach od razu).
+GARMIN_IMPORT_ASYNC = env_bool('GARMIN_IMPORT_ASYNC', not RUNNING_TESTS)
+# Treningi siłowe z Hevy (habits.services.hevy) - klucz API każda osoba wkleja na stronie.
+HEVY_ENABLED = env_bool('HEVY_ENABLED', not RUNNING_TESTS)
+HEVY_TIMEOUT = float(os.environ.get('HEVY_TIMEOUT', '15'))
 OPEN_FOOD_FACTS_TIMEOUT = float(os.environ.get('OPEN_FOOD_FACTS_TIMEOUT', '2.5'))
 OPEN_FOOD_FACTS_RATE_LIMIT = int(os.environ.get('OPEN_FOOD_FACTS_RATE_LIMIT', '12'))
 OPEN_FOOD_FACTS_IMAGE_MAX_BYTES = int(

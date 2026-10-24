@@ -1,0 +1,174 @@
+{% extends 'base.html' %}
+{% load static ui %}
+{% comment %}
+Połączenia kont (habits.views.ConnectionsView): Garmin Connect i Hevy. Każdy
+domownik łączy własne konta. Hasło do Garmina idzie tylko do Garmina.
+{% endcomment %}
+{% block title %}Połączenia{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'habits/css/activity.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8 col-xl-7">
+        {% page_head title="Połączenia" eyebrow="Nawyki" icon="bi-plug" sub="Twoje konta Garmin i Hevy – treningi i dane zdrowotne dochodzą same co godzinę." back=back_url back_label="Wróć do aktywności" %}{% endpage_head %}
+
+        {% if insecure %}
+            <div class="alert alert-warning">
+                <i class="bi bi-shield-exclamation" aria-hidden="true"></i>
+                Ta strona jest otwarta bez szyfrowania (http). Hasło i klucz API wpisuj tylko pod adresem <strong>https://</strong>.
+            </div>
+        {% endif %}
+
+        {# --- Garmin --- #}
+        <section class="u-card u-card-pad mb-4" aria-labelledby="garmin-title">
+            <div class="u-section-head">
+                <h2 class="u-section-title" id="garmin-title"><i class="bi bi-smartwatch" aria-hidden="true"></i> Garmin Connect</h2>
+                {% if garmin.connected %}<span class="u-chip u-chip-dot is-income">Połączono</span>{% endif %}
+            </div>
+
+            {% if not garmin.enabled %}
+                <p class="text-secondary mb-0">Wyłączone na serwerze (<code>GARMIN_ENABLED=0</code>).</p>
+            {% elif garmin.connected %}
+                <p class="mb-2">
+                    Treningi (ze szczegółami, okrążeniami i trasą), sen, tętno spoczynkowe, HRV, Body Battery,
+                    kroki, stres, gotowość do treningu, VO2max i prognozy biegu.
+                </p>
+                <p class="text-secondary mb-2">
+                    {% if garmin.syncedAt %}Ostatnie pobranie: <span data-local-time="{{ garmin.syncedAt }}"></span>.{% else %}Trwa pierwsze pobieranie historii…{% endif %}
+                </p>
+                {% if garmin.error %}
+                    <div class="alert alert-warning">
+                        <strong>Ostatnia próba się nie udała:</strong> {{ garmin.error }}
+                        Jeśli to się powtarza, rozłącz konto i połącz je ponownie.
+                    </div>
+                {% endif %}
+                <div class="d-flex flex-wrap gap-2 mt-3">
+                    <form method="post">
+                        {% csrf_token %}
+                        <button type="submit" name="action" value="garmin-sync" class="btn btn-primary">
+                            <i class="bi bi-arrow-repeat" aria-hidden="true"></i> Pobierz teraz
+                        </button>
+                    </form>
+                    <form method="post" class="ms-auto">
+                        {% csrf_token %}
+                        <button type="submit" name="action" value="garmin-disconnect" class="btn btn-outline-danger">Rozłącz</button>
+                    </form>
+                </div>
+            {% elif waiting_for_code %}
+                <p class="text-secondary">Konto ma weryfikację dwuetapową. Wpisz kod, który Garmin wysłał e-mailem, SMS-em albo w aplikacji. Masz na to 10 minut.</p>
+                <form method="post" autocomplete="off">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label" for="garmin-code">Kod</label>
+                        <input class="form-control form-control-lg" id="garmin-code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="12" required autofocus>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="submit" name="action" value="garmin-code" class="btn btn-primary">Potwierdź</button>
+                        <button type="submit" name="action" value="garmin-cancel" class="btn btn-outline-secondary" formnovalidate>Anuluj</button>
+                    </div>
+                </form>
+            {% else %}
+                <p class="text-secondary">
+                    Zaloguj się danymi z Garmin Connect. Hasło trafia tylko do Garmina i nie jest zapisywane –
+                    strona zachowuje token dostępu (ważny ok. roku). Po połączeniu pobiera rok treningów i 30 dni danych zdrowotnych.
+                </p>
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="row g-2">
+                        <div class="col-sm-6">
+                            <label class="form-label" for="garmin-email">E-mail</label>
+                            <input class="form-control" type="email" id="garmin-email" name="email" autocomplete="off" required>
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label" for="garmin-password">Hasło</label>
+                            <input class="form-control" type="password" id="garmin-password" name="password" autocomplete="off" required>
+                        </div>
+                    </div>
+                    <button type="submit" name="action" value="garmin-login" class="btn btn-primary mt-3">
+                        <i class="bi bi-link-45deg" aria-hidden="true"></i> Połącz z Garminem
+                    </button>
+                </form>
+                <p class="form-text mt-3 mb-0">
+                    Garmin nie udostępnia oficjalnego API do użytku domowego – połączenie korzysta z nieoficjalnej biblioteki
+                    i po zmianach u Garmina może wymagać ponownego zalogowania.
+                </p>
+            {% endif %}
+        </section>
+
+        {# --- Hevy --- #}
+        <section class="u-card u-card-pad mb-4" aria-labelledby="hevy-title">
+            <div class="u-section-head">
+                <h2 class="u-section-title" id="hevy-title"><i class="bi bi-heart-pulse" aria-hidden="true"></i> Hevy</h2>
+                {% if hevy.connected %}<span class="u-chip u-chip-dot is-income">Połączono</span>{% endif %}
+            </div>
+            <p class="text-secondary">
+                Ćwiczenia, serie i ciężary z siłowni. Sesja nagrana też zegarkiem łączy się w jeden trening:
+                czas i tętno z Garmina, ćwiczenia z Hevy.
+            </p>
+
+            {% if hevy.connected %}
+                <p class="mb-2">Klucz API kończący się na <code>…{{ hevy_key_hint }}</code>.
+                    {% if hevy.syncedAt %}Ostatnie pobranie: <span data-local-time="{{ hevy.syncedAt }}"></span>.{% else %}Trwa pobieranie historii…{% endif %}
+                </p>
+                {% if hevy.error %}
+                    <div class="alert alert-warning"><strong>Ostatnia próba się nie udała:</strong> {{ hevy.error }}</div>
+                {% endif %}
+                <div class="d-flex flex-wrap gap-2">
+                    <form method="post">
+                        {% csrf_token %}
+                        <button type="submit" name="action" value="hevy-sync" class="btn btn-primary">
+                            <i class="bi bi-arrow-repeat" aria-hidden="true"></i> Pobierz teraz
+                        </button>
+                    </form>
+                    <form method="post" class="ms-auto">
+                        {% csrf_token %}
+                        <button type="submit" name="action" value="hevy-disconnect" class="btn btn-outline-danger">Usuń klucz</button>
+                    </form>
+                </div>
+            {% elif hevy.enabled %}
+                <h3 class="act-subtitle">Automatycznie (Hevy Pro)</h3>
+                <p class="text-secondary small">Klucz API znajdziesz na <a href="https://hevy.com/settings?developer" target="_blank" rel="noopener">hevy.com/settings?developer</a> (zaloguj się w przeglądarce). API Hevy działa tylko z subskrypcją Pro.</p>
+                <form method="post" autocomplete="off" class="d-flex flex-wrap gap-2 align-items-end">
+                    {% csrf_token %}
+                    <div class="flex-grow-1">
+                        <label class="form-label" for="hevy-key">Klucz API</label>
+                        <input class="form-control" id="hevy-key" name="api_key" autocomplete="off" spellcheck="false" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" required>
+                    </div>
+                    <button type="submit" name="action" value="hevy-key" class="btn btn-primary">Połącz z Hevy</button>
+                </form>
+            {% endif %}
+
+            <h3 class="act-subtitle mt-4">Z pliku (bez Pro)</h3>
+            <p class="text-secondary small">
+                W aplikacji Hevy: Profil → Ustawienia → Eksportuj i importuj dane → Eksportuj treningi. Wgraj plik CSV –
+                ponowne wgranie nowszego eksportu niczego nie zdubluje.
+            </p>
+            <form method="post" enctype="multipart/form-data" class="d-flex flex-wrap gap-2 align-items-end">
+                {% csrf_token %}
+                <div class="flex-grow-1">
+                    <label class="form-label" for="hevy-file">Plik CSV</label>
+                    <input class="form-control" type="file" id="hevy-file" name="file" accept=".csv,text/csv" required>
+                </div>
+                <button type="submit" name="action" value="hevy-csv" class="btn btn-outline-secondary">
+                    <i class="bi bi-upload" aria-hidden="true"></i> Importuj
+                </button>
+            </form>
+        </section>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Godzina pobrania w strefie i formacie przeglądarki.
+    document.querySelectorAll('[data-local-time]').forEach(function (node) {
+        var date = new Date(node.getAttribute('data-local-time'));
+        if (!isNaN(date)) {
+            node.textContent = date.toLocaleString('pl-PL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+        }
+    });
+</script>
+{% endblock %}

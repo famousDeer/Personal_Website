@@ -7,23 +7,25 @@ a zmiany wysyłają się po powrocie do domu (jak tryb zakupów w cooking).
 """
 import hashlib
 import json
+import time
 from functools import lru_cache
 from pathlib import Path
 
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.staticfiles import finders
-from django.http import HttpResponse, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.middleware.csrf import get_token
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.templatetags.static import static
 from django.urls import reverse
 from django.utils.decorators import method_decorator
 from django.views import View
 
-from .models import Workout
-from .services import garmin
+from .models import ActivitySettings, Workout, WorkoutRoute
+from .services import garmin, hevy
 from .services.workouts import activity_snapshot, apply_operations
 
 # Pliki potrzebne stronie bez połączenia: base.html + własne. Wymagane muszą
@@ -37,6 +39,8 @@ APP_REQUIRED_STATIC_FILES = [
     'js/charts.js',
     'habits/css/activity.css',
     'habits/js/activity-stats.js',
+    'habits/js/activity-detail.js',
+    'habits/js/activity-health.js',
     'habits/js/activity-app.js',
 ]
 APP_STATIC_FILES = APP_REQUIRED_STATIC_FILES + [
@@ -49,6 +53,9 @@ APP_STATIC_FILES = APP_REQUIRED_STATIC_FILES + [
     'vendor/flatpickr/pl.js',
     'vendor/bootstrap/bootstrap.bundle.min.js',
     'js/app-actions.js',
+    # Mapa trasy - sam podkład (kafelki OSM) i tak wymaga internetu.
+    'vendor/leaflet/leaflet.js',
+    'vendor/leaflet/leaflet.css',
 ]
 TEMPLATE_DIRS = [
     Path(__file__).resolve().parent / 'templates' / 'habits',
@@ -87,7 +94,11 @@ class ActivityView(View):
                 'version': app_version(),
                 'snapshotUrl': reverse('habits:api-snapshot'),
                 'syncUrl': reverse('habits:api-sync'),
-                'garminUrl': reverse('habits:api-garmin'),
+                'refreshUrl': reverse('habits:api-refresh'),
+                'routeUrl': reverse('habits:api-route', args=['UID']),
+                'connectionsUrl': reverse('habits:connections'),
+                'leafletJs': static('vendor/leaflet/leaflet.js'),
+                'leafletCss': static('vendor/leaflet/leaflet.css'),
                 'serviceWorkerUrl': reverse('habits:sw'),
                 'scope': reverse('habits:index'),
                 'loginUrl': f"{reverse('login')}?next={reverse('habits:index')}",
@@ -161,18 +172,194 @@ class SyncApiView(ActivityApiMixin, View):
         return self.payload(request, results=results)
 
 
-class GarminSyncApiView(ActivityApiMixin, View):
-    """Przycisk „Pobierz z Garmina” - tylko z połączeniem."""
+class RefreshApiView(ActivityApiMixin, View):
+    """Przycisk „Pobierz teraz” na stronie: Garmin (treningi, dodatki, zdrowie)
+    i Hevy - to, co osoba ma połączone. Tylko z połączeniem."""
 
     def post(self, request):
-        try:
-            added = garmin.sync_user(request.user)
-        except garmin.GarminError as exc:
-            return JsonResponse({'ok': False, 'error': 'garmin', 'message': str(exc)}, status=502)
-        if added == 1:
-            message = 'Pobrano 1 nowy trening z Garmina.'
-        elif added:
-            message = f'Pobrano nowe treningi z Garmina: {added}.'
+        settings_row = ActivitySettings.for_user(request.user)
+        notes, errors = [], []
+        if settings.GARMIN_ENABLED and garmin.is_connected(request.user):
+            try:
+                added = garmin.sync_all(request.user, force_health=True)
+                notes.append(f'Garmin: nowe treningi {added}.' if added else 'Garmin: brak nowych treningów.')
+            except garmin.GarminError as exc:
+                errors.append(f'Garmin: {exc}')
+        if settings.HEVY_ENABLED and settings_row.hevy_api_key:
+            try:
+                added = hevy.sync_user(request.user)
+                notes.append(f'Hevy: nowe treningi {added}.' if added else 'Hevy: brak nowych treningów.')
+            except hevy.HevyError as exc:
+                errors.append(f'Hevy: {exc}')
+        if not notes and not errors:
+            return JsonResponse({'ok': False, 'error': 'none', 'message': 'Brak połączonych kont – połącz Garmina albo Hevy.'}, status=400)
+        if errors and not notes:
+            return JsonResponse({'ok': False, 'error': 'sync', 'message': ' '.join(errors)}, status=502)
+        return self.payload(request, message=' '.join(notes + errors))
+
+
+class RouteApiView(ActivityApiMixin, View):
+    """Trasa GPS treningu - poza snapshotem, bo bez internetu i tak nie ma mapy."""
+
+    def get(self, request, uid):
+        route = WorkoutRoute.objects.filter(workout__uid=uid, workout__user=request.user).first()
+        if route is None:
+            raise Http404
+        response = JsonResponse({'ok': True, 'points': route.points})
+        response['Cache-Control'] = 'private, max-age=86400'
+        return response
+
+
+MFA_SESSION_KEY = 'garmin_mfa'
+MFA_TTL_SECONDS = 10 * 60
+LOCAL_HOSTS = {'localhost', '127.0.0.1', '[::1]', 'testserver'}
+
+
+@method_decorator(login_required, name='dispatch')
+class ConnectionsView(View):
+    """Połączenia: Garmin Connect i Hevy - każdy domownik łączy własne konta.
+
+    Hasło do Garmina idzie tylko do Garmina i nie jest zapisywane. Gdy konto ma
+    2FA, stan logowania (ciasteczka sesji Garmina) czeka w sesji Django najwyżej
+    10 minut, do wpisania kodu. Klucz API Hevy jest zapisany w bazie.
+    Strona działa tylko z połączeniem (service worker jej nie zapisuje).
+    """
+
+    def pending_mfa(self, request):
+        pending = request.session.get(MFA_SESSION_KEY)
+        if pending and time.time() - pending.get('at', 0) > MFA_TTL_SECONDS:
+            del request.session[MFA_SESSION_KEY]
+            messages.warning(request, 'Minęło 10 minut bez kodu – zaloguj się do Garmina jeszcze raz.')
+            return None
+        return pending
+
+    def get(self, request):
+        settings_row = ActivitySettings.for_user(request.user)
+        host = request.get_host().split(':')[0]
+        return render(request, 'habits/connections.html', {
+            'garmin': garmin.status(request.user, settings_row),
+            'hevy': hevy.status(request.user, settings_row),
+            'hevy_key_hint': settings_row.hevy_api_key[-4:] if settings_row.hevy_api_key else '',
+            'waiting_for_code': bool(self.pending_mfa(request)),
+            'insecure': not request.is_secure() and host not in LOCAL_HOSTS,
+            'back_url': reverse('habits:index'),
+        })
+
+    def post(self, request):
+        handler = {
+            'garmin-login': self.garmin_login,
+            'garmin-code': self.garmin_code,
+            'garmin-cancel': self.garmin_cancel,
+            'garmin-sync': self.garmin_sync,
+            'garmin-disconnect': self.garmin_disconnect,
+            'hevy-key': self.hevy_key,
+            'hevy-sync': self.hevy_sync,
+            'hevy-disconnect': self.hevy_disconnect,
+            'hevy-csv': self.hevy_csv,
+        }.get(request.POST.get('action'))
+        if handler is None:
+            return redirect('habits:connections')
+        if request.POST['action'].startswith('garmin') and not settings.GARMIN_ENABLED:
+            messages.error(request, 'Połączenie z Garminem jest wyłączone (GARMIN_ENABLED).')
+        elif request.POST['action'] in ('hevy-key', 'hevy-sync') and not settings.HEVY_ENABLED:
+            messages.error(request, 'Pobieranie z Hevy jest wyłączone (HEVY_ENABLED).')
         else:
-            message = 'Brak nowych treningów w Garminie.'
-        return self.payload(request, message=message)
+            handler(request)
+        return redirect('habits:connections')
+
+    # --- Garmin ---
+    def garmin_connected(self, request):
+        garmin.start_import(request.user)
+        messages.success(
+            request,
+            'Połączono z Garmin Connect. Pobieram treningi z ostatniego roku i dane zdrowotne z 30 dni – '
+            'to może potrwać kilka minut, potem pojawią się na stronie Aktywność. Nowe dane dochodzą same co godzinę.',
+        )
+
+    def garmin_login(self, request):
+        email = request.POST.get('email', '').strip()
+        password = request.POST.get('password', '')
+        if not email or not password:
+            messages.error(request, 'Podaj e-mail i hasło do Garmin Connect.')
+            return
+        try:
+            state = garmin.start_login(request.user, email, password)
+        except garmin.GarminError as exc:
+            messages.error(request, str(exc))
+            return
+        if state is None:
+            self.garmin_connected(request)
+        else:
+            request.session[MFA_SESSION_KEY] = {'state': state, 'at': time.time()}
+            messages.info(request, 'Garmin wysłał kod weryfikacyjny – wpisz go poniżej.')
+
+    def garmin_code(self, request):
+        pending = self.pending_mfa(request)
+        code = ''.join(request.POST.get('code', '').split())
+        if not pending:
+            return
+        if not code:
+            messages.error(request, 'Wpisz kod z wiadomości od Garmina.')
+            return
+        try:
+            garmin.finish_login(request.user, pending['state'], code)
+        except garmin.GarminError as exc:
+            # Stan logowania bywa jednorazowy - po błędzie zaczynamy od nowa.
+            request.session.pop(MFA_SESSION_KEY, None)
+            messages.error(request, f'{exc} Zaloguj się jeszcze raz.')
+            return
+        request.session.pop(MFA_SESSION_KEY, None)
+        self.garmin_connected(request)
+
+    def garmin_cancel(self, request):
+        request.session.pop(MFA_SESSION_KEY, None)
+
+    def garmin_sync(self, request):
+        try:
+            added = garmin.sync_all(request.user, force_health=True)
+        except garmin.GarminError as exc:
+            messages.error(request, str(exc))
+            return
+        messages.success(request, f'Pobrano nowe treningi: {added}.' if added else 'Brak nowych treningów w Garminie.')
+
+    def garmin_disconnect(self, request):
+        garmin.disconnect(request.user)
+        messages.success(request, 'Rozłączono konto Garmin. Pobrane treningi zostały na stronie.')
+
+    # --- Hevy ---
+    def hevy_key(self, request):
+        api_key = request.POST.get('api_key', '').strip()
+        if not api_key:
+            messages.error(request, 'Wklej klucz API z hevy.com/settings?developer.')
+            return
+        try:
+            hevy.connect(request.user, api_key)
+        except hevy.HevyError as exc:
+            messages.error(request, str(exc))
+            return
+        hevy.start_import(request.user)
+        messages.success(request, 'Połączono z Hevy. Pobieram historię treningów – za chwilę pojawią się na stronie Aktywność.')
+
+    def hevy_sync(self, request):
+        try:
+            added = hevy.sync_user(request.user)
+        except hevy.HevyError as exc:
+            messages.error(request, str(exc))
+            return
+        messages.success(request, f'Pobrano nowe treningi z Hevy: {added}.' if added else 'Brak nowych treningów w Hevy.')
+
+    def hevy_disconnect(self, request):
+        hevy.disconnect(request.user)
+        messages.success(request, 'Usunięto klucz Hevy. Pobrane treningi zostały na stronie.')
+
+    def hevy_csv(self, request):
+        uploaded = request.FILES.get('file')
+        if uploaded is None:
+            messages.error(request, 'Wybierz plik CSV wyeksportowany z Hevy.')
+            return
+        try:
+            created, updated = hevy.import_csv(request.user, uploaded)
+        except hevy.HevyError as exc:
+            messages.error(request, str(exc))
+            return
+        messages.success(request, f'Zaimportowano z pliku: nowe treningi {created}, zaktualizowane {updated}.')

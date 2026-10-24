@@ -147,11 +147,9 @@
         serverWorkouts().forEach(function (w) { map[w.uid] = w; });
         state.queue.forEach(function (op) {
             if (op.type === 'save') {
-                var previous = map[op.workout.uid];
-                map[op.workout.uid] = Object.assign({}, op.workout, {
-                    source: previous ? previous.source : 'manual',
-                    pending: true
-                });
+                // Szczegóły z zegarka i źródła zostają przy edycji na telefonie.
+                var previous = map[op.workout.uid] || { source: 'manual' };
+                map[op.workout.uid] = Object.assign({}, previous, op.workout, { pending: true });
             } else if (op.type === 'delete') {
                 delete map[op.uid];
             }
@@ -167,6 +165,10 @@
 
     function garminStatus() {
         return (state.snapshot && state.snapshot.settings && state.snapshot.settings.garmin) || {};
+    }
+
+    function hevyStatus() {
+        return (state.snapshot && state.snapshot.settings && state.snapshot.settings.hevy) || {};
     }
 
     /** Dopisuje zmianę do kolejki; starsze zmiany tego samego treningu są już nieaktualne. */
@@ -291,7 +293,10 @@
         renderMonth(list, today);
         renderProgress(list, today);
         renderList(list);
-        renderGarminButton();
+        renderRefreshButton();
+        if (window.ActivityHealth) {
+            ActivityHealth.render({ workouts: list, health: (state.snapshot && state.snapshot.health) || [], today: today });
+        }
     }
 
     function timeLabel(iso) {
@@ -345,9 +350,12 @@
             parts.push(alertHtml('info', 'Brak połączenia i brak zapisanych danych. Otwórz stronę raz w domu, ' +
                 'a potem zadziała też bez połączenia. Nowy trening możesz dodać już teraz.'));
         }
-        var garmin = garminStatus();
-        if (garmin.error) {
-            parts.push(alertHtml('warning', '<strong>Garmin:</strong> ' + esc(garmin.error)));
+        var fix = ' <a href="' + esc(config.connectionsUrl) + '">Sprawdź połączenie</a>.';
+        if (garminStatus().error) {
+            parts.push(alertHtml('warning', '<strong>Garmin:</strong> ' + esc(garminStatus().error) + fix));
+        }
+        if (hevyStatus().error) {
+            parts.push(alertHtml('warning', '<strong>Hevy:</strong> ' + esc(hevyStatus().error) + fix));
         }
         state.errors.forEach(function (message, index) {
             parts.push(alertHtml('danger', esc(message), index));
@@ -359,13 +367,15 @@
         banner.innerHTML = parts.join('');
     }
 
-    function renderGarminButton() {
-        var button = $('[data-act-garmin]');
+    function renderRefreshButton() {
+        var button = $('[data-act-refresh]');
         var garmin = garminStatus();
-        button.hidden = !garmin.enabled;
-        button.title = garmin.connected
-            ? 'Ostatnio pobrane: ' + (garmin.syncedAt ? timeLabel(garmin.syncedAt) : 'jeszcze nie')
-            : 'Konto Garmin nie jest połączone';
+        var hevy = hevyStatus();
+        button.hidden = !garmin.connected && !hevy.connected;
+        var parts = [];
+        if (garmin.connected) { parts.push('Garmin: ' + (garmin.syncedAt ? timeLabel(garmin.syncedAt) : 'jeszcze nie')); }
+        if (hevy.connected) { parts.push('Hevy: ' + (hevy.syncedAt ? timeLabel(hevy.syncedAt) : 'jeszcze nie')); }
+        button.title = 'Ostatnio pobrane – ' + parts.join(', ');
     }
 
     function renderWeek(list, today) {
@@ -714,15 +724,17 @@
         var records = recordUids(list);
         $('[data-act-list-count]').textContent = list.length + ' ' + S.plural(list.length, 'trening', 'treningi', 'treningów');
         if (!list.length) {
-            container.innerHTML = '<li class="act-empty">Jeszcze nic tu nie ma. Dodaj pierwszy trening' +
-                (garminStatus().enabled ? ' albo pobierz go z Garmina.' : '.') + '</li>';
+            container.innerHTML = '<li class="act-empty">Jeszcze nic tu nie ma. Dodaj pierwszy trening albo ' +
+                '<a href="' + esc(config.connectionsUrl) + '">połącz Garmina lub Hevy</a>.</li>';
             $('[data-act-more]').hidden = true;
             return;
         }
         container.innerHTML = list.slice(0, state.listLimit).map(function (w) {
             var icons = '';
             if (records[w.uid]) { icons += '<i class="bi bi-trophy-fill act-record-icon" title="Rekord" aria-label="Rekord"></i>'; }
-            if (w.source === 'garmin') { icons += '<i class="bi bi-smartwatch" title="Z Garmina" aria-label="Z Garmina"></i>'; }
+            if (w.garmin) { icons += '<i class="bi bi-smartwatch" title="Z Garmina" aria-label="Z Garmina"></i>'; }
+            if (w.hevy) { icons += '<i class="bi bi-phone" title="Z Hevy" aria-label="Z Hevy"></i>'; }
+            if ((w.details || {}).hasRoute) { icons += '<i class="bi bi-geo-alt" title="Trasa na mapie" aria-label="Trasa na mapie"></i>'; }
             if (w.pending) { icons += '<i class="bi bi-cloud-arrow-up" title="Czeka na wysłanie" aria-label="Czeka na wysłanie"></i>'; }
             var extra = w.kind === 'gym' && w.sets && w.sets.length ? S.exercisesOf(w).join(', ') : (w.notes || '');
             return '<li><button type="button" class="act-item act-k-' + w.kind + '" data-uid="' + esc(w.uid) + '">' +
@@ -765,10 +777,14 @@
             '<input class="form-control form-control-sm" list="act-exercises" placeholder="Ćwiczenie" aria-label="Ćwiczenie" data-set="exercise">' +
             '<input class="form-control form-control-sm" type="number" min="0" inputmode="numeric" placeholder="powt." aria-label="Powtórzenia" data-set="reps">' +
             '<input class="form-control form-control-sm" type="text" inputmode="decimal" placeholder="kg" aria-label="Ciężar w kg" data-set="kg">' +
+            '<button type="button" class="btn btn-sm act-warmup-toggle" data-set-warmup aria-pressed="false" title="Rozgrzewka – nie liczy się do rekordów">R</button>' +
             '<button type="button" class="btn btn-sm btn-link text-secondary" data-set-remove aria-label="Usuń serię"><i class="bi bi-x-lg"></i></button>';
         $('[data-set="exercise"]', node).value = row[0] || '';
         $('[data-set="reps"]', node).value = row[1] === null || row[1] === undefined ? '' : row[1];
         $('[data-set="kg"]', node).value = row[2] === null || row[2] === undefined ? '' : String(row[2]).replace('.', ',');
+        node.setAttribute('data-type', row[3] || '');
+        node.setAttribute('data-duration', row[4] || '');
+        $('[data-set-warmup]', node).setAttribute('aria-pressed', row[3] === 'warmup' ? 'true' : 'false');
         container.appendChild(node);
         if (focus) { $('[data-set="' + focus + '"]', node).focus(); }
     }
@@ -834,7 +850,11 @@
                 var kg = parseNumber($('[data-set="kg"]', node).value);
                 if (!exercise) { return; }
                 if (isNaN(reps) || isNaN(kg)) { throw new Error('Powtórzenia i ciężar w serii „' + exercise + '” muszą być liczbami.'); }
-                sets.push([exercise, reps === null ? null : Math.round(reps), kg]);
+                var row = [exercise, reps === null ? null : Math.round(reps), kg];
+                var type = node.getAttribute('data-type') || '';
+                var seconds = Number(node.getAttribute('data-duration')) || null;
+                if (type || seconds) { row.push(type, seconds); }
+                sets.push(row);
             });
         }
         return {
@@ -894,6 +914,7 @@
             // Kolejna seria tego samego ćwiczenia: kopia poprzedniej, kursor w powtórzeniach.
             var rows = $$('.act-set', form);
             var last = rows[rows.length - 1];
+            // Kopia bez znacznika rozgrzewki - kolejna seria zwykle jest robocza.
             var row = last ? [
                 $('[data-set="exercise"]', last).value,
                 $('[data-set="reps"]', last).value,
@@ -907,6 +928,13 @@
         $('[data-act-sets]', form).addEventListener('click', function (event) {
             var remove = event.target.closest('[data-set-remove]');
             if (remove) { remove.closest('.act-set').remove(); }
+            var warmup = event.target.closest('[data-set-warmup]');
+            if (warmup) {
+                var node = warmup.closest('.act-set');
+                var on = node.getAttribute('data-type') !== 'warmup';
+                node.setAttribute('data-type', on ? 'warmup' : '');
+                warmup.setAttribute('aria-pressed', on ? 'true' : 'false');
+            }
         });
         form.addEventListener('submit', function (event) {
             event.preventDefault();
@@ -934,7 +962,12 @@
             if (!item) { return; }
             var uid = item.getAttribute('data-uid');
             var workout = workouts().filter(function (w) { return w.uid === uid; })[0];
-            if (workout) { openForm(workout); }
+            if (!workout) { return; }
+            if (window.ActivityDetail) {
+                ActivityDetail.open(workout, { config: config, onEdit: openForm, kindColor: kindColor });
+            } else {
+                openForm(workout);
+            }
         });
         $('[data-act-more]').addEventListener('click', function () {
             state.listLimit += 30;
@@ -989,30 +1022,25 @@
             renderBanner();
         });
 
-        $('[data-act-garmin]').addEventListener('click', function () {
-            var garmin = garminStatus();
-            if (!garmin.connected) {
-                state.errors.push('Konto Garmin nie jest połączone. Na Raspberry Pi uruchom: ' +
-                    'docker compose exec -it web python manage.py garmin_login --user ' + (state.user || '<login>'));
-                renderBanner();
-                return;
-            }
-            var button = $('[data-act-garmin]');
+        $('[data-act-refresh]').addEventListener('click', function () {
+            var button = $('[data-act-refresh]');
             button.disabled = true;
-            postJson(config.garminUrl).then(function (result) {
+            button.querySelector('span').textContent = 'Pobieram…';
+            postJson(config.refreshUrl).then(function (result) {
                 if (result.ok) {
                     applyPayload(result.data);
                     persist();
-                    toast(result.data.message || 'Pobrano treningi z Garmina.');
+                    toast(result.data.message || 'Pobrano.');
                 } else if (result.status === 401) {
                     state.authNeeded = true;
                 } else {
-                    state.errors.push(result.data.message || 'Nie udało się pobrać treningów z Garmina.');
+                    state.errors.push(result.data.message || 'Nie udało się pobrać treningów.');
                 }
             }).catch(function () {
-                state.errors.push('Pobieranie z Garmina wymaga połączenia z domowym serwerem.');
+                state.errors.push('Pobieranie z Garmina i Hevy wymaga połączenia z domowym serwerem.');
             }).then(function () {
                 button.disabled = false;
+                button.querySelector('span').textContent = 'Pobierz teraz';
                 render();
             });
         });

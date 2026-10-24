@@ -1,15 +1,23 @@
-# habits – aktywność fizyczna (pływanie, bieganie, siłownia)
+# habits – aktywność fizyczna (pływanie, bieganie, siłownia), Garmin, Hevy
 
-Cel strony: pomóc w regularności. Treningi z zegarka Garmin albo wpisane ręcznie, per `request.user`. Namespace URL `habits`, w menu „Nawyki”.
+Cel strony: pomóc w regularności. Treningi z zegarka Garmin, z Hevy (siłownia) albo wpisane ręcznie, per `request.user`. Każdy domownik łączy własne konta na stronie Połączenia (`/habits/polaczenia/`). Namespace URL `habits`, w menu „Nawyki”.
 
-Modele (`models.py`): Workout (`kind` swim/run/gym/other – kolejność = kolory `--cat-1..4`; `uid` z telefonu, `source` manual/garmin, `garmin_id` unikalny, `is_deleted` tylko dla treningów z Garmina – ślad, żeby sync ich nie wskrzesił), WorkoutSet (ćwiczenie, powtórzenia, kg), ActivitySettings (cel tygodniowy w DNIACH z treningiem, stan Garmina).
+Modele (`models.py`):
+- Workout – `kind` swim/run/gym/other (kolejność = kolory `--cat-1..4`), `uid` z telefonu, `source` manual/garmin/hevy, `garmin_id` i `hevy_id` (unikalne; sesja z obu źródeł = jeden wiersz z oboma, CSV ma `csv:<skrót>`), `details` (JSON do widoku: strefy tętna, TE, kadencja, przewyższenie, pływanie, `laps`, `hasRoute`), `garmin_raw` (surowe podsumowanie – `sync_garmin --reparse` przelicza `details` bez sieci), `extras_synced` (okrążenia i trasa pobrane), `is_deleted` (ślad dla treningów z Garmina/Hevy).
+- WorkoutSet – ćwiczenie, powtórzenia, kg, `duration_s`, `set_type` ('', warmup, failure, dropset; rozgrzewki nie liczą się do rekordów).
+- WorkoutRoute – uproszczona trasa GPS (≤400 punktów), poza snapshotem.
+- DailyHealth – dzień: kroki, tętno spoczynkowe, stres, Body Battery, sen, HRV, gotowość, VO2max, status treningowy, prognozy biegu + `raw` (przycięte odpowiedzi).
+- ActivitySettings – cel tygodniowy (DNI z treningiem), stan Garmina, `health_synced_at`, klucz API Hevy i stan Hevy.
 
 Strona działa offline jak tryb zakupów w cooking:
-- `views.py` – `ActivityView` (szablon `activity.html` bez danych, rozszerza `base.html`), `ActivityServiceWorkerView` (`activity_sw.js`, cache `aktywnosc-<wersja>`; wersja = skrót plików z `APP_STATIC_FILES` + szablonów, w tym `base.html` – nowy plik statyczny w base.html dopisz do listy), API: `snapshot`, `sync` (kolejka operacji `save`/`delete`/`goal`, każda osobno, idempotentne po `uid`), `garmin` (przycisk „Pobierz z Garmina”). API zwraca 401 JSON zamiast przekierowania.
-- `services/workouts.py` – walidacja i zapis operacji, `activity_snapshot`. Zapis po usunięciu = „Cofnij”.
-- `static/habits/js/activity-stats.js` – czyste funkcje (cel i seria tygodni, kalendarz, porównanie miesięcy, serie wykresów, rekordy, formatowanie, `parseDuration`); testy w Node: `tests/test_activity_js.py`. Statystyki liczy przeglądarka, bo obejmują treningi dodane offline.
-- `static/habits/js/activity-app.js` – IndexedDB (`aktywnosc`/`kv`, klucz `state`), kolejka, synchronizacja, rysowanie, formularz (modal Bootstrap), wykresy przez `AppCharts.slot`.
+- `views.py` – `ActivityView` (`activity.html` bez danych), `ActivityServiceWorkerView` (`activity_sw.js`, cache `aktywnosc-<wersja>`; wersja = skrót plików z `APP_STATIC_FILES` + szablonów, w tym `base.html` – nowy plik statyczny w base.html dopisz do listy), API: `snapshot` (treningi + 120 dni zdrowia), `sync` (kolejka `save`/`delete`/`goal`, idempotentne po `uid`), `refresh` (przycisk „Pobierz teraz”: Garmin + Hevy), `route/<uid>` (trasa, tylko online). `ConnectionsView` – logowanie do Garmina z kodem 2FA (stan w sesji ≤10 min, hasło nie jest zapisywane), klucz API Hevy, import CSV z Hevy.
+- `services/workouts.py` – walidacja i zapis operacji z telefonu, `activity_snapshot`.
+- `static/habits/js/activity-stats.js` – czyste funkcje (cel i seria, kalendarz, porównanie miesięcy, wykresy, rekordy, zdrowie, VO2max, strefy); testy w Node: `tests/test_activity_js.py`.
+- `activity-app.js` (IndexedDB, kolejka, synchronizacja, lista, formularz z rozgrzewką „R”), `activity-detail.js` (okno szczegółów: liczby, strefy, okrążenia, mapa Leaflet ładowana leniwie, serie), `activity-health.js` (sekcje „Forma” i „Regeneracja i zdrowie”).
 
-Garmin (`services/garmin.py`): nieoficjalna biblioteka `garminconnect` (wymaga Pythona 3.12+), import leniwy – testy jej nie potrzebują. `garmin_login --user X` (interaktywnie, hasło nie jest zapisywane, tokeny w `GARMIN_TOKEN_DIR/<user.pk>/`, domyślnie `private_media/garmin`), `sync_garmin` z crona. Sync pobiera od ostatniego treningu z Garmina −3 dni (pierwszy raz 30 dni), nie nadpisuje już pobranych, pomija spacery; serie siłowe z `get_activity_exercise_sets` (ciężar w gramach), nazwy ćwiczeń po polsku w `EXERCISE_NAMES`. Błąd trafia do `ActivitySettings.garmin_error` i na stronę. Flaga `GARMIN_ENABLED` (w testach wyłączona, klient mockowany).
+Garmin (`services/garmin.py`, `services/garmin_health.py`): nieoficjalna biblioteka `garminconnect` (Python 3.12+), import leniwy. Logowanie ze strony: `start_login` (return_on_mfa) → `finish_login`; tokeny zapisuje `_connected` (`client.client.dump`), potem biblioteka sama je odświeża w tym samym pliku. Tokeny w `GARMIN_TOKEN_DIR/<user.pk>/`. Po połączeniu `start_import` w wątku (`GARMIN_IMPORT_ASYNC`): rok treningów + 30 dni zdrowia. `sync_all` = treningi (szczegóły z podsumowania, bez dodatkowych zapytań) → dodatki (okrążenia + trasa, `EXTRAS_PER_RUN` na raz, od najnowszych) → zdrowie (dziś i wczoraj, co najmniej co 2 h; forma tylko dla dzisiaj). Siłownia z zegarka w czasie sesji z Hevy dołącza do niej (`services/merge.py`, zapas 20 min). Nazwy pól Garmina są nieoficjalne – parsery są defensywne, a surowe dane zostają.
 
-Testy: `python manage.py test habits --settings=config.test_settings`.
+Hevy (`services/hevy.py`): API https://api.hevyapp.com/v1 (Hevy Pro, nagłówek `api-key`, `/workouts/events?since=`), `urllib`, flaga `HEVY_ENABLED`. Import CSV (kg albo lbs, kilka formatów dat, idempotentny). Usunięcie w Hevy: trening bez zegarka znika, połączony traci serie i `hevy_id`.
+
+Komendy (cron): `sync_garmin` (`--days`, `--health-days`, `--reparse`), `sync_hevy`, `garmin_login --user X` (logowanie w terminalu, awaryjnie).
+Testy: `python manage.py test habits --settings=config.test_settings` (Garmin i Hevy zawsze mockowane).
