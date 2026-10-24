@@ -866,6 +866,8 @@ Each household member connects their own accounts on **Połączenia**
 docker compose exec -T web python manage.py sync_garmin                  # workouts, laps/routes, health (cron)
 docker compose exec -T web python manage.py sync_garmin --health-days 30 # backfill health
 docker compose exec -T web python manage.py sync_hevy                    # Hevy changes (cron)
+docker compose exec -T web python manage.py sync_garmin --retry-routes --extras 60  # fetch missing GPS routes again
+docker compose exec -T web python manage.py sync_garmin --inspect-route --user dawid # what Garmin returns for a route
 docker compose exec -it web python manage.py garmin_login --user dawid   # fallback: log in from a terminal
 ```
 `GARMIN_ENABLED=0` / `HEVY_ENABLED=0` turn the integrations off (both are off in tests).

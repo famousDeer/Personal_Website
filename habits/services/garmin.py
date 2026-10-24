@@ -303,8 +303,7 @@ def parse_details(raw):
         details['poolLength'] = round(pool, 1)
     if raw.get('locationName'):
         details['location'] = str(raw['locationName'])[:80]
-    if raw.get('hasPolyline'):
-        details['hasRoute'] = True
+    # `hasRoute` dopisuje dopiero fetch_extras, gdy trasa naprawdę się pobrała.
     return details
 
 
@@ -412,43 +411,142 @@ def decode_polyline(text):
     return points
 
 
+def _coordinate_pair(lat, lng):
+    if isinstance(lat, (int, float)) and isinstance(lng, (int, float)) and (lat or lng) \
+            and -90 <= lat <= 90 and -180 <= lng <= 180:
+        return [lat, lng]
+    return None
+
+
 def parse_route(payload):
-    """Trasa z mapdetails (geoPolylineDTO.polyline) albo polyline (gPolyline),
-    przerzedzona do ROUTE_MAX_POINTS punktów."""
-    payload = payload or {}
+    """Trasa z dowolnej z odpowiedzi Garmina, przerzedzona do ROUTE_MAX_POINTS:
+    geoPolylineDTO.polyline (mapdetails, details), próbki directLatitude /
+    directLongitude (details) albo zakodowana polilinia (polyline)."""
+    if isinstance(payload, str):
+        payload = {'gPolyline': payload}
+    payload = payload if isinstance(payload, dict) else {}
     points = []
     for point in (payload.get('geoPolylineDTO') or {}).get('polyline') or []:
-        lat, lng = point.get('lat'), point.get('lon', point.get('lng'))
-        if isinstance(lat, (int, float)) and isinstance(lng, (int, float)) and (lat or lng):
-            points.append([lat, lng])
-    encoded = payload.get('gPolyline') or payload.get('polyline')
-    if not points and isinstance(encoded, str) and encoded:
-        try:
-            points = decode_polyline(encoded)
-        except (IndexError, ValueError):
-            points = []
+        if isinstance(point, dict):
+            pair = _coordinate_pair(point.get('lat', point.get('latitude')), point.get('lon', point.get('lng', point.get('longitude'))))
+            if pair:
+                points.append(pair)
+    if not points:
+        indexes = {
+            item.get('key'): item.get('metricsIndex')
+            for item in payload.get('metricDescriptors') or [] if isinstance(item, dict)
+        }
+        lat_index, lng_index = indexes.get('directLatitude'), indexes.get('directLongitude')
+        if isinstance(lat_index, int) and isinstance(lng_index, int):
+            for sample in payload.get('activityDetailMetrics') or []:
+                metrics = (sample or {}).get('metrics') or []
+                if max(lat_index, lng_index) < len(metrics):
+                    pair = _coordinate_pair(metrics[lat_index], metrics[lng_index])
+                    if pair:
+                        points.append(pair)
+    if not points:
+        encoded = next((payload.get(key) for key in ('gPolyline', 'encodedPolyline', 'polyline')
+                        if isinstance(payload.get(key), str) and payload.get(key)), None)
+        if encoded:
+            try:
+                points = [pair for pair in decode_polyline(encoded) if _coordinate_pair(*pair)]
+            except (IndexError, ValueError):
+                points = []
     if len(points) > ROUTE_MAX_POINTS:
         step = len(points) / ROUTE_MAX_POINTS
         points = [points[int(i * step)] for i in range(ROUTE_MAX_POINTS)] + [points[-1]]
     return [[round(lat, 5), round(lng, 5)] for lat, lng in points]
 
 
+# Rodzaje bez GPS: nie pytamy Garmina o trasę.
+INDOOR_HINTS = ('indoor', 'treadmill', 'virtual', 'lap_swimming', 'pool', 'elliptical', 'stair',
+                'strength', 'yoga', 'pilates', 'cardio', 'fitness_equipment', 'hiit', 'breathwork')
+
+
+def route_wanted(workout):
+    """Czy warto pytać o trasę. Podsumowanie Garmina bywa niepełne (brak
+    hasPolyline), więc przy braku informacji próbujemy dla treningów
+    z dystansem na zewnątrz."""
+    raw = workout.garmin_raw or {}
+    if raw.get('hasPolyline') or raw.get('startLatitude') or raw.get('hasMap'):
+        return True
+    if raw.get('hasPolyline') is False:
+        return False
+    type_key = (workout.garmin_type or '').lower()
+    return bool(workout.distance_m) and workout.kind != Workout.GYM and not any(hint in type_key for hint in INDOOR_HINTS)
+
+
+def route_sources(client, activity_id):
+    """Źródła trasy od najlżejszego; kolejne tylko, gdy poprzednie nic nie dało."""
+    return [
+        ('mapdetails', lambda: client.get_activity_map_details(activity_id, maxpoly=ROUTE_MAX_POINTS, max_heat_map=0)),
+        ('details', lambda: client.get_activity_details(activity_id, maxchart=ROUTE_MAX_POINTS, maxpoly=ROUTE_MAX_POINTS)),
+        ('polyline', lambda: client.get_activity_polyline(activity_id)),
+    ]
+
+
+def fetch_route(client, activity_id):
+    for name, call in route_sources(client, activity_id):
+        try:
+            points = parse_route(call())
+        except Exception as exc:
+            if exc.__class__.__name__ == 'GarminConnectTooManyRequestsError':
+                raise
+            logger.info('Garmin: trasa %s z %s niedostępna (%s)', activity_id, name, exc.__class__.__name__)
+            continue
+        if len(points) > 1:
+            return points
+    return []
+
+
 def fetch_extras(client, workout):
-    """Okrążenia i trasa jednego treningu (2 zapytania)."""
+    """Okrążenia i trasa jednego treningu (od 1 do 4 zapytań)."""
     details = dict(workout.details or {})
     if workout.kind != Workout.GYM:
         laps = parse_laps(client.get_activity_splits(workout.garmin_id))
         if len(laps) > 1:
             details['laps'] = laps
-    if details.get('hasRoute'):
-        points = parse_route(client.get_activity_map_details(workout.garmin_id, maxpoly=ROUTE_MAX_POINTS, max_heat_map=0))
-        if len(points) > 1:
+    if route_wanted(workout):
+        points = fetch_route(client, workout.garmin_id)
+        if points:
             WorkoutRoute.objects.update_or_create(workout=workout, defaults={'points': points})
+            details['hasRoute'] = True
         else:
             details.pop('hasRoute', None)
     workout.details = details
     workout.extras_synced = True
     workout.save(update_fields=['details', 'extras_synced', 'updated_at'])
+
+
+def retry_routes(user=None):
+    """Treningi na zewnątrz bez trasy wracają do kolejki dodatków (po poprawce
+    pobierania tras). Zwraca ich liczbę."""
+    workouts = Workout.objects.filter(garmin_id__isnull=False, is_deleted=False, extras_synced=True, route__isnull=True)
+    if user is not None:
+        workouts = workouts.filter(user=user)
+    pks = [workout.pk for workout in workouts if route_wanted(workout)]
+    Workout.objects.filter(pk__in=pks).update(extras_synced=False)
+    return len(pks)
+
+
+def inspect_route(client, workout):
+    """Diagnoza dla `sync_garmin --inspect-route`: co zwraca każde źródło trasy
+    (klucze i liczba punktów, bez współrzędnych)."""
+    raw = workout.garmin_raw or {}
+    lines = [
+        f'Trening {workout.date} {workout.get_kind_display()} (Garmin {workout.garmin_id}, {workout.garmin_type})',
+        f'  podsumowanie: hasPolyline={raw.get("hasPolyline")!r} startLatitude={"jest" if raw.get("startLatitude") else "brak"} '
+        f'-> szukamy trasy: {"tak" if route_wanted(workout) else "nie"}',
+    ]
+    for name, call in route_sources(client, workout.garmin_id):
+        try:
+            payload = call()
+        except Exception as exc:
+            lines.append(f'  {name}: błąd {exc.__class__.__name__}: {str(exc)[:150]}')
+            continue
+        keys = sorted(payload.keys())[:15] if isinstance(payload, dict) else type(payload).__name__
+        lines.append(f'  {name}: klucze {keys}, punktów trasy: {len(parse_route(payload))}')
+    return lines
 
 
 def sync_extras(client, user, limit=EXTRAS_PER_RUN):
@@ -586,8 +684,6 @@ def reparse(user=None):
             details['laps'] = workout.details['laps']
         if WorkoutRoute.objects.filter(workout=workout).exists():
             details['hasRoute'] = True
-        elif workout.extras_synced:
-            details.pop('hasRoute', None)
         if details != workout.details:
             workout.details = details
             workout.save(update_fields=['details'])

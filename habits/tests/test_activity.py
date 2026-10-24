@@ -201,7 +201,8 @@ def fake_garmin_client(**overrides):
     client = mock.Mock()
     client.get_activities_by_date.return_value = ACTIVITIES
     client.get_activity_exercise_sets.return_value = EXERCISE_SETS
-    for name in ('get_activity_splits', 'get_activity_map_details', 'get_user_summary', 'get_sleep_data',
+    for name in ('get_activity_splits', 'get_activity_map_details', 'get_activity_details', 'get_activity_polyline',
+                 'get_user_summary', 'get_sleep_data',
                  'get_hrv_data', 'get_training_status', 'get_max_metrics', 'get_race_predictions'):
         getattr(client, name).return_value = {}
     client.get_training_readiness.return_value = []

@@ -80,7 +80,7 @@ class GarminParsingTests(TestCase):
         self.assertEqual(details['trainingLoad'], 96)
         self.assertEqual(details['vo2max'], 51.0)
         self.assertEqual(details['hrZones'], [120, 600, 900, 700, 80])
-        self.assertTrue(details['hasRoute'])
+        self.assertNotIn('hasRoute', details)   # dopiero po pobraniu trasy
         self.assertEqual(details['location'], 'Kraków')
         swim = garmin.parse_details(SWIM_SUMMARY)
         self.assertEqual((swim['poolLength'], swim['lengths'], swim['swolf'], swim['strokes']), (25.0, 60, 41, 1100))
@@ -100,6 +100,14 @@ class GarminParsingTests(TestCase):
         # Przykład z dokumentacji algorytmu Google Encoded Polyline.
         self.assertEqual(garmin.parse_route({'gPolyline': '_p~iF~ps|U_ulLnnqC_mqNvxq`@'}),
                          [[38.5, -120.2], [40.7, -120.95], [43.252, -126.453]])
+        # Próbki z /details (kolejność kanałów z metricDescriptors) i sam napis polilinii.
+        details_payload = {
+            'metricDescriptors': [{'key': 'directLatitude', 'metricsIndex': 2}, {'key': 'directLongitude', 'metricsIndex': 0}],
+            'activityDetailMetrics': [{'metrics': [19.9, 0, 50.06]}, {'metrics': [19.91, 0, 50.07]}, {'metrics': [None, 0, None]}],
+        }
+        self.assertEqual(garmin.parse_route(details_payload), [[50.06, 19.9], [50.07, 19.91]])
+        self.assertEqual(len(garmin.parse_route('_p~iF~ps|U_ulLnnqC_mqNvxq`@')), 3)
+        self.assertEqual(garmin.parse_route({'geoPolylineDTO': {'polyline': [{'lat': 0, 'lon': 0}, {'lat': 91, 'lon': 10}]}}), [])
         long_route = garmin.parse_route({'geoPolylineDTO': {'polyline': [{'lat': 50 + i / 1e4, 'lon': 19.0} for i in range(2000)]}})
         self.assertLessEqual(len(long_route), garmin.ROUTE_MAX_POINTS + 1)
         self.assertEqual(long_route[-1], [50.1999, 19.0])
@@ -134,6 +142,43 @@ class GarminExtrasAndMergeTests(TestCase):
         self.assertEqual(run.details['maxHr'], 178)
         self.assertEqual(len(run.details['laps']), 2)
         self.assertTrue(run.details['hasRoute'])
+
+    def test_route_wanted(self):
+        outdoor = Workout(kind='run', distance_m=5000, garmin_type='running', garmin_raw={})
+        self.assertTrue(garmin.route_wanted(outdoor))   # brak informacji -> próbujemy
+        self.assertFalse(garmin.route_wanted(Workout(kind='run', distance_m=5000, garmin_type='treadmill_running', garmin_raw={})))
+        self.assertFalse(garmin.route_wanted(Workout(kind='swim', distance_m=1500, garmin_type='lap_swimming', garmin_raw={})))
+        self.assertTrue(garmin.route_wanted(Workout(kind='swim', distance_m=1500, garmin_type='open_water_swimming', garmin_raw={})))
+        self.assertFalse(garmin.route_wanted(Workout(kind='run', distance_m=5000, garmin_type='running', garmin_raw={'hasPolyline': False})))
+        self.assertTrue(garmin.route_wanted(Workout(kind='other', garmin_type='hiking', garmin_raw={'startLatitude': 50.0})))
+
+    def test_route_falls_back_to_other_sources(self):
+        geo = {'geoPolylineDTO': {'polyline': [{'lat': 50.0, 'lon': 19.0}, {'lat': 50.01, 'lon': 19.01}]}}
+        client = fake_garmin_client(get_activities_by_date=[dict(RUN_SUMMARY, hasPolyline=None)], get_activity_details=geo)
+        client.get_activity_map_details.side_effect = RuntimeError('404')
+        garmin.sync_all(self.user, client=client)
+        run = Workout.objects.get(garmin_id=201)
+        self.assertTrue(run.details['hasRoute'])
+        self.assertEqual(len(WorkoutRoute.objects.get(workout=run).points), 2)
+        client.get_activity_polyline.assert_not_called()
+
+    def test_retry_routes_and_inspect(self):
+        client = fake_garmin_client(get_activities_by_date=[RUN_SUMMARY], get_activity_polyline={})
+        garmin.sync_all(self.user, client=client)
+        run = Workout.objects.get(garmin_id=201)
+        self.assertTrue(run.extras_synced)
+        self.assertFalse(WorkoutRoute.objects.exists())
+        self.assertEqual(client.get_activity_polyline.call_count, 1)   # wszystkie trzy źródła sprawdzone
+        self.assertEqual(garmin.retry_routes(self.user), 1)
+        run.refresh_from_db()
+        self.assertFalse(run.extras_synced)
+        client.get_activity_map_details.return_value = {'gPolyline': '_p~iF~ps|U_ulLnnqC_mqNvxq`@'}
+        garmin.sync_all(self.user, client=client)
+        self.assertEqual(len(WorkoutRoute.objects.get(workout=run).points), 3)
+        lines = garmin.inspect_route(client, run)
+        self.assertIn('szukamy trasy: tak', lines[1])
+        self.assertIn('mapdetails: klucze', lines[2])
+        self.assertIn('punktów trasy: 3', lines[2])
 
     def test_extras_are_limited_per_run(self):
         for index in range(5):
@@ -315,6 +360,29 @@ class HevyTests(TestCase):
         self.assertEqual(Workout.objects.count(), 2)
         push.refresh_from_db()
         self.assertEqual(push.hevy_id, HEVY_WORKOUT['id'])
+
+    def test_csv_import_polish_dates_and_warmup_exercise(self):
+        csv_text = (
+            '"title","start_time","end_time","description","exercise_title","superset_id","exercise_notes","set_index","set_type","weight_kg","reps","distance_km","duration_seconds","rpe"\n'
+            '"Ramiona","19 paź 2026, 16:02","19 paź 2026, 16:49","","Rozgrzewka",,"",0,"normal",,,,120,\n'
+            '"Ramiona","19 paź 2026, 16:02","19 paź 2026, 16:49","","Uginanie ramion (hantle)",,"",0,"normal",7.5,10,,,\n'
+            '"Ramiona","19 paź 2026, 16:02","19 paź 2026, 16:49","","Wioślarz (maszyna)",,"",0,"normal",,,0.5,120,\n'
+            '"Brzuch","3 lut 2026, 22:01","3 lut 2026, 22:14","","Crunch",,"",0,"normal",,10,,,\n'
+            '"Arms","19 Aug 2026, 19:48","19 Aug 2026, 20:36","","Warm Up",,"",0,"normal",,,,106,\n'
+        )
+        self.assertEqual(hevy.import_csv(self.user, SimpleUploadedFile('w.csv', csv_text.encode('utf-8'))), (3, 0))
+        arms = Workout.objects.get(title='Ramiona')
+        self.assertEqual((arms.date, arms.start_time, arms.duration_s), (date(2026, 10, 19), time(16, 2), 2820))
+        self.assertEqual(list(arms.sets.values_list('exercise', 'set_type', 'weight_kg', 'duration_s')), [
+            ('Rozgrzewka', 'warmup', None, 120),
+            ('Uginanie ramion (hantle)', '', Decimal('7.50'), None),
+            ('Wioślarz (maszyna)', '', None, 120),
+        ])
+        self.assertEqual(Workout.objects.get(title='Brzuch').date, date(2026, 2, 3))
+        self.assertEqual(Workout.objects.get(title='Arms').sets.get().set_type, 'warmup')
+        bad = csv_text.splitlines()[0] + '\n"X","przedwczoraj","","","Crunch",,"",0,"normal",,10,,,\n'
+        with self.assertRaisesMessage(hevy.HevyError, 'Nie rozpoznaję daty'):
+            hevy.import_csv(self.user, SimpleUploadedFile('x.csv', bad.encode('utf-8')))
 
     def test_csv_import_lbs_and_bad_file(self):
         csv_text = (

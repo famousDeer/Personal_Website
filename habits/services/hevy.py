@@ -9,6 +9,7 @@ jednym treningiem (services/merge.py): serie z Hevy, czas i tętno z zegarka.
 """
 import csv
 import hashlib
+import re
 import io
 import json
 import logging
@@ -124,7 +125,7 @@ def parse_workout(data):
     for exercise in sorted(data.get('exercises') or [], key=lambda e: e.get('index') or 0):
         title = str(exercise.get('title') or '').strip()[:80] or 'Ćwiczenie'
         for item in sorted(exercise.get('sets') or [], key=lambda s: s.get('index') or 0):
-            set_type = str(item.get('type') or '').lower()
+            set_type = 'warmup' if title.lower() in WARMUP_EXERCISES else str(item.get('type') or '').lower()
             sets.append({
                 'exercise': title,
                 'reps': _int(item.get('reps')),
@@ -273,11 +274,32 @@ def start_import(user):
 
 
 # --- CSV ----------------------------------------------------------------------
-CSV_DATE_FORMATS = ['%d %b %Y, %H:%M', '%d %b %Y %H:%M', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%dT%H:%M:%S']
+CSV_DATE_FORMATS = ['%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%dT%H:%M:%S']
+# Hevy zapisuje daty w języku aplikacji: "19 paź 2026, 16:02" albo "19 Oct 2026, 16:02".
+# Własne skróty miesięcy zamiast %b - ten zależy od locale serwera.
+CSV_MONTHS = {
+    'sty': 1, 'lut': 2, 'mar': 3, 'kwi': 4, 'maj': 5, 'cze': 6,
+    'lip': 7, 'sie': 8, 'wrz': 9, 'paź': 10, 'paz': 10, 'lis': 11, 'gru': 12,
+    'jan': 1, 'feb': 2, 'apr': 4, 'may': 5, 'jun': 6, 'jul': 7, 'aug': 8,
+    'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
+}
+CSV_TEXT_DATE = re.compile(r'^(\d{1,2})\s+([^\W\d_]+)\.?\s+(\d{4}),?\s+(\d{1,2}):(\d{2})$')
+# Ćwiczenie „rozgrzewka” (np. rower przez 2 minuty) to rozgrzewka, choć Hevy
+# zapisuje je jako zwykłą serię.
+WARMUP_EXERCISES = {'rozgrzewka', 'warm up', 'warm-up', 'warmup'}
 
 
 def _csv_datetime(value):
     value = str(value or '').strip()
+    match = CSV_TEXT_DATE.match(value)
+    if match:
+        day, month_name, year, hour, minute = match.groups()
+        month = CSV_MONTHS.get(month_name.lower()[:3]) or CSV_MONTHS.get(month_name.lower())
+        if month:
+            try:
+                return datetime(int(year), month, int(day), int(hour), int(minute))
+            except ValueError:
+                return None
     for fmt in CSV_DATE_FORMATS:
         try:
             return datetime.strptime(value, fmt)
@@ -303,10 +325,12 @@ def import_csv(user, uploaded):
     weight_column, factor = ('weight_kg', None) if 'weight_kg' in columns else ('weight_lbs', LBS_TO_KG)
 
     workouts = {}
+    unreadable = None
     for row in reader:
         key = (row.get('title', ''), row.get('start_time', ''), row.get('end_time', ''))
         start = _csv_datetime(row.get('start_time'))
         if start is None:
+            unreadable = unreadable or row.get('start_time')
             continue
         workout = workouts.get(key)
         if workout is None:
@@ -321,14 +345,19 @@ def import_csv(user, uploaded):
                 'sets': [],
             }
         set_type = str(row.get('set_type') or '').lower()
+        exercise = str(row.get('exercise_title') or '').strip()[:80] or 'Ćwiczenie'
+        if exercise.lower() in WARMUP_EXERCISES:
+            set_type = 'warmup'
         workout['sets'].append({
-            'exercise': str(row.get('exercise_title') or '').strip()[:80] or 'Ćwiczenie',
+            'exercise': exercise,
             'reps': _int(row.get('reps')),
             'weight_kg': _decimal(row.get(weight_column), factor),
             'duration_s': _int(row.get('duration_seconds')),
             'set_type': set_type if set_type in SET_TYPES else '',
         })
     if not workouts:
+        if unreadable:
+            raise HevyError(f'Nie rozpoznaję daty w pliku („{unreadable[:40]}”). Wyślij ten plik – dopiszę ten format.')
         raise HevyError('W pliku nie ma żadnego treningu.')
 
     created = updated = 0
