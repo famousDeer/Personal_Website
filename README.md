@@ -866,6 +866,7 @@ Each household member connects their own accounts on **Połączenia**
 docker compose exec -T web python manage.py sync_garmin                  # workouts, laps/routes, health (cron)
 docker compose exec -T web python manage.py sync_garmin --health-days 30 # re-fetch a month of health now
 docker compose exec -T web python manage.py sync_garmin --health-report --user <login> # stored health days, no requests
+docker compose exec -T web python manage.py sync_garmin --health-raw 2026-10-22 --user <login> # what Garmin returned for a day
 docker compose exec -T web python manage.py sync_hevy                    # Hevy changes (cron)
 docker compose exec -T web python manage.py sync_garmin --retry-routes --extras 60  # fetch missing GPS routes again
 docker compose exec -T web python manage.py sync_garmin --inspect-route --user <login> # what Garmin returns for a route

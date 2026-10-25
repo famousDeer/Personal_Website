@@ -24,13 +24,15 @@ logger = logging.getLogger(__name__)
 DEFAULT_DAYS = 2
 INTERVAL = timedelta(hours=2)
 MAX_LIST = 30
-# Luki z ostatnich 30 dni (brak wiersza, brak podsumowania/snu albo błąd przy
-# pobieraniu) uzupełniamy po kilka dni na synchronizację, każdy dzień najwyżej
-# raz dziennie i najwyżej 3 razy - dzień bez zegarka na ręce nie wraca w kółko.
+# Luki z ostatnich 30 dni (brak wiersza, błąd przy pobieraniu albo odpowiedź
+# bez kroków i snu - Garmin odpowiada pustym podsumowaniem, dopóki zegarek nie
+# wyśle danych z tego dnia) uzupełniamy po kilka dni na synchronizację, każdy
+# dzień najwyżej raz dziennie i najwyżej 5 razy - dzień bez zegarka na ręce
+# nie wraca w kółko, a zaległe dane z zegarka zdążą dojść.
 BACKFILL_DAYS = 30
 GAP_DAYS_PER_RUN = 7
-MAX_ATTEMPTS = 3
-ESSENTIAL = ('summary', 'sleep')
+MAX_ATTEMPTS = 5
+ESSENTIAL_FIELDS = ('steps', 'sleep_s')
 
 
 def pause():
@@ -217,8 +219,31 @@ def _fetch(client, day, with_fitness, paced=False):
 
 
 def is_complete(raw):
+    """Dzień ma kroki i sen, bez błędów. Sama obecność odpowiedzi nie wystarcza:
+    dla dni, których zegarek jeszcze nie wysłał, Garmin zwraca puste pola."""
     raw = raw or {}
-    return all(raw.get(key) for key in ESSENTIAL) and not raw.get('_errors')
+    fields = fields_from_raw(raw)
+    return not raw.get('_errors') and all(fields.get(name) is not None for name in ESSENTIAL_FIELDS)
+
+
+def raw_day(user, day):
+    """Diagnoza `sync_garmin --health-raw DATA`: proste pola zapisanych odpowiedzi
+    (bez długich serii), żeby zobaczyć, czy Garmin miał dane z tego dnia."""
+    row = DailyHealth.objects.filter(user=user, date=day).first()
+    if row is None:
+        return [f'{day}: brak wiersza – ten dzień nie był jeszcze pobierany.']
+    lines = [f'{day}: sprawdzony {row.raw.get("_checked", "?")}, próby {row.raw.get("_attempts", "-")}, '
+             f'błędy {",".join(row.raw.get("_errors") or []) or "-"}']
+    for key in PARSERS:
+        value = (row.raw or {}).get(key)
+        if value is None:
+            continue
+        if isinstance(value, dict) and len(value) == 1 and isinstance(next(iter(value.values())), dict):
+            value = next(iter(value.values()))   # dailySleepDTO, hrvSummary
+        items = value.items() if isinstance(value, dict) else enumerate(value if isinstance(value, list) else [value])
+        simple = [f'{name}={item!r}' for name, item in items if not isinstance(item, (dict, list))]
+        lines.append(f'  {key}: ' + (', '.join(simple[:40]) or '(brak prostych pól)'))
+    return lines
 
 
 def save_day(user, day, raw, errors=(), today=None):

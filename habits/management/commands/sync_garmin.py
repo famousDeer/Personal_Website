@@ -10,10 +10,13 @@ Uruchamiane z crona na Pi, np. co godzinę:
     docker compose exec -T web python manage.py sync_garmin --retry-routes --extras 50   # trasy jeszcze raz
     docker compose exec -T web python manage.py sync_garmin --inspect-route --user <login>  # diagnoza tras
     docker compose exec -T web python manage.py sync_garmin --health-report --user <login>  # zapisane dni zdrowia
+    docker compose exec -T web python manage.py sync_garmin --health-raw 2026-10-22 --user <login>  # co przyszło z Garmina
 
 Luki w danych zdrowotnych z ostatnich 30 dni uzupełniają się same, po kilka
 dni na przebieg; --health-days 30 pobiera cały miesiąc od razu.
 """
+from datetime import date
+
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
@@ -35,6 +38,8 @@ class Command(BaseCommand):
         parser.add_argument('--retry-routes', action='store_true', help='Ponów pobranie tras dla treningów na zewnątrz bez trasy.')
         parser.add_argument('--inspect-route', action='store_true', help='Pokaż, co Garmin zwraca o trasie ostatniego treningu na zewnątrz.')
         parser.add_argument('--health-report', action='store_true', help='Pokaż zapisane dni zdrowia z 30 dni (bez pobierania).')
+        parser.add_argument('--health-raw', type=date.fromisoformat, metavar='RRRR-MM-DD',
+                            help='Pokaż, co Garmin zwrócił dla tego dnia (zapisane odpowiedzi, bez pobierania).')
 
     def people(self, user):
         """Osoby do obsłużenia. Nieznany login to błąd z listą loginów - wcześniej
@@ -52,8 +57,15 @@ class Command(BaseCommand):
         return f'{person}: konto Garmin nie jest połączone (brak tokenów w {garmin.token_dir(person)}).'
 
     def handle(self, *args, user=None, days=None, health_days=None, reparse=False, extras=None,
-               retry_routes=False, inspect_route=False, health_report=False, **options):
+               retry_routes=False, inspect_route=False, health_report=False, health_raw=None, **options):
         people = self.people(user)
+        if health_raw:
+            for person in people:
+                if DailyHealth.objects.filter(user=person).exists():
+                    self.stdout.write(f'== {person}')
+                    for line in garmin_health.raw_day(person, health_raw):
+                        self.stdout.write(line)
+            return
         if health_report:
             shown = 0
             for person in people:

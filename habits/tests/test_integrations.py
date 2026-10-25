@@ -307,6 +307,30 @@ class GarminHealthTests(TestCase):
         gap.refresh_from_db()
         self.assertEqual((gap.steps, gap.raw['_errors'], gap.raw['_attempts']), (11234, [], 0))
 
+    def test_empty_garmin_answer_is_retried_next_day(self):
+        # Jak 19–24 paź na Pi: Garmin odpowiedział, ale bez kroków i snu (zegarek
+        # jeszcze nie wysłał danych). Taki dzień nie może liczyć się jako gotowy.
+        self.fill_month(skip=(5,))
+        today = timezone.localdate()
+        day = today - timedelta(days=5)
+        empty = {'summary': {'totalSteps': None, 'includesWellnessData': False}, 'sleep': {'dailySleepDTO': {'sleepTimeSeconds': None}}}
+        garmin_health.save_day(self.user, day, empty, today=today)
+        row = DailyHealth.objects.get(user=self.user, date=day)
+        self.assertFalse(garmin_health.is_complete(row.raw))
+        self.assertEqual(row.raw['_attempts'], 1)
+        self.assertEqual(garmin_health.gap_days(self.user, today), [])   # dziś już sprawdzony
+        tomorrow = today + timedelta(days=1)
+        self.assertEqual(garmin_health.gap_days(self.user, tomorrow), [day])
+        with mock.patch.object(garmin_health.timezone, 'localdate', return_value=tomorrow):
+            garmin_health.sync_health(self.user, self.health_client(), force=True)
+        row.refresh_from_db()
+        self.assertEqual((row.steps, row.raw['_attempts']), (11234, 0))
+
+        lines = garmin_health.raw_day(self.user, today - timedelta(days=1))
+        self.assertIn('totalSteps=11234', ' '.join(lines))
+        self.assertIn('sleepTimeSeconds=26400', ' '.join(lines))
+        self.assertIn('brak wiersza', garmin_health.raw_day(self.user, today - timedelta(days=90))[0])
+
     def test_gap_retries_are_limited(self):
         self.fill_month(skip=(5,))
         today = timezone.localdate()
@@ -634,6 +658,13 @@ class CommandOutputTests(TestCase):
         self.assertIn('z danymi 4', output)
         expected = garmin_health._ranges([today - timedelta(days=d) for d in (3, 4, 5)])
         self.assertIn(expected, output)
+
+    def test_health_raw_command(self):
+        DailyHealth.objects.create(user=self.user, date=date(2026, 10, 22),
+                                   raw={'summary': {'totalSteps': None, 'includesWellnessData': False}, '_checked': '2026-10-25'})
+        output = self.run_command('--health-raw', '2026-10-22', '--user', 'Dawid_T')
+        self.assertIn('includesWellnessData=False', output)
+        self.assertIn('totalSteps=None', output)
 
     def test_ranges(self):
         self.assertEqual(garmin_health._ranges([date(2026, 10, 18), date(2026, 10, 19), date(2026, 10, 20), date(2026, 10, 24)]),
