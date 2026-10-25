@@ -7,7 +7,10 @@ from pathlib import Path
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from io import StringIO
+
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management import CommandError, call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -578,3 +581,61 @@ class ConnectionsViewTests(TestCase):
         other = User.objects.create_user('ania', password='x')
         self.client.force_login(other)
         self.assertEqual(self.client.get(reverse('habits:api-route', args=[workout.uid])).status_code, 404)
+
+
+@override_settings(GARMIN_ENABLED=True, HEVY_ENABLED=True)
+class CommandOutputTests(TestCase):
+    """Komendy mówią, co zrobiły - wcześniej zły --user kończył się ciszą."""
+
+    def setUp(self):
+        self.user = User.objects.create_user('Dawid_T', password='x')
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        override = override_settings(GARMIN_TOKEN_DIR=self.tmp.name)
+        override.enable()
+        self.addCleanup(override.disable)
+
+    def run_command(self, *args, name='sync_garmin'):
+        out = StringIO()
+        call_command(name, *args, stdout=out, stderr=out)
+        return out.getvalue()
+
+    def connect(self):
+        Path(self.tmp.name, str(self.user.pk)).mkdir()
+        Path(self.tmp.name, str(self.user.pk), 'garmin_tokens.json').write_text('{}')
+
+    def test_unknown_user_lists_logins(self):
+        with self.assertRaisesMessage(CommandError, 'Loginy na stronie: Dawid_T'):
+            self.run_command('--health-report', '--user', 'dawid')
+        with self.assertRaisesMessage(CommandError, 'Nie ma użytkownika'):
+            self.run_command('--user', 'ania', name='sync_hevy')
+
+    def test_login_is_case_insensitive_and_not_connected_is_reported(self):
+        output = self.run_command('--user', 'dawid_t')
+        self.assertIn('nie jest połączone', output)
+        self.assertIn(str(Path(self.tmp.name, str(self.user.pk))), output)
+        self.assertIn('Nikt nie ma połączonego Garmina', self.run_command())
+        self.assertIn('Nikt (z wybranych) nie ma klucza API Hevy', self.run_command(name='sync_hevy'))
+
+    def test_health_report_without_connection(self):
+        DailyHealth.objects.create(user=self.user, date=timezone.localdate(), steps=1234, raw={'summary': {'totalSteps': 1234}})
+        output = self.run_command('--health-report', '--user', 'Dawid_T')
+        self.assertIn('NIE jest połączony', output)
+        self.assertIn('1234', output)
+
+    def test_sync_prints_health_coverage(self):
+        self.connect()
+        today = timezone.localdate()
+        for offset in (0, 1, 2, 6):
+            DailyHealth.objects.create(user=self.user, date=today - timedelta(days=offset), steps=1000)
+        with mock.patch.object(garmin, 'sync_all', return_value=2):
+            output = self.run_command('--user', 'Dawid_T')
+        self.assertIn('nowych treningów 2', output)
+        self.assertIn('z danymi 4', output)
+        expected = garmin_health._ranges([today - timedelta(days=d) for d in (3, 4, 5)])
+        self.assertIn(expected, output)
+
+    def test_ranges(self):
+        self.assertEqual(garmin_health._ranges([date(2026, 10, 18), date(2026, 10, 19), date(2026, 10, 20), date(2026, 10, 24)]),
+                         '18–20 paź, 24 paź')
+

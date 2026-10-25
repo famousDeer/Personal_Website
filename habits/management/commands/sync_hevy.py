@@ -5,7 +5,8 @@ Uruchamiane z crona, np. co godzinę o nieokrągłej minucie (prośba Hevy):
     docker compose exec -T web python manage.py sync_hevy
 """
 from django.conf import settings
-from django.core.management.base import BaseCommand
+from django.contrib.auth import get_user_model
+from django.core.management.base import BaseCommand, CommandError
 
 from habits.models import ActivitySettings
 from habits.services import hevy
@@ -23,7 +24,15 @@ class Command(BaseCommand):
             return
         rows = ActivitySettings.objects.exclude(hevy_api_key='').select_related('user').filter(user__is_active=True)
         if user:
-            rows = rows.filter(user__username=user)
+            users = get_user_model().objects.filter(is_active=True)
+            person = users.filter(username=user).first() or users.filter(username__iexact=user).first()
+            if person is None:
+                names = ', '.join(users.order_by('username').values_list('username', flat=True)) or '(brak)'
+                raise CommandError(f'Nie ma użytkownika „{user}”. Loginy na stronie: {names}.')
+            rows = rows.filter(user=person)
+        if not rows:
+            self.stdout.write(self.style.WARNING('Nikt (z wybranych) nie ma klucza API Hevy – wklej go na stronie Aktywność → Połączenia.'))
+            return
         for row in rows:
             try:
                 added = hevy.sync_user(row.user)

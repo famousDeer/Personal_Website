@@ -865,11 +865,11 @@ Each household member connects their own accounts on **Połączenia**
 ```bash
 docker compose exec -T web python manage.py sync_garmin                  # workouts, laps/routes, health (cron)
 docker compose exec -T web python manage.py sync_garmin --health-days 30 # re-fetch a month of health now
-docker compose exec -T web python manage.py sync_garmin --health-report --user dawid # stored health days, no requests
+docker compose exec -T web python manage.py sync_garmin --health-report --user <login> # stored health days, no requests
 docker compose exec -T web python manage.py sync_hevy                    # Hevy changes (cron)
 docker compose exec -T web python manage.py sync_garmin --retry-routes --extras 60  # fetch missing GPS routes again
-docker compose exec -T web python manage.py sync_garmin --inspect-route --user dawid # what Garmin returns for a route
-docker compose exec -it web python manage.py garmin_login --user dawid   # fallback: log in from a terminal
+docker compose exec -T web python manage.py sync_garmin --inspect-route --user <login> # what Garmin returns for a route
+docker compose exec -it web python manage.py garmin_login --user <login>   # fallback: log in from a terminal
 ```
 `GARMIN_ENABLED=0` / `HEVY_ENABLED=0` turn the integrations off (both are off in tests).
 
@@ -879,7 +879,7 @@ management commands, so they do not have to run inside a web request:
 ```bash
 # Current prices of open positions
 python manage.py refresh_market_data
-python manage.py refresh_market_data --user dawid       # selected users only
+python manage.py refresh_market_data --user <login>       # selected users only
 python manage.py refresh_market_data --dividends        # also sync dividends (uses Alpha Vantage quota)
 
 # Incremental daily OHLC history (also the GEM panel funds)

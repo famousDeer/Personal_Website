@@ -283,6 +283,45 @@ def sync_health(user, client, days=None, force=False, fill_gaps=True):
     return count
 
 
+def _ranges(days):
+    """Kolejne dni zwinięte w zakres: '18–20 paź, 24 paź', '29 wrz–2 paź'."""
+    months = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru']
+    label = lambda day: f'{day.day} {months[day.month - 1]}'
+    groups = []
+    for day in sorted(days):
+        if groups and day - groups[-1][1] == timedelta(days=1):
+            groups[-1][1] = day
+        else:
+            groups.append([day, day])
+    def span(a, b):
+        if a == b:
+            return label(a)
+        return f'{a.day}–{label(b)}' if a.month == b.month else f'{label(a)}–{label(b)}'
+
+    return ', '.join(span(a, b) for a, b in groups)
+
+
+def coverage(user, days=BACKFILL_DAYS):
+    """Jedno zdanie o danych zdrowotnych z ostatnich `days` dni (wynik komendy)."""
+    today = timezone.localdate()
+    rows = {row.date: row for row in DailyHealth.objects.filter(user=user, date__gte=today - timedelta(days=days - 1))}
+    with_data, failed, empty = 0, 0, []
+    for offset in range(days):
+        day = today - timedelta(days=offset)
+        row = rows.get(day)
+        if row is not None and (row.steps is not None or row.sleep_s):
+            with_data += 1
+            failed += bool((row.raw or {}).get('_errors'))
+        else:
+            empty.append(day)
+    text = f'zdrowie z {days} dni: z danymi {with_data}'
+    if failed:
+        text += f', z błędami {failed}'
+    if empty:
+        text += f', bez danych: {_ranges(empty)}'
+    return text
+
+
 def report(user, days=BACKFILL_DAYS):
     """Stan zapisanych dni do `sync_garmin --health-report` (bez sieci)."""
     today = timezone.localdate()

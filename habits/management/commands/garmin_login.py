@@ -2,7 +2,7 @@
 
 Interaktywnie (potrzebny terminal, flaga -it):
 
-    docker compose exec -it web python manage.py garmin_login --user dawid
+    docker compose exec -it web python manage.py garmin_login --user <login>
 
 Pyta o e-mail, hasło i - przy włączonym 2FA - kod z SMS/aplikacji. Hasło nie
 jest zapisywane; na dysku (GARMIN_TOKEN_DIR/<id osoby>/) zostają tylko tokeny,
