@@ -166,3 +166,26 @@ class ActivityStatsJsTests(SimpleTestCase):
         self.assertEqual(self.run_js('S.formatSleep(26400)'), '7 h 20 min')
         self.assertEqual(self.run_js('S.formatRaceTime(6610)'), '1:50:10')
 
+
+    def test_filter_workouts(self):
+        workouts = [
+            w('2026-10-20', 'swim', title='Basen Zakrzówek', distance=1500),
+            w('2026-10-18', 'gym', title='Push', sets=[['Wyciskanie na ławce (sztanga)', 5, 80]]),
+            w('2026-09-01', 'run', title='Parkrun', notes='Ciężkie nogi', details={'location': 'Kraków'}),
+            w('2025-12-30', 'run', title='Sylwestrowy bieg'),
+        ]
+        uids = lambda expression: [item['uid'] for item in self.run_js(expression, workouts)]
+        today = '"2026-10-25"'
+        self.assertEqual(len(self.run_js(f'S.filterWorkouts(list, {{}}, {today})', workouts)), 4)
+        self.assertEqual(uids(f'S.filterWorkouts(list, {{kind: "run"}}, {today})'), ['run-2026-09-01', 'run-2025-12-30'])
+        # Bez polskich znaków i wielkości liter, wszystkie słowa w dowolnych polach.
+        self.assertEqual(uids(f'S.filterWorkouts(list, {{query: "PLYW"}}, {today})'), ['swim-2026-10-20'])
+        self.assertEqual(uids(f'S.filterWorkouts(list, {{query: "lawce"}}, {today})'), ['gym-2026-10-18'])
+        self.assertEqual(uids(f'S.filterWorkouts(list, {{query: "krakow ciezkie"}}, {today})'), ['run-2026-09-01'])
+        self.assertEqual(uids(f'S.filterWorkouts(list, {{query: "krakow basen"}}, {today})'), [])
+        self.assertEqual(uids(f'S.filterWorkouts(list, {{period: "30"}}, {today})'), ['swim-2026-10-20', 'gym-2026-10-18'])
+        self.assertEqual(len(self.run_js(f'S.filterWorkouts(list, {{period: "year"}}, {today})', workouts)), 3)
+        self.assertEqual(len(self.run_js(f'S.filterWorkouts(list, {{period: "365"}}, {today})', workouts)), 4)
+        # Liczby na chipach uwzględniają pozostałe filtry, ale nie dyscyplinę.
+        self.assertEqual(self.run_js(f'S.kindCounts(list, {{kind: "swim", period: "year"}}, {today})', workouts),
+                         {'all': 3, 'swim': 1, 'run': 1, 'gym': 1, 'other': 0})

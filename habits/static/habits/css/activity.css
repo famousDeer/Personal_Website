@@ -519,3 +519,15 @@
 .act-set-no { min-width: 1.4rem; color: var(--ink-3); font-weight: 600; }
 .act-set-type { font-size: var(--fs-caption); color: var(--ink-3); }
 .act-notes { white-space: pre-line; margin: 0; }
+
+/* --- Filtry listy treningów ---------------------------------------------------- */
+.act-filters { display: grid; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+.act-filters .act-tabs { justify-self: start; max-width: 100%; }
+.act-filters .act-tabs button { display: inline-flex; align-items: center; gap: 0.35rem; }
+.act-filters .act-tabs button:disabled { opacity: 0.45; }
+.act-filter-count { font-weight: 500; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.act-filter-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-2); }
+
+@media (max-width: 575.98px) {
+    .act-filter-row { grid-template-columns: minmax(0, 1fr); }
+}

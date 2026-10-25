@@ -613,7 +613,58 @@
         return formatPace(kind, kind === 'swim' ? lap.t / (lap.d / 100) : lap.t / (lap.d / 1000));
     }
 
+    // --- Filtrowanie listy treningów -----------------------------------------------
+    var PERIOD_DAYS = { '30': 30, '90': 90, '365': 365 };
+
+    /** Małe litery bez polskich znaków: „pływ” znajdzie „Pływanie”, „plyw” też. */
+    function normalize(text) {
+        return String(text || '').toLowerCase()
+            .replace(/ą/g, 'a').replace(/ć/g, 'c').replace(/ę/g, 'e').replace(/ł/g, 'l')
+            .replace(/ń/g, 'n').replace(/ó/g, 'o').replace(/ś/g, 's').replace(/[źż]/g, 'z');
+    }
+
+    function searchText(workout) {
+        return normalize([
+            workout.title, workout.notes, KIND_LABELS[workout.kind],
+            (workout.details || {}).location
+        ].concat(exercisesOf(workout)).join(' '));
+    }
+
+    /**
+     * Treningi spełniające filtr { kind: 'all'|'swim'|..., query, period: 'all'|'30'|'90'|'365'|'year' }.
+     * Szukane słowa muszą wystąpić wszystkie (w nazwie, notatce, rodzaju, miejscu
+     * albo ćwiczeniach), w dowolnej kolejności.
+     */
+    function filterWorkouts(workouts, filter, today) {
+        filter = filter || {};
+        var words = normalize(filter.query).split(/\s+/).filter(Boolean);
+        var since = null;
+        if (PERIOD_DAYS[filter.period]) {
+            since = isoFromDay(dayNumber(today) - PERIOD_DAYS[filter.period] + 1);
+        } else if (filter.period === 'year') {
+            since = today.slice(0, 4) + '-01-01';
+        }
+        return workouts.filter(function (w) {
+            if (filter.kind && filter.kind !== 'all' && w.kind !== filter.kind) { return false; }
+            if (since && w.date < since) { return false; }
+            if (!words.length) { return true; }
+            var text = searchText(w);
+            return words.every(function (word) { return text.indexOf(word) !== -1; });
+        });
+    }
+
+    /** Liczba treningów każdej dyscypliny po pozostałych filtrach (do chipów). */
+    function kindCounts(workouts, filter, today) {
+        var base = filterWorkouts(workouts, Object.assign({}, filter, { kind: 'all' }), today);
+        var counts = { all: base.length, swim: 0, run: 0, gym: 0, other: 0 };
+        base.forEach(function (w) { counts[w.kind] = (counts[w.kind] || 0) + 1; });
+        return counts;
+    }
+
     return {
+        normalize: normalize,
+        filterWorkouts: filterWorkouts,
+        kindCounts: kindCounts,
         TRAINING_STATUS: TRAINING_STATUS,
         READINESS_LEVELS: READINESS_LEVELS,
         HRV_STATUS: HRV_STATUS,

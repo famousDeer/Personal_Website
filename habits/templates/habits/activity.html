@@ -153,7 +153,25 @@ Wszystko, co zależy od danych, rysuje static/habits/js/activity-app.js.
     <section class="u-card u-card-pad mb-4" aria-labelledby="act-list-title">
         <div class="u-section-head">
             <h2 class="u-section-title" id="act-list-title">Treningi</h2>
-            <span class="text-secondary small" data-act-list-count></span>
+            <span class="text-secondary small">
+                <span data-act-list-count></span>
+                <button type="button" class="btn btn-link btn-sm p-0 ms-2 align-baseline" data-act-filter-clear hidden>Wyczyść filtry</button>
+            </span>
+        </div>
+        {# Filtry listy - liczone w przeglądarce (działają offline), zapamiętane w telefonie #}
+        <div class="act-filters">
+            <div class="act-tabs act-tabs-wrap" role="group" aria-label="Dyscyplina" data-act-filter-kind></div>
+            <div class="act-filter-row">
+                <input type="search" class="form-control form-control-sm" data-act-filter-query
+                       placeholder="Szukaj: nazwa, ćwiczenie, notatka, miejsce" aria-label="Szukaj treningów" autocomplete="off">
+                <select class="form-select form-select-sm" data-act-filter-period aria-label="Okres">
+                    <option value="all">Cały okres</option>
+                    <option value="30">Ostatnie 30 dni</option>
+                    <option value="90">Ostatnie 3 miesiące</option>
+                    <option value="year">Ten rok</option>
+                    <option value="365">Ostatnie 12 miesięcy</option>
+                </select>
+            </div>
         </div>
         <ul class="act-list" data-act-list></ul>
         <button type="button" class="btn btn-link px-0" data-act-more hidden>Pokaż starsze</button>

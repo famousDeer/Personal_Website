@@ -119,7 +119,8 @@
         errors: [],
         tab: null,
         exercise: null,
-        listLimit: 15
+        listLimit: 15,
+        filter: null
     };
 
     function persist() {
@@ -751,13 +752,70 @@
         return uids;
     }
 
-    function renderList(list) {
+    // --- Filtry listy -------------------------------------------------------------
+    var FILTER_KEY = 'aktywnosc-filtr';
+    var FILTER_KINDS = [['all', 'Wszystkie'], ['swim', 'Pływanie'], ['run', 'Bieganie'], ['gym', 'Siłownia'], ['other', 'Inne']];
+
+    function defaultFilter() {
+        return { kind: 'all', query: '', period: 'all' };
+    }
+
+    function loadFilter() {
+        try {
+            var saved = JSON.parse(localStorage.getItem(FILTER_KEY) || 'null');
+            if (saved && typeof saved === 'object') { return Object.assign(defaultFilter(), saved); }
+        } catch (e) { /* tryb prywatny albo zepsuty zapis */ }
+        return defaultFilter();
+    }
+
+    function setFilter(changes) {
+        state.filter = Object.assign({}, state.filter, changes);
+        state.listLimit = 15;
+        try { localStorage.setItem(FILTER_KEY, JSON.stringify(state.filter)); } catch (e) { /* tryb prywatny */ }
+        renderList(workouts());
+    }
+
+    function filterActive() {
+        var f = state.filter;
+        return f.kind !== 'all' || Boolean(f.query.trim()) || f.period !== 'all';
+    }
+
+    function renderFilters(list, today) {
+        // Strona zapisana przed dodaniem filtrów (stara kopia z service workera)
+        // nie ma paska - lista działa wtedy bez filtrów, zamiast przerwać skrypt.
+        if (!$('[data-act-filter-kind]')) { return; }
+        var counts = S.kindCounts(list, state.filter, today);
+        $('[data-act-filter-kind]').innerHTML = FILTER_KINDS.map(function (item) {
+            var active = state.filter.kind === item[0];
+            var dot = item[0] === 'all' ? '' : '<span class="act-day-dot act-k-' + item[0] + '"></span>';
+            return '<button type="button" data-kind="' + item[0] + '" class="' + (active ? 'is-active' : '') +
+                '" aria-pressed="' + active + '"' + (counts[item[0]] || active ? '' : ' disabled') + '>' + dot +
+                esc(item[1]) + ' <span class="act-filter-count">' + (counts[item[0]] || 0) + '</span></button>';
+        }).join('');
+        var query = $('[data-act-filter-query]');
+        if (document.activeElement !== query) { query.value = state.filter.query; }
+        $('[data-act-filter-period]').value = state.filter.period;
+        $('[data-act-filter-clear]').hidden = !filterActive();
+    }
+
+    function renderList(all) {
         var container = $('[data-act-list]');
-        var records = recordUids(list);
-        $('[data-act-list-count]').textContent = list.length + ' ' + S.plural(list.length, 'trening', 'treningi', 'treningów');
-        if (!list.length) {
+        var today = S.todayIso();
+        var records = recordUids(all);
+        var list = $('[data-act-filter-kind]') ? S.filterWorkouts(all, state.filter, today) : all;
+        renderFilters(all, today);
+        $('[data-act-list-count]').textContent = filterActive()
+            ? list.length + ' z ' + all.length + ' ' + S.plural(all.length, 'treningu', 'treningów', 'treningów')
+            : all.length + ' ' + S.plural(all.length, 'trening', 'treningi', 'treningów');
+        if (!all.length) {
             container.innerHTML = '<li class="act-empty">Jeszcze nic tu nie ma. Dodaj pierwszy trening albo ' +
                 '<a href="' + esc(config.connectionsUrl) + '">połącz Garmina lub Hevy</a>.</li>';
+            $('[data-act-more]').hidden = true;
+            return;
+        }
+        if (!list.length) {
+            container.innerHTML = '<li class="act-empty">Brak treningów dla tych filtrów. ' +
+                '<button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-act-filter-clear-inline>Wyczyść filtry</button></li>';
             $('[data-act-more]').hidden = true;
             return;
         }
@@ -1001,6 +1059,25 @@
                 openForm(workout);
             }
         });
+        if ($('[data-act-filter-kind]')) {
+            $('[data-act-filter-kind]').addEventListener('click', function (event) {
+                var button = event.target.closest('[data-kind]');
+                if (button) { setFilter({ kind: button.getAttribute('data-kind') }); }
+            });
+            var queryTimer = null;
+            $('[data-act-filter-query]').addEventListener('input', function (event) {
+                clearTimeout(queryTimer);
+                queryTimer = setTimeout(function () { setFilter({ query: event.target.value }); }, 150);
+            });
+            $('[data-act-filter-period]').addEventListener('change', function (event) {
+                setFilter({ period: event.target.value });
+            });
+        }
+        document.addEventListener('click', function (event) {
+            if (event.target.closest('[data-act-filter-clear], [data-act-filter-clear-inline]')) {
+                setFilter(defaultFilter());
+            }
+        });
         $('[data-act-more]').addEventListener('click', function () {
             state.listLimit += 30;
             renderList(workouts());
@@ -1109,6 +1186,7 @@
             });
     }
 
+    state.filter = loadFilter();
     bindEvents();
     registerServiceWorker();
     store.get(STORE_KEY).then(function (saved) {
