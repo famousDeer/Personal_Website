@@ -864,7 +864,8 @@ Each household member connects their own accounts on **Połączenia**
 
 ```bash
 docker compose exec -T web python manage.py sync_garmin                  # workouts, laps/routes, health (cron)
-docker compose exec -T web python manage.py sync_garmin --health-days 30 # backfill health
+docker compose exec -T web python manage.py sync_garmin --health-days 30 # re-fetch a month of health now
+docker compose exec -T web python manage.py sync_garmin --health-report --user dawid # stored health days, no requests
 docker compose exec -T web python manage.py sync_hevy                    # Hevy changes (cron)
 docker compose exec -T web python manage.py sync_garmin --retry-routes --extras 60  # fetch missing GPS routes again
 docker compose exec -T web python manage.py sync_garmin --inspect-route --user dawid # what Garmin returns for a route
@@ -1141,6 +1142,7 @@ Pantry product catalog:
 - GARMIN_ENABLED: optional, defaults to `1`; `0` turns off Garmin Connect sync
 - GARMIN_TOKEN_DIR: optional, where Garmin login tokens are stored; defaults to `private_media/garmin`
 - GARMIN_IMPORT_ASYNC: optional, defaults to `1`; history import after connecting runs in a background thread
+- GARMIN_REQUEST_PAUSE: optional, seconds between Garmin requests in bulk fetches (import, filling gaps); defaults to `1`
 - HEVY_ENABLED: optional, defaults to `1`; `0` turns off the Hevy API sync
 - HEVY_TIMEOUT: optional, seconds per Hevy API request; defaults to `15`
 - OPEN_FOOD_FACTS_USER_AGENT: identifies this installation to Open Food Facts; use `AppName/Version (contact URL or email)`

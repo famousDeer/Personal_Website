@@ -243,24 +243,86 @@ class GarminHealthTests(TestCase):
         self.assertEqual(fields['vo2max'], Decimal('50.8'))   # max metrics przed statusem
         self.assertEqual((fields['race_5k_s'], fields['race_half_s']), (1395, 6610))
 
-    def test_sync_health_saves_days_and_throttles(self):
-        client = fake_garmin_client(
+    def health_client(self, **overrides):
+        values = dict(
             get_user_summary=self.RAW['summary'],
             get_sleep_data={**self.RAW['sleep'], 'sleepMovement': list(range(500))},
             get_hrv_data=self.RAW['hrv'],
             get_training_readiness=self.RAW['readiness'],
             get_training_status=self.RAW['status'],
         )
+        values.update(overrides)
+        return fake_garmin_client(**values)
+
+    def fill_month(self, skip=()):
+        """Kompletne dni z ostatnich 30 poza `skip` (przesunięcia od dziś)."""
+        today = timezone.localdate()
+        for offset in range(garmin_health.BACKFILL_DAYS):
+            if offset not in skip:
+                garmin_health.save_day(self.user, today - timedelta(days=offset),
+                                       {'summary': self.RAW['summary'], 'sleep': self.RAW['sleep']}, today=today)
+
+    def test_sync_health_saves_days_and_throttles(self):
+        self.fill_month(skip=(0, 1))
+        client = self.health_client()
         client.get_max_metrics.side_effect = RuntimeError('brak')
-        self.assertEqual(garmin_health.sync_health(self.user, client), 2)
+        with self.assertLogs('habits.services.garmin_health', 'WARNING') as logs:
+            self.assertEqual(garmin_health.sync_health(self.user, client), 2)
+        self.assertIn('maxMetrics za', logs.output[0])   # błąd widoczny w logach
         today = DailyHealth.objects.get(user=self.user, date=timezone.localdate())
         self.assertEqual((today.steps, today.sleep_score, today.vo2max), (11234, 81, Decimal('50.6')))
         self.assertNotIn('sleepMovement', today.raw['sleep'])   # długie serie przycięte
+        self.assertEqual(today.raw['_errors'], ['maxMetrics'])
         yesterday = DailyHealth.objects.get(user=self.user, date=timezone.localdate() - timedelta(days=1))
         self.assertIsNone(yesterday.vo2max)   # forma tylko dla dzisiaj
         self.assertEqual(client.get_training_status.call_count, 1)
         self.assertEqual(garmin_health.sync_health(self.user, client), 0)   # za wcześnie
+        client.get_max_metrics.side_effect = None
         self.assertEqual(garmin_health.sync_health(self.user, client, force=True), 2)
+
+    def test_missing_and_failed_days_are_filled_later(self):
+        # Tydzień bez danych, jak po chwilowej blokadzie Garmina przy imporcie.
+        self.fill_month(skip=(0, 1, 7, 8, 9, 10, 11, 12, 13))
+        today = timezone.localdate()
+        failing = self.health_client()
+        failing.get_user_summary.side_effect = RuntimeError('403 Cloudflare')
+        with self.assertLogs('habits.services.garmin_health', 'WARNING'), \
+                mock.patch.object(garmin_health, 'pause') as pause:
+            garmin_health.sync_health(self.user, failing, force=True)
+        self.assertTrue(pause.called)   # większe pobieranie ma odstępy
+        self.assertEqual(failing.get_sleep_data.call_count, 2 + 7)   # dziś, wczoraj i 7 luk
+        gap = DailyHealth.objects.get(user=self.user, date=today - timedelta(days=7))
+        self.assertEqual((gap.raw['_errors'], gap.raw['_attempts'], gap.steps), (['summary'], 1, None))
+
+        # Tego samego dnia luk nie ponawiamy; następnego dnia - tak.
+        ok = self.health_client()
+        garmin_health.sync_health(self.user, ok, force=True)
+        self.assertEqual(ok.get_sleep_data.call_count, 2)
+        with mock.patch.object(garmin_health.timezone, 'localdate', return_value=today + timedelta(days=1)):
+            self.assertEqual(garmin_health.gap_days(self.user, today + timedelta(days=1))[0], today - timedelta(days=7))
+            garmin_health.sync_health(self.user, ok, force=True)
+        gap.refresh_from_db()
+        self.assertEqual((gap.steps, gap.raw['_errors'], gap.raw['_attempts']), (11234, [], 0))
+
+    def test_gap_retries_are_limited(self):
+        self.fill_month(skip=(5,))
+        today = timezone.localdate()
+        day = today - timedelta(days=5)
+        DailyHealth.objects.create(user=self.user, date=day, raw={'_attempts': garmin_health.MAX_ATTEMPTS, '_checked': '2000-01-01'})
+        self.assertEqual(garmin_health.gap_days(self.user, today), [])   # dzień bez zegarka nie wraca w kółko
+
+    def test_interactive_refresh_skips_gaps(self):
+        client = self.health_client()
+        garmin_health.sync_health(self.user, client, force=True, fill_gaps=False)
+        self.assertEqual(client.get_sleep_data.call_count, 2)
+
+    def test_health_report(self):
+        self.fill_month(skip=(3,))
+        lines = garmin_health.report(self.user)
+        self.assertEqual(len(lines), 31)
+        self.assertIn('11234', lines[1])
+        self.assertIn('summary,sleep', lines[1])
+        self.assertIn('brak wiersza', lines[4])
 
     def test_snapshot_includes_recent_health(self):
         DailyHealth.objects.create(user=self.user, date=timezone.localdate(), steps=5000, hrv_status='BALANCED', vo2max=Decimal('50.1'))

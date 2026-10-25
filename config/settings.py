@@ -347,6 +347,9 @@ GARMIN_ENABLED = env_bool('GARMIN_ENABLED', not RUNNING_TESTS)
 GARMIN_TOKEN_DIR = os.environ.get('GARMIN_TOKEN_DIR', str(PRIVATE_MEDIA_ROOT / 'garmin'))
 # Import historii po połączeniu konta - w wątku (w testach od razu).
 GARMIN_IMPORT_ASYNC = env_bool('GARMIN_IMPORT_ASYNC', not RUNNING_TESTS)
+# Odstęp (s) między zapytaniami do Garmina przy większym pobieraniu - bez niego
+# seria zapytań kończyła się chwilową blokadą i lukami w danych.
+GARMIN_REQUEST_PAUSE = 0.0 if RUNNING_TESTS else float(os.environ.get('GARMIN_REQUEST_PAUSE', '1'))
 # Treningi siłowe z Hevy (habits.services.hevy) - klucz API każda osoba wkleja na stronie.
 HEVY_ENABLED = env_bool('HEVY_ENABLED', not RUNNING_TESTS)
 HEVY_TIMEOUT = float(os.environ.get('HEVY_TIMEOUT', '15'))

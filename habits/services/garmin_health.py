@@ -8,9 +8,11 @@ podsumowań) zostają w `raw`, więc po zmianie nazw pól u Garmina wystarczy
 """
 import logging
 import re
+import time
 from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.utils import timezone
 
 from ..models import ActivitySettings, DailyHealth
@@ -22,6 +24,21 @@ logger = logging.getLogger(__name__)
 DEFAULT_DAYS = 2
 INTERVAL = timedelta(hours=2)
 MAX_LIST = 30
+# Luki z ostatnich 30 dni (brak wiersza, brak podsumowania/snu albo błąd przy
+# pobieraniu) uzupełniamy po kilka dni na synchronizację, każdy dzień najwyżej
+# raz dziennie i najwyżej 3 razy - dzień bez zegarka na ręce nie wraca w kółko.
+BACKFILL_DAYS = 30
+GAP_DAYS_PER_RUN = 7
+MAX_ATTEMPTS = 3
+ESSENTIAL = ('summary', 'sleep')
+
+
+def pause():
+    """Odstęp między zapytaniami przy większym pobieraniu (import, luki) -
+    seria kilkudziesięciu zapytań naraz kończyła się chwilową blokadą
+    Garmina i pustymi dniami. W testach 0."""
+    if settings.GARMIN_REQUEST_PAUSE:
+        time.sleep(settings.GARMIN_REQUEST_PAUSE)
 
 
 def _int(value):
@@ -159,8 +176,9 @@ def fields_from_raw(raw):
     return fields
 
 
-def _fetch(client, day, with_fitness):
-    """Odpowiedzi Garmina dla jednego dnia. Brak źródła = brak klucza."""
+def _fetch(client, day, with_fitness, paced=False):
+    """Odpowiedzi Garmina dla jednego dnia: (surowe dane, klucze z błędem).
+    Brak danych u Garmina = brak klucza; błąd zapytania trafia do listy."""
     iso = day.isoformat()
     calls = {
         'summary': lambda: client.get_user_summary(iso),
@@ -175,13 +193,17 @@ def _fetch(client, day, with_fitness):
             'race': lambda: client.get_race_predictions(),
         })
     raw = {}
+    errors = []
     for key, call in calls.items():
+        if paced:
+            pause()
         try:
             response = call()
         except Exception as exc:
             if exc.__class__.__name__ == 'GarminConnectTooManyRequestsError':
                 raise
-            logger.info('Garmin: brak %s za %s (%s)', key, iso, exc.__class__.__name__)
+            logger.warning('Garmin: %s za %s nie pobrane: %s: %s', key, iso, exc.__class__.__name__, str(exc)[:150])
+            errors.append(key)
             continue
         if key == 'sleep':
             response = {'dailySleepDTO': (response or {}).get('dailySleepDTO') or {}}
@@ -191,13 +213,23 @@ def _fetch(client, day, with_fitness):
             response = {name: (response or {}).get(name) for name in ('mostRecentVO2Max', 'mostRecentTrainingStatus')}
         if response:
             raw[key] = trim(response)
-    return raw
+    return raw, errors
 
 
-def save_day(user, day, raw):
+def is_complete(raw):
+    raw = raw or {}
+    return all(raw.get(key) for key in ESSENTIAL) and not raw.get('_errors')
+
+
+def save_day(user, day, raw, errors=(), today=None):
+    """Zapisuje dzień (także pusty - z licznikiem prób, żeby wiedzieć, że był
+    sprawdzany). Klucze z podkreśleniem to stan pobierania, nie dane Garmina."""
     row, _ = DailyHealth.objects.get_or_create(user=user, date=day)
     merged = dict(row.raw or {})
     merged.update(raw)
+    merged['_errors'] = list(errors)
+    merged['_checked'] = (today or timezone.localdate()).isoformat()
+    merged['_attempts'] = 0 if is_complete(merged) else (row.raw or {}).get('_attempts', 0) + 1
     row.raw = merged
     for name, value in fields_from_raw(merged).items():
         setattr(row, name, value)
@@ -205,7 +237,27 @@ def save_day(user, day, raw):
     return row
 
 
-def sync_health(user, client, days=None, force=False):
+def gap_days(user, today, limit=GAP_DAYS_PER_RUN):
+    """Dni z ostatnich BACKFILL_DAYS (bez dziś i wczoraj) do uzupełnienia, od najnowszych."""
+    rows = {
+        row.date: row.raw or {}
+        for row in DailyHealth.objects.filter(user=user, date__gte=today - timedelta(days=BACKFILL_DAYS - 1))
+    }
+    gaps = []
+    for offset in range(DEFAULT_DAYS, BACKFILL_DAYS):
+        day = today - timedelta(days=offset)
+        raw = rows.get(day)
+        if raw is None:
+            gaps.append(day)
+        elif not is_complete(raw) and raw.get('_checked') != today.isoformat() \
+                and raw.get('_attempts', 0) < MAX_ATTEMPTS:
+            gaps.append(day)
+        if len(gaps) >= limit:
+            break
+    return gaps
+
+
+def sync_health(user, client, days=None, force=False, fill_gaps=True):
     """Pobiera ostatnie `days` dni (domyślnie dziś i wczoraj). Wskaźniki formy
     (status, VO2max, prognozy) tylko dla dzisiaj - zmieniają się powoli,
     a historia VO2max jest też w treningach biegowych."""
@@ -214,16 +266,42 @@ def sync_health(user, client, days=None, force=False):
     if not force and not days and settings_row.health_synced_at and now - settings_row.health_synced_at < INTERVAL:
         return 0
     today = timezone.localdate()
+    if days:
+        targets = [today - timedelta(days=offset) for offset in range(days)]
+    else:
+        targets = [today - timedelta(days=offset) for offset in range(DEFAULT_DAYS)]
+        if fill_gaps:
+            targets += gap_days(user, today)
+    paced = len(targets) > DEFAULT_DAYS
     count = 0
-    for offset in range(days or DEFAULT_DAYS):
-        day = today - timedelta(days=offset)
-        raw = _fetch(client, day, with_fitness=offset == 0)
-        if raw:
-            save_day(user, day, raw)
-            count += 1
+    for day in targets:
+        raw, errors = _fetch(client, day, with_fitness=day == today, paced=paced)
+        save_day(user, day, raw, errors, today=today)
+        count += bool(raw)
     settings_row.health_synced_at = now
     settings_row.save(update_fields=['health_synced_at'])
     return count
+
+
+def report(user, days=BACKFILL_DAYS):
+    """Stan zapisanych dni do `sync_garmin --health-report` (bez sieci)."""
+    today = timezone.localdate()
+    rows = {row.date: row for row in DailyHealth.objects.filter(user=user, date__gte=today - timedelta(days=days - 1))}
+    lines = ['data        kroki  sen     tętno HRV  źródła                       błędy / próby']
+    for offset in range(days):
+        day = today - timedelta(days=offset)
+        row = rows.get(day)
+        if row is None:
+            lines.append(f'{day}  -- brak wiersza (jeszcze nie pobierany)')
+            continue
+        raw = row.raw or {}
+        sources = ','.join(key for key in PARSERS if raw.get(key)) or '-'
+        sleep = f'{row.sleep_s // 3600}:{row.sleep_s % 3600 // 60:02d}' if row.sleep_s else '-'
+        lines.append(
+            f'{day}  {row.steps if row.steps is not None else "-":>5}  {sleep:>6}  {row.resting_hr or "-":>5} {row.hrv_avg or "-":>4}  '
+            f'{sources:<28} {",".join(raw.get("_errors") or []) or "-"} / {raw.get("_attempts", "-")} (sprawdzony {raw.get("_checked", "?")})'
+        )
+    return lines
 
 
 def reparse(user=None):

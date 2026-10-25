@@ -9,6 +9,10 @@ Uruchamiane z crona na Pi, np. co godzinę:
     docker compose exec -T web python manage.py sync_garmin --reparse   # bez sieci: pola z zapisanych odpowiedzi
     docker compose exec -T web python manage.py sync_garmin --retry-routes --extras 50   # trasy jeszcze raz
     docker compose exec -T web python manage.py sync_garmin --inspect-route --user dawid  # diagnoza tras
+    docker compose exec -T web python manage.py sync_garmin --health-report --user dawid  # zapisane dni zdrowia
+
+Luki w danych zdrowotnych z ostatnich 30 dni uzupełniają się same, po kilka
+dni na przebieg; --health-days 30 pobiera cały miesiąc od razu.
 """
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -29,9 +33,18 @@ class Command(BaseCommand):
                             help='Ile treningów dostanie okrążenia i trasę w tym przebiegu (domyślnie %(default)s).')
         parser.add_argument('--retry-routes', action='store_true', help='Ponów pobranie tras dla treningów na zewnątrz bez trasy.')
         parser.add_argument('--inspect-route', action='store_true', help='Pokaż, co Garmin zwraca o trasie ostatniego treningu na zewnątrz.')
+        parser.add_argument('--health-report', action='store_true', help='Pokaż zapisane dni zdrowia z 30 dni (bez pobierania).')
 
     def handle(self, *args, user=None, days=None, health_days=None, reparse=False, extras=None,
-               retry_routes=False, inspect_route=False, **options):
+               retry_routes=False, inspect_route=False, health_report=False, **options):
+        if health_report:
+            people = get_user_model().objects.filter(is_active=True)
+            for person in people.filter(username=user) if user else people:
+                if garmin.is_connected(person):
+                    self.stdout.write(f'== {person}')
+                    for line in garmin_health.report(person):
+                        self.stdout.write(line)
+            return
         if reparse:
             changed = garmin.reparse()
             garmin_health.reparse()

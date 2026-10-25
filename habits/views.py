@@ -181,7 +181,7 @@ class RefreshApiView(ActivityApiMixin, View):
         notes, errors = [], []
         if settings.GARMIN_ENABLED and garmin.is_connected(request.user):
             try:
-                added = garmin.sync_all(request.user, force_health=True)
+                added = garmin.sync_all(request.user, force_health=True, **garmin.INTERACTIVE)
                 notes.append(f'Garmin: nowe treningi {added}.' if added else 'Garmin: brak nowych treningów.')
             except garmin.GarminError as exc:
                 errors.append(f'Garmin: {exc}')
@@ -316,7 +316,7 @@ class ConnectionsView(View):
 
     def garmin_sync(self, request):
         try:
-            added = garmin.sync_all(request.user, force_health=True)
+            added = garmin.sync_all(request.user, force_health=True, **garmin.INTERACTIVE)
         except garmin.GarminError as exc:
             messages.error(request, str(exc))
             return

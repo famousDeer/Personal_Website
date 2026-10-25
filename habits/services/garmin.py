@@ -555,8 +555,12 @@ def sync_extras(client, user, limit=EXTRAS_PER_RUN):
         Workout.objects.filter(user=user, garmin_id__isnull=False, extras_synced=False, is_deleted=False)
         .order_by('-date', '-start_time')[:limit]
     )
+    from .garmin_health import pause
+
     done = 0
-    for workout in pending:
+    for index, workout in enumerate(pending):
+        if index:
+            pause()
         try:
             fetch_extras(client, workout)
             done += 1
@@ -648,7 +652,13 @@ def sync_user(user, days=None, client=None):
     return added
 
 
-def sync_all(user, days=None, health_days=None, extras_limit=EXTRAS_PER_RUN, force_health=False, client=None):
+# Przycisk na stronie działa w żądaniu (limit gunicorna 60 s): mniej dodatków,
+# bez uzupełniania luk - te zostają dla crona i importu w tle.
+INTERACTIVE = {'extras_limit': 2, 'fill_gaps': False}
+
+
+def sync_all(user, days=None, health_days=None, extras_limit=EXTRAS_PER_RUN, force_health=False, client=None,
+             fill_gaps=True):
     """Treningi, potem dodatki (okrążenia, trasy) i zdrowie. Błąd dodatków
     albo zdrowia nie psuje synchronizacji treningów. Zwraca liczbę nowych treningów."""
     from . import garmin_health
@@ -665,7 +675,7 @@ def sync_all(user, days=None, health_days=None, extras_limit=EXTRAS_PER_RUN, for
     except Exception:
         logger.warning('Garmin: dodatki %s', user, exc_info=True)
     try:
-        garmin_health.sync_health(user, client, days=health_days, force=force_health)
+        garmin_health.sync_health(user, client, days=health_days, force=force_health, fill_gaps=fill_gaps)
     except Exception:
         logger.warning('Garmin: zdrowie %s', user, exc_info=True)
     return added
