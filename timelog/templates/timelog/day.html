@@ -1,0 +1,193 @@
+{% extends 'base.html' %}
+{% load static l10n ui timelog %}
+{% comment %}
+Harmonogram dnia (timelog.views.DayView): stoper z przyciskami kategorii,
+pasek doby, wpisy i luki do uzupełnienia, sumy kategorii.
+{% endcomment %}
+{% block title %}Czas{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'timelog/css/timelog.css' %}">
+{% endblock %}
+
+{% block content %}
+{% url 'timelog:index' as today_url %}
+{% if is_today %}
+    {% page_head title="Dziś" eyebrow="Czas" icon="bi-hourglass-split" sub="Kliknij, czym się teraz zajmujesz – stoper sam przełączy się z poprzedniej czynności." %}
+        <a class="btn btn-outline-secondary" href="{% url 'timelog:summary' %}"><i class="bi bi-bar-chart" aria-hidden="true"></i> Podsumowanie</a>
+        <a class="btn btn-outline-secondary" href="{% url 'timelog:categories' %}" aria-label="Kategorie" title="Kategorie"><i class="bi bi-tags" aria-hidden="true"></i></a>
+        <a class="btn btn-outline-secondary" href="{% url 'timelog:automation' %}" aria-label="Automatyzacja" title="Automatyzacja"><i class="bi bi-magic" aria-hidden="true"></i></a>
+    {% endpage_head %}
+{% else %}
+    {% page_head title=day|date:"l, j E" eyebrow="Czas" icon="bi-hourglass-split" back=today_url back_label="Wróć do dzisiaj" %}
+        <a class="btn btn-outline-secondary" href="{% url 'timelog:summary' %}?dzien={{ day.isoformat }}"><i class="bi bi-bar-chart" aria-hidden="true"></i> Tydzień</a>
+    {% endpage_head %}
+{% endif %}
+
+{% if is_today %}
+<section class="u-card u-card-pad mb-4" aria-labelledby="now-title">
+    <h2 class="visually-hidden" id="now-title">Teraz</h2>
+    <div class="tl-now mb-3" {% if running %}style="--tl-color: var(--cat-{{ running.category.color }})"{% endif %}>
+        <span class="tl-now-icon"><i class="bi {% if running %}{{ running.category.icon }}{% else %}bi-pause-fill{% endif %}" aria-hidden="true"></i></span>
+        <div class="tl-now-body">
+            {% if running %}
+                <div class="tl-now-label">Teraz, od {{ running.start|time:"H:i" }}{% if running.start|date:"Y-m-d" != day|date:"Y-m-d" %} ({{ running.start|date:"j E" }}){% endif %}</div>
+                <div class="tl-now-name">{{ running.category.name }}{% if running.note %} <span class="text-secondary fw-normal">· {{ running.note }}</span>{% endif %}</div>
+            {% else %}
+                <div class="tl-now-label">Stoper stoi</div>
+                <div class="tl-now-name">Wybierz, czym się zajmujesz</div>
+            {% endif %}
+        </div>
+        {% if running %}
+            <span class="tl-elapsed" data-tl-since="{{ running.start.isoformat }}">{{ running|duration|hm }}</span>
+            <form method="post" action="{% url 'timelog:stop' %}">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.path }}">
+                <button type="submit" class="btn btn-outline-secondary"><i class="bi bi-stop-fill" aria-hidden="true"></i> Stop</button>
+            </form>
+        {% endif %}
+    </div>
+    <div class="tl-buttons">
+        {% for category in categories %}
+            <form method="post" action="{% url 'timelog:start' %}">
+                {% csrf_token %}
+                <input type="hidden" name="category" value="{{ category.pk }}">
+                <input type="hidden" name="next" value="{{ request.path }}">
+                <button type="submit" class="tl-button {% if running.category_id == category.pk %}is-running{% endif %}"
+                        style="--tl-color: var(--cat-{{ category.color }})"
+                        {% if running.category_id == category.pk %}aria-pressed="true"{% endif %}>
+                    <i class="bi {{ category.icon }}" aria-hidden="true"></i> {{ category.name }}
+                </button>
+            </form>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+<section class="u-card u-card-pad mb-4" aria-labelledby="day-title">
+    <div class="u-section-head">
+        <h2 class="u-section-title" id="day-title">
+            {% if is_today %}Oś dnia{% else %}{{ day|date:"j E Y" }}{% endif %}
+        </h2>
+        <div class="d-flex gap-1">
+            <a class="btn btn-sm btn-outline-secondary" href="{% url 'timelog:day' day=prev_day.isoformat %}" aria-label="Poprzedni dzień"><i class="bi bi-chevron-left" aria-hidden="true"></i></a>
+            {% if next_day %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'timelog:day' day=next_day.isoformat %}" aria-label="Następny dzień"><i class="bi bi-chevron-right" aria-hidden="true"></i></a>{% endif %}
+        </div>
+    </div>
+
+    {% include 'timelog/partials/strip.html' with bars=data.bars now_pct=data.now_pct %}
+    <div class="tl-scale mb-3" aria-hidden="true">
+        {% for hour, pct in data.scale %}<span style="left: {{ pct|unlocalize }}%">{{ hour }}</span>{% endfor %}
+    </div>
+
+    <p class="text-secondary small mb-3">
+        Zapisane {{ data.tracked|hm }}{% if data.untracked %} · bez wpisu {{ data.untracked|hm }}{% endif %}
+    </p>
+
+    <div class="tl-list">
+        {% for row in rows %}
+            {% if row.kind == 'entry' %}
+                {% with e=row.entry %}
+                <div class="tl-row" style="--tl-color: var(--cat-{{ e.category.color }})">
+                    <span class="tl-row-time">
+                        {% if e.start < data.lo %}<span title="{{ e.start|date:'j E H:i' }}">←</span> {% endif %}{{ e.start|time:"H:i" }}–{% if e.end %}{{ e.end|time:"H:i" }}{% else %}teraz{% endif %}
+                    </span>
+                    <div class="tl-row-main">
+                        <div class="tl-row-title"><i class="bi {{ e.category.icon }}" aria-hidden="true"></i> {{ e.category.name }}</div>
+                        <div class="tl-row-meta">
+                            {{ e|duration|hm }}{% if e.note %} · {{ e.note }}{% endif %}
+                            {% if e.source == 'garmin' %} · <i class="bi bi-smartwatch" aria-hidden="true"></i> z zegarka{% elif e.source == 'shortcut' %} · <i class="bi bi-phone" aria-hidden="true"></i> ze skrótu{% endif %}
+                        </div>
+                    </div>
+                    <a class="btn btn-sm btn-link text-secondary" href="{% url 'timelog:entry' pk=e.pk %}" aria-label="Edytuj"><i class="bi bi-pencil" aria-hidden="true"></i></a>
+                    <form method="post" action="{% url 'timelog:entry-delete' pk=e.pk %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ request.path }}">
+                        <button type="submit" class="btn btn-sm btn-link text-secondary" aria-label="Usuń"><i class="bi bi-trash" aria-hidden="true"></i></button>
+                    </form>
+                </div>
+                {% endwith %}
+            {% else %}
+                <div class="tl-row is-gap">
+                    <div class="tl-row-main">
+                        <span class="tl-row-time">{{ row.start|time:"H:i" }}–{{ row.end|time:"H:i" }}</span>
+                        <span class="tl-row-meta">bez wpisu · {{ row.seconds|hm }}</span>
+                    </div>
+                    <form method="post" action="{% url 'timelog:entry-add' %}" class="tl-gap-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ request.path }}">
+                        <input type="hidden" name="date" value="{{ row.start|date:'Y-m-d' }}">
+                        <input type="hidden" name="start" value="{{ row.start|time:'H:i' }}">
+                        <input type="hidden" name="end" value="{{ row.end|time:'H:i' }}">
+                        <select class="form-select form-select-sm" name="category" required aria-label="Co wtedy robiłeś">
+                            <option value="">Co wtedy?</option>
+                            {% for category in categories %}<option value="{{ category.pk }}">{{ category.name }}</option>{% endfor %}
+                        </select>
+                        <button type="submit" class="btn btn-sm btn-outline-primary">Uzupełnij</button>
+                    </form>
+                </div>
+            {% endif %}
+        {% empty %}
+            <p class="text-secondary mb-0">Ten dzień jest pusty.</p>
+        {% endfor %}
+    </div>
+</section>
+
+<div class="row g-4">
+    {% if totals %}
+    <section class="col-lg-6" aria-labelledby="totals-title">
+        <div class="u-card u-card-pad h-100">
+            <h2 class="u-section-title mb-3" id="totals-title">Na co poszedł dzień</h2>
+            <div class="u-rank">
+                {% for row in totals %}
+                    <div class="u-rank-row" style="--bar-color: var(--cat-{{ row.category.color }})">
+                        <div class="u-rank-head">
+                            <span class="u-rank-name"><i class="bi {{ row.category.icon }}" aria-hidden="true"></i> {{ row.category.name }}{% if row.category.value == 'waste' %} <span class="u-chip is-expense">strata</span>{% endif %}</span>
+                            <span class="u-rank-value">{{ row.seconds|hm }}</span>
+                        </div>
+                        <div class="u-rank-track"><div class="u-rank-fill" style="width: {{ row.share|unlocalize }}%"></div></div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="col-lg-6" aria-labelledby="add-title">
+        <div class="u-card u-card-pad h-100">
+            <h2 class="u-section-title mb-3" id="add-title">Dopisz wstecz</h2>
+            <form method="post" action="{% url 'timelog:entry-add' %}">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.path }}">
+                <input type="hidden" name="date" value="{{ day.isoformat }}">
+                <div class="row g-2">
+                    <div class="col-12">
+                        <label class="form-label" for="add-category">Kategoria</label>
+                        <select class="form-select" id="add-category" name="category" required>
+                            {% for category in categories %}<option value="{{ category.pk }}">{{ category.name }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label" for="add-start">Od</label>
+                        <input class="form-control" type="time" id="add-start" name="start" required>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label" for="add-end">Do</label>
+                        <input class="form-control" type="time" id="add-end" name="end" required>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="add-note">Notatka <span class="text-secondary">(opcjonalnie)</span></label>
+                        <input class="form-control" id="add-note" name="note" maxlength="200">
+                    </div>
+                </div>
+                <p class="form-text">Godzina „do” wcześniejsza niż „od” oznacza koniec po północy.</p>
+                <button type="submit" class="btn btn-primary">Dodaj</button>
+            </form>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'timelog/js/timelog.js' %}" defer></script>
+{% endblock %}

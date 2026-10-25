@@ -101,6 +101,7 @@ INSTALLED_APPS = [
     'cars',
     'finance',
     'habits',
+    'timelog',
     'rest_framework',
     'accounts',
     'cooking',

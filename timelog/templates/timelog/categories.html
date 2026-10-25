@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+{% load static ui %}
+{% comment %} Kategorie czasu (timelog.views.CategoriesView): nazwa, ikona, kolor, ocena i automatyka. {% endcomment %}
+{% block title %}Czas – kategorie{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'timelog/css/timelog.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-9 col-xl-8">
+        {% url 'timelog:index' as back_url %}
+        {% page_head title="Kategorie" eyebrow="Czas" icon="bi-tags" sub="Ocena „Strata czasu” liczy się do podsumowania – oznacz tak to, czego chcesz robić mniej." back=back_url back_label="Wróć do dzisiaj" %}{% endpage_head %}
+
+        <div class="tl-list mb-4">
+            {% for category in categories %}
+                <details class="u-card u-card-pad-sm" style="--tl-color: var(--cat-{{ category.color }})">
+                    <summary class="d-flex align-items-center gap-2">
+                        <i class="bi {{ category.icon }}" style="color: var(--tl-color)" aria-hidden="true"></i>
+                        <span class="fw-semibold {% if category.is_archived %}text-secondary text-decoration-line-through{% endif %}">{{ category.name }}</span>
+                        {% if category.value == 'waste' %}<span class="u-chip is-expense">strata</span>{% elif category.value == 'good' %}<span class="u-chip is-income">wartościowy</span>{% endif %}
+                        {% if category.auto %}<span class="u-chip"><i class="bi bi-smartwatch" aria-hidden="true"></i> {{ category.get_auto_display }}</span>{% endif %}
+                        <span class="ms-auto d-flex gap-1">
+                            <form method="post">{% csrf_token %}<input type="hidden" name="id" value="{{ category.pk }}">
+                                <button class="btn btn-sm btn-link text-secondary" name="action" value="up" aria-label="Wyżej" {% if forloop.first %}disabled{% endif %}><i class="bi bi-arrow-up" aria-hidden="true"></i></button>
+                                <button class="btn btn-sm btn-link text-secondary" name="action" value="down" aria-label="Niżej" {% if forloop.last %}disabled{% endif %}><i class="bi bi-arrow-down" aria-hidden="true"></i></button>
+                            </form>
+                        </span>
+                    </summary>
+                    <form method="post" class="mt-3">
+                        {% csrf_token %}
+                        <input type="hidden" name="id" value="{{ category.pk }}">
+                        {% include 'timelog/partials/category_fields.html' with c=category prefix=category.pk %}
+                        <div class="row g-2 mt-1">
+                            <div class="col-sm-6">
+                                <label class="form-label" for="auto-{{ category.pk }}">Wpisy automatyczne</label>
+                                <select class="form-select" id="auto-{{ category.pk }}" name="auto">
+                                    {% for value, label in auto_choices %}<option value="{{ value }}" {% if value == category.auto %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mt-3">
+                            <button class="btn btn-primary" name="action" value="save">Zapisz</button>
+                            <button class="btn btn-outline-secondary" name="action" value="archive" formnovalidate>{% if category.is_archived %}Przywróć{% else %}Ukryj{% endif %}</button>
+                            <button class="btn btn-outline-danger ms-auto" name="action" value="delete" formnovalidate>Usuń</button>
+                        </div>
+                    </form>
+                </details>
+            {% endfor %}
+        </div>
+
+        <form method="post" class="u-card u-card-pad">
+            {% csrf_token %}
+            <h2 class="u-section-title mb-3">Nowa kategoria</h2>
+            {% include 'timelog/partials/category_fields.html' with c=None prefix="new" %}
+            <button class="btn btn-primary mt-3" name="action" value="add">Dodaj</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

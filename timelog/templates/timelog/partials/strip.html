@@ -1,0 +1,9 @@
+{% load l10n %}
+{% comment %} Pasek doby 0–24 h: odcinki w kolorach kategorii, kreska = teraz. {% endcomment %}
+<div class="tl-strip {{ extra_class }}" role="img" aria-label="{{ label|default:'Oś dnia' }}">
+    {% for bar in bars %}
+        <span class="tl-strip-seg" style="left: {{ bar.left|unlocalize }}%; width: {{ bar.width|unlocalize }}%; --tl-color: var(--cat-{{ bar.entry.category.color }})"
+              title="{{ bar.entry.category.name }} {{ bar.start|time:'H:i' }}–{{ bar.end|time:'H:i' }}"></span>
+    {% endfor %}
+    {% if now_pct != None %}<span class="tl-strip-now" style="left: {{ now_pct|unlocalize }}%"></span>{% endif %}
+</div>

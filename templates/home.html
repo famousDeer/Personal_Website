@@ -5,7 +5,7 @@
 
 {% block content %}
 {% if user.is_authenticated %}
-{% page_head title="Dzień dobry, "|add:user.username eyebrow="Panel domowy" icon="bi-house-heart" sub="Finanse, kuchnia, garaż i nawyki w jednym miejscu." %}{% endpage_head %}
+{% page_head title="Dzień dobry, "|add:user.username eyebrow="Panel domowy" icon="bi-house-heart" sub="Finanse, kuchnia, garaż, nawyki i czas w jednym miejscu." %}{% endpage_head %}
 
 <div class="u-tile-grid animate-fade-in-up">
     <a href="{% url 'finance:dashboard' %}" class="u-tile">
@@ -40,6 +40,14 @@
         </span>
         <i class="bi bi-chevron-right u-tile-arrow"></i>
     </a>
+    <a href="{% url 'timelog:index' %}" class="u-tile">
+        <span class="u-tile-icon"><i class="bi bi-hourglass-split"></i></span>
+        <span class="u-tile-body">
+            <span class="u-tile-title">Czas</span>
+            <span class="u-tile-text">Na co idzie dzień: stoper, luki i strata czasu.</span>
+        </span>
+        <i class="bi bi-chevron-right u-tile-arrow"></i>
+    </a>
 </div>
 
 <div class="u-quick-actions">
@@ -54,6 +62,9 @@
     </a>
     <a href="{% url 'cooking:add-recipe' %}" class="btn btn-outline-secondary">
         <i class="bi bi-journal-plus"></i> Przepis
+    </a>
+    <a href="{% url 'timelog:index' %}" class="btn btn-outline-secondary">
+        <i class="bi bi-stopwatch"></i> Stoper
     </a>
 </div>
 {% else %}

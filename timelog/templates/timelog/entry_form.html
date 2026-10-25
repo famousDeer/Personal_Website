@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% load ui %}
+{% comment %} Edycja wpisu (timelog.views.EntryEditView). Pusty koniec = wpis trwa. {% endcomment %}
+{% block title %}Wpis{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-6 col-xl-5">
+        {% url 'timelog:day' day=start|date:"Y-m-d" as back_url %}
+        {% page_head title="Wpis" eyebrow="Czas" icon="bi-pencil" back=back_url back_label="Wróć do dnia" %}{% endpage_head %}
+
+        <form method="post" class="u-card u-card-pad">
+            {% csrf_token %}
+            {% if entry.source == 'garmin' %}
+                <p class="text-secondary small"><i class="bi bi-smartwatch" aria-hidden="true"></i> Wpis z zegarka. Po zapisaniu zostaje taki, jak go poprawisz – zegarek go nie nadpisze.</p>
+            {% endif %}
+            <div class="mb-3">
+                <label class="form-label" for="category">Kategoria</label>
+                <select class="form-select" id="category" name="category" required>
+                    {% for category in categories %}
+                        <option value="{{ category.pk }}" {% if category.pk == entry.category_id %}selected{% endif %}>{{ category.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="row g-2 mb-3">
+                <div class="col-7">
+                    <label class="form-label" for="start-date">Początek</label>
+                    <input class="form-control" type="date" id="start-date" name="start_date" value="{{ start|date:'Y-m-d' }}" required>
+                </div>
+                <div class="col-5">
+                    <label class="form-label" for="start-time"><span class="visually-hidden">Godzina początku</span>&nbsp;</label>
+                    <input class="form-control" type="time" id="start-time" name="start_time" value="{{ start|date:'H:i' }}" required>
+                </div>
+                <div class="col-7">
+                    <label class="form-label" for="end-date">Koniec</label>
+                    <input class="form-control" type="date" id="end-date" name="end_date" value="{{ end|date:'Y-m-d'|default:'' }}">
+                </div>
+                <div class="col-5">
+                    <label class="form-label" for="end-time"><span class="visually-hidden">Godzina końca</span>&nbsp;</label>
+                    <input class="form-control" type="time" id="end-time" name="end_time" value="{{ end|date:'H:i'|default:'' }}">
+                </div>
+            </div>
+            <p class="form-text mt-n2">Bez godziny końca wpis trwa dalej, jak stoper.</p>
+            <div class="mb-3">
+                <label class="form-label" for="note">Notatka</label>
+                <input class="form-control" id="note" name="note" value="{{ entry.note }}" maxlength="200">
+            </div>
+            <button type="submit" class="btn btn-primary">Zapisz</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

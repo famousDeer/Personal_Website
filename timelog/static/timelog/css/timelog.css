@@ -1,0 +1,160 @@
+/* Harmonogram (timelog): stoper, pasek doby, wpisy i luki. Kolor kategorii
+   przychodzi z szablonu jako --tl-color: var(--cat-N). */
+
+.tl-now {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-4);
+    flex-wrap: wrap;
+}
+
+.tl-now-icon {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 1.35rem;
+    color: #fff;
+    background: var(--tl-color, var(--ink-4));
+    flex: none;
+}
+
+.tl-now-body { flex: 1 1 12rem; min-width: 0; }
+.tl-now-label { color: var(--ink-3); font-size: var(--fs-sm); }
+.tl-now-name { color: var(--ink-1); font-weight: 650; font-size: 1.15rem; }
+
+.tl-elapsed {
+    font-variant-numeric: tabular-nums;
+    font-size: 1.75rem;
+    font-weight: 650;
+    color: var(--ink-1);
+}
+
+.tl-buttons {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+    gap: var(--sp-2);
+}
+
+.tl-button {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    width: 100%;
+    min-height: 3rem;
+    padding: var(--sp-2) var(--sp-3);
+    border: 1px solid var(--line-1);
+    border-left: 4px solid var(--tl-color);
+    border-radius: var(--r-sm);
+    background: var(--surface-1);
+    color: var(--ink-2);
+    font-weight: 600;
+    text-align: left;
+    line-height: 1.2;
+}
+
+.tl-button:hover { background: var(--surface-2); }
+.tl-button i { color: var(--tl-color); font-size: 1.1rem; }
+.tl-button.is-running { background: var(--tl-color); color: #fff; border-color: var(--tl-color); }
+.tl-button.is-running i { color: #fff; }
+
+/* Pasek doby 0–24 h */
+.tl-strip {
+    position: relative;
+    height: 28px;
+    border-radius: var(--r-xs);
+    background: var(--surface-3);
+    overflow: hidden;
+}
+
+.tl-strip.is-thin { height: 14px; }
+
+.tl-strip-seg {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: var(--tl-color);
+}
+
+.tl-strip-now {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--ink-1);
+}
+
+.tl-scale {
+    position: relative;
+    height: 1.1rem;
+    color: var(--ink-4);
+    font-size: 0.7rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.tl-scale span { position: absolute; transform: translateX(-50%); }
+.tl-scale span:first-child { transform: none; }
+.tl-scale span:last-child { transform: translateX(-100%); }
+
+/* Lista wpisów i luk */
+.tl-list { display: grid; gap: var(--sp-2); }
+
+.tl-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-2) var(--sp-3);
+    border-radius: var(--r-sm);
+    border-left: 4px solid var(--tl-color, transparent);
+    background: var(--surface-2);
+}
+
+.tl-row-main { flex: 1 1 auto; min-width: 0; }
+.tl-row-title { color: var(--ink-1); font-weight: 600; }
+.tl-row-meta { color: var(--ink-3); font-size: var(--fs-sm); }
+.tl-row-time { color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.tl-row.is-gap {
+    border: 1px dashed var(--line-1);
+    border-left-width: 1px;
+    background: transparent;
+    flex-wrap: wrap;
+}
+
+.tl-gap-form { display: flex; gap: var(--sp-2); flex: 1 1 14rem; }
+.tl-gap-form .form-select { min-width: 0; }
+
+.tl-day-link { color: inherit; text-decoration: none; display: block; }
+.tl-day-link:hover .tl-strip { outline: 2px solid var(--line-1); }
+
+.tl-days { display: grid; gap: var(--sp-2); }
+.tl-day-head { display: flex; justify-content: space-between; font-size: var(--fs-sm); color: var(--ink-3); }
+
+/* Zmiana wobec poprzedniego okresu: więcej straty = źle, więcej wartościowego = dobrze. */
+.tl-delta { color: var(--ink-3); font-weight: 500; }
+.tl-delta.is-waste.is-up, .tl-delta.is-good.is-down { color: var(--expense-ink); }
+.tl-delta.is-waste.is-down, .tl-delta.is-good.is-up { color: var(--income-ink); }
+
+.tl-swatches { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.tl-swatches label { cursor: pointer; }
+.tl-swatches input { position: absolute; opacity: 0; }
+.tl-swatches span {
+    display: block;
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 50%;
+    background: var(--tl-color);
+    border: 3px solid transparent;
+}
+.tl-swatches input:checked + span { border-color: var(--ink-1); }
+.tl-swatches input:focus-visible + span { outline: 2px solid var(--brand-500); }
+
+.tl-code {
+    display: block;
+    padding: var(--sp-2) var(--sp-3);
+    border-radius: var(--r-xs);
+    background: var(--surface-2);
+    word-break: break-all;
+    font-size: var(--fs-sm);
+}

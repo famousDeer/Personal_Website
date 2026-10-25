@@ -1,6 +1,6 @@
 # Website-Finance – domowa strona (Django)
 
-Aplikacja domowa w sieci lokalnej: finanse (budżet, import wyciągów, konta maklerskie, GEM, podróże), kuchnia (przepisy, wspólna spiżarnia, listy zakupów offline, push), samochód. UI i komentarze po polsku.
+Aplikacja domowa w sieci lokalnej: finanse (budżet, import wyciągów, konta maklerskie, GEM, podróże), kuchnia (przepisy, wspólna spiżarnia, listy zakupów offline, push), samochód, nawyki, harmonogram czasu. UI i komentarze po polsku.
 Stack: Python 3.12, Django 5.2, DRF, PostgreSQL 15, Gunicorn + WhiteNoise, Caddy (HTTPS), Docker Compose na Raspberry Pi 4 (2 GB RAM, karta SD). Bez Celery/Redis – zadania okresowe to komendy `manage.py` z crona. Cache plikowy (`/tmp/website-finance-cache`).
 
 ## Mapa
@@ -10,6 +10,7 @@ Stack: Python 3.12, Django 5.2, DRF, PostgreSQL 15, Gunicorn + WhiteNoise, Caddy
 - `cars/` – auta, tankowania, serwisy (PDF), opony → `cars/CLAUDE.md`.
 - `accounts/` – logowanie, rejestracja, profil, konta wspólne; tagi szablonów `ui` → `accounts/CLAUDE.md`.
 - `habits/` – aktywność fizyczna (pływanie, bieganie, siłownia), Garmin (treningi, zdrowie), Hevy, tryb offline → `habits/CLAUDE.md`.
+- `timelog/` – harmonogram dnia: stoper, luki, podsumowanie i „strata czasu”, sen i treningi z `habits`, API dla Skrótów iOS → `timelog/CLAUDE.md`.
 - `utils/` – `undo.py` (usuwanie z „Cofnij”), `navigation.py` (`redirect_back`), `tools.py` (`parse_decimal`, `parse_date_input`, `month_start`).
 - `templates/` – `base.html`, `partials/page_head.html`; `static/css/tokens.css` (kolory, motyw), `app.css`, `ui.css`; `static/js/charts.js` (`AppCharts`).
 - `deploy/` – `update.sh`, `reboot.sh`, `Caddyfile`. `db_backups/` – backup na Pi → Google Drive. **Pomijaj.**

@@ -32,6 +32,7 @@ urlpatterns = [
     path('habits/', include('habits.urls')),
     path('cooking/', include('cooking.urls')),
     path('cars/', include('cars.urls')),
+    path('czas/', include('timelog.urls')),
 ]
 
 # Publiczne media (zdjęcia przepisów, obrazki z katalogu produktów) muszą być

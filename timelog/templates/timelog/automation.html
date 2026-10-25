@@ -1,0 +1,114 @@
+{% extends 'base.html' %}
+{% load static ui %}
+{% comment %}
+Automatyzacja (timelog.views.AutomationView): co liczy się samo (sen i
+treningi z Nawyków) oraz klucz i instrukcja dla Skrótów iOS.
+{% endcomment %}
+{% block title %}Czas – automatyzacja{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'timelog/css/timelog.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-9 col-xl-8">
+        {% url 'timelog:index' as back_url %}
+        {% page_head title="Automatyzacja" eyebrow="Czas" icon="bi-magic" sub="Im mniej klikania, tym pełniejszy obraz dnia." back=back_url back_label="Wróć do dzisiaj" %}{% endpage_head %}
+
+        <section class="u-card u-card-pad mb-4" aria-labelledby="watch-title">
+            <h2 class="u-section-title mb-3" id="watch-title"><i class="bi bi-smartwatch" aria-hidden="true"></i> Z zegarka – działa samo</h2>
+            <ul class="mb-2">
+                <li><strong>Sen</strong> z Garmina →
+                    {% if sleep_category %}„{{ sleep_category.name }}”{% else %}<span class="text-secondary">wyłączone (żadna kategoria nie ma „Sen z zegarka”)</span>{% endif %}.
+                    Stoper zostawiony na noc kończy się w chwili zaśnięcia.</li>
+                <li><strong>Treningi</strong> z Nawyków (Garmin, Hevy, wpisane ręcznie) →
+                    {% if sport_category %}„{{ sport_category.name }}”{% else %}<span class="text-secondary">wyłączone</span>{% endif %}.</li>
+            </ul>
+            <p class="text-secondary small mb-0">
+                Dane dochodzą razem z synchronizacją Garmina (<a href="{% url 'habits:connections' %}">Połączenia</a>).
+                Kategorię zmienisz w <a href="{% url 'timelog:categories' %}">Kategoriach</a> („Wpisy automatyczne”).
+                Usunięty wpis z zegarka nie wróci, a poprawiony zostaje taki, jak go zapiszesz.
+            </p>
+        </section>
+
+        <section class="u-card u-card-pad mb-4" aria-labelledby="token-title">
+            <div class="u-section-head">
+                <h2 class="u-section-title" id="token-title"><i class="bi bi-phone" aria-hidden="true"></i> Skróty iOS</h2>
+                {% if token %}<span class="u-chip u-chip-dot is-income">Włączone</span>{% endif %}
+            </div>
+            <p>
+                Telefon sam przełącza stoper: gdy dojeżdżasz do pracy, otwierasz Instagrama, przykładasz telefon
+                do naklejki NFC na biurku albo włączasz tryb skupienia.
+            </p>
+            {% if token %}
+                <label class="form-label" for="token">Twój klucz</label>
+                <div class="input-group mb-2">
+                    <input class="form-control font-monospace" id="token" value="{{ token }}" readonly>
+                    <button class="btn btn-outline-secondary" type="button" data-copy="#token"><i class="bi bi-clipboard" aria-hidden="true"></i> Kopiuj</button>
+                </div>
+                <p class="text-secondary small">Klucz pozwala tylko włączać i zatrzymywać Twój stoper. Nie wklejaj go nigdzie poza Skrótami.</p>
+                <div class="d-flex gap-2">
+                    <form method="post">{% csrf_token %}<button class="btn btn-outline-secondary" name="action" value="new">Nowy klucz</button></form>
+                    <form method="post">{% csrf_token %}<button class="btn btn-outline-danger" name="action" value="disable">Wyłącz</button></form>
+                </div>
+            {% else %}
+                <form method="post">{% csrf_token %}<button class="btn btn-primary" name="action" value="new"><i class="bi bi-key" aria-hidden="true"></i> Utwórz klucz</button></form>
+            {% endif %}
+        </section>
+
+        {% if token %}
+        <section class="u-card u-card-pad mb-4" aria-labelledby="howto-title">
+            <h2 class="u-section-title mb-3" id="howto-title">Jak zrobić skrót</h2>
+            <ol class="mb-3">
+                <li class="mb-2">Skróty → <strong>Automatyzacja</strong> → <strong>+</strong> i wybierz wyzwalacz (lista niżej). Ustaw „Uruchom natychmiast”.</li>
+                <li class="mb-2">Dodaj czynność <strong>Pobierz zawartość URL</strong>:
+                    <code class="tl-code my-1">{{ start_url }}</code>
+                    Metoda <strong>POST</strong>, nagłówek <code>Authorization</code> = <code>Bearer {{ token|slice:":6" }}…</code> (cały klucz),
+                    treść żądania <strong>JSON</strong> z polem <code>category</code> = nazwa kategorii, np. <code>Praca</code>.
+                </li>
+                <li class="mb-2">Na zakończenie (np. „Wyjeżdżam z pracy”, „Instagram zamknięty”) ten sam skrót z adresem
+                    <code class="tl-code my-1">{{ stop_url }}</code>
+                    i polem <code>category</code> – zatrzyma stoper tylko wtedy, gdy wciąż liczy tę kategorię.</li>
+            </ol>
+            <p class="text-secondary small mb-0">
+                Wielkość liter i polskie znaki w nazwie nie mają znaczenia. Stan stopera: <code>{{ status_url }}</code> (GET).
+                Telefon musi ufać certyfikatowi strony (<a href="http://{{ request.get_host|cut:':443' }}/certyfikat">instrukcja</a>), inaczej Skróty zgłoszą błąd połączenia.
+            </p>
+        </section>
+        {% endif %}
+
+        <section class="u-card u-card-pad mb-4" aria-labelledby="ideas-title">
+            <h2 class="u-section-title mb-3" id="ideas-title">Pomysły na wyzwalacze</h2>
+            <div class="u-table-wrap">
+                <table class="u-table">
+                    <thead><tr><th>Wyzwalacz w Skrótach</th><th>Start</th><th>Stop</th></tr></thead>
+                    <tbody>
+                        <tr><td><i class="bi bi-instagram" aria-hidden="true"></i> Aplikacja otwarta / zamknięta (Instagram, TikTok, YouTube…)</td><td>Telefon i social media</td><td>przy zamknięciu</td></tr>
+                        <tr><td><i class="bi bi-geo-alt" aria-hidden="true"></i> Przybycie do pracy / wyjście</td><td>Praca</td><td>Dojazdy</td></tr>
+                        <tr><td><i class="bi bi-car-front" aria-hidden="true"></i> CarPlay albo Bluetooth auta połączony</td><td>Dojazdy</td><td>przy rozłączeniu</td></tr>
+                        <tr><td><i class="bi bi-moon" aria-hidden="true"></i> Tryb skupienia „Praca” / „Czytanie”</td><td>Praca / Nauka</td><td>przy wyłączeniu</td></tr>
+                        <tr><td><i class="bi bi-broadcast" aria-hidden="true"></i> Naklejka NFC (biurko, kuchnia, kanapa)</td><td>Praca / Jedzenie / Seriale</td><td>–</td></tr>
+                        <tr><td><i class="bi bi-house" aria-hidden="true"></i> Powrót do domu</td><td>Dom i obowiązki</td><td>–</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="text-secondary small mt-2 mb-0">Najwięcej da pierwszy wiersz: czas w aplikacjach liczy się sam, bez pamiętania o stoperze.</p>
+        </section>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.querySelectorAll('[data-copy]').forEach((button) => {
+    button.addEventListener('click', () => {
+        const field = document.querySelector(button.dataset.copy);
+        field.select();
+        (navigator.clipboard ? navigator.clipboard.writeText(field.value) : Promise.reject())
+            .catch(() => document.execCommand('copy'))
+            .finally(() => { button.innerHTML = '<i class="bi bi-check2" aria-hidden="true"></i> Skopiowano'; });
+    });
+});
+</script>
+{% endblock %}

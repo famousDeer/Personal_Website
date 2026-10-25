@@ -1,0 +1,105 @@
+{% extends 'base.html' %}
+{% load static l10n ui timelog %}
+{% comment %}
+Podsumowanie tygodnia albo miesiąca (timelog.views.SummaryView): strata
+czasu, czas wartościowy, luki, kategorie z porównaniem do poprzedniego
+okresu i pasek każdego dnia.
+{% endcomment %}
+{% block title %}Czas – podsumowanie{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'timelog/css/timelog.css' %}">
+{% endblock %}
+
+{% block content %}
+{% url 'timelog:index' as today_url %}
+{% if period == 'week' %}{% with first|date:"j E" as a and last|date:"j E Y" as b %}{% page_head title="Tydzień "|add:a|add:" – "|add:b eyebrow="Czas" icon="bi-bar-chart" back=today_url back_label="Wróć do dzisiaj" %}{% endpage_head %}{% endwith %}
+{% else %}{% with first|date:"F Y" as m %}{% page_head title=m|capfirst eyebrow="Czas" icon="bi-bar-chart" back=today_url back_label="Wróć do dzisiaj" %}{% endpage_head %}{% endwith %}{% endif %}
+
+<div class="d-flex flex-wrap align-items-center gap-2 mb-4">
+    <div class="btn-group" role="group" aria-label="Okres">
+        <a class="btn btn-sm {% if period == 'week' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="?okres=tydzien&dzien={{ first.isoformat }}">Tydzień</a>
+        <a class="btn btn-sm {% if period == 'month' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="?okres=miesiac&dzien={{ first.isoformat }}">Miesiąc</a>
+    </div>
+    <div class="d-flex gap-1 ms-auto">
+        <a class="btn btn-sm btn-outline-secondary" href="?okres={% if period == 'week' %}tydzien{% else %}miesiac{% endif %}&dzien={{ prev_anchor.isoformat }}" aria-label="Poprzedni okres"><i class="bi bi-chevron-left" aria-hidden="true"></i></a>
+        {% if next_anchor %}<a class="btn btn-sm btn-outline-secondary" href="?okres={% if period == 'week' %}tydzien{% else %}miesiac{% endif %}&dzien={{ next_anchor.isoformat }}" aria-label="Następny okres"><i class="bi bi-chevron-right" aria-hidden="true"></i></a>{% endif %}
+    </div>
+</div>
+
+{% if not summary.tracked %}
+    <div class="u-card u-card-pad text-secondary">W tym okresie nie ma jeszcze wpisów.</div>
+{% else %}
+<div class="u-metric-grid mb-4">
+    <div class="u-metric is-expense">
+        <div class="u-metric-label"><i class="bi bi-hourglass-bottom" aria-hidden="true"></i> Strata czasu</div>
+        <div class="u-metric-value">{{ per_day.waste|hm }}<small> / dzień</small></div>
+        <div class="u-metric-note">
+            {% if waste_share != None %}{{ waste_share|floatformat:0 }}% czasu poza snem{% endif %}
+            {% if waste_delta != None %} · <span class="tl-delta is-waste {% if waste_delta > 0 %}is-up{% else %}is-down{% endif %}">{{ waste_delta|signed_hm }}</span> niż poprzednio{% endif %}
+        </div>
+    </div>
+    <div class="u-metric is-income">
+        <div class="u-metric-label"><i class="bi bi-star" aria-hidden="true"></i> Czas wartościowy</div>
+        <div class="u-metric-value">{{ per_day.good|hm }}<small> / dzień</small></div>
+        <div class="u-metric-note">Razem {{ summary.by_value.good|default:0|hours }}</div>
+    </div>
+    <div class="u-metric">
+        <div class="u-metric-label"><i class="bi bi-pencil-square" aria-hidden="true"></i> Zapisany czas</div>
+        <div class="u-metric-value">{{ per_day.tracked|hm }}<small> / dzień</small></div>
+        <div class="u-metric-note">{{ summary.elapsed_days|pl:"dzień,dni,dni" }}</div>
+    </div>
+    <div class="u-metric">
+        <div class="u-metric-label"><i class="bi bi-question-circle" aria-hidden="true"></i> Bez wpisu</div>
+        <div class="u-metric-value">{{ per_day.untracked|hm }}<small> / dzień</small></div>
+        <div class="u-metric-note">Czas, o którym nic nie wiesz</div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <section class="col-lg-6" aria-labelledby="cat-title">
+        <div class="u-card u-card-pad h-100">
+            <h2 class="u-section-title mb-3" id="cat-title">Kategorie <span class="text-secondary fw-normal small">średnio na dzień</span></h2>
+            <div class="u-rank">
+                {% for row in ranking %}
+                    <div class="u-rank-row" style="--bar-color: var(--cat-{{ row.category.color }})">
+                        <div class="u-rank-head">
+                            <span class="u-rank-name"><i class="bi {{ row.category.icon }}" aria-hidden="true"></i> {{ row.category.name }}{% if row.category.value == 'waste' %} <span class="u-chip is-expense">strata</span>{% endif %}</span>
+                            <span class="u-rank-value">
+                                {{ row.per_day|hm }}
+                                {% if row.delta != None %}{% if row.delta >= 60 or row.delta <= -60 %}
+                                    <small class="tl-delta is-{{ row.category.value }} {% if row.delta > 0 %}is-up{% else %}is-down{% endif %}"
+                                           title="Zmiana wobec poprzedniego okresu">{{ row.delta|signed_hm }}</small>
+                                {% endif %}{% endif %}
+                            </span>
+                        </div>
+                        <div class="u-rank-track"><div class="u-rank-fill" style="width: {{ row.share|unlocalize }}%"></div></div>
+                        <div class="small text-secondary">Razem {{ row.seconds|hours }}</div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+
+    <section class="col-lg-6" aria-labelledby="days-title">
+        <div class="u-card u-card-pad h-100">
+            <h2 class="u-section-title mb-3" id="days-title">Dni</h2>
+            <div class="tl-days">
+                {% for d in summary.days %}
+                    <a class="tl-day-link" href="{% url 'timelog:day' day=d.day.isoformat %}">
+                        <div class="tl-day-head">
+                            <span>{{ d.day|date:"D j.m" }}</span>
+                            <span>{{ d.tracked|hm }}{% if d.untracked >= 3600 %} · luki {{ d.untracked|hm }}{% endif %}</span>
+                        </div>
+                        {% include 'timelog/partials/strip.html' with bars=d.bars now_pct=None extra_class="is-thin" label=d.day|date:"l j E" %}
+                    </a>
+                {% endfor %}
+            </div>
+            <div class="tl-scale mt-1" aria-hidden="true">
+                {% for h in hours_scale %}<span style="left: {% widthratio h 24 100 %}%">{{ h }}</span>{% endfor %}
+            </div>
+        </div>
+    </section>
+</div>
+{% endif %}
+{% endblock %}

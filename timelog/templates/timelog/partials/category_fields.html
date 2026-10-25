@@ -1,0 +1,30 @@
+{% comment %} Pola kategorii: nazwa, ocena, ikona, kolor. `c` = kategoria albo None (nowa). {% endcomment %}
+<div class="row g-2">
+    <div class="col-sm-6">
+        <label class="form-label" for="name-{{ prefix }}">Nazwa</label>
+        <input class="form-control" id="name-{{ prefix }}" name="name" value="{{ c.name|default:'' }}" maxlength="40" required>
+    </div>
+    <div class="col-sm-6">
+        <label class="form-label" for="value-{{ prefix }}">Ocena</label>
+        <select class="form-select" id="value-{{ prefix }}" name="value">
+            {% for value, label in value_choices %}<option value="{{ value }}" {% if c and value == c.value or not c and value == 'neutral' %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="col-sm-6">
+        <label class="form-label" for="icon-{{ prefix }}">Ikona</label>
+        <select class="form-select" id="icon-{{ prefix }}" name="icon">
+            {% for icon in icons %}<option value="{{ icon }}" {% if c and icon == c.icon or not c and icon == 'bi-circle' %}selected{% endif %}>{{ icon|slice:"3:" }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="col-sm-6">
+        <span class="form-label d-block">Kolor</span>
+        <div class="tl-swatches" role="radiogroup" aria-label="Kolor">
+            {% for n in colors %}
+                <label style="--tl-color: var(--cat-{{ n }})">
+                    <input type="radio" name="color" value="{{ n }}" {% if c and n == c.color or not c and n == 1 %}checked{% endif %} aria-label="Kolor {{ n }}">
+                    <span></span>
+                </label>
+            {% endfor %}
+        </div>
+    </div>
+</div>
