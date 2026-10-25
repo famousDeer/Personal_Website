@@ -1,3 +1,10 @@
+// Kategorie: wybrany kolor od razu barwi zaznaczoną ikonę w tym samym formularzu.
+document.addEventListener('change', (event) => {
+    const input = event.target;
+    if (input.name !== 'color' || !input.form) return;
+    input.form.style.setProperty('--tl-color', 'var(--cat-' + input.value + ')');
+});
+
 // Harmonogram: licznik biegnącego stopera ([data-tl-since] = początek w ISO).
 (function () {
     const counters = document.querySelectorAll('[data-tl-since]');

@@ -50,7 +50,7 @@
             {% endfor %}
         </div>
 
-        <form method="post" class="u-card u-card-pad">
+        <form method="post" class="u-card u-card-pad" style="--tl-color: var(--cat-1)">
             {% csrf_token %}
             <h2 class="u-section-title mb-3">Nowa kategoria</h2>
             {% include 'timelog/partials/category_fields.html' with c=None prefix="new" %}
@@ -58,4 +58,8 @@
         </form>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'timelog/js/timelog.js' %}" defer></script>
 {% endblock %}

@@ -150,6 +150,32 @@
 .tl-swatches input:checked + span { border-color: var(--ink-1); }
 .tl-swatches input:focus-visible + span { outline: 2px solid var(--brand-500); }
 
+/* Wybór ikony: siatka przycisków z podglądem, zaznaczona w kolorze kategorii. */
+.tl-icons {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(2.75rem, 1fr));
+    gap: 0.35rem;
+}
+.tl-icons label { cursor: pointer; }
+.tl-icons input { position: absolute; opacity: 0; }
+.tl-icons span {
+    display: grid;
+    place-items: center;
+    height: 2.75rem;
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-sm);
+    background: var(--surface-1);
+    color: var(--ink-2);
+    font-size: 1.2rem;
+}
+.tl-icons label:hover span { background: var(--surface-2); }
+.tl-icons input:checked + span {
+    border-color: var(--tl-color, var(--brand-500));
+    background: var(--tl-color, var(--brand-500));
+    color: #fff;
+}
+.tl-icons input:focus-visible + span { outline: 2px solid var(--brand-500); outline-offset: 2px; }
+
 .tl-code {
     display: block;
     padding: var(--sp-2) var(--sp-3);

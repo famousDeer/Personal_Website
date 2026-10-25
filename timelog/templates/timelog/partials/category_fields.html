@@ -10,13 +10,18 @@
             {% for value, label in value_choices %}<option value="{{ value }}" {% if c and value == c.value or not c and value == 'neutral' %}selected{% endif %}>{{ label }}</option>{% endfor %}
         </select>
     </div>
-    <div class="col-sm-6">
-        <label class="form-label" for="icon-{{ prefix }}">Ikona</label>
-        <select class="form-select" id="icon-{{ prefix }}" name="icon">
-            {% for icon in icons %}<option value="{{ icon }}" {% if c and icon == c.icon or not c and icon == 'bi-circle' %}selected{% endif %}>{{ icon|slice:"3:" }}</option>{% endfor %}
-        </select>
+    <div class="col-12">
+        <span class="form-label d-block" id="icon-label-{{ prefix }}">Ikona</span>
+        <div class="tl-icons" role="radiogroup" aria-labelledby="icon-label-{{ prefix }}">
+            {% for icon, label in icons %}
+                <label title="{{ label }}">
+                    <input type="radio" name="icon" value="{{ icon }}" {% if c and icon == c.icon or not c and icon == 'bi-circle' %}checked{% endif %} aria-label="{{ label }}">
+                    <span><i class="bi {{ icon }}" aria-hidden="true"></i></span>
+                </label>
+            {% endfor %}
+        </div>
     </div>
-    <div class="col-sm-6">
+    <div class="col-12">
         <span class="form-label d-block">Kolor</span>
         <div class="tl-swatches" role="radiogroup" aria-label="Kolor">
             {% for n in colors %}

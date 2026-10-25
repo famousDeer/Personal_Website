@@ -19,11 +19,16 @@ from utils.undo import delete_with_undo
 from . import services
 from .models import Category, Entry, TimelogSettings
 
+# Ikony do wyboru w kategorii: (klasa Bootstrap Icons, podpis dla czytnika i dymka).
 ICONS = [
-    'bi-briefcase', 'bi-laptop', 'bi-book', 'bi-mortarboard', 'bi-activity', 'bi-bicycle', 'bi-people',
-    'bi-heart', 'bi-moon-stars', 'bi-house', 'bi-cup-hot', 'bi-basket', 'bi-car-front', 'bi-bus-front',
-    'bi-tree', 'bi-music-note', 'bi-phone', 'bi-tv', 'bi-controller', 'bi-chat-dots', 'bi-brush',
-    'bi-tools', 'bi-cash-coin', 'bi-circle',
+    ('bi-briefcase', 'Teczka'), ('bi-laptop', 'Laptop'), ('bi-book', 'Książka'),
+    ('bi-mortarboard', 'Nauka'), ('bi-activity', 'Puls'), ('bi-bicycle', 'Rower'),
+    ('bi-people', 'Ludzie'), ('bi-heart', 'Serce'), ('bi-moon-stars', 'Noc'),
+    ('bi-house', 'Dom'), ('bi-cup-hot', 'Kubek'), ('bi-basket', 'Zakupy'),
+    ('bi-car-front', 'Auto'), ('bi-bus-front', 'Autobus'), ('bi-tree', 'Drzewo'),
+    ('bi-music-note', 'Muzyka'), ('bi-phone', 'Telefon'), ('bi-tv', 'Telewizor'),
+    ('bi-controller', 'Gry'), ('bi-chat-dots', 'Rozmowa'), ('bi-brush', 'Pędzel'),
+    ('bi-tools', 'Narzędzia'), ('bi-cash-coin', 'Pieniądze'), ('bi-circle', 'Kółko'),
 ]
 
 
@@ -295,7 +300,7 @@ class CategoriesView(TimelogView):
 
     def _icon(self, request):
         icon = request.POST.get('icon', '')
-        return icon if icon in ICONS else 'bi-circle'
+        return icon if icon in dict(ICONS) else 'bi-circle'
 
     def _color(self, request):
         try:

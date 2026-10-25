@@ -3,7 +3,7 @@
 Cel: wiedzieć, na co idzie dzień i ile czasu to „strata”. Per `request.user`, namespace `timelog`, adres `/czas/`, w menu „Czas”.
 
 Modele (`models.py`):
-- Category – nazwa, ikona (`bi-*` z listy `ICONS` w views), kolor `--cat-1..8`, `value` good/neutral/waste (strata liczy się w podsumowaniu), `auto` sleep/sport (kategoria dla wpisów z zegarka, najwyżej jedna na rodzaj), `is_archived` (kategoria z wpisami się nie usuwa – PROTECT, jest ukrywana). Pierwsze wejście tworzy zestaw `DEFAULT_CATEGORIES`.
+- Category – nazwa, ikona (`bi-*` z listy `ICONS` w views – siatka z podglądem), kolor `--cat-1..8`, `value` good/neutral/waste (strata liczy się w podsumowaniu), `auto` sleep/sport (kategoria dla wpisów z zegarka, najwyżej jedna na rodzaj), `is_archived` (kategoria z wpisami się nie usuwa – PROTECT, jest ukrywana). Pierwsze wejście tworzy zestaw `DEFAULT_CATEGORIES`.
 - Entry – `start`/`end` (bez końca = stoper biegnie, najwyżej jeden), `source` manual/timer/garmin/shortcut, `external_id` (`sleep:<data>`, `workout:<uid>`; unikalne per user).
 - TimelogSettings – `api_token` dla Skrótów iOS, `dismissed` (external_id usuniętych wpisów z zegarka – import ich nie odtwarza).
 
@@ -15,5 +15,5 @@ Modele (`models.py`):
 Widoki: `DayView` (stoper, pasek doby, wpisy + luki z „Uzupełnij”, dopisywanie wstecz – koniec przed początkiem = po północy), `SummaryView` (`?okres=tydzien|miesiac&dzien=`; strata/dzień, % czasu poza snem, porównanie z poprzednim okresem), `CategoriesView`, `AutomationView` (klucz i instrukcja Skrótów), edycja/usuwanie wpisu (`delete_with_undo`).
 API dla Skrótów (bez sesji, CSRF wyłączone, klucz tylko w nagłówku `Authorization: Bearer` lub `X-Timelog-Token`): `api/start/` (`category` – nazwa bez wielkości liter i polskich znaków albo id), `api/stop/` (z `category` zatrzymuje tylko, gdy ta kategoria biegnie), `api/status/`. JSON albo formularz.
 
-Statyczne: `static/timelog/css/timelog.css`, `static/timelog/js/timelog.js` (licznik stopera, odświeżenie po powrocie do karty).
+Statyczne: `static/timelog/css/timelog.css`, `static/timelog/js/timelog.js` (licznik stopera, odświeżenie po powrocie do karty; w kategoriach wybrany kolor barwi zaznaczoną ikonę).
 Testy: `python manage.py test timelog --settings=config.test_settings`.
