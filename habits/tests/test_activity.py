@@ -52,6 +52,32 @@ class ActivityPageTests(TestCase):
         self.assertContains(sw, '"/habits/api/"')
 
 
+class ActivityManifestTests(TestCase):
+    def test_manifest_is_installable(self):
+        response = self.client.get(reverse('habits:manifest'))
+        self.assertEqual(response['Content-Type'], 'application/manifest+json; charset=utf-8')
+        data = json.loads(response.content)
+        self.assertEqual((data['name'], data['start_url'], data['scope'], data['display']),
+                         ('Aktywność', '/habits/', '/', 'standalone'))
+        self.assertEqual({icon['sizes'] for icon in data['icons']}, {'192x192', '512x512'})
+        self.assertIn('maskable', [icon.get('purpose') for icon in data['icons']])
+
+    @override_settings(ALLOWED_HOSTS=['raspberrypi.local'])
+    def test_manifest_from_http_points_to_https(self):
+        data = json.loads(self.client.get(reverse('habits:manifest'), HTTP_HOST='raspberrypi.local').content)
+        self.assertEqual(data['start_url'], 'https://raspberrypi.local/habits/')
+
+    def test_page_links_manifest_and_worker_caches_it(self):
+        user = User.objects.create_user('dawid', password='x')
+        self.client.force_login(user)
+        page = self.client.get(reverse('habits:index'))
+        self.assertContains(page, 'rel="manifest" href="/habits/manifest.webmanifest"')
+        self.assertContains(page, 'apple-touch-icon')
+        sw = self.client.get(reverse('habits:sw')).content.decode()
+        self.assertIn('"/habits/manifest.webmanifest"', sw)
+        self.assertIn('habits/icons/activity-192', sw)
+
+
 class ActivityApiTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user('dawid', password='x')

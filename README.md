@@ -832,6 +832,9 @@ Momentum strategy (`finance/gem.py`, panel `finance/partials/gem_panel.html`):
 snapshot from `/habits/api/snapshot/`, keeps it in IndexedDB and queues changes made
 without a connection (`/habits/api/sync/`, idempotent by the workout `uid`). A service
 worker (`/habits/sw.js`) stores the page, so it opens away from home (HTTPS only).
+A manifest (`/habits/manifest.webmanifest`) lets the phone install it as the "Aktywność" app;
+like the shopping app, the page warns when it is opened over plain HTTP or when the phone
+does not trust the server certificate (then the service worker cannot be registered).
 Statistics (weekly goal in *days with a workout*, week streak, calendar, records) are
 computed in the browser by `habits/static/habits/js/activity-stats.js`.
 

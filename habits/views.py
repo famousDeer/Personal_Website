@@ -24,6 +24,8 @@ from django.urls import reverse
 from django.utils.decorators import method_decorator
 from django.views import View
 
+from cooking.shopping_app_views import secure_base
+
 from .models import ActivitySettings, Workout, WorkoutRoute
 from .services import garmin, hevy
 from .services.workouts import activity_snapshot, apply_operations
@@ -56,6 +58,10 @@ APP_STATIC_FILES = APP_REQUIRED_STATIC_FILES + [
     # Mapa trasy - sam podkład (kafelki OSM) i tak wymaga internetu.
     'vendor/leaflet/leaflet.js',
     'vendor/leaflet/leaflet.css',
+    'habits/icons/activity-192.png',
+    'habits/icons/activity-512.png',
+    'habits/icons/activity-maskable-512.png',
+    'habits/icons/apple-touch-icon.png',
 ]
 TEMPLATE_DIRS = [
     Path(__file__).resolve().parent / 'templates' / 'habits',
@@ -112,7 +118,7 @@ class ActivityView(View):
 class ActivityServiceWorkerView(View):
     def get(self, request):
         scope = reverse('habits:index')
-        precache = [scope] + [static(name) for name in APP_STATIC_FILES]
+        precache = [scope, reverse('habits:manifest')] + [static(name) for name in APP_STATIC_FILES]
         required = [scope] + [static(name) for name in APP_REQUIRED_STATIC_FILES]
         body = render_to_string('habits/activity_sw.js', {
             'version': app_version(),
@@ -122,6 +128,40 @@ class ActivityServiceWorkerView(View):
             'api_prefix_json': json.dumps(scope + 'api/'),
         })
         response = HttpResponse(body, content_type='application/javascript; charset=utf-8')
+        response['Cache-Control'] = 'no-cache'
+        return response
+
+
+class ActivityManifestView(View):
+    """Manifest aplikacji „Aktywność” na ekran telefonu (jak tryb zakupów).
+
+    Start na /habits/, zasięg całej strony: logowanie i Połączenia otwierają
+    się w oknie aplikacji, a nie w osobnej przeglądarce z innymi ciasteczkami.
+    Manifest spod http kieruje ikonę od razu na HTTPS (secure_base) - bez
+    bezpiecznego połączenia telefon nie zapisze strony na czas bez sieci.
+    """
+
+    def get(self, request):
+        start = reverse('habits:index')
+        base = secure_base(request)
+        manifest = {
+            'id': start,
+            'name': 'Aktywność',
+            'short_name': 'Aktywność',
+            'description': 'Treningi, cel tygodniowy i zdrowie z zegarka – działa także bez połączenia z domową siecią.',
+            'lang': 'pl',
+            'start_url': f'{base}{start}',
+            'scope': f'{base}/',
+            'display': 'standalone',
+            'background_color': '#f4f6f8',
+            'theme_color': '#eb6834',
+            'icons': [
+                {'src': static('habits/icons/activity-192.png'), 'sizes': '192x192', 'type': 'image/png'},
+                {'src': static('habits/icons/activity-512.png'), 'sizes': '512x512', 'type': 'image/png'},
+                {'src': static('habits/icons/activity-maskable-512.png'), 'sizes': '512x512', 'type': 'image/png', 'purpose': 'maskable'},
+            ],
+        }
+        response = HttpResponse(json.dumps(manifest, ensure_ascii=False), content_type='application/manifest+json; charset=utf-8')
         response['Cache-Control'] = 'no-cache'
         return response
 

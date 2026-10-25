@@ -330,6 +330,9 @@
             text = 'Wczytuję…';
         }
         chip.className = 'u-chip u-chip-dot act-status ' + tone;
+        chip.title = state.offlineReady
+            ? 'Strona jest zapisana w telefonie – otworzy się także bez połączenia z domem.'
+            : 'Strona nie jest jeszcze zapisana do pracy bez połączenia.';
         chip.textContent = text;
     }
 
@@ -360,11 +363,40 @@
         state.errors.forEach(function (message, index) {
             parts.push(alertHtml('danger', esc(message), index));
         });
-        if (!('serviceWorker' in navigator) && location.protocol === 'http:' && !state.swNoticeHidden) {
-            parts.push(alertHtml('secondary', 'Tryb offline działa tylko pod adresem https:// – tutaj dane są w telefonie, ' +
-                'ale sama strona nie otworzy się bez połączenia.', 'sw'));
-        }
+        parts = parts.concat(offlineBanners());
         banner.innerHTML = parts.join('');
+    }
+
+    // --- Gotowość do pracy bez połączenia (jak tryb zakupów) ------------------
+    var LOCAL_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
+
+    function certificateUrl() {
+        return 'http://' + location.hostname + '/certyfikat';
+    }
+
+    /** Telefon, który nie ufa certyfikatowi, otwiera stronę tylko dzięki
+     *  „Zaawansowane › Przejdź do strony” (Chrome pamięta to tydzień), a service
+     *  workera z takiego adresu nie zarejestruje („SSL certificate error”).
+     *  To pewny znak, że trzeba zainstalować certyfikat serwera. */
+    function certificateProblem() {
+        return window.isSecureContext && /ssl|certificate|certyfikat/i.test(state.swError || '');
+    }
+
+    function offlineBanners() {
+        var parts = [];
+        if (!window.isSecureContext && LOCAL_HOSTS.indexOf(location.hostname) === -1) {
+            var secure = 'https://' + location.hostname + location.pathname;
+            parts.push(alertHtml('warning', '<strong>Ten adres nie działa bez połączenia z domem.</strong> ' +
+                'Telefon zapisuje stronę tylko przy bezpiecznym połączeniu. ' +
+                '<a href="' + esc(secure) + '">Otwórz przez HTTPS</a> i dodaj ją do ekranu początkowego stamtąd.'));
+        } else if (certificateProblem()) {
+            parts.push(alertHtml('warning', '<strong>Telefon nie ufa certyfikatowi serwera.</strong> ' +
+                'Strona działa tylko dzięki „Przejdź do strony”, które przeglądarka pamięta przez tydzień – ' +
+                'i nie zapisze się do pracy bez połączenia. <a href="' + esc(certificateUrl()) + '">Zainstaluj certyfikat</a>.'));
+        } else if (state.swError && !state.swNoticeHidden) {
+            parts.push(alertHtml('secondary', 'Tryb offline niedostępny: ' + esc(state.swError), 'sw'));
+        }
+        return parts;
     }
 
     function renderRefreshButton() {
@@ -1061,10 +1093,20 @@
     }
 
     function registerServiceWorker() {
-        if (!('serviceWorker' in navigator)) { return; }
-        navigator.serviceWorker.register(config.serviceWorkerUrl, { scope: config.scope }).catch(function () {
-            // Bez service workera strona działa dalej, tylko nie otworzy się offline.
-        });
+        if (!window.isSecureContext || !('serviceWorker' in navigator)) {
+            return;   // baner „Ten adres nie działa bez połączenia” pokazuje offlineBanners
+        }
+        navigator.serviceWorker.register(config.serviceWorkerUrl, { scope: config.scope })
+            .then(function () { return navigator.serviceWorker.ready; })
+            .then(function () {
+                state.offlineReady = true;
+                renderStatus();
+            })
+            .catch(function (error) {
+                // Strona działa dalej, ale nie otworzy się bez połączenia - mówimy to wprost.
+                state.swError = String((error && error.message) || error);
+                renderBanner();
+            });
     }
 
     bindEvents();
