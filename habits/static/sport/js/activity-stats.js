@@ -532,6 +532,8 @@
      * Zdarzenie: key, kind, label, uid, date, value, previous, previousDate,
      * improvement (tekst „+1,2 km”), current (wciąż aktualny), beatenOn (data
      * następnego pobicia albo null).
+     * `board` - stan każdego rekordu do okna „Rekordy”: obecny wynik, pierwszy
+     * wynik, pobicia od najstarszego i łączna poprawa od pierwszego wyniku.
      */
     function recordHistory(workouts) {
         var best = {};
@@ -540,6 +542,7 @@
         function consider(key, w, label, score, value) {
             var prev = best[key];
             if (prev && !(score.better(prev.score))) { return; }
+            var first = prev ? prev.first : { score: score, value: value, date: w.date, uid: w.uid };
             if (prev) {
                 var event = {
                     key: key, kind: w.kind, label: label, uid: w.uid, date: w.date,
@@ -548,9 +551,11 @@
                 };
                 if (prev.event) { prev.event.beatenOn = w.date; }
                 events.push(event);
-                best[key] = { score: score, value: value, date: w.date, uid: w.uid, event: event };
+                best[key] = { score: score, value: value, date: w.date, uid: w.uid, event: event,
+                    kind: w.kind, label: label, first: first, beats: prev.beats.concat([event]) };
             } else {
-                best[key] = { score: score, value: value, date: w.date, uid: w.uid, event: null };
+                best[key] = { score: score, value: value, date: w.date, uid: w.uid, event: null,
+                    kind: w.kind, label: label, first: first, beats: [] };
             }
         }
 
@@ -620,7 +625,22 @@
         events.forEach(function (event) {
             (byUid[event.uid] = byUid[event.uid] || []).push(event);
         });
-        return { events: events, byUid: byUid };
+        var order = { 'run:longest': 0, 'run:fastest': 1, 'swim:longest': 2, 'swim:fastest': 3 };
+        var board = Object.keys(best).map(function (key) {
+            var entry = best[key];
+            return {
+                key: key, kind: entry.kind, label: entry.label,
+                value: entry.value, date: entry.date, uid: entry.uid,
+                first: { value: entry.first.value, date: entry.first.date, uid: entry.first.uid },
+                beats: entry.beats,
+                total: entry.beats.length ? entry.score.delta(entry.first.score) : null
+            };
+        }).sort(function (a, b) {
+            var ra = a.key in order ? order[a.key] : 9;
+            var rb = b.key in order ? order[b.key] : 9;
+            return ra - rb || a.label.localeCompare(b.label, 'pl');
+        });
+        return { events: events, byUid: byUid, board: board };
     }
 
     // --- Zdrowie i forma (dane dzienne z zegarka) ---------------------------

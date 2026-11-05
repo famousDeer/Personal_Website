@@ -303,6 +303,50 @@ button.act-record-log-item:focus-visible { outline: none; box-shadow: var(--focu
 .act-record-log-main strong { color: var(--ink-1); }
 .act-record-log-sub { font-size: var(--fs-caption); color: var(--ink-3); }
 
+/* Okno „Rekordy” (activity-records.js): sekcje dyscyplin, karta na rekord. */
+.act-records-section + .act-records-section { margin-top: var(--sp-5); }
+.act-records-count { color: var(--ink-3); font-weight: 400; }
+
+.act-records-grid {
+    display: grid;
+    gap: var(--sp-3);
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+.act-records-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: var(--sp-3);
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+}
+
+.act-records-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--sp-2); }
+
+/* Data jako przycisk: otwiera trening, w którym padł wynik. */
+.act-records-day {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--ink-3);
+    font-size: var(--fs-caption);
+    text-decoration: underline;
+    text-decoration-color: var(--line-1);
+    text-underline-offset: 2px;
+    white-space: nowrap;
+}
+
+.act-records-day:hover { color: var(--ink-1); }
+.act-records-day:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 4px; }
+
+.act-records-history { margin-top: var(--sp-2); font-size: var(--fs-sm); }
+.act-records-history summary { color: var(--ink-3); cursor: pointer; }
+.act-records-history ol { margin: var(--sp-2) 0 0; padding-left: 1.2rem; display: grid; gap: var(--sp-1); }
+.act-records-history li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 var(--sp-2); }
+.act-records-step { color: var(--ink-1); font-variant-numeric: tabular-nums; }
+.act-records-note { color: var(--ink-3); font-size: var(--fs-caption); }
+
 /* --- Lista treningów ------------------------------------------------------ */
 .act-list { list-style: none; margin: 0; padding: 0; }
 

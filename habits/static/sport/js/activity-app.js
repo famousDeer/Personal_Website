@@ -1076,11 +1076,8 @@
             if (workout) { deleteWorkout(workout); }
         });
 
-        // Trening z listy albo z „Ostatnio pobitych rekordów”: okno szczegółów.
-        var openWorkout = function (event) {
-            var item = event.target.closest('[data-uid]');
-            if (!item) { return; }
-            var uid = item.getAttribute('data-uid');
+        // Trening z listy, z „Ostatnio pobitych” albo z okna rekordów: okno szczegółów.
+        var openWorkoutByUid = function (uid) {
             var all = workouts();
             var workout = all.filter(function (w) { return w.uid === uid; })[0];
             if (!workout) { return; }
@@ -1093,8 +1090,17 @@
                 openForm(workout);
             }
         };
+        var openWorkout = function (event) {
+            var item = event.target.closest('[data-uid]');
+            if (item) { openWorkoutByUid(item.getAttribute('data-uid')); }
+        };
         $('[data-act-list]').addEventListener('click', openWorkout);
         if ($('[data-act-record-log]')) { $('[data-act-record-log]').addEventListener('click', openWorkout); }
+        document.querySelectorAll('[data-act-records-open]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                if (window.ActivityRecords) { ActivityRecords.open(workouts(), { onOpenWorkout: openWorkoutByUid }); }
+            });
+        });
         if ($('[data-act-filter-kind]')) {
             $('[data-act-filter-kind]').addEventListener('click', function (event) {
                 var button = event.target.closest('[data-kind]');

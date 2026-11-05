@@ -42,6 +42,7 @@ APP_REQUIRED_STATIC_FILES = [
     'sport/css/activity.css',
     'sport/js/activity-stats.js',
     'sport/js/activity-detail.js',
+    'sport/js/activity-records.js',
     'sport/js/activity-health.js',
     'sport/js/activity-app.js',
 ]

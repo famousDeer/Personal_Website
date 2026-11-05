@@ -25,6 +25,9 @@ Wszystko, co zależy od danych, rysuje static/sport/js/activity-app.js.
     <button type="button" class="btn btn-outline-secondary" data-act-refresh hidden>
         <i class="bi bi-arrow-repeat" aria-hidden="true"></i> <span>Pobierz teraz</span>
     </button>
+    <button type="button" class="btn btn-outline-secondary" data-act-records-open title="Wszystkie rekordy">
+        <i class="bi bi-trophy" aria-hidden="true"></i> <span class="d-none d-sm-inline">Rekordy</span>
+    </button>
     <a class="btn btn-outline-secondary" href="{% url 'sport:connections' %}" title="Garmin i Hevy">
         <i class="bi bi-plug" aria-hidden="true"></i> <span class="d-none d-sm-inline">Połączenia</span>
     </a>
@@ -145,7 +148,10 @@ Wszystko, co zależy od danych, rysuje static/sport/js/activity-app.js.
                 <p class="act-empty" data-act-trend-empty hidden></p>
             </div>
         </div>
-        <h3 class="act-chart-title mt-3">Rekordy</h3>
+        <div class="act-chart-title-row mt-3">
+            <h3 class="act-chart-title">Rekordy</h3>
+            <button type="button" class="btn btn-link btn-sm p-0" data-act-records-open>Wszystkie rekordy <i class="bi bi-chevron-right" aria-hidden="true"></i></button>
+        </div>
         <div class="act-records" data-act-records></div>
         <div class="act-record-log" data-act-record-log hidden>
             <h3 class="act-chart-title mt-3">Ostatnio pobite</h3>
@@ -280,6 +286,21 @@ Wszystko, co zależy od danych, rysuje static/sport/js/activity-app.js.
     </div>
 </div>
 
+<div class="modal fade" id="act-records-modal" tabindex="-1" aria-labelledby="act-records-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable modal-lg modal-fullscreen-sm-down">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5" id="act-records-title"><i class="bi bi-trophy-fill act-record-icon" aria-hidden="true"></i> Rekordy</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+            </div>
+            <div class="modal-body" data-act-records-body></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Zamknij</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="act-toast" data-act-toast role="status" aria-live="polite" hidden>
     <span data-act-toast-text></span>
     <button type="button" class="btn btn-sm btn-link" data-act-toast-undo hidden>Cofnij</button>
@@ -294,6 +315,7 @@ Wszystko, co zależy od danych, rysuje static/sport/js/activity-app.js.
 <script src="{% static 'js/charts.js' %}"></script>
 <script src="{% static 'sport/js/activity-stats.js' %}"></script>
 <script src="{% static 'sport/js/activity-detail.js' %}"></script>
+<script src="{% static 'sport/js/activity-records.js' %}"></script>
 <script src="{% static 'sport/js/activity-health.js' %}"></script>
 <script src="{% static 'sport/js/activity-app.js' %}"></script>
 {% endblock %}
