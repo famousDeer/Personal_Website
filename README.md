@@ -389,6 +389,69 @@ caddy` before restarting if the image on the Pi is older than 2.7):
 If Caddy fails with `address already in use`, something else on the Pi (for example
 Pi-hole) already uses port 80 or 443.
 
+## Remote access with Tailscale
+
+The Pi is only reachable on the home network, so an iOS Shortcut fired in the car or at
+work (commute, "arrived at work", an app closed outside home) cannot reach the time
+tracker. [Tailscale](https://tailscale.com) puts the Pi and your phone in one private
+network that works from anywhere. Nothing is exposed to the internet: only devices
+signed in to your Tailscale account can connect.
+
+Use the Pi's **Tailscale name** (`raspberrypi.tail1234.ts.net`), not its `100.x.y.z`
+address. A connection to an IP sends no server name (SNI), so Caddy would answer with
+the certificate for `HTTPS_IP` (the home address) and the phone would reject it. A name
+sends SNI and gets its own certificate from the same local authority the phone already
+trusts, so no new certificate has to be installed.
+
+On the Raspberry Pi (the host, not a container):
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up            # prints a link: sign in with your Tailscale account
+```
+
+In the admin console (login.tailscale.com → Machines):
+
+- open the Pi, rename it if you like (e.g. `raspberrypi`) and choose **Disable key
+  expiry**, otherwise the Pi drops off the network every 180 days until you sign in again;
+- under **DNS**, keep **MagicDNS** on (default for new accounts). The machine page shows
+  the full name, e.g. `raspberrypi.tail1234.ts.net`.
+
+Add that name to `.env` and recreate the containers:
+
+```bash
+# .env – append the Tailscale name to both lists, keep the home addresses
+ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,192.168.1.115,raspberrypi.local,raspberrypi.tail1234.ts.net
+HTTPS_SITES=raspberrypi.local, 192.168.1.115, raspberrypi.tail1234.ts.net
+# Address shown to Shortcuts on /czas/automatyzacja/
+REMOTE_BASE_URL=https://raspberrypi.tail1234.ts.net
+```
+
+```bash
+docker compose up -d web caddy   # picks up the new .env; Caddy issues the new certificate
+```
+
+`HTTPS_IP` stays the home IP. If `.env` sets `CSRF_TRUSTED_ORIGINS` explicitly, add
+`https://raspberrypi.tail1234.ts.net` there too (otherwise it is built from
+`ALLOWED_HOSTS` and needs nothing). Caddy publishes 80/443 on every host interface, so the
+`tailscale0` interface needs no change in `docker-compose.yml`; if `ufw` is enabled,
+allow it with `sudo ufw allow in on tailscale0`. `tailscaled` uses about 30 MB of RAM.
+
+On the iPhone:
+
+1. Install **Tailscale** from the App Store and sign in with the same account.
+2. In the Tailscale app settings turn on **VPN On Demand**, so it reconnects by itself.
+   At home the traffic still goes straight over Wi-Fi (direct connection).
+3. Open `https://raspberrypi.tail1234.ts.net/czas/automatyzacja/`: it loads without a
+   warning (same certificate authority) and the Shortcut addresses now use the
+   Tailscale name. Point existing Shortcuts at them and test once with Wi-Fi off.
+
+Other household members join by signing in to the same Tailscale account or by
+accepting an invite (admin console → Users). Home-screen apps (Aktywność, offline
+shopping) keep the address they were installed from and store their offline data per
+address; add them again from the Tailscale name to use them away from home. Do not
+turn on Tailscale **Funnel** – it would publish the site to the internet.
+
 ## Recipe form
 
 Adding and editing a recipe share one template (`cooking/templates/cooking/recipe_form.html`)
@@ -1114,6 +1177,7 @@ Required at minimum:
 - ALLOWED_HOSTS: comma-separated list (include your domain/IP in prod)
 - CSRF_TRUSTED_ORIGINS: comma-separated origins with scheme and port, e.g. `http://192.168.1.115:8000,http://raspberrypi.local:8000`
 - CSRF_TRUSTED_PORTS: optional comma-separated local ports used to auto-build CSRF origins from ALLOWED_HOSTS; default `8000`
+- REMOTE_BASE_URL: optional address of the site away from home, e.g. `https://raspberrypi.tail1234.ts.net` (see "Remote access with Tailscale"); shown to iOS Shortcuts on `/czas/automatyzacja/`
 
 Database variables expected by settings (example):
 - DATABASE_NAME, DATABASE_USER, DATABASE_PASSWORD, DATABASE_HOST, DATABASE_PORT

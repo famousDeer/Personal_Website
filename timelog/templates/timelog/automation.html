@@ -60,6 +60,18 @@ treningi z Nawyków) oraz klucz i instrukcja dla Skrótów iOS.
         {% if token %}
         <section class="u-card u-card-pad mb-4" aria-labelledby="howto-title">
             <h2 class="u-section-title mb-3" id="howto-title">Jak zrobić skrót</h2>
+            {% if remote %}
+                <p class="text-secondary small"><i class="bi bi-shield-lock" aria-hidden="true"></i>
+                    Adresy niżej idą przez Tailscale, więc działają też w aucie i w pracy – o ile w telefonie
+                    jest włączony Tailscale („VPN na żądanie” w jego ustawieniach).</p>
+            {% else %}
+                <div class="alert alert-warning small">
+                    <i class="bi bi-wifi" aria-hidden="true"></i>
+                    Te adresy działają tylko w domowym Wi-Fi – w aucie czy w pracy Skrót nie dodzwoni się do serwera.
+                    Żeby działały wszędzie, połącz Pi i telefon przez Tailscale i ustaw <code>REMOTE_BASE_URL</code>
+                    (README, „Remote access with Tailscale”).
+                </div>
+            {% endif %}
             <ol class="mb-3">
                 <li class="mb-2">Skróty → <strong>Automatyzacja</strong> → <strong>+</strong> i wybierz wyzwalacz (lista niżej). Ustaw „Uruchom natychmiast”.</li>
                 <li class="mb-2">Dodaj czynność <strong>Pobierz zawartość URL</strong>:

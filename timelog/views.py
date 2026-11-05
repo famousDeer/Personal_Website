@@ -2,6 +2,7 @@ import datetime
 import json
 import secrets
 
+from django.conf import settings as django_settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Q
@@ -366,11 +367,15 @@ class AutomationView(TimelogView):
 
     def get(self, request):
         settings = TimelogSettings.for_user(request.user)
+        # Skrót działa też w aucie i w pracy tylko pod adresem z Tailscale -
+        # adres, pod którym otwarto tę stronę w domu, poza domem nie odpowie.
+        base = django_settings.REMOTE_BASE_URL or request.build_absolute_uri('/').rstrip('/')
         return render(request, 'timelog/automation.html', {
             'token': settings.api_token,
-            'start_url': request.build_absolute_uri(reverse('timelog:api-start')),
-            'stop_url': request.build_absolute_uri(reverse('timelog:api-stop')),
-            'status_url': request.build_absolute_uri(reverse('timelog:api-status')),
+            'remote': bool(django_settings.REMOTE_BASE_URL),
+            'start_url': base + reverse('timelog:api-start'),
+            'stop_url': base + reverse('timelog:api-stop'),
+            'status_url': base + reverse('timelog:api-status'),
             'categories': self.categories(),
             'sleep_category': Category.objects.filter(user=request.user, auto=Category.SLEEP).first(),
             'sport_category': Category.objects.filter(user=request.user, auto=Category.SPORT).first(),

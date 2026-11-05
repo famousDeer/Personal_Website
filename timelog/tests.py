@@ -177,6 +177,16 @@ class ViewTests(TimelogTestCase):
         self.assertEqual(self.client.get(reverse('timelog:categories')).status_code, 200)
         self.assertEqual(self.client.get(reverse('timelog:automation')).status_code, 200)
 
+    def test_automation_page_uses_remote_address_for_shortcuts(self):
+        TimelogSettings.objects.update_or_create(user=self.user, defaults={'api_token': 'k'})
+        response = self.client.get(reverse('timelog:automation'))
+        self.assertContains(response, 'http://testserver/czas/api/start/')
+        self.assertContains(response, 'tylko w domowym Wi-Fi')
+        with self.settings(REMOTE_BASE_URL='https://pi.tail1234.ts.net'):
+            response = self.client.get(reverse('timelog:automation'))
+        self.assertContains(response, 'https://pi.tail1234.ts.net/czas/api/stop/')
+        self.assertNotContains(response, 'tylko w domowym Wi-Fi')
+
     def test_category_with_entries_is_hidden_not_deleted(self):
         Entry.objects.create(user=self.user, category=self.phone, start=at(DAY, 9), end=at(DAY, 10))
         self.client.post(reverse('timelog:categories'), {'action': 'delete', 'id': self.phone.pk})

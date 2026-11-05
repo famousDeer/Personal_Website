@@ -69,6 +69,12 @@ if not CSRF_TRUSTED_ORIGINS:
         for trusted_host in hosts:
             CSRF_TRUSTED_ORIGINS.extend([f'http://{trusted_host}', f'https://{trusted_host}'])
 
+# Adres strony spoza domu (Tailscale, np. https://raspberrypi.tail1234.ts.net).
+# Pokazywany tam, gdzie telefon ma się łączyć także poza domowym Wi-Fi -
+# adresy dla Skrótów iOS w harmonogramie. Nazwa musi być też w HTTPS_SITES
+# i ALLOWED_HOSTS. Pusty = strona jest tylko w sieci domowej.
+REMOTE_BASE_URL = os.environ.get('REMOTE_BASE_URL', '').strip().rstrip('/')
+
 CSRF_COOKIE_SAMESITE = os.environ.get('CSRF_COOKIE_SAMESITE', 'Lax')
 SESSION_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'Lax')
 CSRF_COOKIE_SECURE = env_bool('CSRF_COOKIE_SECURE', False)
