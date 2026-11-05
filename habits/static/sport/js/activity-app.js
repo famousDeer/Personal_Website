@@ -710,46 +710,71 @@
         renderRecords(list, kind);
     }
 
-    function recordTile(label, value, detail) {
+    /** Pobicie rekordu jednym zdaniem: „o +2 km · wcześniej 10 km (5 paź 2026)”. */
+    function beatenText(event) {
+        return 'o ' + event.improvement.replace(/^\+/, '') + ' · wcześniej ' + event.previous + ' (' + S.dayLabel(event.previousDate) + ')';
+    }
+
+    function recordTile(label, value, detail, event) {
         return '<div class="act-record"><span class="act-record-label">' + esc(label) + '</span>' +
             '<span class="act-record-value">' + esc(value) + '</span>' +
-            '<span class="act-record-detail">' + esc(detail) + '</span></div>';
+            '<span class="act-record-detail">' + esc(detail) + '</span>' +
+            (event ? '<span class="act-record-beat"><i class="bi bi-arrow-up-short" aria-hidden="true"></i>Pobity ' +
+                esc(beatenText(event)) + '</span>' : '') + '</div>';
     }
 
     function renderRecords(list, kind) {
         var rec = S.records(list);
+        var history = S.recordHistory(list);
+        // Ostatnie pobicie danego rekordu - to ono ustanowiło obecny wynik.
+        var lastBeat = {};
+        history.events.forEach(function (event) {
+            if (event.current) { lastBeat[event.key] = event; }
+        });
         var tiles = [];
         if (kind === 'gym') {
             rec.gym.slice(0, 8).forEach(function (lift) {
                 tiles.push(recordTile(lift.exercise, S.formatWeight(lift.weight) + (lift.reps ? ' × ' + lift.reps : ''),
-                    S.dayLabel(lift.date)));
+                    S.dayLabel(lift.date), lastBeat['gym:' + lift.exercise]));
             });
         } else {
             var group = rec[kind];
             if (group.longest) {
                 tiles.push(recordTile(kind === 'run' ? 'Najdłuższy bieg' : 'Najdłuższe pływanie',
                     S.formatDistance(kind, group.longest.distance),
-                    S.dayLabel(group.longest.date) + (group.longest.duration ? ' · ' + S.formatDuration(group.longest.duration) : '')));
+                    S.dayLabel(group.longest.date) + (group.longest.duration ? ' · ' + S.formatDuration(group.longest.duration) : ''),
+                    lastBeat[kind + ':longest']));
             }
             if (group.fastest) {
                 tiles.push(recordTile('Najszybsze tempo (od ' + S.formatDistance(kind, group.fastestMinimum) + ')',
                     S.formatPace(kind, S.pace(group.fastest)),
-                    S.dayLabel(group.fastest.date) + ' · ' + S.formatDistance(kind, group.fastest.distance)));
+                    S.dayLabel(group.fastest.date) + ' · ' + S.formatDistance(kind, group.fastest.distance),
+                    lastBeat[kind + ':fastest']));
             }
         }
         $('[data-act-records]').innerHTML = tiles.length ? tiles.join('')
             : '<p class="act-empty">Rekordy pojawią się po pierwszych treningach.</p>';
+
+        // Ostatnio pobite rekordy tej dyscypliny - także te, które potem padły.
+        var recent = history.events.filter(function (event) { return event.kind === kind; }).slice(0, 6);
+        var box = $('[data-act-record-log]');
+        if (!box) { return; }
+        box.hidden = !recent.length;
+        box.querySelector('ul').innerHTML = recent.map(function (event) {
+            return '<li><button type="button" class="act-record-log-item" data-uid="' + esc(event.uid) + '">' +
+                '<i class="bi ' + (event.current ? 'bi-trophy-fill' : 'bi-trophy') + ' act-record-icon" aria-hidden="true"></i>' +
+                '<span class="act-record-log-main"><span><strong>' + esc(event.label) + '</strong> ' + esc(event.value) +
+                ' <span class="act-record-up">' + esc(event.improvement) + '</span></span>' +
+                '<span class="act-record-log-sub">' + esc(S.dayLabel(event.date)) + ' · wcześniej ' + esc(event.previous) +
+                (event.current ? ' · aktualny' : ' · pobity ' + esc(S.dayLabel(event.beatenOn))) + '</span></span>' +
+                '</button></li>';
+        }).join('');
     }
 
     // --- Lista treningów --------------------------------------------------------
-    function recordUids(list) {
-        var rec = S.records(list);
-        var uids = {};
-        ['run', 'swim'].forEach(function (kind) {
-            if (rec[kind].longest) { uids[rec[kind].longest.uid] = true; }
-            if (rec[kind].fastest) { uids[rec[kind].fastest.uid] = true; }
-        });
-        return uids;
+    /** Pobite rekordy treningu jako jedna linia: „Najdłuższy bieg +2 km, …”. */
+    function recordsLine(events) {
+        return events.map(function (event) { return event.label + ' ' + event.improvement; }).join(', ');
     }
 
     // --- Filtry listy -------------------------------------------------------------
@@ -801,7 +826,7 @@
     function renderList(all) {
         var container = $('[data-act-list]');
         var today = S.todayIso();
-        var records = recordUids(all);
+        var records = S.recordHistory(all).byUid;
         var list = $('[data-act-filter-kind]') ? S.filterWorkouts(all, state.filter, today) : all;
         renderFilters(all, today);
         $('[data-act-list-count]').textContent = filterActive()
@@ -821,7 +846,8 @@
         }
         container.innerHTML = list.slice(0, state.listLimit).map(function (w) {
             var icons = '';
-            if (records[w.uid]) { icons += '<i class="bi bi-trophy-fill act-record-icon" title="Rekord" aria-label="Rekord"></i>'; }
+            var beaten = records[w.uid] || [];
+            var stillBest = beaten.some(function (event) { return event.current; });
             if (w.garmin) { icons += '<i class="bi bi-smartwatch" title="Z Garmina" aria-label="Z Garmina"></i>'; }
             if (w.hevy) { icons += '<i class="bi bi-phone" title="Z Hevy" aria-label="Z Hevy"></i>'; }
             if ((w.details || {}).hasRoute) { icons += '<i class="bi bi-geo-alt" title="Trasa na mapie" aria-label="Trasa na mapie"></i>'; }
@@ -830,6 +856,9 @@
             return '<li><button type="button" class="act-item act-k-' + w.kind + '" data-uid="' + esc(w.uid) + '">' +
                 '<span class="act-item-bar"></span>' +
                 '<span class="act-item-main"><span class="act-item-title">' + esc(S.summarize(w)) + '</span>' +
+                (beaten.length ? '<span class="act-item-record"><i class="bi ' + (stillBest ? 'bi-trophy-fill' : 'bi-trophy') +
+                    ' act-record-icon" aria-hidden="true"></i>' + (beaten.length > 1 ? 'Pobite rekordy' : 'Pobity rekord') + ': ' +
+                    esc(recordsLine(beaten)) + '</span>' : '') +
                 '<span class="act-item-sub">' + esc(S.dayLabel(w.date, true)) + (w.time ? ' · ' + esc(w.time) : '') +
                 (extra ? ' · ' + esc(extra) : '') + '</span></span>' +
                 '<span class="act-item-icons">' + icons + '</span></button></li>';
@@ -1047,18 +1076,25 @@
             if (workout) { deleteWorkout(workout); }
         });
 
-        $('[data-act-list]').addEventListener('click', function (event) {
+        // Trening z listy albo z „Ostatnio pobitych rekordów”: okno szczegółów.
+        var openWorkout = function (event) {
             var item = event.target.closest('[data-uid]');
             if (!item) { return; }
             var uid = item.getAttribute('data-uid');
-            var workout = workouts().filter(function (w) { return w.uid === uid; })[0];
+            var all = workouts();
+            var workout = all.filter(function (w) { return w.uid === uid; })[0];
             if (!workout) { return; }
             if (window.ActivityDetail) {
-                ActivityDetail.open(workout, { config: config, onEdit: openForm, kindColor: kindColor });
+                ActivityDetail.open(workout, {
+                    config: config, onEdit: openForm, kindColor: kindColor,
+                    records: S.recordHistory(all).byUid[uid] || []
+                });
             } else {
                 openForm(workout);
             }
-        });
+        };
+        $('[data-act-list]').addEventListener('click', openWorkout);
+        if ($('[data-act-record-log]')) { $('[data-act-record-log]').addEventListener('click', openWorkout); }
         if ($('[data-act-filter-kind]')) {
             $('[data-act-filter-kind]').addEventListener('click', function (event) {
                 var button = event.target.closest('[data-kind]');

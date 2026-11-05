@@ -276,6 +276,32 @@
 .act-record-label { font-size: var(--fs-caption); color: var(--ink-3); }
 .act-record-value { font-size: 1.15rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink-1); }
 .act-record-detail { font-size: var(--fs-caption); color: var(--ink-3); }
+/* O ile pobity: zielony jak poprawa w całej aplikacji. */
+.act-record-beat { font-size: var(--fs-caption); color: var(--income-ink); }
+.act-record-up { color: var(--income-ink); font-weight: 600; white-space: nowrap; }
+
+/* Ostatnio pobite rekordy (pod kafelkami i w oknie treningu). */
+.act-record-log-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-1); }
+
+.act-record-log-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--sp-2);
+    width: 100%;
+    padding: var(--sp-2);
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--ink-2);
+    text-align: left;
+}
+
+button.act-record-log-item:hover { background: var(--surface-2); }
+button.act-record-log-item:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.act-record-log-item .act-record-icon { margin-top: 0.15rem; }
+.act-record-log-main { display: flex; flex-direction: column; min-width: 0; }
+.act-record-log-main strong { color: var(--ink-1); }
+.act-record-log-sub { font-size: var(--fs-caption); color: var(--ink-3); }
 
 /* --- Lista treningów ------------------------------------------------------ */
 .act-list { list-style: none; margin: 0; padding: 0; }
@@ -322,6 +348,18 @@
 
 .act-item-icons { display: flex; gap: var(--sp-2); color: var(--ink-3); }
 .act-record-icon { color: var(--cat-4); }
+
+/* Pobity rekord na liście - widoczny tekstem, bo dymek nie działa na telefonie. */
+.act-item-record {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: var(--fs-caption);
+    color: var(--ink-2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 
 /* --- Formularz ------------------------------------------------------------- */
 .act-kind-pick { display: flex; flex-wrap: wrap; gap: var(--sp-2); border: 0; padding: 0; }

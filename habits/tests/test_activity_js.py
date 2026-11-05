@@ -137,6 +137,32 @@ class ActivityStatsJsTests(SimpleTestCase):
         self.assertEqual(records['run']['fastest']['date'], '2026-10-05')
         self.assertEqual([(r['exercise'], r['weight']) for r in records['gym']], [('Przysiad', 90), ('Wiosłowanie', 40)])
 
+    def test_record_history_says_what_was_beaten_and_by_how_much(self):
+        workouts = [
+            w('2026-10-01', distance=5000, duration=1600),            # pierwszy bieg: nic nie pobija
+            w('2026-10-05', distance=10000, duration=3000),           # +5 km, tempo 5:00 zamiast 5:20
+            w('2026-10-07', distance=8000, duration=2560),            # krótszy i wolniejszy: bez rekordu
+            w('2026-10-09', distance=12000, duration=3540),           # +2 km, tempo 4:55
+            w('2026-10-02', 'swim', distance=1000, duration=1200),
+            w('2026-10-10', 'swim', distance=1000, duration=1200),    # remis to nie rekord
+            w('2026-10-02', 'gym', sets=[['Przysiad', 5, 80], ['Przysiad', 5, 85]]),
+            w('2026-10-09', 'gym', sets=[['Przysiad', 10, 100, 'warmup', None], ['Przysiad', 5, 90]]),
+            w('2026-10-12', 'gym', sets=[['Przysiad', 8, 90]]),       # ten sam ciężar, więcej powtórzeń
+        ]
+        events = self.run_js(
+            'S.recordHistory(list).events.map(e => [e.date, e.label, e.value, e.previous, e.improvement, e.current, e.beatenOn])',
+            workouts)
+        self.assertEqual(events, [
+            ['2026-10-12', 'Przysiad', '90 kg × 8', '90 kg × 5', '+3 powt.', True, None],
+            ['2026-10-09', 'Przysiad', '90 kg × 5', '85 kg × 5', '+5 kg', False, '2026-10-12'],
+            ['2026-10-09', 'Najszybsze tempo biegu', '4:55/km', '5:00/km', '0:05/km szybciej', True, None],
+            ['2026-10-09', 'Najdłuższy bieg', '12 km', '10 km', '+2 km', True, None],
+            ['2026-10-05', 'Najszybsze tempo biegu', '5:00/km', '5:20/km', '0:20/km szybciej', False, '2026-10-09'],
+            ['2026-10-05', 'Najdłuższy bieg', '10 km', '5 km', '+5 km', False, '2026-10-09'],
+        ])
+        by_uid = self.run_js('Object.keys(S.recordHistory(list).byUid).sort()', workouts)
+        self.assertEqual(by_uid, ['gym-2026-10-09', 'gym-2026-10-12', 'run-2026-10-05', 'run-2026-10-09'])
+
     def test_warmups_do_not_count(self):
         workouts = [w('2026-10-02', 'gym', sets=[['Przysiad', 10, 120, 'warmup', None], ['Przysiad', 5, 90], ['Przysiad', 5, 90]])]
         self.assertEqual(self.run_js('S.records(list).gym', workouts), [{'exercise': 'Przysiad', 'weight': 90, 'reps': 5, 'date': '2026-10-02'}])

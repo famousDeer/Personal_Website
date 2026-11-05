@@ -194,6 +194,20 @@
         });
     }
 
+    /** Rekordy pobite tym treningiem: o ile i czy wciąż są aktualne. */
+    function recordsHtml(events) {
+        if (!events || !events.length) { return ''; }
+        return '<h3 class="act-detail-subtitle">Rekordy</h3><ul class="act-record-log-list mb-3">' +
+            events.map(function (event) {
+                return '<li class="act-record-log-item">' +
+                    '<i class="bi ' + (event.current ? 'bi-trophy-fill' : 'bi-trophy') + ' act-record-icon" aria-hidden="true"></i>' +
+                    '<span class="act-record-log-main"><span><strong>' + esc(event.label) + '</strong> ' + esc(event.value) +
+                    ' <span class="act-record-up">' + esc(event.improvement) + '</span></span>' +
+                    '<span class="act-record-log-sub">wcześniej ' + esc(event.previous) + ' (' + esc(S.dayLabel(event.previousDate)) + ')' +
+                    (event.current ? ' · wciąż aktualny' : ' · pobity ' + esc(S.dayLabel(event.beatenOn))) + '</span></span></li>';
+            }).join('') + '</ul>';
+    }
+
     function render(w) {
         var title = w.title || S.KIND_LABELS[w.kind];
         modalNode.querySelector('#act-detail-title').innerHTML =
@@ -202,6 +216,7 @@
         var body = '<p class="act-detail-sub">' + esc(S.dayLabel(w.date, true)) + (w.time ? ', ' + esc(w.time) : '') +
             (location ? ' · ' + esc(location) : '') + '</p>' +
             '<div class="act-detail-sources">' + sourcesHtml(w) + '</div>' +
+            recordsHtml(context && context.records) +
             statsHtml(w) +
             ((w.details || {}).hasRoute ? '<h3 class="act-detail-subtitle">Trasa</h3><div class="act-map" data-act-map><p class="act-empty">Wczytuję mapę…</p></div>' : '') +
             zonesHtml(w) + lapsHtml(w) + setsHtml(w) +

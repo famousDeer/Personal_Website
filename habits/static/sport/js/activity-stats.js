@@ -520,6 +520,109 @@
         };
     }
 
+    /**
+     * Historia rekordów: idąc od najstarszego treningu, każde pobicie
+     * dotychczasowego najlepszego wyniku - który rekord, o ile i co było
+     * wcześniej. Pierwszy wynik danego rodzaju nie jest „pobiciem” (inaczej
+     * pierwszy bieg i każde nowe ćwiczenie świeciłyby pucharkiem).
+     *
+     * Rekordy: najdłuższy bieg/pływanie, najszybsze tempo (od 5 km / 400 m)
+     * i na siłowni największy ciężar w ćwiczeniu (przy równym - więcej
+     * powtórzeń). Zwraca { events (od najnowszego), byUid: {uid: [zdarzenia]} }.
+     * Zdarzenie: key, kind, label, uid, date, value, previous, previousDate,
+     * improvement (tekst „+1,2 km”), current (wciąż aktualny), beatenOn (data
+     * następnego pobicia albo null).
+     */
+    function recordHistory(workouts) {
+        var best = {};
+        var events = [];
+
+        function consider(key, w, label, score, value) {
+            var prev = best[key];
+            if (prev && !(score.better(prev.score))) { return; }
+            if (prev) {
+                var event = {
+                    key: key, kind: w.kind, label: label, uid: w.uid, date: w.date,
+                    value: value, previous: prev.value, previousDate: prev.date,
+                    improvement: score.delta(prev.score), current: false, beatenOn: null
+                };
+                if (prev.event) { prev.event.beatenOn = w.date; }
+                events.push(event);
+                best[key] = { score: score, value: value, date: w.date, uid: w.uid, event: event };
+            } else {
+                best[key] = { score: score, value: value, date: w.date, uid: w.uid, event: null };
+            }
+        }
+
+        function longer(kind, meters) {
+            return {
+                meters: meters,
+                better: function (other) { return meters > other.meters; },
+                delta: function (other) { return '+' + formatDistance(kind, meters - other.meters); }
+            };
+        }
+
+        function faster(kind, seconds) {
+            return {
+                seconds: seconds,
+                better: function (other) { return Math.round(seconds) < Math.round(other.seconds); },
+                delta: function (other) {
+                    return formatPace(kind, Math.round(other.seconds) - Math.round(seconds)) + ' szybciej';
+                }
+            };
+        }
+
+        function heavier(kg, reps) {
+            return {
+                kg: kg, reps: reps,
+                better: function (other) { return kg > other.kg || (kg === other.kg && reps > other.reps); },
+                delta: function (other) {
+                    return kg > other.kg ? '+' + formatWeight(kg - other.kg)
+                        : '+' + (reps - other.reps) + ' powt.';
+                }
+            };
+        }
+
+        workouts.slice().sort(byDate).forEach(function (w) {
+            if ((w.kind === 'run' || w.kind === 'swim') && w.distance) {
+                var run = w.kind === 'run';
+                consider(w.kind + ':longest', w, run ? 'Najdłuższy bieg' : 'Najdłuższe pływanie', longer(w.kind, w.distance),
+                    formatDistance(w.kind, w.distance));
+                var minimum = w.kind === 'run' ? RUN_PACE_MIN_M : SWIM_PACE_MIN_M;
+                if (w.distance >= minimum && pace(w)) {
+                    consider(w.kind + ':fastest', w, run ? 'Najszybsze tempo biegu' : 'Najszybsze tempo pływania', faster(w.kind, pace(w)),
+                        formatPace(w.kind, pace(w)));
+                }
+            }
+            if (w.kind === 'gym') {
+                var top = {};
+                workingSets(w.sets).forEach(function (row) {
+                    var kg = row[2] || 0;
+                    var reps = row[1] || 0;
+                    var current = top[row[0]];
+                    if (kg > 0 && (!current || kg > current.kg || (kg === current.kg && reps > current.reps))) {
+                        top[row[0]] = { kg: kg, reps: reps };
+                    }
+                });
+                Object.keys(top).forEach(function (exercise) {
+                    var set = top[exercise];
+                    consider('gym:' + exercise, w, exercise, heavier(set.kg, set.reps),
+                        formatWeight(set.kg) + (set.reps ? ' × ' + set.reps : ''));
+                });
+            }
+        });
+
+        Object.keys(best).forEach(function (key) {
+            if (best[key].event) { best[key].event.current = true; }
+        });
+        events.reverse();
+        var byUid = {};
+        events.forEach(function (event) {
+            (byUid[event.uid] = byUid[event.uid] || []).push(event);
+        });
+        return { events: events, byUid: byUid };
+    }
+
     // --- Zdrowie i forma (dane dzienne z zegarka) ---------------------------
     var TRAINING_STATUS = {
         PRODUCTIVE: 'Produktywny', MAINTAINING: 'Utrzymanie formy', RECOVERY: 'Regeneracja',
@@ -710,6 +813,7 @@
         paceSeries: paceSeries,
         exerciseNames: exerciseNames,
         exerciseProgress: exerciseProgress,
-        records: records
+        records: records,
+        recordHistory: recordHistory
     };
 });
