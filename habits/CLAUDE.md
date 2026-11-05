@@ -1,6 +1,6 @@
-# habits – aktywność fizyczna (pływanie, bieganie, siłownia), Garmin, Hevy
+# habits („Sport”) – aktywność fizyczna (pływanie, bieganie, siłownia), Garmin, Hevy
 
-Cel strony: pomóc w regularności. Treningi z zegarka Garmin, z Hevy (siłownia) albo wpisane ręcznie, per `request.user`. Każdy domownik łączy własne konta na stronie Połączenia (`/habits/polaczenia/`). Namespace URL `habits`, w menu „Nawyki”.
+Cel strony: pomóc w regularności. Treningi z zegarka Garmin, z Hevy (siłownia) albo wpisane ręcznie, per `request.user`. Każdy domownik łączy własne konta na stronie Połączenia (`/habits/polaczenia/`). Namespace URL `habits`, w menu „Sport” (dawniej „Nawyki”; nazwa appki i adres `/habits/` zostały – zmiana adresu odcięłaby zainstalowaną aplikację „Aktywność”).
 
 Modele (`models.py`):
 - Workout – `kind` swim/run/gym/other (kolejność = kolory `--cat-1..4`), `uid` z telefonu, `source` manual/garmin/hevy, `garmin_id` i `hevy_id` (unikalne; sesja z obu źródeł = jeden wiersz z oboma, CSV ma `csv:<skrót>`), `details` (JSON do widoku: strefy tętna, TE, kadencja, przewyższenie, pływanie, `laps`, `hasRoute`), `garmin_raw` (surowe podsumowanie – `sync_garmin --reparse` przelicza `details` bez sieci), `extras_synced` (okrążenia i trasa pobrane), `is_deleted` (ślad dla treningów z Garmina/Hevy).

@@ -155,7 +155,7 @@ The interface is in Polish. Click any image to open it full size.
 **Accounts** (`accounts`) — login, registration that can be closed after setup,
 shared household account management.
 
-**Activity** (`habits`, *Nawyki*) — swimming, running and gym workouts from a Garmin
+**Activity** (`habits`, *Sport*) — swimming, running and gym workouts from a Garmin
 watch, from Hevy or entered by hand: a weekly goal with a streak, a year calendar
 coloured by discipline (hover/tap shows the day), progress charts, records, workout
 details with laps and a route map, fitness (VO2max, readiness, race predictions) and
@@ -1114,7 +1114,7 @@ button, and whatever is inside the block becomes the action buttons
 | Housekeeping sections | `<details>` with a counter in the `<summary>` (see *Dane i uzgodnienia* in the brokerage). A link to `#id` inside a closed `<details>` opens it first |
 
 **Navigation.** The same places on every screen size: *Start*, *Finanse*,
-*Kuchnia*, *Garaż* (and *Nawyki* on a computer). On a phone they are the
+*Kuchnia*, *Garaż* (and *Sport* on a computer). On a phone they are the
 bottom tab bar (plus *Konto*), on a computer the links in the top bar. Each
 module goes to its own home page (`finance:index`, `cooking:index`,
 `cars:garage`), whose tiles open the module's pages; a new page in a module

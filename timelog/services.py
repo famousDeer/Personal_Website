@@ -258,7 +258,7 @@ def period_summary(user, first, last):
     }
 
 
-# --- Wpisy z zegarka (Nawyki) ---------------------------------------------
+# --- Wpisy z zegarka (moduł Sport, app habits) ---------------------------
 
 def _sleep_window(health):
     dto = ((health.raw or {}).get('sleep') or {}).get('dailySleepDTO') or {}
@@ -283,7 +283,7 @@ def _trim_forgotten(user, sleep_start):
 
 @transaction.atomic
 def import_automatic(user, first, last):
-    """Sen (DailyHealth) i treningi (Workout) z Nawyków jako wpisy w dniach
+    """Sen (DailyHealth) i treningi (Workout) ze Sportu jako wpisy w dniach
     [first, last]. Idempotentne - można wołać przy każdym otwarciu strony."""
     from habits.models import DailyHealth, Workout
 
@@ -327,7 +327,7 @@ def import_automatic(user, first, last):
             start = local_time(workout.date, workout.start_time.replace(microsecond=0))
             end = start + datetime.timedelta(seconds=workout.duration_s)
             upsert(external_id, auto[Category.SPORT], start, end, workout.title or workout.get_kind_display())
-        # Trening usunięty w Nawykach znika też stąd (chyba że wpis był edytowany).
+        # Trening usunięty w Sporcie znika też stąd (chyba że wpis był edytowany).
         stale = [e for key, e in existing.items()
                  if key.startswith('workout:') and key not in seen and e.source == Entry.GARMIN
                  and first <= timezone.localdate(e.start) <= last]

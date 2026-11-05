@@ -5,7 +5,7 @@
 
 {% block content %}
 {% if user.is_authenticated %}
-{% page_head title="Dzień dobry, "|add:user.username eyebrow="Panel domowy" icon="bi-house-heart" sub="Finanse, kuchnia, garaż, nawyki i czas w jednym miejscu." %}{% endpage_head %}
+{% page_head title="Dzień dobry, "|add:user.username eyebrow="Panel domowy" icon="bi-house-heart" sub="Finanse, kuchnia, garaż, sport i czas w jednym miejscu." %}{% endpage_head %}
 
 <div class="u-tile-grid animate-fade-in-up">
     <a href="{% url 'finance:dashboard' %}" class="u-tile">
@@ -35,7 +35,7 @@
     <a href="{% url 'habits:index' %}" class="u-tile">
         <span class="u-tile-icon"><i class="bi bi-activity"></i></span>
         <span class="u-tile-body">
-            <span class="u-tile-title">Nawyki</span>
+            <span class="u-tile-title">Sport</span>
             <span class="u-tile-text">Pływanie, bieganie i siłownia.</span>
         </span>
         <i class="bi bi-chevron-right u-tile-arrow"></i>
@@ -72,7 +72,7 @@
     <div class="home-login-panel">
         <div class="home-login-icon"><i class="bi bi-house-lock"></i></div>
         <h1 class="home-title">Dashboard domowy</h1>
-        <p class="text-muted mb-4">Zaloguj się, aby przejść do prywatnych finansów, przepisów, garażu i nawyków.</p>
+        <p class="text-muted mb-4">Zaloguj się, aby przejść do prywatnych finansów, przepisów, garażu i sportu.</p>
         <div class="d-flex flex-column flex-sm-row gap-2">
             <a href="{% url 'login' %}" class="btn btn-primary">
                 <i class="bi bi-box-arrow-in-right me-1"></i> Zaloguj

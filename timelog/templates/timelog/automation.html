@@ -2,7 +2,7 @@
 {% load static ui %}
 {% comment %}
 Automatyzacja (timelog.views.AutomationView): co liczy się samo (sen i
-treningi z Nawyków) oraz klucz i instrukcja dla Skrótów iOS.
+treningi ze Sportu) oraz klucz i instrukcja dla Skrótów iOS.
 {% endcomment %}
 {% block title %}Czas – automatyzacja{% endblock %}
 
@@ -22,7 +22,7 @@ treningi z Nawyków) oraz klucz i instrukcja dla Skrótów iOS.
                 <li><strong>Sen</strong> z Garmina →
                     {% if sleep_category %}„{{ sleep_category.name }}”{% else %}<span class="text-secondary">wyłączone (żadna kategoria nie ma „Sen z zegarka”)</span>{% endif %}.
                     Stoper zostawiony na noc kończy się w chwili zaśnięcia.</li>
-                <li><strong>Treningi</strong> z Nawyków (Garmin, Hevy, wpisane ręcznie) →
+                <li><strong>Treningi</strong> ze Sportu (Garmin, Hevy, wpisane ręcznie) →
                     {% if sport_category %}„{{ sport_category.name }}”{% else %}<span class="text-secondary">wyłączone</span>{% endif %}.</li>
             </ul>
             <p class="text-secondary small mb-0">

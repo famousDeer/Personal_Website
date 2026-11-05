@@ -16,7 +16,7 @@ class Category(models.Model):
 
     SLEEP = 'sleep'
     SPORT = 'sport'
-    AUTO_CHOICES = [('', '—'), (SLEEP, 'Sen z zegarka'), (SPORT, 'Treningi z Nawyków')]
+    AUTO_CHOICES = [('', '—'), (SLEEP, 'Sen z zegarka'), (SPORT, 'Treningi ze Sportu')]
 
     # Kolor = numer koloru kategorii z tokens.css (--cat-1..8).
     COLOR_CHOICES = [(n, str(n)) for n in range(1, 9)]
