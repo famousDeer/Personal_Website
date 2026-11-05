@@ -1,4 +1,4 @@
-"""Statystyki aktywności w przeglądarce (habits/static/habits/js/activity-stats.js).
+"""Statystyki aktywności w przeglądarce (habits/static/sport/js/activity-stats.js).
 
 Uruchamiane w Node; bez Node (np. obraz na Raspberry Pi) testy są pomijane.
 """
@@ -10,7 +10,7 @@ from unittest import skipUnless
 
 from django.test import SimpleTestCase
 
-SCRIPT = Path(__file__).resolve().parents[1] / 'static' / 'habits' / 'js' / 'activity-stats.js'
+SCRIPT = Path(__file__).resolve().parents[1] / 'static' / 'sport' / 'js' / 'activity-stats.js'
 NODE = shutil.which('node')
 
 

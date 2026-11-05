@@ -517,7 +517,7 @@ class ConnectionsViewTests(TestCase):
         override = override_settings(GARMIN_TOKEN_DIR=self.tmp.name)
         override.enable()
         self.addCleanup(override.disable)
-        self.url = reverse('habits:connections')
+        self.url = reverse('sport:connections')
 
     def garmin_class(self, login_result=(None, None)):
         instance = mock.Mock()
@@ -600,11 +600,11 @@ class ConnectionsViewTests(TestCase):
     def test_route_api_is_per_user(self):
         workout = Workout.objects.create(user=self.user, kind='run', date=date(2026, 10, 1))
         WorkoutRoute.objects.create(workout=workout, points=[[50.0, 19.0], [50.1, 19.1]])
-        response = self.client.get(reverse('habits:api-route', args=[workout.uid]))
+        response = self.client.get(reverse('sport:api-route', args=[workout.uid]))
         self.assertEqual(response.json()['points'], [[50.0, 19.0], [50.1, 19.1]])
         other = User.objects.create_user('ania', password='x')
         self.client.force_login(other)
-        self.assertEqual(self.client.get(reverse('habits:api-route', args=[workout.uid])).status_code, 404)
+        self.assertEqual(self.client.get(reverse('sport:api-route', args=[workout.uid])).status_code, 404)
 
 
 @override_settings(GARMIN_ENABLED=True, HEVY_ENABLED=True)

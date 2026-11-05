@@ -1,6 +1,6 @@
 """Pobieranie treningów z Garmin Connect (nieoficjalna biblioteka garminconnect).
 
-Każdy domownik łączy własne konto na stronie /habits/garmin/ (albo komendą
+Każdy domownik łączy własne konto na stronie /sport/polaczenia/ (albo komendą
 `manage.py garmin_login`). Hasło do Garmina nie jest nigdzie zapisywane:
 logowanie zapisuje tylko tokeny w `GARMIN_TOKEN_DIR/<id osoby>/`, a cron
 (`manage.py sync_garmin`) i przycisk na stronie używają już tylko ich.

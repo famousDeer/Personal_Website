@@ -2,11 +2,11 @@ from django.urls import path
 
 from . import views
 
-app_name = 'habits'
+app_name = 'sport'
 
 urlpatterns = [
     path('', views.ActivityView.as_view(), name='index'),
-    # Service worker pod /habits/, żeby jego zasięg obejmował stronę aktywności.
+    # Service worker pod /sport/, żeby jego zasięg obejmował stronę aktywności.
     path('sw.js', views.ActivityServiceWorkerView.as_view(), name='sw'),
     path('manifest.webmanifest', views.ActivityManifestView.as_view(), name='manifest'),
     path('polaczenia/', views.ConnectionsView.as_view(), name='connections'),

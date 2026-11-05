@@ -1,7 +1,7 @@
 """Treningi dla aplikacji w telefonie: snapshot danych i zapis kolejki zmian.
 
 Statystyki (seria tygodni, rekordy, kalendarz) liczy przeglądarka
-(`static/habits/js/activity-stats.js`), bo muszą działać także dla treningów
+(`static/sport/js/activity-stats.js`), bo muszą działać także dla treningów
 dopisanych bez połączenia. Serwer tylko przechowuje i waliduje dane.
 """
 from datetime import date, time, timedelta

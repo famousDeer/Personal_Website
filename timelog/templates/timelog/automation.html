@@ -26,7 +26,7 @@ treningi ze Sportu) oraz klucz i instrukcja dla Skrótów iOS.
                     {% if sport_category %}„{{ sport_category.name }}”{% else %}<span class="text-secondary">wyłączone</span>{% endif %}.</li>
             </ul>
             <p class="text-secondary small mb-0">
-                Dane dochodzą razem z synchronizacją Garmina (<a href="{% url 'habits:connections' %}">Połączenia</a>).
+                Dane dochodzą razem z synchronizacją Garmina (<a href="{% url 'sport:connections' %}">Połączenia</a>).
                 Kategorię zmienisz w <a href="{% url 'timelog:categories' %}">Kategoriach</a> („Wpisy automatyczne”).
                 Usunięty wpis z zegarka nie wróci, a poprawiony zostaje taki, jak go zapiszesz.
             </p>

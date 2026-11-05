@@ -447,7 +447,7 @@ On the iPhone:
    Tailscale name. Point existing Shortcuts at them and test once with Wi-Fi off.
 
 Other household members join by signing in to the same Tailscale account or by
-accepting an invite (admin console → Users). Home-screen apps (Aktywność, offline
+accepting an invite (admin console → Users). Home-screen apps (Sport, offline
 shopping) keep the address they were installed from and store their offline data per
 address; add them again from the Tailscale name to use them away from home. Do not
 turn on Tailscale **Funnel** – it would publish the site to the internet.
@@ -890,19 +890,25 @@ Momentum strategy (`finance/gem.py`, panel `finance/partials/gem_panel.html`):
 - `GEM_PRICES_ENABLED=0` turns all downloads off (it is off in tests).
 
 ## Activity, Garmin and Hevy
-`/habits/` shows swimming, running and gym workouts (`habits.Workout`, gym sets in
+`/sport/` (menu *Sport*; Django app `habits`) shows swimming, running and gym workouts (`habits.Workout`, gym sets in
 `WorkoutSet`). Like the offline shopping mode, the page holds no data: it loads a
-snapshot from `/habits/api/snapshot/`, keeps it in IndexedDB and queues changes made
-without a connection (`/habits/api/sync/`, idempotent by the workout `uid`). A service
-worker (`/habits/sw.js`) stores the page, so it opens away from home (HTTPS only).
-A manifest (`/habits/manifest.webmanifest`) lets the phone install it as the "Aktywność" app;
+snapshot from `/sport/api/snapshot/`, keeps it in IndexedDB and queues changes made
+without a connection (`/sport/api/sync/`, idempotent by the workout `uid`). A service
+worker (`/sport/sw.js`) stores the page, so it opens away from home (HTTPS only).
+A manifest (`/sport/manifest.webmanifest`) lets the phone install it as the "Sport" app;
 like the shopping app, the page warns when it is opened over plain HTTP or when the phone
 does not trust the server certificate (then the service worker cannot be registered).
 Statistics (weekly goal in *days with a workout*, week streak, calendar, records) are
-computed in the browser by `habits/static/habits/js/activity-stats.js`.
+computed in the browser by `habits/static/sport/js/activity-stats.js`.
+
+The module used to live at `/habits/`. Old links redirect to `/sport/` (301), and
+`/habits/sw.js` serves a script that deletes the old "Aktywność" app's cache,
+unregisters itself and moves open windows to `/sport/` – a service worker update does
+not follow redirects, so without it the old worker would keep serving the cached page.
+An icon installed from the old address should be removed and added again from `/sport/`.
 
 Each household member connects their own accounts on **Połączenia**
-(`/habits/polaczenia/`, the plug button on the activity page):
+(`/sport/polaczenia/`, the plug button on the activity page):
 
 - **Garmin Connect** – e-mail and password (plus the 2FA code when the account has one).
   The password only goes to Garmin; the site keeps login tokens in `GARMIN_TOKEN_DIR`

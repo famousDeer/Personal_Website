@@ -16,10 +16,11 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include, re_path
-from django.views.generic import TemplateView
+from django.views.generic import RedirectView, TemplateView
 from django.views.static import serve
 from django.conf import settings
 
+from habits.views import LegacyServiceWorkerView
 from utils.undo import UndoView
 
 urlpatterns = [
@@ -29,7 +30,11 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('finance/', include('finance.urls')),
     path('accounts/', include('accounts.urls')),
-    path('habits/', include('habits.urls')),
+    path('sport/', include('habits.urls')),
+    # Dawny adres modułu Sport. Stary service worker dostaje skrypt, który go
+    # usuwa (przekierowania nie przyjmie), reszta przechodzi pod /sport/.
+    path('habits/sw.js', LegacyServiceWorkerView.as_view()),
+    re_path(r'^habits/(?P<rest>.*)$', RedirectView.as_view(url='/sport/%(rest)s', permanent=True, query_string=True)),
     path('cooking/', include('cooking.urls')),
     path('cars/', include('cars.urls')),
     path('czas/', include('timelog.urls')),

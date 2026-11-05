@@ -38,44 +38,63 @@ class ActivityPageTests(TestCase):
         self.user = User.objects.create_user('dawid', password='x')
 
     def test_page_requires_login(self):
-        response = self.client.get(reverse('habits:index'))
+        response = self.client.get(reverse('sport:index'))
         self.assertEqual(response.status_code, 302)
 
     def test_page_and_service_worker(self):
         self.client.force_login(self.user)
-        response = self.client.get(reverse('habits:index'))
+        response = self.client.get(reverse('sport:index'))
         self.assertContains(response, 'activity-config')
         self.assertContains(response, 'activity-app.js')
-        sw = self.client.get(reverse('habits:sw'))
+        sw = self.client.get(reverse('sport:sw'))
         self.assertEqual(sw['Content-Type'], 'application/javascript; charset=utf-8')
-        self.assertContains(sw, "CACHE_PREFIX = 'aktywnosc-'")
-        self.assertContains(sw, '"/habits/api/"')
+        self.assertContains(sw, "CACHE_PREFIX = 'sport-'")
+        self.assertContains(sw, '"/sport/api/"')
+
+
+class OldAddressTests(TestCase):
+    """Moduł Sport był pod /habits/: linki przechodzą pod /sport/, a stary
+    service worker dostaje skrypt, który czyści pamięć i się wyrejestrowuje."""
+
+    def test_old_addresses_redirect_to_sport(self):
+        response = self.client.get('/habits/')
+        self.assertEqual((response.status_code, response['Location']), (301, '/sport/'))
+        response = self.client.get('/habits/polaczenia/?x=1')
+        self.assertEqual(response['Location'], '/sport/polaczenia/?x=1')
+
+    def test_old_service_worker_removes_itself(self):
+        response = self.client.get('/habits/sw.js')
+        self.assertEqual(response['Content-Type'], 'application/javascript; charset=utf-8')
+        body = response.content.decode()
+        self.assertIn("startsWith('aktywnosc-')", body)
+        self.assertIn('self.registration.unregister()', body)
+        self.assertIn("client.navigate('/sport/')", body)
 
 
 class ActivityManifestTests(TestCase):
     def test_manifest_is_installable(self):
-        response = self.client.get(reverse('habits:manifest'))
+        response = self.client.get(reverse('sport:manifest'))
         self.assertEqual(response['Content-Type'], 'application/manifest+json; charset=utf-8')
         data = json.loads(response.content)
         self.assertEqual((data['name'], data['start_url'], data['scope'], data['display']),
-                         ('Aktywność', '/habits/', '/', 'standalone'))
+                         ('Sport', '/sport/', '/', 'standalone'))
         self.assertEqual({icon['sizes'] for icon in data['icons']}, {'192x192', '512x512'})
         self.assertIn('maskable', [icon.get('purpose') for icon in data['icons']])
 
     @override_settings(ALLOWED_HOSTS=['raspberrypi.local'])
     def test_manifest_from_http_points_to_https(self):
-        data = json.loads(self.client.get(reverse('habits:manifest'), HTTP_HOST='raspberrypi.local').content)
-        self.assertEqual(data['start_url'], 'https://raspberrypi.local/habits/')
+        data = json.loads(self.client.get(reverse('sport:manifest'), HTTP_HOST='raspberrypi.local').content)
+        self.assertEqual(data['start_url'], 'https://raspberrypi.local/sport/')
 
     def test_page_links_manifest_and_worker_caches_it(self):
         user = User.objects.create_user('dawid', password='x')
         self.client.force_login(user)
-        page = self.client.get(reverse('habits:index'))
-        self.assertContains(page, 'rel="manifest" href="/habits/manifest.webmanifest"')
+        page = self.client.get(reverse('sport:index'))
+        self.assertContains(page, 'rel="manifest" href="/sport/manifest.webmanifest"')
         self.assertContains(page, 'apple-touch-icon')
-        sw = self.client.get(reverse('habits:sw')).content.decode()
-        self.assertIn('"/habits/manifest.webmanifest"', sw)
-        self.assertIn('habits/icons/activity-192', sw)
+        sw = self.client.get(reverse('sport:sw')).content.decode()
+        self.assertIn('"/sport/manifest.webmanifest"', sw)
+        self.assertIn('sport/icons/activity-192', sw)
 
 
 class ActivityApiTests(TestCase):
@@ -85,11 +104,11 @@ class ActivityApiTests(TestCase):
         self.client.force_login(self.user)
 
     def sync(self, ops):
-        return self.client.post(reverse('habits:api-sync'), data=json.dumps({'ops': ops}), content_type='application/json')
+        return self.client.post(reverse('sport:api-sync'), data=json.dumps({'ops': ops}), content_type='application/json')
 
     def test_api_returns_401_without_login(self):
         self.client.logout()
-        response = self.client.get(reverse('habits:api-snapshot'))
+        response = self.client.get(reverse('sport:api-snapshot'))
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.json()['error'], 'auth')
 
@@ -97,7 +116,7 @@ class ActivityApiTests(TestCase):
         Workout.objects.create(user=self.user, kind='swim', date=date(2026, 10, 1), distance_m=1500)
         Workout.objects.create(user=self.user, kind='run', date=date(2026, 10, 2), is_deleted=True)
         Workout.objects.create(user=self.other, kind='run', date=date(2026, 10, 3))
-        data = self.client.get(reverse('habits:api-snapshot')).json()
+        data = self.client.get(reverse('sport:api-snapshot')).json()
         self.assertEqual([w['kind'] for w in data['snapshot']['workouts']], ['swim'])
         self.assertEqual(data['snapshot']['settings']['weeklyGoal'], 3)
         self.assertFalse(data['snapshot']['settings']['garmin']['enabled'])
@@ -164,7 +183,7 @@ class ActivityApiTests(TestCase):
         self.assertEqual(garmin_workout.source, 'garmin')
 
     def test_malformed_body(self):
-        response = self.client.post(reverse('habits:api-sync'), data='nie json', content_type='application/json')
+        response = self.client.post(reverse('sport:api-sync'), data='nie json', content_type='application/json')
         self.assertEqual(response.status_code, 400)
 
 
@@ -294,7 +313,7 @@ class GarminSyncTests(TestCase):
 
     def test_refresh_button_without_connection(self):
         self.client.force_login(self.user)
-        response = self.client.post(reverse('habits:api-refresh'))
+        response = self.client.post(reverse('sport:api-refresh'))
         self.assertEqual(response.status_code, 400)
         self.assertIn('połącz', response.json()['message'])
 
@@ -303,7 +322,7 @@ class GarminSyncTests(TestCase):
         Path(self.tmp.name, str(self.user.pk), 'garmin_tokens.json').write_text('{}')
         self.client.force_login(self.user)
         with mock.patch.object(garmin, 'connect', return_value=self.fake_client()):
-            response = self.client.post(reverse('habits:api-refresh'))
+            response = self.client.post(reverse('sport:api-refresh'))
         data = response.json()
         self.assertEqual(data['message'], 'Garmin: nowe treningi 3.')
         self.assertTrue(data['snapshot']['settings']['garmin']['connected'])

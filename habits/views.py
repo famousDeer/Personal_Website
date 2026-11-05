@@ -39,11 +39,11 @@ APP_REQUIRED_STATIC_FILES = [
     'css/app.css',
     'vendor/chart/chart.umd.js',
     'js/charts.js',
-    'habits/css/activity.css',
-    'habits/js/activity-stats.js',
-    'habits/js/activity-detail.js',
-    'habits/js/activity-health.js',
-    'habits/js/activity-app.js',
+    'sport/css/activity.css',
+    'sport/js/activity-stats.js',
+    'sport/js/activity-detail.js',
+    'sport/js/activity-health.js',
+    'sport/js/activity-app.js',
 ]
 APP_STATIC_FILES = APP_REQUIRED_STATIC_FILES + [
     'css/style.css',
@@ -58,13 +58,13 @@ APP_STATIC_FILES = APP_REQUIRED_STATIC_FILES + [
     # Mapa trasy - sam podkład (kafelki OSM) i tak wymaga internetu.
     'vendor/leaflet/leaflet.js',
     'vendor/leaflet/leaflet.css',
-    'habits/icons/activity-192.png',
-    'habits/icons/activity-512.png',
-    'habits/icons/activity-maskable-512.png',
-    'habits/icons/apple-touch-icon.png',
+    'sport/icons/activity-192.png',
+    'sport/icons/activity-512.png',
+    'sport/icons/activity-maskable-512.png',
+    'sport/icons/apple-touch-icon.png',
 ]
 TEMPLATE_DIRS = [
-    Path(__file__).resolve().parent / 'templates' / 'habits',
+    Path(__file__).resolve().parent / 'templates' / 'sport',
     Path(settings.BASE_DIR) / 'templates',
 ]
 APP_TEMPLATES = [
@@ -95,19 +95,19 @@ def app_version():
 @method_decorator(login_required, name='dispatch')
 class ActivityView(View):
     def get(self, request):
-        response = render(request, 'habits/activity.html', {
+        response = render(request, 'sport/activity.html', {
             'app_config': {
                 'version': app_version(),
-                'snapshotUrl': reverse('habits:api-snapshot'),
-                'syncUrl': reverse('habits:api-sync'),
-                'refreshUrl': reverse('habits:api-refresh'),
-                'routeUrl': reverse('habits:api-route', args=['UID']),
-                'connectionsUrl': reverse('habits:connections'),
+                'snapshotUrl': reverse('sport:api-snapshot'),
+                'syncUrl': reverse('sport:api-sync'),
+                'refreshUrl': reverse('sport:api-refresh'),
+                'routeUrl': reverse('sport:api-route', args=['UID']),
+                'connectionsUrl': reverse('sport:connections'),
                 'leafletJs': static('vendor/leaflet/leaflet.js'),
                 'leafletCss': static('vendor/leaflet/leaflet.css'),
-                'serviceWorkerUrl': reverse('habits:sw'),
-                'scope': reverse('habits:index'),
-                'loginUrl': f"{reverse('login')}?next={reverse('habits:index')}",
+                'serviceWorkerUrl': reverse('sport:sw'),
+                'scope': reverse('sport:index'),
+                'loginUrl': f"{reverse('login')}?next={reverse('sport:index')}",
                 'kinds': [{'value': value, 'label': label} for value, label in Workout.KIND_CHOICES],
             },
         })
@@ -117,10 +117,10 @@ class ActivityView(View):
 
 class ActivityServiceWorkerView(View):
     def get(self, request):
-        scope = reverse('habits:index')
-        precache = [scope, reverse('habits:manifest')] + [static(name) for name in APP_STATIC_FILES]
+        scope = reverse('sport:index')
+        precache = [scope, reverse('sport:manifest')] + [static(name) for name in APP_STATIC_FILES]
         required = [scope] + [static(name) for name in APP_REQUIRED_STATIC_FILES]
-        body = render_to_string('habits/activity_sw.js', {
+        body = render_to_string('sport/activity_sw.js', {
             'version': app_version(),
             'precache_json': json.dumps(precache),
             'required_json': json.dumps(required),
@@ -132,22 +132,51 @@ class ActivityServiceWorkerView(View):
         return response
 
 
-class ActivityManifestView(View):
-    """Manifest aplikacji „Aktywność” na ekran telefonu (jak tryb zakupów).
+class LegacyServiceWorkerView(View):
+    """Service worker pod starym adresem /habits/sw.js: czyści pamięć starej
+    aplikacji „Aktywność”, wyrejestrowuje się i przenosi otwarte okna na /sport/.
 
-    Start na /habits/, zasięg całej strony: logowanie i Połączenia otwierają
+    Telefon sprawdza nowszą wersję service workera przy każdym wejściu w jego
+    zasięg. Przekierowania przy tym nie przyjmuje - bez tego pliku stary
+    service worker dalej pokazywałby stronę z pamięci.
+    """
+
+    BODY = (
+        "self.addEventListener('install', () => self.skipWaiting());\n"
+        "self.addEventListener('activate', (event) => {\n"
+        "    event.waitUntil((async () => {\n"
+        "        const names = await caches.keys();\n"
+        "        await Promise.all(names.filter((name) => name.startsWith('aktywnosc-')).map((name) => caches.delete(name)));\n"
+        "        await self.registration.unregister();\n"
+        "        const windows = await self.clients.matchAll({ type: 'window' });\n"
+        "        windows.forEach((client) => client.navigate('{target}'));\n"
+        "    })());\n"
+        "});\n"
+    )
+
+    def get(self, request):
+        body = self.BODY.replace('{target}', reverse('sport:index'))
+        response = HttpResponse(body, content_type='application/javascript; charset=utf-8')
+        response['Cache-Control'] = 'no-cache'
+        return response
+
+
+class ActivityManifestView(View):
+    """Manifest aplikacji „Sport” na ekran telefonu (jak tryb zakupów).
+
+    Start na /sport/, zasięg całej strony: logowanie i Połączenia otwierają
     się w oknie aplikacji, a nie w osobnej przeglądarce z innymi ciasteczkami.
     Manifest spod http kieruje ikonę od razu na HTTPS (secure_base) - bez
     bezpiecznego połączenia telefon nie zapisze strony na czas bez sieci.
     """
 
     def get(self, request):
-        start = reverse('habits:index')
+        start = reverse('sport:index')
         base = secure_base(request)
         manifest = {
             'id': start,
-            'name': 'Aktywność',
-            'short_name': 'Aktywność',
+            'name': 'Sport',
+            'short_name': 'Sport',
             'description': 'Treningi, cel tygodniowy i zdrowie z zegarka – działa także bez połączenia z domową siecią.',
             'lang': 'pl',
             'start_url': f'{base}{start}',
@@ -156,9 +185,9 @@ class ActivityManifestView(View):
             'background_color': '#f4f6f8',
             'theme_color': '#eb6834',
             'icons': [
-                {'src': static('habits/icons/activity-192.png'), 'sizes': '192x192', 'type': 'image/png'},
-                {'src': static('habits/icons/activity-512.png'), 'sizes': '512x512', 'type': 'image/png'},
-                {'src': static('habits/icons/activity-maskable-512.png'), 'sizes': '512x512', 'type': 'image/png', 'purpose': 'maskable'},
+                {'src': static('sport/icons/activity-192.png'), 'sizes': '192x192', 'type': 'image/png'},
+                {'src': static('sport/icons/activity-512.png'), 'sizes': '512x512', 'type': 'image/png'},
+                {'src': static('sport/icons/activity-maskable-512.png'), 'sizes': '512x512', 'type': 'image/png', 'purpose': 'maskable'},
             ],
         }
         response = HttpResponse(json.dumps(manifest, ensure_ascii=False), content_type='application/manifest+json; charset=utf-8')
@@ -276,13 +305,13 @@ class ConnectionsView(View):
     def get(self, request):
         settings_row = ActivitySettings.for_user(request.user)
         host = request.get_host().split(':')[0]
-        return render(request, 'habits/connections.html', {
+        return render(request, 'sport/connections.html', {
             'garmin': garmin.status(request.user, settings_row),
             'hevy': hevy.status(request.user, settings_row),
             'hevy_key_hint': settings_row.hevy_api_key[-4:] if settings_row.hevy_api_key else '',
             'waiting_for_code': bool(self.pending_mfa(request)),
             'insecure': not request.is_secure() and host not in LOCAL_HOSTS,
-            'back_url': reverse('habits:index'),
+            'back_url': reverse('sport:index'),
         })
 
     def post(self, request):
@@ -298,14 +327,14 @@ class ConnectionsView(View):
             'hevy-csv': self.hevy_csv,
         }.get(request.POST.get('action'))
         if handler is None:
-            return redirect('habits:connections')
+            return redirect('sport:connections')
         if request.POST['action'].startswith('garmin') and not settings.GARMIN_ENABLED:
             messages.error(request, 'Połączenie z Garminem jest wyłączone (GARMIN_ENABLED).')
         elif request.POST['action'] in ('hevy-key', 'hevy-sync') and not settings.HEVY_ENABLED:
             messages.error(request, 'Pobieranie z Hevy jest wyłączone (HEVY_ENABLED).')
         else:
             handler(request)
-        return redirect('habits:connections')
+        return redirect('sport:connections')
 
     # --- Garmin ---
     def garmin_connected(self, request):

@@ -3,7 +3,7 @@
  *
  * window.ActivityDetail.open(trening, ctx), gdzie ctx = { config, onEdit(trening) }.
  * Mapa (Leaflet + kafelki OpenStreetMap) wymaga internetu - trasa przychodzi
- * z /habits/api/route/<uid>/, Leaflet ładuje się dopiero przy pierwszej mapie.
+ * z /sport/api/route/<uid>/, Leaflet ładuje się dopiero przy pierwszej mapie.
  */
 (function () {
     'use strict';

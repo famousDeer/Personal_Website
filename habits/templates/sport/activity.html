@@ -4,18 +4,18 @@
 Strona aktywności. Szablon nie zawiera danych - treningi przychodzą z API
 i są trzymane w telefonie (IndexedDB), a service worker zapisuje tę stronę,
 więc otwiera się i przyjmuje nowe treningi także bez połączenia.
-Wszystko, co zależy od danych, rysuje static/habits/js/activity-app.js.
+Wszystko, co zależy od danych, rysuje static/sport/js/activity-app.js.
 {% endcomment %}
 {% block title %}Aktywność{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'habits/css/activity.css' %}">
+<link rel="stylesheet" href="{% static 'sport/css/activity.css' %}">
 {# Aplikacja na ekranie telefonu (manifest jak w trybie zakupów). #}
-<link rel="manifest" href="{% url 'habits:manifest' %}">
-<link rel="apple-touch-icon" href="{% static 'habits/icons/apple-touch-icon.png' %}">
+<link rel="manifest" href="{% url 'sport:manifest' %}">
+<link rel="apple-touch-icon" href="{% static 'sport/icons/apple-touch-icon.png' %}">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Aktywność">
+<meta name="apple-mobile-web-app-title" content="Sport">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 {% endblock %}
 
@@ -25,7 +25,7 @@ Wszystko, co zależy od danych, rysuje static/habits/js/activity-app.js.
     <button type="button" class="btn btn-outline-secondary" data-act-refresh hidden>
         <i class="bi bi-arrow-repeat" aria-hidden="true"></i> <span>Pobierz teraz</span>
     </button>
-    <a class="btn btn-outline-secondary" href="{% url 'habits:connections' %}" title="Garmin i Hevy">
+    <a class="btn btn-outline-secondary" href="{% url 'sport:connections' %}" title="Garmin i Hevy">
         <i class="bi bi-plug" aria-hidden="true"></i> <span class="d-none d-sm-inline">Połączenia</span>
     </a>
     <button type="button" class="btn btn-primary" data-act-add>
@@ -288,8 +288,8 @@ Wszystko, co zależy od danych, rysuje static/habits/js/activity-app.js.
 {% block extra_js %}
 <script src="{% static 'vendor/chart/chart.umd.js' %}"></script>
 <script src="{% static 'js/charts.js' %}"></script>
-<script src="{% static 'habits/js/activity-stats.js' %}"></script>
-<script src="{% static 'habits/js/activity-detail.js' %}"></script>
-<script src="{% static 'habits/js/activity-health.js' %}"></script>
-<script src="{% static 'habits/js/activity-app.js' %}"></script>
+<script src="{% static 'sport/js/activity-stats.js' %}"></script>
+<script src="{% static 'sport/js/activity-detail.js' %}"></script>
+<script src="{% static 'sport/js/activity-health.js' %}"></script>
+<script src="{% static 'sport/js/activity-app.js' %}"></script>
 {% endblock %}

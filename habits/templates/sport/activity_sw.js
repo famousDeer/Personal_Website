@@ -8,7 +8,7 @@
  * udana odpowiedź z sieci uzupełnia pamięć.
  */
 const VERSION = '{{ version }}';
-const CACHE_PREFIX = 'aktywnosc-';
+const CACHE_PREFIX = 'sport-';
 const CACHE_NAME = CACHE_PREFIX + VERSION;
 const PRECACHE = {{ precache_json|safe }};
 const REQUIRED = {{ required_json|safe }};
