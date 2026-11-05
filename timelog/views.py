@@ -19,17 +19,65 @@ from utils.undo import delete_with_undo
 from . import services
 from .models import Category, Entry, TimelogSettings
 
-# Ikony do wyboru w kategorii: (klasa Bootstrap Icons, podpis dla czytnika i dymka).
-ICONS = [
-    ('bi-briefcase', 'Teczka'), ('bi-laptop', 'Laptop'), ('bi-book', 'Książka'),
-    ('bi-mortarboard', 'Nauka'), ('bi-activity', 'Puls'), ('bi-bicycle', 'Rower'),
-    ('bi-people', 'Ludzie'), ('bi-heart', 'Serce'), ('bi-moon-stars', 'Noc'),
-    ('bi-house', 'Dom'), ('bi-cup-hot', 'Kubek'), ('bi-basket', 'Zakupy'),
-    ('bi-car-front', 'Auto'), ('bi-bus-front', 'Autobus'), ('bi-tree', 'Drzewo'),
-    ('bi-music-note', 'Muzyka'), ('bi-phone', 'Telefon'), ('bi-tv', 'Telewizor'),
-    ('bi-controller', 'Gry'), ('bi-chat-dots', 'Rozmowa'), ('bi-brush', 'Pędzel'),
-    ('bi-tools', 'Narzędzia'), ('bi-cash-coin', 'Pieniądze'), ('bi-circle', 'Kółko'),
+# Ikony do wyboru w kategorii, w grupach: (klasa, podpis dla czytnika i dymka).
+# Klasy bi-* są z Bootstrap Icons; tl-icon-* to własne rysunki (pies, łapa)
+# z timelog.css - tego zestaw Bootstrapa nie ma.
+ICON_GROUPS = [
+    ('Praca i nauka', [
+        ('bi-briefcase', 'Teczka'), ('bi-laptop', 'Laptop'), ('bi-person-workspace', 'Biurko'),
+        ('bi-code-slash', 'Kod'), ('bi-terminal', 'Terminal'), ('bi-kanban', 'Zadania'),
+        ('bi-list-check', 'Lista zadań'), ('bi-envelope', 'Poczta'), ('bi-calendar-event', 'Spotkanie'),
+        ('bi-graph-up', 'Wykres'), ('bi-book', 'Książka'), ('bi-journal-text', 'Notatki'),
+        ('bi-mortarboard', 'Nauka'), ('bi-translate', 'Języki'), ('bi-easel', 'Tablica'),
+        ('bi-lightbulb', 'Pomysł'),
+    ]),
+    ('Dom i sprawy', [
+        ('bi-house', 'Dom'), ('bi-house-heart', 'Rodzinny dom'), ('bi-bucket', 'Sprzątanie'),
+        ('bi-droplet', 'Higiena'), ('bi-scissors', 'Fryzjer'), ('bi-hammer', 'Młotek'),
+        ('bi-tools', 'Narzędzia'), ('bi-wrench', 'Naprawy'), ('bi-basket', 'Zakupy'),
+        ('bi-cart3', 'Wózek'), ('bi-bag', 'Torba'), ('bi-cash-coin', 'Pieniądze'),
+        ('bi-wallet2', 'Portfel'), ('bi-piggy-bank', 'Skarbonka'),
+    ]),
+    ('Jedzenie', [
+        ('bi-cup-hot', 'Kawa'), ('bi-cup-straw', 'Napój'), ('bi-egg-fried', 'Śniadanie'),
+        ('bi-cake2', 'Ciasto'),
+    ]),
+    ('Ruch i zdrowie', [
+        ('bi-activity', 'Puls'), ('bi-heart-pulse', 'Zdrowie'), ('bi-person-walking', 'Spacer'),
+        ('bi-person-arms-up', 'Rozciąganie'), ('bi-bicycle', 'Rower'), ('bi-dribbble', 'Piłka'),
+        ('bi-water', 'Pływanie'), ('bi-trophy', 'Puchar'), ('bi-lungs', 'Oddech'),
+        ('bi-capsule', 'Leki'), ('bi-bandaid', 'Plaster'), ('bi-hospital', 'Lekarz'),
+    ]),
+    ('Ludzie i zwierzęta', [
+        ('bi-people', 'Ludzie'), ('bi-heart', 'Serce'), ('bi-chat-dots', 'Rozmowa'),
+        ('bi-gift', 'Prezent'), ('bi-balloon', 'Impreza'), ('bi-emoji-smile', 'Uśmiech'),
+        ('tl-icon-dog', 'Pies'), ('tl-icon-paw', 'Łapa'),
+    ]),
+    ('Odpoczynek', [
+        ('bi-moon-stars', 'Noc'), ('bi-cloud-moon', 'Drzemka'), ('bi-sun', 'Słońce'),
+        ('bi-tree', 'Drzewo'), ('bi-flower1', 'Ogród'), ('bi-umbrella', 'Parasol'),
+        ('bi-music-note', 'Muzyka'), ('bi-headphones', 'Słuchawki'), ('bi-palette', 'Malowanie'),
+        ('bi-brush', 'Pędzel'), ('bi-camera', 'Aparat'), ('bi-film', 'Film'),
+        ('bi-tv', 'Telewizor'), ('bi-controller', 'Gry'),
+    ]),
+    ('Telefon i internet', [
+        ('bi-phone', 'Telefon'), ('bi-instagram', 'Instagram'), ('bi-youtube', 'YouTube'),
+        ('bi-tiktok', 'TikTok'), ('bi-facebook', 'Facebook'), ('bi-reddit', 'Reddit'),
+        ('bi-twitch', 'Twitch'), ('bi-spotify', 'Spotify'), ('bi-newspaper', 'Wiadomości'),
+        ('bi-globe', 'Internet'),
+    ]),
+    ('Podróże', [
+        ('bi-car-front', 'Auto'), ('bi-fuel-pump', 'Tankowanie'), ('bi-bus-front', 'Autobus'),
+        ('bi-train-front', 'Pociąg'), ('bi-airplane', 'Samolot'), ('bi-scooter', 'Hulajnoga'),
+        ('bi-backpack', 'Plecak'), ('bi-signpost-2', 'Drogowskaz'),
+    ]),
+    ('Inne', [
+        ('bi-circle', 'Kółko'), ('bi-stars', 'Gwiazdki'), ('bi-fire', 'Ogień'),
+        ('bi-flag', 'Flaga'), ('bi-bookmark', 'Zakładka'), ('bi-clock', 'Zegar'),
+        ('bi-alarm', 'Budzik'),
+    ]),
 ]
+ICONS = dict(icon for _, icons in ICON_GROUPS for icon in icons)
 
 
 def parse_day(value):
@@ -241,7 +289,7 @@ class CategoriesView(TimelogView):
             'categories': Category.objects.filter(user=request.user),
             'value_choices': Category.VALUE_CHOICES,
             'auto_choices': Category.AUTO_CHOICES,
-            'icons': ICONS,
+            'icon_groups': ICON_GROUPS,
             'colors': range(1, 9),
         })
 
@@ -300,7 +348,7 @@ class CategoriesView(TimelogView):
 
     def _icon(self, request):
         icon = request.POST.get('icon', '')
-        return icon if icon in dict(ICONS) else 'bi-circle'
+        return icon if icon in ICONS else 'bi-circle'
 
     def _color(self, request):
         try:

@@ -183,6 +183,13 @@ class ViewTests(TimelogTestCase):
         self.phone.refresh_from_db()
         self.assertTrue(self.phone.is_archived)
 
+    def test_category_icon_from_picker_and_unknown_icon(self):
+        self.client.post(reverse('timelog:categories'), {'action': 'add', 'name': 'Spacer z psem', 'icon': 'tl-icon-dog', 'color': 3})
+        self.assertEqual(Category.objects.get(user=self.user, name='Spacer z psem').icon, 'tl-icon-dog')
+        self.client.post(reverse('timelog:categories'), {'action': 'add', 'name': 'Inne', 'icon': 'bi-x" onclick="'})
+        self.assertEqual(Category.objects.get(user=self.user, name='Inne').icon, 'bi-circle')
+        self.assertContains(self.client.get(reverse('timelog:categories')), 'aria-label="Pies"')
+
     def test_other_users_entry_is_not_reachable(self):
         other = User.objects.create_user('ola', password='x')
         services.ensure_categories(other)

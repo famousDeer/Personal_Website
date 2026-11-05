@@ -13,11 +13,14 @@
     <div class="col-12">
         <span class="form-label d-block" id="icon-label-{{ prefix }}">Ikona</span>
         <div class="tl-icons" role="radiogroup" aria-labelledby="icon-label-{{ prefix }}">
-            {% for icon, label in icons %}
-                <label title="{{ label }}">
-                    <input type="radio" name="icon" value="{{ icon }}" {% if c and icon == c.icon or not c and icon == 'bi-circle' %}checked{% endif %} aria-label="{{ label }}">
-                    <span><i class="bi {{ icon }}" aria-hidden="true"></i></span>
-                </label>
+            {% for group, icons in icon_groups %}
+                <div class="tl-icons-group">{{ group }}</div>
+                {% for icon, label in icons %}
+                    <label title="{{ label }}">
+                        <input type="radio" name="icon" value="{{ icon }}" {% if c and icon == c.icon or not c and icon == 'bi-circle' %}checked{% endif %} aria-label="{{ label }}">
+                        <span><i class="bi {{ icon }}" aria-hidden="true"></i></span>
+                    </label>
+                {% endfor %}
             {% endfor %}
         </div>
     </div>

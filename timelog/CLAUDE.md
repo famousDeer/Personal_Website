@@ -3,7 +3,7 @@
 Cel: wiedzieć, na co idzie dzień i ile czasu to „strata”. Per `request.user`, namespace `timelog`, adres `/czas/`, w menu „Czas”.
 
 Modele (`models.py`):
-- Category – nazwa, ikona (`bi-*` z listy `ICONS` w views – siatka z podglądem), kolor `--cat-1..8`, `value` good/neutral/waste (strata liczy się w podsumowaniu), `auto` sleep/sport (kategoria dla wpisów z zegarka, najwyżej jedna na rodzaj), `is_archived` (kategoria z wpisami się nie usuwa – PROTECT, jest ukrywana). Pierwsze wejście tworzy zestaw `DEFAULT_CATEGORIES`.
+- Category – nazwa, ikona (`ICON_GROUPS` w views, siatka z podglądem w grupach; `bi-*` z Bootstrap Icons 1.10.5, a `tl-icon-*` – pies, łapa – to własne SVG jako maska w `timelog.css`), kolor `--cat-1..8`, `value` good/neutral/waste (strata liczy się w podsumowaniu), `auto` sleep/sport (kategoria dla wpisów z zegarka, najwyżej jedna na rodzaj), `is_archived` (kategoria z wpisami się nie usuwa – PROTECT, jest ukrywana). Pierwsze wejście tworzy zestaw `DEFAULT_CATEGORIES`.
 - Entry – `start`/`end` (bez końca = stoper biegnie, najwyżej jeden), `source` manual/timer/garmin/shortcut, `external_id` (`sleep:<data>`, `workout:<uid>`; unikalne per user).
 - TimelogSettings – `api_token` dla Skrótów iOS, `dismissed` (external_id usuniętych wpisów z zegarka – import ich nie odtwarza).
 
