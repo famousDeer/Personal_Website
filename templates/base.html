@@ -168,14 +168,15 @@
 </main>
 
 {% if user.is_authenticated %}
-{% comment %} Dolna nawigacja na telefonie: Start, moduły i konto w zasięgu kciuka.
-   Moduł prowadzi na swoją stronę główną (kafelki z jego częściami), tak jak
-   górna nawigacja na komputerze. Dotknięcie zakładki, na której stronie
-   głównej już jesteś, przewija na górę (static/js/app-actions.js).
-   Na komputerze ukryta. {% endcomment %}
+{% comment %} Dolna nawigacja na telefonie: Start i wszystkie moduły w zasięgu
+   kciuka, w tej samej kolejności co górna nawigacja na komputerze. Moduł
+   prowadzi na swoją stronę główną (kafelki z jego częściami). Konto jest
+   w ikonie osoby w prawym górnym rogu - szósty moduł nie zmieściłby się
+   obok niego. Dotknięcie zakładki, na której stronie głównej już jesteś,
+   przewija na górę (static/js/app-actions.js). Na komputerze ukryta. {% endcomment %}
 <nav class="app-tabbar" aria-label="Nawigacja mobilna">
-    {% with ns=request.resolver_match.namespace url_name=request.resolver_match.url_name %}
-    {% url 'index' as home_url %}{% url 'finance:index' as finance_url %}{% url 'cooking:index' as cooking_url %}{% url 'cars:garage' as cars_url %}{% url 'profile' as profile_url %}
+    {% with ns=request.resolver_match.namespace %}
+    {% url 'index' as home_url %}{% url 'finance:index' as finance_url %}{% url 'cooking:index' as cooking_url %}{% url 'cars:garage' as cars_url %}{% url 'sport:index' as sport_url %}{% url 'timelog:index' as timelog_url %}
     <div class="app-tabbar-inner">
         <a class="app-tab {% if request.path == home_url %}is-active{% endif %}" href="{{ home_url }}"
            {% if request.path == home_url %}aria-current="page"{% endif %}>
@@ -193,9 +194,13 @@
            {% if request.path == cars_url %}aria-current="page"{% elif ns == 'cars' %}aria-current="true"{% endif %}>
             <i class="bi bi-car-front-fill" aria-hidden="true"></i><span>Garaż</span>
         </a>
-        <a class="app-tab {% if url_name == 'profile' or url_name == 'edit_shared_account' %}is-active{% endif %}" href="{{ profile_url }}"
-           {% if request.path == profile_url %}aria-current="page"{% elif url_name == 'edit_shared_account' %}aria-current="true"{% endif %}>
-            <i class="bi bi-person" aria-hidden="true"></i><span>Konto</span>
+        <a class="app-tab {% if ns == 'sport' %}is-active{% endif %}" href="{{ sport_url }}"
+           {% if request.path == sport_url %}aria-current="page"{% elif ns == 'sport' %}aria-current="true"{% endif %}>
+            <i class="bi bi-activity" aria-hidden="true"></i><span>Sport</span>
+        </a>
+        <a class="app-tab {% if ns == 'timelog' %}is-active{% endif %}" href="{{ timelog_url }}"
+           {% if request.path == timelog_url %}aria-current="page"{% elif ns == 'timelog' %}aria-current="true"{% endif %}>
+            <i class="bi bi-hourglass-split" aria-hidden="true"></i><span>Czas</span>
         </a>
     </div>
     {% endwith %}

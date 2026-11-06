@@ -753,15 +753,16 @@ h1, h2, h3, h4, h5, h6 {
 /* =========================================================================
    Dolna nawigacja mobilna
    -------------------------------------------------------------------------
-   Cztery moduły aplikacji w zasięgu kciuka. Zastępuje rozwijane menu
-   hamburgera przy typowej nawigacji między modułami.
+   Start i pięć modułów w zasięgu kciuka. Zaznaczona zakładka ma
+   pigułkę pod ikoną - przy sześciu wąskich zakładkach sam kolor napisu
+   był za słaby. Napisy krótkie, żeby zmieściły się na 320 px.
    ========================================================================= */
 .app-tabbar {
     display: none;
     position: fixed;
     inset: auto 0 0 0;
     z-index: 1040;
-    padding: 0.35rem 0.5rem calc(0.35rem + env(safe-area-inset-bottom));
+    padding: 0.3rem 0.25rem calc(0.3rem + env(safe-area-inset-bottom));
     background: color-mix(in srgb, var(--surface-1) 92%, transparent);
     backdrop-filter: saturate(180%) blur(16px);
     -webkit-backdrop-filter: saturate(180%) blur(16px);
@@ -771,30 +772,52 @@ h1, h2, h3, h4, h5, h6 {
 .app-tabbar-inner {
     display: grid;
     grid-auto-flow: column;
-    grid-auto-columns: 1fr;
-    gap: 0.15rem;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 0.1rem;
+    max-width: 34rem;
+    margin-inline: auto;
 }
 
 .app-tab {
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     gap: 0.15rem;
-    padding: 0.35rem 0.2rem;
+    min-width: 0;
+    min-height: 50px;          /* cel dotykowy */
+    padding: 0.2rem 0.1rem;
     border-radius: var(--r-sm);
     color: var(--ink-4);
     font-size: var(--fs-eyebrow);
     font-weight: 650;
     text-decoration: none;
-    min-height: 48px;          /* cel dotykowy */
-    justify-content: center;
 }
 
-.app-tab i { font-size: var(--fs-h3); line-height: 1; }
+.app-tab span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.app-tab i {
+    display: grid;
+    place-items: center;
+    width: 3rem;
+    max-width: 100%;
+    height: 1.6rem;
+    border-radius: 999px;
+    font-size: 1.15rem;
+    line-height: 1;
+    transition: background-color var(--dur-fast) var(--ease);
+}
 
 .app-tab.is-active { color: var(--brand-600); }
+.app-tab.is-active i { background: var(--brand-100); }
 
 :root[data-theme="dark"] .app-tab.is-active { color: var(--brand-300); }
+:root[data-theme="dark"] .app-tab.is-active i { background: color-mix(in srgb, var(--brand-500) 30%, transparent); }
 
 @media (max-width: 991.98px) {
     .app-tabbar { display: block; }
