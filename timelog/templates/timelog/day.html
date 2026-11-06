@@ -40,9 +40,12 @@ pasek doby, wpisy i luki do uzupełnienia, sumy kategorii.
         </div>
         {% if running %}
             <span class="tl-elapsed" data-tl-since="{{ running.start.isoformat }}">{{ running|duration|hm }}</span>
-            <form method="post" action="{% url 'timelog:stop' %}">
+            <form method="post" action="{% url 'timelog:stop' %}" class="d-flex flex-wrap gap-2">
                 {% csrf_token %}
                 <input type="hidden" name="next" value="{{ request.path }}">
+                {% if resume_to %}
+                    <button type="submit" class="btn btn-primary" name="resume" value="1"><i class="bi {{ resume_to.category.icon }}" aria-hidden="true"></i> Wróć do: {{ resume_to.category.name }}</button>
+                {% endif %}
                 <button type="submit" class="btn btn-outline-secondary"><i class="bi bi-stop-fill" aria-hidden="true"></i> Stop</button>
             </form>
         {% endif %}

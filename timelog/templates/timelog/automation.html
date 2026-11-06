@@ -81,7 +81,10 @@ treningi ze Sportu) oraz klucz i instrukcja dla Skrótów iOS.
                 </li>
                 <li class="mb-2">Na zakończenie (np. „Wyjeżdżam z pracy”, „Instagram zamknięty”) ten sam skrót z adresem
                     <code class="tl-code my-1">{{ stop_url }}</code>
-                    i polem <code>category</code> – zatrzyma stoper tylko wtedy, gdy wciąż liczy tę kategorię.</li>
+                    i polem <code>category</code> – zatrzyma stoper tylko wtedy, gdy wciąż liczy tę kategorię.
+                    Kategoria oznaczona w <a href="{% url 'timelog:categories' %}">Kategoriach</a> jako <strong>chwilowa</strong>
+                    (np. „Telefon i social media”) po zatrzymaniu wraca do tego, co biegło przed nią – zamknięty Instagram
+                    w trakcie Pracy wznawia Pracę. Pole <code>resume</code> = <code>false</code> wyłącza powrót.</li>
             </ol>
             <p class="text-secondary small mb-0">
                 Wielkość liter i polskie znaki w nazwie nie mają znaczenia. Stan stopera: <code>{{ status_url }}</code> (GET).
@@ -96,7 +99,7 @@ treningi ze Sportu) oraz klucz i instrukcja dla Skrótów iOS.
                 <table class="u-table">
                     <thead><tr><th>Wyzwalacz w Skrótach</th><th>Start</th><th>Stop</th></tr></thead>
                     <tbody>
-                        <tr><td><i class="bi bi-instagram" aria-hidden="true"></i> Aplikacja otwarta / zamknięta (Instagram, TikTok, YouTube…)</td><td>Telefon i social media</td><td>przy zamknięciu</td></tr>
+                        <tr><td><i class="bi bi-instagram" aria-hidden="true"></i> Aplikacja otwarta / zamknięta (Instagram, TikTok, YouTube…)</td><td>Telefon i social media (chwilowa)</td><td>przy zamknięciu – wraca poprzednia czynność</td></tr>
                         <tr><td><i class="bi bi-geo-alt" aria-hidden="true"></i> Przybycie do pracy / wyjście</td><td>Praca</td><td>Dojazdy</td></tr>
                         <tr><td><i class="bi bi-car-front" aria-hidden="true"></i> CarPlay albo Bluetooth auta połączony</td><td>Dojazdy</td><td>przy rozłączeniu</td></tr>
                         <tr><td><i class="bi bi-moon" aria-hidden="true"></i> Tryb skupienia „Praca” / „Czytanie”</td><td>Praca / Nauka</td><td>przy wyłączeniu</td></tr>

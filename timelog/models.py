@@ -30,6 +30,9 @@ class Category(models.Model):
     position = models.PositiveSmallIntegerField(default=0)
     # Ukryta kategoria znika z przycisków, ale stare wpisy zostają.
     is_archived = models.BooleanField(default=False)
+    # Chwilowa czynność (Instagram, telefon): po zatrzymaniu stoper wraca
+    # do tego, co biegło przed nią (services.stop_timer z resume).
+    is_interruption = models.BooleanField(default=False)
 
     class Meta:
         db_table = 'timelog_categories'
@@ -61,6 +64,9 @@ class Entry(models.Model):
     note = models.CharField(max_length=200, blank=True)
     source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default=MANUAL)
     external_id = models.CharField(max_length=80, null=True, blank=True)
+    # Wpis przerwany przez ten (tylko dla chwilowych kategorii) - do niego
+    # stoper wraca po zatrzymaniu.
+    interrupted = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

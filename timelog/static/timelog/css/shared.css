@@ -113,8 +113,10 @@ body.has-time-bubble .page-content { padding-bottom: 56px; }
 .tb-head-name { font-weight: 650; color: var(--ink-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tb-elapsed { font-size: 1.5rem; font-weight: 700; color: var(--ink-1); font-variant-numeric: tabular-nums; }
 
-.tb-actions { display: flex; gap: var(--sp-2); margin: var(--sp-3) 0; }
+.tb-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: var(--sp-3) 0; }
 .tb-actions > * { flex: 1 1 0; }
+/* „Wróć do: …” ma długą nazwę - cały wiersz nad Stop i Otwórz Czas. */
+.tb-actions > [data-tb-resume] { flex-basis: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .tb-subtitle { margin: 0 0 var(--sp-2); font-size: var(--fs-caption); font-weight: 650; color: var(--ink-3); }
 

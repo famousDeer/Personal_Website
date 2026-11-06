@@ -16,11 +16,14 @@ from .models import Category, Entry, TimelogSettings
 # Krótszy odcinek przy przełączaniu stopera to pomyłka w kliknięciu:
 # zamiast osobnego wpisu zmieniamy kategorię biegnącego.
 MISCLICK = datetime.timedelta(seconds=60)
+# Dłuższa „chwilowa” czynność nie wraca do poprzedniej - po trzech
+# godzinach na Instagramie praca z rana nie jest już tym, co robisz.
+RESUME_LIMIT = datetime.timedelta(hours=3)
 # Dłuższy „sen” z zegarka to błąd danych, nie noc.
 MAX_SLEEP = datetime.timedelta(hours=16)
 
 DEFAULT_CATEGORIES = [
-    # nazwa, ikona, kolor, ocena, automatycznie
+    # nazwa, ikona, kolor, ocena, automatycznie (chwilowe: INTERRUPTIONS)
     ('Praca', 'bi-briefcase', 1, Category.GOOD, ''),
     ('Nauka', 'bi-book', 6, Category.GOOD, ''),
     ('Sport', 'bi-activity', 3, Category.GOOD, Category.SPORT),
@@ -33,13 +36,15 @@ DEFAULT_CATEGORIES = [
     ('Telefon i social media', 'bi-phone', 8, Category.WASTE, ''),
     ('Seriale i gry', 'bi-tv', 8, Category.WASTE, ''),
 ]
+INTERRUPTIONS = {'Telefon i social media'}
 
 
 def ensure_categories(user):
     """Pierwsze wejście: gotowy zestaw kategorii do przerobienia na swój."""
     if not Category.objects.filter(user=user).exists():
         Category.objects.bulk_create([
-            Category(user=user, name=name, icon=icon, color=color, value=value, auto=auto, position=i)
+            Category(user=user, name=name, icon=icon, color=color, value=value, auto=auto, position=i,
+                     is_interruption=name in INTERRUPTIONS)
             for i, (name, icon, color, value, auto) in enumerate(DEFAULT_CATEGORIES)
         ])
 
@@ -76,7 +81,18 @@ def find_category(user, name_or_id):
 # --- Stoper ---------------------------------------------------------------
 
 def running_entry(user):
-    return Entry.objects.filter(user=user, end__isnull=True).select_related('category').order_by('-start').first()
+    return (Entry.objects.filter(user=user, end__isnull=True)
+            .select_related('category', 'interrupted__category').order_by('-start').first())
+
+
+def resume_target(entry, at=None):
+    """Do czego wróci stoper po zatrzymaniu chwilowej czynności (albo None)."""
+    previous = entry.interrupted if entry and entry.category.is_interruption else None
+    if previous is None or previous.category.is_archived:
+        return None
+    if (at or now()) - entry.start > RESUME_LIMIT:
+        return None
+    return previous
 
 
 def _close(entry, at):
@@ -89,29 +105,61 @@ def _close(entry, at):
 
 @transaction.atomic
 def start_timer(user, category, *, source=Entry.TIMER, at=None, note=''):
-    """Kończy biegnący wpis i zaczyna nowy. Ta sama kategoria = nic się nie dzieje."""
+    """Kończy biegnący wpis i zaczyna nowy. Ta sama kategoria = nic się nie dzieje.
+
+    Chwilowa kategoria zapamiętuje przerwany wpis (`interrupted`), żeby
+    `stop_timer(resume=True)` mógł do niego wrócić. Dla niej nie działa też
+    poprawka pomyłki z 60 s - Instagram otwarty zaraz po starcie Pracy
+    zamieniłby Pracę w Instagram i nie byłoby do czego wracać.
+    """
     at = at or now()
     running = list(Entry.objects.select_for_update().filter(user=user, end__isnull=True).order_by('-start'))
     current = running[0] if running else None
     if current and current.category_id == category.pk:
         return current
-    if current and at - current.start < MISCLICK:
+    if current and at - current.start < MISCLICK and not category.is_interruption:
         current.category = category
         current.note = note or current.note
         current.save(update_fields=['category', 'note'])
         return current
     for entry in running:
         _close(entry, at)
-    return Entry.objects.create(user=user, category=category, start=at, source=source, note=note)
+    interrupted = current if category.is_interruption and current is not None and current.pk else None
+    return Entry.objects.create(user=user, category=category, start=at, source=source, note=note,
+                                interrupted=interrupted)
 
 
 @transaction.atomic
-def stop_timer(user, at=None):
+def stop_timer(user, at=None, *, resume=False):
+    """Zatrzymuje stoper. Zwraca zatrzymany wpis (albo None).
+
+    `resume=True` przy chwilowej kategorii wznawia przerwaną czynność
+    (`resume_target`); nowy wpis jest w `stopped.resumed`. Zerknięcie
+    krótsze niż minuta znika, a przerwany wpis po prostu biegnie dalej.
+    """
     at = at or now()
-    stopped = None
-    for entry in Entry.objects.select_for_update().filter(user=user, end__isnull=True).order_by('-start'):
+    # of=self: Postgres nie blokuje wierszy z LEFT JOIN (interrupted bywa pusty).
+    running = list(Entry.objects.select_for_update(of=('self',)).filter(user=user, end__isnull=True)
+                   .select_related('category', 'interrupted__category').order_by('-start'))
+    stopped = running[0] if running else None
+    previous = resume_target(stopped, at) if resume else None
+    for entry in running:
         _close(entry, at)
-        stopped = stopped or entry
+    if stopped is None:
+        return None
+    stopped.resumed = None
+    if previous is not None:
+        if at - stopped.start < MISCLICK and previous.end == stopped.start:
+            if stopped.pk:
+                stopped.delete()
+            previous.end = None
+            previous.save(update_fields=['end'])
+            stopped.resumed = previous
+        else:
+            stopped.resumed = Entry.objects.create(
+                user=user, category=previous.category, start=at, source=stopped.source,
+                note=previous.note, interrupted=previous.interrupted,
+            )
     return stopped
 
 

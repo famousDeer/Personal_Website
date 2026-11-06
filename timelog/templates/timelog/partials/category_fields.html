@@ -1,4 +1,4 @@
-{% comment %} Pola kategorii: nazwa, ocena, ikona, kolor. `c` = kategoria albo None (nowa). {% endcomment %}
+{% comment %} Pola kategorii: nazwa, ocena, chwilowa, ikona, kolor. `c` = kategoria albo None (nowa). {% endcomment %}
 <div class="row g-2">
     <div class="col-sm-6">
         <label class="form-label" for="name-{{ prefix }}">Nazwa</label>
@@ -9,6 +9,13 @@
         <select class="form-select" id="value-{{ prefix }}" name="value">
             {% for value, label in value_choices %}<option value="{{ value }}" {% if c and value == c.value or not c and value == 'neutral' %}selected{% endif %}>{{ label }}</option>{% endfor %}
         </select>
+    </div>
+    <div class="col-12">
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="is_interruption" value="1" id="interruption-{{ prefix }}" {% if c.is_interruption %}checked{% endif %} aria-describedby="interruption-help-{{ prefix }}">
+            <label class="form-check-label" for="interruption-{{ prefix }}">Chwilowa – po zatrzymaniu wraca poprzednia czynność</label>
+        </div>
+        <div class="form-text" id="interruption-help-{{ prefix }}">Np. Instagram w trakcie Pracy: po zamknięciu aplikacji stoper sam wraca do Pracy. Po ponad 3 godzinach już nie wraca.</div>
     </div>
     <div class="col-12">
         <span class="form-label d-block" id="icon-label-{{ prefix }}">Ikona</span>

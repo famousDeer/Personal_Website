@@ -20,6 +20,7 @@
                         <i class="bi {{ category.icon }}" style="color: var(--tl-color)" aria-hidden="true"></i>
                         <span class="fw-semibold {% if category.is_archived %}text-secondary text-decoration-line-through{% endif %}">{{ category.name }}</span>
                         {% if category.value == 'waste' %}<span class="u-chip is-expense">strata</span>{% elif category.value == 'good' %}<span class="u-chip is-income">wartościowy</span>{% endif %}
+                        {% if category.is_interruption %}<span class="u-chip"><i class="bi bi-arrow-return-left" aria-hidden="true"></i> chwilowa</span>{% endif %}
                         {% if category.auto %}<span class="u-chip"><i class="bi bi-smartwatch" aria-hidden="true"></i> {{ category.get_auto_display }}</span>{% endif %}
                         <span class="ms-auto d-flex gap-1">
                             <form method="post">{% csrf_token %}<input type="hidden" name="id" value="{{ category.pk }}">

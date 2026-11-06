@@ -116,6 +116,7 @@ class DayView(TimelogView):
             return redirect('timelog:index')
         services.import_automatic(request.user, day - datetime.timedelta(days=1), day + datetime.timedelta(days=1))
         data = services.day_data(request.user, day)
+        running = services.running_entry(request.user)
         rows = [{'kind': 'entry', 'at': e.start, 'entry': e} for e in data['entries']]
         rows += [{'kind': 'gap', 'at': start, 'start': start, 'end': end,
                   'seconds': int((end - start).total_seconds())} for start, end in data['gaps']]
@@ -127,7 +128,8 @@ class DayView(TimelogView):
             'is_today': day == today,
             'prev_day': day - datetime.timedelta(days=1),
             'next_day': day + datetime.timedelta(days=1) if day < today else None,
-            'running': services.running_entry(request.user),
+            'running': running,
+            'resume_to': services.resume_target(running),
             'categories': self.categories(),
             'rows': rows,
             'data': data,
@@ -145,11 +147,22 @@ class StartView(TimelogView):
         return redirect_back(request, 'timelog:index')
 
 
+def stopped_message(entry):
+    if entry is None:
+        return ''
+    if entry.resumed is not None:
+        return f'Koniec: {entry.category}. Wracasz do: {entry.resumed.category}.'
+    return f'Zatrzymano: {entry.category}.' if entry.pk else ''
+
+
 class StopView(TimelogView):
+    """Stop; `resume=1` przy chwilowej kategorii wraca do przerwanej czynności."""
+
     def post(self, request):
-        entry = services.stop_timer(request.user)
-        if entry and entry.pk:
-            messages.success(request, f'Zatrzymano: {entry.category}.')
+        entry = services.stop_timer(request.user, resume=request.POST.get('resume') == '1')
+        message = stopped_message(entry)
+        if message:
+            messages.success(request, message)
         return redirect_back(request, 'timelog:index')
 
 
@@ -158,7 +171,8 @@ class BubbleView(View):
 
     JSON zamiast danych w szablonie: strona Sport otwiera się najpierw
     z pamięci telefonu, więc stan wpisany w HTML byłby nieaktualny.
-    POST z `action` start (z `category`) albo stop odpowiada nowym stanem.
+    POST z `action` start (z `category`) albo stop (z `resume` - powrót do
+    przerwanej czynności, `running.resumeTo`) odpowiada nowym stanem.
     Bez logowania 401 - dymek się wtedy nie pokazuje.
     """
 
@@ -180,7 +194,7 @@ class BubbleView(View):
             data = {}
         action = data.get('action')
         if action == 'stop':
-            services.stop_timer(request.user)
+            services.stop_timer(request.user, resume=data.get('resume') in (True, 1, '1', 'true'))
         elif action == 'start':
             pk = str(data.get('category', ''))
             category = Category.objects.filter(user=request.user, is_archived=False, pk=pk).first() if pk.isdigit() else None
@@ -194,12 +208,16 @@ class BubbleView(View):
     def state(self, request):
         entry = services.running_entry(request.user)
         category = entry.category if entry else None
+        previous = services.resume_target(entry)
         response = JsonResponse({
             'ok': True,
             'csrfToken': get_token(request),
             'running': None if entry is None else {
                 'category': category.pk, 'name': category.name, 'icon': category.icon,
                 'color': category.color, 'since': entry.start.isoformat(), 'note': entry.note,
+                'resumeTo': None if previous is None else {
+                    'name': previous.category.name, 'icon': previous.category.icon, 'color': previous.category.color,
+                },
             },
             'categories': [
                 {'id': c.pk, 'name': c.name, 'icon': c.icon, 'color': c.color}
@@ -365,6 +383,7 @@ class CategoriesView(TimelogView):
                 Category.objects.create(
                     user=request.user, name=name, icon=self._icon(request), color=self._color(request),
                     value=self._value(request), position=(last.position + 1) if last else 0,
+                    is_interruption=request.POST.get('is_interruption') == '1',
                 )
                 messages.success(request, f'Dodano kategorię „{name}”.')
             return redirect('timelog:categories')
@@ -375,6 +394,7 @@ class CategoriesView(TimelogView):
             if name and not Category.objects.filter(user=request.user, name__iexact=name).exclude(pk=category.pk).exists():
                 category.name = name
             category.icon, category.color, category.value = self._icon(request), self._color(request), self._value(request)
+            category.is_interruption = request.POST.get('is_interruption') == '1'
             auto = request.POST.get('auto', '')
             if auto in dict(Category.AUTO_CHOICES):
                 if auto:
@@ -502,6 +522,9 @@ class ApiStartView(ApiView):
 
 
 class ApiStopView(ApiView):
+    """Zatrzymanie chwilowej kategorii (Instagram zamknięty) wraca do tego,
+    co biegło przed nią; `resume` = false wyłącza powrót."""
+
     def post(self, request):
         data = self.payload(request)
         wanted = data.get('category')
@@ -509,9 +532,13 @@ class ApiStopView(ApiView):
         # „Wyjście z pracy” zatrzymuje tylko Pracę - nie ubije stopera,
         # który w międzyczasie przełączyłeś na coś innego.
         if entry and wanted and services.find_category(self.user, wanted) != entry.category:
-            return self.state(stopped=None)
-        stopped = services.stop_timer(self.user)
-        return self.state(stopped=stopped.category.name if stopped else None)
+            return self.state(stopped=None, resumed=None)
+        resume = str(data.get('resume', '')).strip().lower() not in ('0', 'false', 'nie', 'no')
+        stopped = services.stop_timer(self.user, resume=resume)
+        return self.state(
+            stopped=stopped.category.name if stopped else None,
+            resumed=stopped.resumed.category.name if stopped and stopped.resumed else None,
+        )
 
 
 class ApiStatusView(ApiView):

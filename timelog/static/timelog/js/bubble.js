@@ -2,7 +2,8 @@
  *
  * Stoi: małe szare kółko. Biegnie: pigułka w kolorze kategorii z ikoną
  * i czasem. Kliknięcie otwiera panel: czas, Stop, start albo przełączenie
- * kategorii i link do Czasu. Stan przychodzi z /czas/stan/ (JSON), a nie
+ * kategorii i link do Czasu. Chwilowa kategoria (Instagram w trakcie Pracy)
+ * ma jeszcze „Wróć do: Praca” - stop z powrotem do przerwanej czynności. Stan przychodzi z /czas/stan/ (JSON), a nie
  * z szablonu - strona Sport otwiera się z pamięci telefonu. Bez połączenia
  * albo bez logowania dymek się nie pokazuje.
  *
@@ -82,6 +83,8 @@
             '<div class="tb-head-main">' + head + '</div>' +
             (running ? '<div class="tb-elapsed" data-tb-elapsed>' + clock(elapsed(), true) + '</div>' : '') + '</div>' +
             '<div class="tb-actions">' +
+            (running && running.resumeTo ? '<button type="button" class="btn btn-sm btn-primary" data-tb-resume' + (busy ? ' disabled' : '') + '>' +
+                '<i class="bi ' + esc(running.resumeTo.icon) + '" aria-hidden="true"></i> Wróć do: ' + esc(running.resumeTo.name) + '</button>' : '') +
             (running ? '<button type="button" class="btn btn-sm btn-outline-secondary" data-tb-stop' + (busy ? ' disabled' : '') + '>' +
                 '<i class="bi bi-stop-fill" aria-hidden="true"></i> Stop</button>' : '') +
             '<a class="btn btn-sm btn-outline-secondary" href="' + esc(czasUrl) + '"><i class="bi bi-hourglass-split" aria-hidden="true"></i> Otwórz Czas</a></div>' +
@@ -192,6 +195,7 @@
             return;
         }
         if (event.target.closest('[data-tb-stop]')) { send({ action: 'stop' }); return; }
+        if (event.target.closest('[data-tb-resume]')) { send({ action: 'stop', resume: true }); return; }
         var start = event.target.closest('[data-tb-start]');
         if (start) { send({ action: 'start', category: start.getAttribute('data-tb-start') }); }
     });

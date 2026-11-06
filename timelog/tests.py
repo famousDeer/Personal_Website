@@ -50,10 +50,11 @@ class TimerTests(TimelogTestCase):
         self.assertEqual(Entry.objects.count(), 1)
 
     def test_quick_switch_corrects_category(self):
+        study = Category.objects.get(user=self.user, name='Nauka')
         services.start_timer(self.user, self.work, at=at(DAY, 9))
-        services.start_timer(self.user, self.phone, at=at(DAY, 9) + datetime.timedelta(seconds=20))
+        services.start_timer(self.user, study, at=at(DAY, 9) + datetime.timedelta(seconds=20))
         entry = Entry.objects.get()
-        self.assertEqual(entry.category, self.phone)
+        self.assertEqual(entry.category, study)
         self.assertEqual(entry.start, at(DAY, 9))
 
     def test_stop(self):
@@ -61,6 +62,83 @@ class TimerTests(TimelogTestCase):
         stopped = services.stop_timer(self.user, at=at(DAY, 12))
         self.assertEqual(stopped.end, at(DAY, 12))
         self.assertIsNone(services.running_entry(self.user))
+
+
+class ResumeTests(TimelogTestCase):
+    """Chwilowa kategoria (Instagram w trakcie Pracy) wraca do przerwanej czynności."""
+
+    def test_default_phone_category_is_interruption(self):
+        self.assertTrue(self.phone.is_interruption)
+        self.assertFalse(self.work.is_interruption)
+
+    def test_stop_with_resume_starts_interrupted_category_again(self):
+        services.start_timer(self.user, self.work, at=at(DAY, 9), note='raport')
+        phone = services.start_timer(self.user, self.phone, at=at(DAY, 10))
+        self.assertEqual(phone.interrupted.category, self.work)
+        stopped = services.stop_timer(self.user, at=at(DAY, 10, 15), resume=True)
+        self.assertEqual(stopped.end, at(DAY, 10, 15))
+        running = services.running_entry(self.user)
+        self.assertEqual((running.category, running.start, running.note), (self.work, at(DAY, 10, 15), 'raport'))
+        self.assertEqual(stopped.resumed, running)
+
+    def test_plain_stop_and_ordinary_category_do_not_resume(self):
+        services.start_timer(self.user, self.work, at=at(DAY, 9))
+        services.start_timer(self.user, self.phone, at=at(DAY, 10))
+        services.stop_timer(self.user, at=at(DAY, 10, 15))
+        self.assertIsNone(services.running_entry(self.user))
+        study = Category.objects.get(user=self.user, name='Nauka')
+        services.start_timer(self.user, self.work, at=at(DAY, 11))
+        services.start_timer(self.user, study, at=at(DAY, 12))
+        self.assertIsNone(services.stop_timer(self.user, at=at(DAY, 13), resume=True).resumed)
+        self.assertIsNone(services.running_entry(self.user))
+
+    def test_glance_shorter_than_minute_disappears(self):
+        services.start_timer(self.user, self.work, at=at(DAY, 9))
+        services.start_timer(self.user, self.phone, at=at(DAY, 10))
+        services.stop_timer(self.user, at=at(DAY, 10) + datetime.timedelta(seconds=30), resume=True)
+        work = Entry.objects.get()
+        self.assertEqual((work.category, work.start, work.end), (self.work, at(DAY, 9), None))
+
+    def test_interruption_right_after_start_keeps_work(self):
+        services.start_timer(self.user, self.work, at=at(DAY, 9))
+        services.start_timer(self.user, self.phone, at=at(DAY, 9) + datetime.timedelta(seconds=20))
+        self.assertEqual(Entry.objects.count(), 2)
+        services.stop_timer(self.user, at=at(DAY, 9, 5), resume=True)
+        self.assertEqual(services.running_entry(self.user).category, self.work)
+
+    def test_nested_interruptions_unwind_back_to_work(self):
+        youtube = Category.objects.create(user=self.user, name='YouTube', is_interruption=True)
+        services.start_timer(self.user, self.work, at=at(DAY, 9))
+        services.start_timer(self.user, youtube, at=at(DAY, 10))
+        services.start_timer(self.user, self.phone, at=at(DAY, 10, 10))
+        services.stop_timer(self.user, at=at(DAY, 10, 20), resume=True)
+        self.assertEqual(services.running_entry(self.user).category, youtube)
+        services.stop_timer(self.user, at=at(DAY, 10, 30), resume=True)
+        self.assertEqual(services.running_entry(self.user).category, self.work)
+
+    def test_no_resume_after_long_interruption_or_to_hidden_category(self):
+        services.start_timer(self.user, self.work, at=at(DAY, 9))
+        services.start_timer(self.user, self.phone, at=at(DAY, 10))
+        self.assertIsNone(services.stop_timer(self.user, at=at(DAY, 13, 30), resume=True).resumed)
+        services.start_timer(self.user, self.work, at=at(DAY, 14))
+        services.start_timer(self.user, self.phone, at=at(DAY, 15))
+        Category.objects.filter(pk=self.work.pk).update(is_archived=True)
+        self.assertIsNone(services.stop_timer(self.user, at=at(DAY, 15, 10), resume=True).resumed)
+
+    def test_day_page_offers_return_and_category_flag_saves(self):
+        self.client.force_login(self.user)
+        services.start_timer(self.user, self.work, at=timezone.now() - datetime.timedelta(minutes=30))
+        services.start_timer(self.user, self.phone, at=timezone.now() - datetime.timedelta(minutes=5))
+        self.assertContains(self.client.get(reverse('timelog:index')), 'Wróć do: Praca')
+        response = self.client.post(reverse('timelog:stop'), {'resume': '1'}, follow=True)
+        self.assertContains(response, 'Wracasz do: Praca')
+        self.assertEqual(services.running_entry(self.user).category, self.work)
+        self.client.post(reverse('timelog:categories'), {
+            'action': 'save', 'id': self.work.pk, 'name': 'Praca', 'value': 'good', 'icon': 'bi-briefcase',
+            'color': 1, 'is_interruption': '1',
+        })
+        self.work.refresh_from_db()
+        self.assertTrue(self.work.is_interruption)
 
 
 class FlattenTests(TimelogTestCase):
@@ -231,6 +309,20 @@ class ApiTests(TimelogTestCase):
         response = self.client.post(reverse('timelog:api-stop'), {'category': 'Telefon i social media'}, **self.auth)
         self.assertIsNone(response.json()['running'])
 
+    def test_stop_interruption_resumes_unless_disabled(self):
+        services.start_timer(self.user, self.work, at=timezone.now() - datetime.timedelta(minutes=30))
+        self.client.post(reverse('timelog:api-start'), {'category': 'telefon i social media'}, **self.auth)
+        Entry.objects.filter(category=self.phone).update(start=timezone.now() - datetime.timedelta(minutes=5))
+        data = self.client.post(reverse('timelog:api-stop'), {'category': 'telefon i social media'}, **self.auth).json()
+        self.assertEqual((data['stopped'], data['resumed'], data['running']['category']),
+                         ('Telefon i social media', 'Praca', 'Praca'))
+        self.client.post(reverse('timelog:api-start'), {'category': 'telefon i social media'}, **self.auth)
+        Entry.objects.filter(category=self.phone, end__isnull=True).update(start=timezone.now() - datetime.timedelta(minutes=5))
+        data = self.client.post(reverse('timelog:api-stop'), json.dumps({'resume': False}),
+                                content_type='application/json', **self.auth).json()
+        self.assertIsNone(data['resumed'])
+        self.assertIsNone(data['running'])
+
     def test_unknown_category(self):
         response = self.client.post(reverse('timelog:api-start'), {'category': 'Nic'}, **self.auth)
         self.assertEqual(response.status_code, 400)
@@ -260,6 +352,17 @@ class BubbleTests(TimelogTestCase):
         self.assertEqual(response.status_code, 400)
         state = client.post(url, json.dumps({'action': 'stop'}), content_type='application/json', **headers).json()
         self.assertIsNone(state['running'])
+
+    def test_resume_to_previous_activity(self):
+        self.client.force_login(self.user)
+        url = reverse('timelog:bubble')
+        services.start_timer(self.user, self.work, at=timezone.now() - datetime.timedelta(minutes=30))
+        services.start_timer(self.user, self.phone, at=timezone.now() - datetime.timedelta(minutes=5))
+        state = self.client.get(url).json()
+        self.assertEqual(state['running']['resumeTo']['name'], 'Praca')
+        state = self.client.post(url, json.dumps({'action': 'stop', 'resume': True}), content_type='application/json').json()
+        self.assertEqual(state['running']['name'], 'Praca')
+        self.assertIsNone(state['running']['resumeTo'])
 
     def test_bubble_on_other_pages_but_not_in_czas(self):
         self.client.force_login(self.user)
