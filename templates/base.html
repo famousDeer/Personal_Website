@@ -62,6 +62,8 @@
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
     <link rel="stylesheet" href="{% static 'css/ui.css' %}">
     <link rel="stylesheet" href="{% static 'css/app.css' %}">
+    {# Czas: pływający dymek stopera i własne ikony kategorii. #}
+    <link rel="stylesheet" href="{% static 'timelog/css/shared.css' %}">
     {% block extra_css %}{% endblock %}
 </head>
 <body>
@@ -237,6 +239,12 @@
 
 <script src="{% static 'vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
 <script src="{% static 'js/app-actions.js' %}"></script>
+{% if user.is_authenticated and request.resolver_match.namespace != 'timelog' %}
+{% comment %} Pływający dymek stopera z Czasu (timelog/js/bubble.js). Na stronach
+   Czasu go nie ma - tam stoper jest na wierzchu. {% endcomment %}
+<div class="tb" data-time-bubble data-url="{% url 'timelog:bubble' %}" data-czas-url="{% url 'timelog:index' %}" hidden></div>
+<script src="{% static 'timelog/js/bubble.js' %}" defer></script>
+{% endif %}
 <script src="{% static 'vendor/flatpickr/flatpickr.min.js' %}"></script>
 <script src="{% static 'vendor/flatpickr/pl.js' %}"></script>
 <script>

@@ -3,7 +3,7 @@ import json
 from unittest import mock
 
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -235,3 +235,36 @@ class ApiTests(TimelogTestCase):
         response = self.client.post(reverse('timelog:api-start'), {'category': 'Nic'}, **self.auth)
         self.assertEqual(response.status_code, 400)
         self.assertIn('Praca', response.json()['error'])
+
+
+class BubbleTests(TimelogTestCase):
+    """Pływający dymek stopera: stan w JSON, start i stop z CSRF jak w przeglądarce."""
+
+    def test_needs_login(self):
+        self.assertEqual(self.client.get(reverse('timelog:bubble')).status_code, 401)
+
+    def test_start_switch_and_stop_with_csrf(self):
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.user)
+        state = client.get(reverse('timelog:bubble')).json()
+        self.assertIsNone(state['running'])
+        self.assertIn('Praca', [c['name'] for c in state['categories']])
+        url = reverse('timelog:bubble')
+        headers = {'HTTP_X_CSRFTOKEN': state['csrfToken']}
+        self.assertEqual(client.post(url, json.dumps({'action': 'stop'}), content_type='application/json').status_code, 403)
+        state = client.post(url, json.dumps({'action': 'start', 'category': self.work.pk}),
+                            content_type='application/json', **headers).json()
+        self.assertEqual((state['running']['name'], state['running']['color']), ('Praca', self.work.color))
+        self.assertEqual(Entry.objects.get().source, Entry.TIMER)
+        response = client.post(url, json.dumps({'action': 'start', 'category': 'x'}), content_type='application/json', **headers)
+        self.assertEqual(response.status_code, 400)
+        state = client.post(url, json.dumps({'action': 'stop'}), content_type='application/json', **headers).json()
+        self.assertIsNone(state['running'])
+
+    def test_bubble_on_other_pages_but_not_in_czas(self):
+        self.client.force_login(self.user)
+        self.assertContains(self.client.get('/'), 'data-time-bubble')
+        self.assertContains(self.client.get(reverse('sport:index')), 'data-time-bubble')
+        self.assertNotContains(self.client.get(reverse('timelog:index')), 'data-time-bubble')
+        self.client.logout()
+        self.assertNotContains(self.client.get('/'), 'data-time-bubble')

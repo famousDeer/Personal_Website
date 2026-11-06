@@ -7,6 +7,7 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Q
 from django.http import JsonResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -22,7 +23,7 @@ from .models import Category, Entry, TimelogSettings
 
 # Ikony do wyboru w kategorii, w grupach: (klasa, podpis dla czytnika i dymka).
 # Klasy bi-* są z Bootstrap Icons; tl-icon-* to własne rysunki (pies, łapa)
-# z timelog.css - tego zestaw Bootstrapa nie ma.
+# z shared.css - tego zestaw Bootstrapa nie ma.
 ICON_GROUPS = [
     ('Praca i nauka', [
         ('bi-briefcase', 'Teczka'), ('bi-laptop', 'Laptop'), ('bi-person-workspace', 'Biurko'),
@@ -150,6 +151,63 @@ class StopView(TimelogView):
         if entry and entry.pk:
             messages.success(request, f'Zatrzymano: {entry.category}.')
         return redirect_back(request, 'timelog:index')
+
+
+class BubbleView(View):
+    """Stan stopera dla pływającego dymka na każdej stronie (static/timelog/js/bubble.js).
+
+    JSON zamiast danych w szablonie: strona Sport otwiera się najpierw
+    z pamięci telefonu, więc stan wpisany w HTML byłby nieaktualny.
+    POST z `action` start (z `category`) albo stop odpowiada nowym stanem.
+    Bez logowania 401 - dymek się wtedy nie pokazuje.
+    """
+
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return JsonResponse({'ok': False}, status=401)
+        services.ensure_categories(request.user)
+        return super().dispatch(request, *args, **kwargs)
+
+    def get(self, request):
+        return self.state(request)
+
+    def post(self, request):
+        try:
+            data = json.loads(request.body or b'{}') if request.content_type == 'application/json' else request.POST
+        except ValueError:
+            data = {}
+        if not hasattr(data, 'get'):
+            data = {}
+        action = data.get('action')
+        if action == 'stop':
+            services.stop_timer(request.user)
+        elif action == 'start':
+            pk = str(data.get('category', ''))
+            category = Category.objects.filter(user=request.user, is_archived=False, pk=pk).first() if pk.isdigit() else None
+            if category is None:
+                return JsonResponse({'ok': False, 'error': 'Nie ma takiej kategorii.'}, status=400)
+            services.start_timer(request.user, category)
+        else:
+            return JsonResponse({'ok': False, 'error': 'Nieznana akcja.'}, status=400)
+        return self.state(request)
+
+    def state(self, request):
+        entry = services.running_entry(request.user)
+        category = entry.category if entry else None
+        response = JsonResponse({
+            'ok': True,
+            'csrfToken': get_token(request),
+            'running': None if entry is None else {
+                'category': category.pk, 'name': category.name, 'icon': category.icon,
+                'color': category.color, 'since': entry.start.isoformat(), 'note': entry.note,
+            },
+            'categories': [
+                {'id': c.pk, 'name': c.name, 'icon': c.icon, 'color': c.color}
+                for c in Category.objects.filter(user=request.user, is_archived=False)
+            ],
+        })
+        response['Cache-Control'] = 'no-store'
+        return response
 
 
 class EntryCreateView(TimelogView):

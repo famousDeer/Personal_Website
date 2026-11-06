@@ -56,6 +56,8 @@ APP_STATIC_FILES = APP_REQUIRED_STATIC_FILES + [
     'vendor/flatpickr/pl.js',
     'vendor/bootstrap/bootstrap.bundle.min.js',
     'js/app-actions.js',
+    'timelog/css/shared.css',
+    'timelog/js/bubble.js',
     # Mapa trasy - sam podkład (kafelki OSM) i tak wymaga internetu.
     'vendor/leaflet/leaflet.js',
     'vendor/leaflet/leaflet.css',

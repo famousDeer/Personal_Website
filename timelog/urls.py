@@ -9,6 +9,8 @@ urlpatterns = [
     path('dzien/<str:day>/', views.DayView.as_view(), name='day'),
     path('start/', views.StartView.as_view(), name='start'),
     path('stop/', views.StopView.as_view(), name='stop'),
+    # Pływający dymek stopera na każdej stronie (JSON, sesja i CSRF).
+    path('stan/', views.BubbleView.as_view(), name='bubble'),
     path('wpis/dodaj/', views.EntryCreateView.as_view(), name='entry-add'),
     path('wpis/<int:pk>/', views.EntryEditView.as_view(), name='entry'),
     path('wpis/<int:pk>/usun/', views.EntryDeleteView.as_view(), name='entry-delete'),
