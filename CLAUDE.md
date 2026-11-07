@@ -44,7 +44,7 @@ docker compose exec -T web python manage.py sync_hevy             # cron: siłow
 - Nie czytaj migracji, `staticfiles/`, `media/`, `vendor/`, dumpów `*.sql`, `db_backups/`, `.env` (blokuje to `.claude/settings.json`). Nowa migracja: `makemigrations`, nie pisz jej ręcznie.
 - Testuj tylko zmienianą appkę albo moduł testów; pełny zestaw dopiero przed wdrożeniem.
 - Przycinaj wyjścia: `| tail -30`, `| head -50`, `git --no-optional-locks status --short`, `docker compose logs --tail 50`.
-- db_backups zostawiaj bez zmian. Nie commituj ani nie pushuj bez prośby.
+- db_backups zostawiaj bez zmian. Każdą skończoną i przetestowaną zmianę commituj od razu, bez pytania (tylko pliki tej zmiany). Nie pushuj i nie wdrażaj bez prośby.
 - Notatki projektowe (analizy, plany) są w Projekcie claude.ai, w `claude/*.md` – nie dubluj ich tutaj.
 
 # CLAUDE.md
