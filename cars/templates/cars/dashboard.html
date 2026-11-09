@@ -145,109 +145,56 @@
                     <i class="bi bi-plus-lg me-1"></i> Dodaj
                 </a>
             </div>
-            <div class="card-body p-0">
-                <div class="table-responsive position-relative d-none d-md-block">
-                    <table class="table table-hover align-middle mb-0 custom-table">
-                        <thead class="bg-light">
-                            <tr>
-                                <th class="ps-4 text-muted small">Data</th>
-                                <th class="text-muted small">Stacja / Przebieg</th>
-                                <th class="text-end text-muted small">Ilość</th>
-                                <th class="text-end text-muted small">Cena/L</th>
-                                <th class="text-end text-muted small">Koszt</th>
-                                <th class="text-end text-muted small pe-4" style="width: 50px;"></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for log in fuel_logs %}
-                            <tr>
-                                <td class="ps-4 fw-bold">{{ log.date|date:"d.m.y" }}</td>
-                                <td>
-                                    <div class="d-flex flex-column">
-                                        <span class="fw-medium">{{ log.fuel_station }}</span>
-                                        <small class="text-muted" style="font-size: var(--fs-caption);">
-                                            {{ log.odometer|intcomma }} km
-                                            {% if log.distance_since_last_refuel %}
-                                                • +{{ log.distance_since_last_refuel|intcomma }} km od ostatniego
-                                            {% endif %}
-                                        </small>
-                                    </div>
-                                </td>
-                                <td class="text-end">
-                                    {{ log.liters }} L
-                                    {% if log.consumption %}
-                                    <span class="d-block text-muted small" style="font-size: var(--fs-eyebrow);">{{ log.consumption }} l/100</span>
+            <div class="card-body px-3 px-md-4 pt-0 pb-3">
+                {% for group in fuel_months %}
+                <section class="fuel-month">
+                    <div class="fuel-month-head">
+                        <span class="fuel-month-name">{{ group.month|date:"F Y" }}</span>
+                        <span class="fuel-month-sum u-num">
+                            {{ group.logs|length|pl:"tankowanie,tankowania,tankowań" }} · {{ group.liters|floatformat:1 }} L ·
+                            <strong>{{ group.total|floatformat:2|intcomma }} zł</strong>
+                        </span>
+                    </div>
+                    <ul class="fuel-list">
+                        {% for log in group.logs %}
+                        <li class="fuel-row">
+                            <div class="fuel-date">
+                                <span class="fuel-day">{{ log.date|date:"j" }}</span>
+                                <span class="fuel-dow">{{ log.date|date:"D" }}</span>
+                            </div>
+                            <div class="fuel-main">
+                                <div class="fuel-station">{{ log.fuel_station }}</div>
+                                <div class="fuel-meta u-num">
+                                    <span><i class="bi bi-speedometer2" aria-hidden="true"></i> {{ log.odometer|intcomma }} km</span>
+                                    {% if log.distance_since_last_refuel %}
+                                    <span title="Od poprzedniego tankowania">+{{ log.distance_since_last_refuel|intcomma }} km</span>
                                     {% endif %}
-                                </td>
-                                <td class="text-end text-muted">{{ log.price_per_liter|floatformat:2 }} zł</td>
-                                <td class="text-end fw-bold text-danger">-{{ log.price|floatformat:2 }} zł</td>
-                                <td class="text-end pe-4">
-                                    <button
-                                        class="btn btn-light btn-sm rounded-circle shadow-sm table-dropdown-btn"
-                                        data-edit-url="{% url 'cars:edit_fuel' car.id log.id %}"
-                                        data-delete-url="{% url 'cars:delete_fuel' car.id log.id %}"
-                                        type="button">
-                                        <i class="bi bi-three-dots-vertical text-muted"></i>
-                                    </button>
-
-                                </td>
-                            </tr>
-                            {% empty %}
-                            <tr><td colspan="6" class="text-center py-4 text-muted">Brak wpisów tankowania.</td></tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            <div class="d-block d-md-none p-3">
-                {% for log in fuel_logs %}
-                <div class="card border-0 shadow-sm mb-3">
-                    <div class="card-body p-3">
-
-                        <div class="d-flex justify-content-between align-items-start mb-2">
-                            <div>
-                                <span class="fw-bold fs-5">{{ log.fuel_station }}</span>
-                                <div class="small text-muted mt-1">
-                                    <i class="bi bi-calendar me-1"></i>
-                                    {{ log.date|date:"d.m.Y" }}
                                 </div>
-                                <div class="small text-muted">
-                                    <i class="bi bi-speedometer2 me-1"></i>
-                                    {{ log.odometer|intcomma }} km
-                                </div>
-                                {% if log.distance_since_last_refuel %}
-                                <div class="small text-muted">
-                                    <i class="bi bi-signpost-split me-1"></i>
-                                    +{{ log.distance_since_last_refuel|intcomma }} km od ostatniego tankowania
-                                </div>
-                                {% endif %}
                             </div>
-
-                            <span class="fw-bold fs-4 text-danger">
-                                -{{ log.price|floatformat:2 }} zł
-                            </span>
-                        </div>
-
-                        <div class="d-flex justify-content-between align-items-center pt-2 border-top border-light-subtle">
-                            <div class="small text-muted">
-                                {{ log.liters }} L
+                            <div class="fuel-stats u-num">
+                                <span class="fuel-stat"><b>{{ log.liters|floatformat:2 }}</b> L</span>
+                                <span class="fuel-stat"><b>{{ log.price_per_liter|floatformat:2 }}</b> zł/L</span>
                                 {% if log.consumption %}
-                                    • {{ log.consumption }} l/100
+                                <span class="u-chip {% if log.consumption_tone == 'good' %}is-income{% elif log.consumption_tone == 'bad' %}is-expense{% endif %}"
+                                      title="Średnio {{ avg_consumption|floatformat:1 }} l/100 km">
+                                    {{ log.consumption|floatformat:1 }} l/100
+                                </span>
                                 {% endif %}
                             </div>
-
+                            <div class="fuel-cost u-num">{{ log.price|floatformat:2|intcomma }} zł</div>
                             <button
-                                class="btn btn-light btn-sm rounded-circle shadow-sm table-dropdown-btn"
+                                class="btn btn-sm btn-icon fuel-menu table-dropdown-btn"
                                 data-edit-url="{% url 'cars:edit_fuel' car.id log.id %}"
-                                data-delete-url="{% url 'cars:delete_fuel' car.id log.id %}">
+                                data-delete-url="{% url 'cars:delete_fuel' car.id log.id %}"
+                                type="button" aria-label="Edytuj lub usuń tankowanie">
                                 <i class="bi bi-three-dots-vertical"></i>
                             </button>
-                        </div>
-
-                    </div>
-                </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </section>
                 {% empty %}
-                    <div class="text-center text-muted py-4">Brak wpisów tankowania.</div>
+                <div class="text-center text-muted py-4">Brak wpisów tankowania.</div>
                 {% endfor %}
             </div>
         </div>
@@ -501,6 +448,50 @@
 </form>
 
 <style>
+    /* Historia tankowania: miesiące z sumą, wiersz = data · stacja · liczby · koszt */
+    .fuel-month + .fuel-month { margin-top: var(--sp-4); }
+    .fuel-month-head {
+        display: flex; justify-content: space-between; align-items: baseline; gap: var(--sp-3);
+        padding: var(--sp-2) 0; border-bottom: 1px solid var(--line-1);
+    }
+    .fuel-month-name { font-weight: 650; color: var(--ink-1); text-transform: capitalize; white-space: nowrap; }
+    .fuel-month-sum { font-size: var(--fs-sm); color: var(--ink-3); white-space: nowrap; }
+    .fuel-month-sum strong { color: var(--ink-1); font-weight: 650; }
+    .fuel-list { list-style: none; margin: 0; padding: 0; }
+    .fuel-row {
+        display: grid; align-items: center; gap: var(--sp-3);
+        grid-template-columns: 2.75rem minmax(0, 1fr) auto 7rem 2rem;
+        grid-template-areas: "date main stats cost menu";
+        padding: 0.7rem 0; border-bottom: 1px solid var(--line-2);
+    }
+    .fuel-row:last-child { border-bottom: 0; }
+    .fuel-date {
+        grid-area: date; display: flex; flex-direction: column; align-items: center;
+        line-height: 1.1; padding: 0.3rem 0; border-radius: var(--r-md); background: var(--surface-2);
+    }
+    .fuel-day { font-weight: 700; font-size: 1.05rem; color: var(--ink-1); }
+    .fuel-dow { font-size: var(--fs-caption); color: var(--ink-4); text-transform: uppercase; }
+    .fuel-main { grid-area: main; min-width: 0; }
+    .fuel-station { font-weight: 600; color: var(--ink-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fuel-meta { display: flex; flex-wrap: wrap; gap: 0 var(--sp-3); font-size: var(--fs-sm); color: var(--ink-3); }
+    .fuel-stats { grid-area: stats; display: flex; align-items: center; gap: var(--sp-3); font-size: var(--fs-sm); color: var(--ink-3); }
+    .fuel-stat { min-width: 4.5rem; text-align: right; }
+    .fuel-stat b { color: var(--ink-2); font-weight: 600; }
+    .fuel-stats .u-chip { min-width: 5.75rem; justify-content: center; }
+    .fuel-cost { grid-area: cost; text-align: right; font-weight: 650; color: var(--expense-ink); white-space: nowrap; }
+    .fuel-menu { grid-area: menu; color: var(--ink-3); }
+    @media (max-width: 767.98px) {
+        .fuel-row {
+            grid-template-columns: 2.75rem minmax(0, 1fr) auto 2rem;
+            grid-template-areas: "date main cost menu" "date stats stats stats";
+            row-gap: 0.35rem;
+        }
+        .fuel-date { align-self: start; }
+        .fuel-stats { flex-wrap: wrap; gap: 0.25rem var(--sp-3); }
+        .fuel-stat { min-width: 0; text-align: left; }
+        .fuel-month-sum { white-space: normal; text-align: right; }
+    }
+
     /* Dark mode fix dla Tabs Container */
     [data-theme="dark"] #carTabs {
         background-color: var(--surface-subtle) !important;

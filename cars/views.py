@@ -74,6 +74,28 @@ def annotate_fuel_distances(fuel_logs):
     return fuel_logs
 
 
+def group_fuel_logs_by_month(fuel_logs, avg_consumption):
+    """Tankowania w miesiącach (od najnowszego) z sumą kosztu i litrów.
+    Każdy wpis dostaje `consumption_tone`: 'good' poniżej średniej auta,
+    'bad' powyżej (próg ±3%), inaczej None."""
+    avg = Decimal(str(avg_consumption or 0))
+    months = []
+    for log in fuel_logs:
+        log.consumption_tone = None
+        if log.consumption and avg:
+            if log.consumption < avg * Decimal('0.97'):
+                log.consumption_tone = 'good'
+            elif log.consumption > avg * Decimal('1.03'):
+                log.consumption_tone = 'bad'
+        month = log.date.replace(day=1)
+        if not months or months[-1]['month'] != month:
+            months.append({'month': month, 'logs': [], 'total': Decimal('0'), 'liters': Decimal('0')})
+        months[-1]['logs'].append(log)
+        months[-1]['total'] += log.price
+        months[-1]['liters'] += log.liters
+    return months
+
+
 def render_service_form(request, car, form, parts_formset, title):
     return render(
         request,
@@ -151,6 +173,7 @@ class CarDashboardView(LoginRequiredMixin, View):
         context = {
             'car': car,
             'fuel_logs': fuel_logs,
+            'fuel_months': group_fuel_logs_by_month(fuel_logs, avg_consumption),
             'services': services,
             'tyres': tyres,
             'total_cost': total_cost,
