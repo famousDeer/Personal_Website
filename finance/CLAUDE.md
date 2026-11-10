@@ -10,6 +10,7 @@ Logika poza widokami:
 - `brokerage.py` – `build_portfolio_summary` (FIFO, podatek Belki, IKE zwolnione). `brokerage_import.py` – XLSX z XTB. `portfolio_history.py`, `investment_statistics.py`, `investment_funding.py`.
 - `market_data.py` – Yahoo (główne), Stooq, Alpha Vantage, OpenFIGI, NBP. `sync_price_history_for_user`, `refresh_market_data_for_user`.
 - `household.py` + `views_household.py` – analiza domowa (`/finance/analysis/`, szczegóły miesiąca `/finance/analysis/<rok>/<mies>/`: pozycje tylko z moich i wspólnych kont): moje konto + wspólne + konta osobiste domowników z kont wspólnych, tylko gdy właściciel włączył `FinanceAccount.share_in_household_analysis`; z cudzych kont tylko sumy. Rodzaje kategorii (niezbędne/pozostałe/oszczędności/pomijane) w `CategoryKind`, minimum na życie = średnia niezbędnych z pełnych miesięcy.
+- `payslip_import.py` + `payslips.py` + `views_payslips.py` – paski wypłaty (`/finance/payslips/`, per `request.user`): PDF z enova365 → `pdftotext -layout` → `parse_payslip_text` (czysta funkcja, próbka w `tests/data/payslip_enova.txt`) → Payslip + PayslipItem; rok (sumy, drugi próg 120 tys. – dochód szacunkowy, przekroczenie z pola „Dochód 32%”), karta miesiąca. Plik PDF i PESEL nie są zapisywane.
 - `gem.py` – strategia GEM (CSPX/IWDA/EIMI/IB01, 12M, sygnał z końca miesiąca).
 - `geocoding.py` – Nominatim dla podróży.
 
