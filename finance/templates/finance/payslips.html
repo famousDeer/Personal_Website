@@ -89,7 +89,8 @@
                             <th scope="col" class="text-end">Brutto</th>
                             <th scope="col" class="text-end">Na rękę</th>
                             <th scope="col" class="text-end">PIT</th>
-                            <th scope="col" class="text-end">Nadgodziny</th>
+                            <th scope="col" class="text-end">Godziny</th>
+                            <th scope="col" class="text-end">w tym nadgodziny</th>
                             <th scope="col" class="text-end">Dochód narastająco</th>
                         </tr>
                     </thead>
@@ -101,13 +102,14 @@
                                     <td class="u-amount">{{ row.payslip.gross|floatformat:"2g" }} zł</td>
                                     <td class="u-amount is-income">{{ row.payslip.net|floatformat:"2g" }} zł</td>
                                     <td class="u-amount">{{ row.payslip.tax_advance|floatformat:"2g" }} zł</td>
+                                    <td class="u-amount">{{ row.hours|floatformat:1 }} h</td>
                                     <td class="u-amount">{% if row.overtime %}{{ row.overtime|floatformat:1 }} h{% else %}–{% endif %}</td>
                                     <td class="u-amount">{{ row.cumulative_tax_base|zl }}</td>
                                 </tr>
                             {% else %}
                                 <tr class="ps-missing">
                                     <th scope="row">{{ row.month|date:"F"|capfirst }}</th>
-                                    <td colspan="5" class="text-end">brak paska</td>
+                                    <td colspan="6" class="text-end">brak paska</td>
                                 </tr>
                             {% endif %}
                         {% endfor %}
@@ -119,6 +121,7 @@
                                 <td class="u-amount">{{ totals.gross|floatformat:"2g" }} zł</td>
                                 <td class="u-amount is-income">{{ totals.net|floatformat:"2g" }} zł</td>
                                 <td class="u-amount">{{ totals.tax|floatformat:"2g" }} zł</td>
+                                <td class="u-amount">{{ totals.hours|floatformat:1 }} h</td>
                                 <td class="u-amount">{{ totals.overtime|floatformat:1 }} h</td>
                                 <td></td>
                             </tr>

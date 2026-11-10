@@ -112,6 +112,8 @@ class PayslipViewTests(TestCase):
         totals = response.context['totals']
         self.assertEqual(totals['gross'], Decimal('30827.82'))
         self.assertEqual(totals['net'], Decimal('18163.44'))
+        self.assertEqual(totals['hours'], Decimal('403.30'))
+        self.assertEqual(response.context['rows'][9]['hours'], Decimal('201.65'))
         self.assertEqual(response.context['avg_gross'], Decimal('15413.91'))
         self.assertEqual(response.context['avg_net'], Decimal('9081.72'))
         self.assertContains(response, 'Średnio 9082\xa0zł / mies.')

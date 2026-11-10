@@ -116,7 +116,7 @@ def build_year(user, year, today=None):
             totals['hours'] += base_hours + overtime
             totals['overtime'] += overtime
             totals['tax_base'] += payslip.tax_base_estimate
-            row.update(overtime=overtime, cumulative_tax_base=totals['tax_base'])
+            row.update(hours=base_hours + overtime, overtime=overtime, cumulative_tax_base=totals['tax_base'])
             if crossed_in is None and payslip.income_32 > 0:
                 crossed_in = payslip
         rows.append(row)
