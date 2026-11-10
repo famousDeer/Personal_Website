@@ -39,12 +39,12 @@
             <div class="u-metric">
                 <div class="u-metric-label"><i class="bi bi-cash-stack" aria-hidden="true"></i> Brutto od stycznia</div>
                 <div class="u-metric-value">{{ totals.gross|zl }}</div>
-                <div class="u-metric-note">{{ count|pl:"pasek,paski,pasków" }}</div>
+                <div class="u-metric-note">Średnio {{ avg_gross|zl }} / mies. · {{ count|pl:"pasek,paski,pasków" }}</div>
             </div>
             <div class="u-metric is-income">
                 <div class="u-metric-label"><i class="bi bi-wallet2" aria-hidden="true"></i> Na rękę</div>
                 <div class="u-metric-value is-income">{{ totals.net|zl }}</div>
-                <div class="u-metric-note">{{ net_share|floatformat:0 }}% brutto</div>
+                <div class="u-metric-note">Średnio {{ avg_net|zl }} / mies. · {{ net_share|floatformat:0 }}% brutto</div>
             </div>
             <div class="u-metric is-expense">
                 <div class="u-metric-label"><i class="bi bi-bank" aria-hidden="true"></i> Zaliczki PIT</div>

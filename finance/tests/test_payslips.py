@@ -112,6 +112,9 @@ class PayslipViewTests(TestCase):
         totals = response.context['totals']
         self.assertEqual(totals['gross'], Decimal('30827.82'))
         self.assertEqual(totals['net'], Decimal('18163.44'))
+        self.assertEqual(response.context['avg_gross'], Decimal('15413.91'))
+        self.assertEqual(response.context['avg_net'], Decimal('9081.72'))
+        self.assertContains(response, 'Średnio 9082\xa0zł / mies.')
         self.assertEqual(response.context['threshold_crossed_in'].period, date(2026, 10, 1))
         self.assertEqual(response.context['threshold_remaining'], Decimal('0'))
         self.assertContains(response, 'Przekroczony')

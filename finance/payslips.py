@@ -141,6 +141,9 @@ def build_year(user, year, today=None):
         'missing': missing,
         'totals': totals,
         'ppk_total': totals['ppk_employee'] + totals['ppk_employer'],
+        # Średnia z wgranych pasków – brakujące miesiące jej nie zaniżają.
+        'avg_gross': totals['gross'] / len(payslips) if payslips else None,
+        'avg_net': totals['net'] / len(payslips) if payslips else None,
         'net_share': percent(totals['net'], totals['gross']),
         'threshold': TAX_THRESHOLD,
         'threshold_remaining': remaining,
