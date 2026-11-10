@@ -1,0 +1,37 @@
+Nazwa firmy:      FIRMA TESTOWA SP. Z O. O.
+NIP:              1234567890                                                                               ...............................................................
+REGON:            123456789                                                                                              (pieczęć firmy)
+                                                                                                                                Koszty uz.:                    300,00
+Pracownik:        KOWALSKI JAN (1000001)                                                   LPE/SOD/2026/10/1/0022              Podst. k50%:                      0,00
+                                                                                                                                Koszty uz.50%:                    0,00
+                                                                                                                                Narast.k.uz.50%:                  0,00
+Za okres:         1...31.10.2026                                                            Oddział NFZ:      11R               Ulga podatkowa:                300,00
+PESEL:00000000000Wymiar etatu:1/1Tytuł ubezpieczenia:0110 0 0
+                    Emerytalne          Rentowe          Chorobowe         Wypadkowe             Razem           Zdrowotne      Zdrow. prac.:                1 065,13
+Podstawa:                13 715,12         13 715,12          13 715,12         13 715,12                            11 834,77Zal. podatku:                  1 965,00
+Ubezpieczony:             1 338,60             205,73            336,02               0,00          1 880,35          1 065,13Gotówka:                      0,00 PLN
+Płatnik:                  1 338,60             891,48               0,00             91,89          2 321,97               0,00ROR:                     9 081,72 PLN
+                          FP               FGŚP               FEP                        PPK
+Podstawa:               13 715,12          13 715,12                0,00                          13 715,12   Dochód 32%:                                   3 725,70
+                                                                             Podstawowa         Dodatkowa
+Skladka:                    336,02              13,72               0,00  U         274,30              0,00
+                                                                          F         205,73              0,00
+Lp.                                                                 Godz:min      Dni  M-ce       Dodatek           Potrącenie           Dodatki niepieniężne
+   1Potrącenie za zgodą pracownika                                                                                          700,00
+   2Wynagrodzenie zasadnicze godz.                                   128:00        16                  7680,00
+   3Wynagrodzenie zasadnicze godz.(brutto)PL                          48:00        6                   2880,00
+   4Wynagrodzenie za nadgodziny                                       25:39                            1539,00
+   5Dopłata do n.godz. 50%                                            25:39                              769,50
+   6Dopłata do n.godz. 100%                                            4:38                              278,00
+   7Dodatek dzienny oddelegowanie                                                                      1560,00
+   8Korekta podstaw (Polska)A                                                                                               387,41
+   9Przychód od skł. pracod. PPK (etat, W)                                                                                                                     205,73
+  10Ubezpieczenie grupowe - Pracodawca                                                                                                                          20,00
+  11XLE Dojazd / Obiad 2                                                                                 300,00
+  12Ekwiwalent pranie odzieży                                        176:00        22                     20,00
+  13Kwota wolna (Polska)A                                                                                387,41
+  14Ubezpieczenie grupowe                                                                                                    60,00
+                                                                                      Suma:          15 413,91            1 147,41                             225,73
+Oświadczenie płatnika składek
+Oświadczam, że dane zawarte w formularzu są zgodne ze stanem prawnym i faktycznym. Jestem świadomy odpowiedzialności karnej za zeznanie
+nieprawdy lub zatajenie prawdy.

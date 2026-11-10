@@ -1,0 +1,132 @@
+{% extends 'finance/index.html' %}
+{% load l10n ui %}
+
+{% block title %}Paski wypłaty {{ year|unlocalize }}{% endblock %}
+
+{% block finance_account_context %}{% endblock %}
+
+{% block content_finance %}
+{% comment %} Rok pasków wypłaty (finance.payslips.build_year): sumy od początku roku,
+   drugi próg podatkowy i lista miesięcy. Paski są per użytkownik, nie per konto. {% endcomment %}
+{% url 'finance:index' as back_url %}
+{% page_head title="Paski wypłaty" eyebrow="Finanse" icon="bi-receipt" sub="Wynagrodzenie z pasków PDF: ile zarobione brutto i na rękę, podatek i drugi próg." back=back_url back_label="Finanse" %}{% endpage_head %}
+
+<div class="ps-page animate-fade-in-up">
+    <nav class="ps-year-nav" aria-label="Rok">
+        {% for y in years %}
+            <a href="{% url 'finance:payslips_year' y %}" class="u-chip{% if y == year %} is-active{% endif %}"{% if y == year %} aria-current="page"{% endif %}>{{ y|unlocalize }}</a>
+        {% endfor %}
+    </nav>
+
+    <section class="u-card u-card-pad" aria-labelledby="ps-import-title">
+        <h2 class="u-section-title" id="ps-import-title"><i class="bi bi-cloud-arrow-up" aria-hidden="true"></i> Wgraj pasek</h2>
+        <form method="post" action="{% url 'finance:payslip_import' %}" enctype="multipart/form-data" class="ps-import">
+            {% csrf_token %}
+            {{ form.file }}
+            <button type="submit" class="btn btn-primary"><i class="bi bi-upload" aria-hidden="true"></i> Importuj</button>
+        </form>
+        <div class="form-text">{{ form.file.help_text }}</div>
+        {% if form.file.errors %}<div class="text-danger small mt-1">{{ form.file.errors }}</div>{% endif %}
+    </section>
+
+    {% if not count %}
+        <div class="u-card u-card-pad ha-empty">
+            <i class="bi bi-receipt" aria-hidden="true"></i>
+            <div><strong>Brak pasków za {{ year|unlocalize }}</strong><span>Wgraj PDF-y, a pojawią się tu sumy i odległość do drugiego progu.</span></div>
+        </div>
+    {% else %}
+        <div class="u-metric-grid">
+            <div class="u-metric">
+                <div class="u-metric-label"><i class="bi bi-cash-stack" aria-hidden="true"></i> Brutto od stycznia</div>
+                <div class="u-metric-value">{{ totals.gross|zl }}</div>
+                <div class="u-metric-note">{{ count|pl:"pasek,paski,pasków" }}</div>
+            </div>
+            <div class="u-metric is-income">
+                <div class="u-metric-label"><i class="bi bi-wallet2" aria-hidden="true"></i> Na rękę</div>
+                <div class="u-metric-value is-income">{{ totals.net|zl }}</div>
+                <div class="u-metric-note">{{ net_share|floatformat:0 }}% brutto</div>
+            </div>
+            <div class="u-metric is-expense">
+                <div class="u-metric-label"><i class="bi bi-bank" aria-hidden="true"></i> Zaliczki PIT</div>
+                <div class="u-metric-value">{{ totals.tax|zl }}</div>
+                <div class="u-metric-note">ZUS {{ totals.zus|zl }} · zdrowotna {{ totals.health|zl }}</div>
+            </div>
+            <div class="u-metric is-invest">
+                <div class="u-metric-label"><i class="bi bi-piggy-bank" aria-hidden="true"></i> PPK</div>
+                <div class="u-metric-value is-invest">{{ ppk_total|zl }}</div>
+                <div class="u-metric-note">Ty {{ totals.ppk_employee|zl }} · firma {{ totals.ppk_employer|zl }}</div>
+            </div>
+        </div>
+
+        <section class="u-card u-card-pad" aria-labelledby="ps-threshold-title">
+            <h2 class="u-section-title" id="ps-threshold-title">Drugi próg podatkowy ({{ threshold|zl }})</h2>
+            {% if threshold_crossed_in %}
+                <p class="ps-threshold-value is-crossed"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i> Przekroczony w pasku za {{ threshold_crossed_in.period|date:"F"|lower }}</p>
+                <p class="ps-threshold-note">Stawką 32% opodatkowano już {{ income_32|floatformat:"2g" }} zł dochodu. Do końca roku zaliczki PIT będą wyższe.</p>
+            {% else %}
+                <p class="ps-threshold-value">Zostało {{ threshold_remaining|zl }}</p>
+                <p class="ps-threshold-note">Dochód od stycznia około {{ totals.tax_base|zl }}{% if missing %}, bez brakujących miesięcy{% endif %}.</p>
+            {% endif %}
+            <div class="u-meter" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ threshold_progress|floatformat:0 }}" aria-label="Postęp do progu">
+                <div class="u-meter-fill" style="width: {{ threshold_progress|unlocalize }}%"></div>
+            </div>
+            <p class="ha-period-note">Dochód liczony szacunkowo: podstawa składki zdrowotnej + PPK pracodawcy − koszty uzyskania. O przekroczeniu decyduje pole „Dochód 32%” z paska.</p>
+        </section>
+
+        {% if missing %}
+            <p class="ha-hint"><i class="bi bi-info-circle" aria-hidden="true"></i> Brak pasków za: {% for month in missing %}{{ month|date:"F"|lower }}{% if not forloop.last %}, {% endif %}{% endfor %}. Sumy obejmują tylko wgrane miesiące.</p>
+        {% endif %}
+    {% endif %}
+
+    {% if rows %}
+        <section class="u-card u-card-pad" aria-labelledby="ps-months-title">
+            <h2 class="u-section-title" id="ps-months-title">Miesiące</h2>
+            <div class="u-table-wrap">
+                <table class="u-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Za miesiąc</th>
+                            <th scope="col" class="text-end">Brutto</th>
+                            <th scope="col" class="text-end">Na rękę</th>
+                            <th scope="col" class="text-end">PIT</th>
+                            <th scope="col" class="text-end">Nadgodziny</th>
+                            <th scope="col" class="text-end">Dochód narastająco</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in rows %}
+                            {% if row.payslip %}
+                                <tr>
+                                    <th scope="row"><a href="{% url 'finance:payslip_detail' year row.month.month %}">{{ row.month|date:"F"|capfirst }}</a></th>
+                                    <td class="u-amount">{{ row.payslip.gross|floatformat:"2g" }} zł</td>
+                                    <td class="u-amount is-income">{{ row.payslip.net|floatformat:"2g" }} zł</td>
+                                    <td class="u-amount">{{ row.payslip.tax_advance|floatformat:"2g" }} zł</td>
+                                    <td class="u-amount">{% if row.overtime %}{{ row.overtime|floatformat:1 }} h{% else %}–{% endif %}</td>
+                                    <td class="u-amount">{{ row.cumulative_tax_base|zl }}</td>
+                                </tr>
+                            {% else %}
+                                <tr class="ps-missing">
+                                    <th scope="row">{{ row.month|date:"F"|capfirst }}</th>
+                                    <td colspan="5" class="text-end">brak paska</td>
+                                </tr>
+                            {% endif %}
+                        {% endfor %}
+                    </tbody>
+                    {% if count %}
+                        <tfoot>
+                            <tr>
+                                <th scope="row">Razem</th>
+                                <td class="u-amount">{{ totals.gross|floatformat:"2g" }} zł</td>
+                                <td class="u-amount is-income">{{ totals.net|floatformat:"2g" }} zł</td>
+                                <td class="u-amount">{{ totals.tax|floatformat:"2g" }} zł</td>
+                                <td class="u-amount">{{ totals.overtime|floatformat:1 }} h</td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    {% endif %}
+                </table>
+            </div>
+        </section>
+    {% endif %}
+</div>
+{% endblock %}

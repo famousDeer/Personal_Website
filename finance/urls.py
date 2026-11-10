@@ -1,6 +1,6 @@
 # finance/urls.py
 from django.urls import path
-from . import views, views_household, views_import_rules
+from . import views, views_household, views_import_rules, views_payslips
 
 app_name = 'finance'
 
@@ -31,6 +31,13 @@ urlpatterns = [
     path('reports/', views.ReportsView.as_view(), name='reports'),
     path('analysis/', views_household.HouseholdAnalysisView.as_view(), name='household_analysis'),
     path('analysis/<int:year>/<int:month>/', views_household.HouseholdMonthView.as_view(), name='household_month'),
+
+    # Payslips
+    path('payslips/', views_payslips.PayslipYearView.as_view(), name='payslips'),
+    path('payslips/import/', views_payslips.PayslipImportView.as_view(), name='payslip_import'),
+    path('payslips/<int:year>/', views_payslips.PayslipYearView.as_view(), name='payslips_year'),
+    path('payslips/<int:year>/<int:month>/', views_payslips.PayslipDetailView.as_view(), name='payslip_detail'),
+    path('payslips/<int:year>/<int:month>/delete/', views_payslips.PayslipDeleteView.as_view(), name='payslip_delete'),
 
     # Brokerage portfolio
     path('brokerage/', views.BrokeragePortfolioView.as_view(), name='brokerage'),

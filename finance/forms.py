@@ -392,3 +392,27 @@ class TravelDestinationForm(forms.ModelForm):
         if start_date and end_date and end_date < start_date:
             self.add_error('end_date', 'Data zakończenia nie może być wcześniejsza niż data rozpoczęcia.')
         return cleaned_data
+
+
+class PayslipImportForm(BootstrapFinanceFormMixin, forms.Form):
+    MAX_UPLOAD_SIZE = 5 * 1024 * 1024
+    MAX_FILE_COUNT = 12
+    file = MultipleFileField(
+        label='Paski wypłaty (PDF)',
+        help_text='PDF z enova365, bez hasła. Możesz wybrać kilka miesięcy naraz; ponowny import nadpisuje miesiąc.',
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['file'].widget.attrs.update({'accept': '.pdf,application/pdf', 'multiple': True})
+
+    def clean_file(self):
+        uploaded_files = self.cleaned_data['file']
+        if len(uploaded_files) > self.MAX_FILE_COUNT:
+            raise forms.ValidationError(f'Możesz wgrać maksymalnie {self.MAX_FILE_COUNT} plików jednocześnie.')
+        for uploaded_file in uploaded_files:
+            if not uploaded_file.name.lower().endswith('.pdf'):
+                raise forms.ValidationError('Wgraj pliki PDF z paskami wypłaty.')
+            if uploaded_file.size > self.MAX_UPLOAD_SIZE:
+                raise forms.ValidationError(f'Plik {uploaded_file.name} przekracza limit 5 MB.')
+        return uploaded_files

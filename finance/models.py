@@ -718,3 +718,97 @@ class CategoryKind(models.Model):
 
     def __str__(self):
         return f'{self.category}: {self.get_kind_display()}'
+
+
+def _money():
+    return models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0'))
+
+
+class Payslip(models.Model):
+    """Pasek wypłaty z PDF (finance.payslip_import), jeden na miesiąc i osobę.
+
+    ``period`` to pierwszy dzień miesiąca, za który jest wypłata (pieniądze
+    przychodzą 10. dnia następnego miesiąca).
+    """
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='payslips')
+    period = models.DateField()
+    employer = models.CharField(max_length=200, blank=True)
+    document_number = models.CharField(max_length=60, blank=True)
+    zus_base = _money()
+    zus_pension = _money()
+    zus_disability = _money()
+    zus_sickness = _money()
+    employer_zus = _money()
+    employer_fp = _money()
+    employer_fgsp = _money()
+    health_base = _money()
+    health = _money()
+    tax_advance = _money()
+    tax_costs = _money()
+    tax_relief = _money()
+    income_32 = _money()
+    ppk_employee = _money()
+    ppk_employer = _money()
+    total_additions = _money()
+    total_deductions = _money()
+    total_non_cash = _money()
+    cash = _money()
+    transfer = _money()
+    imported_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'finance_payslips'
+        ordering = ['-period']
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'period'], name='finance_payslip_user_period_unique'),
+        ]
+
+    def __str__(self):
+        return f'{self.user} {self.period:%m.%Y}'
+
+    @property
+    def gross(self):
+        return self.total_additions
+
+    @property
+    def net(self):
+        return self.cash + self.transfer
+
+    @property
+    def zus_employee(self):
+        return self.zus_pension + self.zus_disability + self.zus_sickness
+
+    @property
+    def employer_cost(self):
+        return self.gross + self.employer_zus + self.employer_fp + self.employer_fgsp + self.ppk_employer
+
+    @property
+    def tax_base_estimate(self):
+        """Dochód do progu podatkowego – szacunek: podstawa zdrowotnej + PPK firmy − koszty uzyskania."""
+        return max(Decimal('0'), self.health_base + self.ppk_employer - self.tax_costs)
+
+
+class PayslipItem(models.Model):
+    payslip = models.ForeignKey(Payslip, on_delete=models.CASCADE, related_name='items')
+    position = models.PositiveSmallIntegerField()
+    name = models.CharField(max_length=200)
+    hours = models.CharField(max_length=10, blank=True)
+    days = models.PositiveSmallIntegerField(null=True, blank=True)
+    addition = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    deduction = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    non_cash = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        db_table = 'finance_payslip_items'
+        ordering = ['position']
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def hours_decimal(self):
+        if not self.hours:
+            return Decimal('0')
+        hours, minutes = self.hours.split(':')
+        return Decimal(hours) + Decimal(minutes) / 60

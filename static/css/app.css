@@ -3151,3 +3151,29 @@ a.pt-today-item:hover { border-color: var(--line-2); color: var(--ink-1); }
     left: auto; right: var(--sp-4); z-index: 1035; min-height: 3.25rem; padding: 0 1.25rem;
     bottom: calc(var(--tabbar-h) + var(--sp-3) + env(safe-area-inset-bottom, 0px));
 }
+
+/* Paski wypłaty (finance/payslips.html, payslip_detail.html) */
+.ps-page { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-4); }
+.ps-year-nav { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.ps-year-nav .u-chip { text-decoration: none; }
+.ps-year-nav .u-chip.is-active { background: var(--brand-600); color: #fff; }
+.ps-import { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.ps-import input[type="file"] { flex: 1 1 16rem; min-width: 0; }
+.ps-threshold-value { margin: 0; font-size: var(--fs-h2); font-weight: 700; color: var(--ink-1); }
+.ps-threshold-value.is-crossed { color: var(--expense-ink); }
+.ps-threshold-value i { font-size: .9em; }
+.ps-threshold-note { margin: .25rem 0 0; font-size: var(--fs-sm); color: var(--ink-2); }
+.ps-missing th, .ps-missing td { color: var(--ink-4); font-style: italic; }
+.ps-flow { display: grid; gap: var(--sp-3); }
+.ps-flow small { color: var(--ink-3); font-weight: 500; }
+.ps-flow-total { padding-top: var(--sp-3); border-top: 1px solid var(--line-1); }
+.ps-flow-total .u-rank-name, .ps-flow-total .u-rank-value { font-weight: 700; }
+.ps-page .u-table tbody th, .ps-page .u-table tfoot th, .ps-page .u-table tfoot td { padding: .62rem var(--sp-4); border-bottom: 1px solid var(--line-2); }
+.ps-page .u-table tbody tr:last-child th { border-bottom: 0; }
+.ps-page .u-table tfoot th, .ps-page .u-table tfoot td { border-top: 1px solid var(--line-1); border-bottom: 0; color: var(--ink-1); }
+.ps-page .u-table .ps-group th { padding-top: var(--sp-4); font-size: var(--fs-caption); text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
+.ps-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: var(--sp-3); margin: 0; }
+.ps-facts div { padding: .6rem .8rem; border-radius: var(--r-md); background: var(--surface-2); }
+.ps-facts dt { font-size: var(--fs-caption); font-weight: 500; color: var(--ink-3); }
+.ps-facts dd { margin: 0; font-variant-numeric: tabular-nums; color: var(--ink-1); }
+.ps-delete { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); }

@@ -1,0 +1,112 @@
+{% extends 'finance/index.html' %}
+{% load l10n ui %}
+
+{% block title %}Pasek za {{ payslip.period|date:"F Y"|lower }}{% endblock %}
+
+{% block finance_account_context %}{% endblock %}
+
+{% block content_finance %}
+{% comment %} Karta miesiąca paska wypłaty (finance.payslips.build_detail). {% endcomment %}
+{% page_head title=payslip.period|date:"F Y"|capfirst eyebrow="Pasek wypłaty" icon="bi-receipt" sub=payslip.employer back=back_url back_label="Wróć do roku" %}{% endpage_head %}
+
+<div class="ps-page animate-fade-in-up">
+    <nav class="ha-month-nav" aria-label="Inne miesiące">
+        {% if previous %}<a href="{% url 'finance:payslip_detail' previous.period.year previous.period.month %}" class="u-btn u-btn-ghost"><i class="bi bi-chevron-left" aria-hidden="true"></i> {{ previous.period|date:"F"|capfirst }}</a>{% else %}<span></span>{% endif %}
+        <span class="ha-month-note">Wypłata około {{ paid_on|date:"j E" }}</span>
+        {% if following %}<a href="{% url 'finance:payslip_detail' following.period.year following.period.month %}" class="u-btn u-btn-ghost">{{ following.period|date:"F"|capfirst }} <i class="bi bi-chevron-right" aria-hidden="true"></i></a>{% else %}<span></span>{% endif %}
+    </nav>
+
+    <div class="u-metric-grid">
+        <div class="u-metric">
+            <div class="u-metric-label"><i class="bi bi-cash-stack" aria-hidden="true"></i> Brutto</div>
+            <div class="u-metric-value">{{ payslip.gross|zl }}</div>
+            <div class="u-metric-note">{% if comparison %}{% include 'finance/partials/household_delta.html' with delta=comparison.gross_delta good_when_up=True %} vs {{ comparison.period|date:"F"|lower }}{% else %}Suma składników{% endif %}</div>
+        </div>
+        <div class="u-metric is-income">
+            <div class="u-metric-label"><i class="bi bi-wallet2" aria-hidden="true"></i> Na rękę</div>
+            <div class="u-metric-value is-income">{{ payslip.net|zl }}</div>
+            <div class="u-metric-note">{{ net_share|floatformat:0 }}% brutto{% if comparison %} · {% include 'finance/partials/household_delta.html' with delta=comparison.net_delta good_when_up=True %}{% endif %}</div>
+        </div>
+        <div class="u-metric">
+            <div class="u-metric-label"><i class="bi bi-clock" aria-hidden="true"></i> Godziny</div>
+            <div class="u-metric-value">{{ worked_hours|floatformat:1 }} h</div>
+            <div class="u-metric-note">w tym nadgodziny {{ overtime_hours|floatformat:1 }} h</div>
+        </div>
+        <div class="u-metric is-invest">
+            <div class="u-metric-label"><i class="bi bi-stopwatch" aria-hidden="true"></i> Na rękę za godzinę</div>
+            <div class="u-metric-value is-invest">{% if net_per_hour %}{{ net_per_hour|floatformat:"2g" }} zł{% else %}–{% endif %}</div>
+            <div class="u-metric-note">{% if gross_per_hour %}brutto {{ gross_per_hour|floatformat:"2g" }} zł/h{% endif %}</div>
+        </div>
+    </div>
+
+    <section class="u-card u-card-pad" aria-labelledby="ps-flow-title">
+        <h2 class="u-section-title" id="ps-flow-title">Od brutto do przelewu</h2>
+        <div class="ps-flow">
+            <div class="u-rank-row">
+                <div class="u-rank-head"><span class="u-rank-name">Brutto (suma składników)</span><span class="u-rank-value">{{ payslip.gross|floatformat:"2g" }} zł</span></div>
+                <div class="u-rank-track"><div class="u-rank-fill" style="width: 100%; --bar-color: var(--ink-3);"></div></div>
+            </div>
+            {% for step in waterfall %}
+                <div class="u-rank-row">
+                    <div class="u-rank-head"><span class="u-rank-name"><i class="bi {{ step.icon }}" aria-hidden="true"></i> {{ step.label }}</span><span class="u-rank-value">−{{ step.amount|floatformat:"2g" }} zł <small>({{ step.percent|floatformat:1 }}%)</small></span></div>
+                    <div class="u-rank-track"><div class="u-rank-fill" style="width: {{ step.percent|unlocalize }}%; --bar-color: var(--expense);"></div></div>
+                </div>
+            {% endfor %}
+            <div class="u-rank-row ps-flow-total">
+                <div class="u-rank-head"><span class="u-rank-name">Przelew na konto{% if payslip.cash %} i gotówka{% endif %}</span><span class="u-rank-value is-income">{{ payslip.net|floatformat:"2g" }} zł</span></div>
+                <div class="u-rank-track"><div class="u-rank-fill" style="width: {{ net_share|unlocalize }}%; --bar-color: var(--income);"></div></div>
+            </div>
+        </div>
+    </section>
+
+    <section class="u-card u-card-pad" aria-labelledby="ps-items-title">
+        <h2 class="u-section-title" id="ps-items-title">Składniki wynagrodzenia</h2>
+        <div class="u-table-wrap">
+            <table class="u-table">
+                <thead><tr><th scope="col">Pozycja</th><th scope="col" class="text-end">Godziny</th><th scope="col" class="text-end">Dni</th><th scope="col" class="text-end">Kwota</th></tr></thead>
+                <tbody>
+                    {% for item in additions %}
+                        <tr><th scope="row">{{ item.name }}</th><td class="u-amount">{{ item.hours|default:"–" }}</td><td class="u-amount">{{ item.days|default:"–" }}</td><td class="u-amount">{{ item.addition|floatformat:"2g" }} zł</td></tr>
+                    {% endfor %}
+                </tbody>
+                {% if deductions %}
+                    <tbody>
+                        <tr class="ps-group"><th colspan="4" scope="rowgroup">Potrącenia</th></tr>
+                        {% for item in deductions %}
+                            <tr><th scope="row">{{ item.name }}</th><td></td><td></td><td class="u-amount is-expense">−{{ item.deduction|floatformat:"2g" }} zł</td></tr>
+                        {% endfor %}
+                    </tbody>
+                {% endif %}
+                {% if non_cash %}
+                    <tbody>
+                        <tr class="ps-group"><th colspan="4" scope="rowgroup">Dodatki niepieniężne (tylko do podatku)</th></tr>
+                        {% for item in non_cash %}
+                            <tr><th scope="row">{{ item.name }}</th><td></td><td></td><td class="u-amount">{{ item.non_cash|floatformat:"2g" }} zł</td></tr>
+                        {% endfor %}
+                    </tbody>
+                {% endif %}
+            </table>
+        </div>
+    </section>
+
+    <section class="u-card u-card-pad" aria-labelledby="ps-tax-title">
+        <h2 class="u-section-title" id="ps-tax-title">Podatek, składki i koszt pracodawcy</h2>
+        <dl class="ps-facts">
+            <div><dt>Podstawa składek ZUS</dt><dd>{{ payslip.zus_base|floatformat:"2g" }} zł</dd></div>
+            <div><dt>Emerytalne / rentowe / chorobowe</dt><dd>{{ payslip.zus_pension|floatformat:"2g" }} / {{ payslip.zus_disability|floatformat:"2g" }} / {{ payslip.zus_sickness|floatformat:"2g" }} zł</dd></div>
+            <div><dt>Podstawa zdrowotnej</dt><dd>{{ payslip.health_base|floatformat:"2g" }} zł</dd></div>
+            <div><dt>Koszty uzyskania / ulga</dt><dd>{{ payslip.tax_costs|floatformat:"2g" }} / {{ payslip.tax_relief|floatformat:"2g" }} zł</dd></div>
+            <div><dt>Dochód opodatkowany 32%</dt><dd>{{ payslip.income_32|floatformat:"2g" }} zł</dd></div>
+            <div><dt>PPK: Ty / firma</dt><dd>{{ payslip.ppk_employee|floatformat:"2g" }} / {{ payslip.ppk_employer|floatformat:"2g" }} zł</dd></div>
+            <div><dt>Składki pracodawcy (ZUS, FP, FGŚP)</dt><dd>{{ payslip.employer_zus|floatformat:"2g" }} / {{ payslip.employer_fp|floatformat:"2g" }} / {{ payslip.employer_fgsp|floatformat:"2g" }} zł</dd></div>
+            <div><dt>Całkowity koszt pracodawcy</dt><dd><strong>{{ payslip.employer_cost|floatformat:"2g" }} zł</strong></dd></div>
+        </dl>
+    </section>
+
+    <form method="post" action="{% url 'finance:payslip_delete' payslip.period.year payslip.period.month %}" class="ps-delete">
+        {% csrf_token %}
+        <span class="ha-period-note">{% if payslip.document_number %}{{ payslip.document_number }} · {% endif %}zaimportowano {{ payslip.imported_at|date:"j E Y, H:i" }}</span>
+        <button type="submit" class="u-btn u-btn-ghost"><i class="bi bi-trash" aria-hidden="true"></i> Usuń pasek</button>
+    </form>
+</div>
+{% endblock %}
