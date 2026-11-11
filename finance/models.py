@@ -821,3 +821,22 @@ class PayslipItem(models.Model):
             return Decimal('0')
         hours, minutes = self.hours.split(':')
         return Decimal(hours) + Decimal(minutes) / 60
+
+
+class PayslipTaxYear(models.Model):
+    """Dane do szacunku rocznego PIT (finance.payslips.build_settlement): dochód
+    i zaliczki małżonka przy wspólnym rozliczeniu. ``year`` to rok podatkowy."""
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='payslip_tax_years')
+    year = models.PositiveSmallIntegerField()
+    partner_income = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    partner_tax_paid = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        db_table = 'finance_payslip_tax_years'
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'year'], name='finance_payslip_tax_year_unique'),
+        ]
+
+    def __str__(self):
+        return f'{self.user} {self.year}'

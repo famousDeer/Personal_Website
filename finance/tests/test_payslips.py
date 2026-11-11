@@ -10,9 +10,11 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 
-from finance.models import Payslip
+from finance.models import Payslip, PayslipTaxYear
 from finance.payslip_import import PayslipImportError, extract_pdf_text, parse_payslip_text, save_payslip
-from finance.payslips import build_year, payslip_hours
+from finance.payslips import (
+    build_settlement, build_year, payslip_hours, pit_scale, project_tax_year, tax_year_payslips,
+)
 
 User = get_user_model()
 SAMPLE = (Path(__file__).parent / 'data' / 'payslip_enova.txt').read_text(encoding='utf-8')
@@ -152,3 +154,78 @@ class PayslipViewTests(TestCase):
         response = self.client.post(reverse('finance:payslip_delete', args=[2026, 10]))
         self.assertRedirects(response, reverse('finance:payslips_year', args=[2026]))
         self.assertFalse(Payslip.objects.exists())
+
+
+class PayslipSettlementTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='dawid', password='pass123')
+        self.client.force_login(self.user)
+
+    def add(self, month, year=2026, income_32='0,00'):
+        text = sample_for(month, income_32).replace('.10.2026', f'.{month:02d}.{year}').replace(
+            f'.{month:02d}.2026', f'.{month:02d}.{year}')
+        return save_payslip(self.user, parse_payslip_text(text))[0]
+
+    def test_pit_scale(self):
+        self.assertEqual(pit_scale(Decimal('20000')), Decimal('0'))
+        self.assertEqual(pit_scale(Decimal('100000')), Decimal('8400'))
+        self.assertEqual(pit_scale(Decimal('150000')), Decimal('20400'))
+
+    def test_tax_year_follows_payment_date(self):
+        december_before = self.add(12, year=2025)
+        self.add(1)
+        december = self.add(12)
+        periods = [p.period for p in tax_year_payslips(self.user, 2026)]
+        self.assertIn(december_before.period, periods)
+        self.assertNotIn(december.period, periods)
+        rows = build_year(self.user, 2026)['rows']
+        self.assertIsNone(rows[11]['cumulative_tax_base'])
+
+    def test_projection_fills_missing_months_until_november(self):
+        self.add(9)
+        self.add(10)
+        # Dochód z każdego paska: (1965 + 300) / 12% = 18 875; brakuje listopada.
+        projection = project_tax_year(2026, tax_year_payslips(self.user, 2026))
+        self.assertEqual(projection['projected'], [date(2026, 11, 1)])
+        self.assertEqual(projection['income'], Decimal('56625.00'))
+        # Listopad poniżej progu: 18 875 × 12% − 300 = 1965
+        self.assertEqual(projection['advances'], Decimal('5895.00'))
+
+    def test_gaps_before_crossing_match_income_32(self):
+        self.add(1)
+        self.add(4, income_32='3 725,70')
+        projection = project_tax_year(2026, tax_year_payslips(self.user, 2026))
+        # Do końca kwietnia dochód = 120 000 + 3725,70 (część ponad próg w kwietniu).
+        # Luty i marzec: 120 000 − (12 665,50 − 3725,70) − 18 875 = 92 185,20 razem.
+        self.assertTrue(projection['calibrated'])
+        self.assertEqual(projection['projected'][:2], [date(2026, 2, 1), date(2026, 3, 1)])
+        self.assertEqual(len(projection['projected']), 9)  # luty, marzec, maj–listopad
+        average = (Decimal('123725.70')) / 4
+        self.assertEqual(projection['income'], (Decimal('123725.70') + 7 * average).quantize(Decimal('0.01')))
+
+    def test_joint_settlement_uses_partner_income(self):
+        self.add(10)
+        response = self.client.post(reverse('finance:payslip_tax_year', args=[2026]), {'partner_income': '50000'})
+        self.assertRedirects(response, reverse('finance:payslips_year', args=[2026]) + '#ps-settlement-title',
+                             fetch_redirect_response=False)
+        settlement = self.client.get(reverse('finance:payslips_year', args=[2026])).context['settlement']
+        # Ty: październik + prognoza listopada = 37 750 dochodu, 3930 zaliczek;
+        # małżonek: 50 000, zaliczki ze skali 2400.
+        self.assertEqual(settlement['income'], Decimal('37750.00'))
+        self.assertEqual(settlement['own_tax'], Decimal('930'))
+        self.assertEqual(settlement['partner_paid'], Decimal('2400'))
+        self.assertEqual(settlement['joint_tax'], 2 * pit_scale(Decimal('43875')))  # 2 × 1665
+        self.assertEqual(settlement['joint_refund'], Decimal('3930') + Decimal('2400') - Decimal('3330'))
+
+    def test_joint_benefit_when_one_income_crosses_threshold(self):
+        self.add(10, income_32='3 725,70')
+        settlement = build_settlement(self.user, 2026, tax_year_payslips(self.user, 2026))
+        self.assertNotIn('joint_tax', settlement)
+        PayslipTaxYear.objects.create(user=self.user, year=2026, partner_income=Decimal('50000'))
+        own = Decimal('150000')
+        with mock.patch('finance.payslips.project_tax_year', return_value={
+            'income': own, 'advances': Decimal('20400'), 'projected': [], 'average': own / 12,
+        }):
+            settlement = build_settlement(self.user, 2026, [])
+        self.assertEqual(settlement['joint_benefit'], Decimal('6000'))  # 20 400 + 2400 − 2 × 8400
+        self.assertEqual(settlement['joint_refund'], Decimal('6000'))

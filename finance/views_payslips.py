@@ -14,8 +14,8 @@ from django.views import View
 
 from utils.undo import delete_with_undo
 
-from .forms import PayslipImportForm
-from .models import Payslip
+from .forms import PayslipImportForm, PayslipTaxYearForm
+from .models import Payslip, PayslipTaxYear
 from .payslip_import import PayslipImportError, extract_pdf_text, parse_payslip_text, save_payslip
 from .payslips import build_detail, build_year
 
@@ -32,6 +32,8 @@ class PayslipYearView(LoginRequiredMixin, View):
         year = year or default_year(request.user)
         context = build_year(request.user, year)
         context['form'] = form or PayslipImportForm()
+        partner = context['settlement']['partner'] if context['settlement'] else None
+        context['partner_form'] = PayslipTaxYearForm(instance=partner)
         return render(request, self.template_name, context)
 
 
@@ -72,6 +74,24 @@ class PayslipDetailView(LoginRequiredMixin, View):
         context = build_detail(payslip)
         context['back_url'] = reverse('finance:payslips_year', args=[year])
         return render(request, 'finance/payslip_detail.html', context)
+
+
+class PayslipTaxYearView(LoginRequiredMixin, View):
+    """Zapis dochodu i zaliczek małżonka do szacunku wspólnego rozliczenia."""
+
+    def post(self, request, year):
+        instance = PayslipTaxYear.objects.filter(user=request.user, year=year).first()
+        form = PayslipTaxYearForm(request.POST, instance=instance)
+        if form.is_valid():
+            entry = form.save(commit=False)
+            entry.user, entry.year = request.user, year
+            entry.save()
+            messages.success(request, f'Zapisano dane małżonka za {year} – szacunek rozliczenia przeliczony.')
+        else:
+            for errors in form.errors.values():
+                for error in errors:
+                    messages.error(request, error)
+        return redirect(f"{reverse('finance:payslips_year', args=[year])}#ps-settlement-title")
 
 
 class PayslipDeleteView(LoginRequiredMixin, View):

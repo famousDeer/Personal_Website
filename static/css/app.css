@@ -3177,3 +3177,13 @@ a.pt-today-item:hover { border-color: var(--line-2); color: var(--ink-1); }
 .ps-facts dt { font-size: var(--fs-caption); font-weight: 500; color: var(--ink-3); }
 .ps-facts dd { margin: 0; font-variant-numeric: tabular-nums; color: var(--ink-1); }
 .ps-delete { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+.ps-muted { color: var(--ink-4); font-weight: 500; }
+.ps-joint { display: grid; gap: var(--sp-3); margin-top: var(--sp-4); padding-top: var(--sp-4); border-top: 1px solid var(--line-1); }
+.ps-joint-main { display: grid; gap: .15rem; }
+.ps-joint-main span { font-size: var(--fs-sm); color: var(--ink-2); }
+.ps-joint-main strong { font-size: var(--fs-h2); font-variant-numeric: tabular-nums; }
+.ps-joint-main strong.is-income { color: var(--income-ink); }
+.ps-joint-main strong.is-expense { color: var(--expense-ink); }
+.ps-joint-main small { font-size: var(--fs-caption); color: var(--ink-3); }
+.ps-partner-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: var(--sp-3); align-items: start; margin-top: var(--sp-4); }
+.ps-partner-form .btn { grid-column: 1 / -1; justify-self: start; }

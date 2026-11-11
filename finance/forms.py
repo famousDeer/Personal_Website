@@ -7,6 +7,7 @@ from .models import (
     BrokerageDividend,
     BrokerageInstrument,
     BrokerageTransaction,
+    PayslipTaxYear,
     TravelDestinations,
 )
 
@@ -416,3 +417,24 @@ class PayslipImportForm(BootstrapFinanceFormMixin, forms.Form):
             if uploaded_file.size > self.MAX_UPLOAD_SIZE:
                 raise forms.ValidationError(f'Plik {uploaded_file.name} przekracza limit 5 MB.')
         return uploaded_files
+
+
+class PayslipTaxYearForm(BootstrapFinanceFormMixin, forms.ModelForm):
+    class Meta:
+        model = PayslipTaxYear
+        fields = ['partner_income', 'partner_tax_paid']
+        labels = {
+            'partner_income': 'Dochód małżonka za rok',
+            'partner_tax_paid': 'Zaliczki PIT małżonka (opcjonalnie)',
+        }
+        help_texts = {
+            'partner_income': 'Przychód minus koszty i składki ZUS (z PIT-11 albo szacunkowo). Puste = bez wspólnego rozliczenia.',
+            'partner_tax_paid': 'Puste = zaliczki jak z samej skali podatkowej.',
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+        for name in ('partner_income', 'partner_tax_paid'):
+            if cleaned.get(name) is not None and cleaned[name] < 0:
+                self.add_error(name, 'Kwota nie może być ujemna.')
+        return cleaned

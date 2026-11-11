@@ -73,6 +73,49 @@
             <p class="ha-period-note">Pasek nie podaje podstawy opodatkowania – dochód jest odtworzony z zaliczki PIT (12%, ulga, część ze stawką 32%), z dokładnością do kilku złotych na miesiąc. O przekroczeniu decyduje pole „Dochód 32%” z paska.</p>
         </section>
 
+        {% if settlement %}
+            <section class="u-card u-card-pad" aria-labelledby="ps-settlement-title">
+                <h2 class="u-section-title" id="ps-settlement-title">Rozliczenie PIT za {{ year|unlocalize }} – szacunek</h2>
+                <dl class="ps-facts">
+                    <div><dt>Twój dochód za rok</dt><dd>{{ settlement.income|zl }}</dd></div>
+                    <div><dt>Twoje zaliczki PIT</dt><dd>{{ settlement.advances|zl }}</dd></div>
+                    <div><dt>Twój podatek przy rozliczeniu osobno</dt><dd>{{ settlement.own_tax|zl }}</dd></div>
+                    <div><dt>Osobno: {% if settlement.own_refund >= 0 %}zwrot{% else %}dopłata{% endif %}</dt><dd><strong>{{ settlement.own_refund|zl }}</strong></dd></div>
+                </dl>
+                {% if 'joint_tax' in settlement %}
+                    <div class="ps-joint">
+                        <div class="ps-joint-main">
+                            <span>Wspólnie z małżonkiem: {% if settlement.joint_refund >= 0 %}zwrot{% else %}dopłata{% endif %}</span>
+                            <strong class="{% if settlement.joint_refund >= 0 %}is-income{% else %}is-expense{% endif %}">{{ settlement.joint_refund|zl }}</strong>
+                            <small>w tym {{ settlement.joint_benefit|zl }} dzięki wspólnemu rozliczeniu</small>
+                        </div>
+                        <dl class="ps-facts">
+                            <div><dt>Dochód małżonka</dt><dd>{{ settlement.partner.partner_income|zl }}</dd></div>
+                            <div><dt>Zaliczki małżonka</dt><dd>{{ settlement.partner_paid|zl }}{% if settlement.partner.partner_tax_paid == None %} <small>(ze skali)</small>{% endif %}</dd></div>
+                            <div><dt>Podatek łącznie: osobno → wspólnie</dt><dd>{{ settlement.separate_tax|zl }} → {{ settlement.joint_tax|zl }}</dd></div>
+                            <div><dt>Zaliczki łącznie</dt><dd>{{ settlement.joint_paid|zl }}</dd></div>
+                        </dl>
+                    </div>
+                {% endif %}
+                <form method="post" action="{% url 'finance:payslip_tax_year' year %}" class="ps-partner-form">
+                    {% csrf_token %}
+                    {% for field in partner_form %}
+                        <div>
+                            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                            {{ field }}
+                            <div class="form-text">{{ field.help_text }}</div>
+                        </div>
+                    {% endfor %}
+                    <button type="submit" class="btn btn-outline-primary">{% if settlement.partner %}Przelicz{% else %}Policz wspólne rozliczenie{% endif %}</button>
+                </form>
+                <p class="ha-period-note">
+                    Rok podatkowy liczy się według daty wypłaty: paski za grudzień {{ year|add:-1|unlocalize }} – listopad {{ year|unlocalize }}.
+                    {% if settlement.projected %}Bez paska za {{ settlement.projected|length|pl:"miesiąc,miesiące,miesięcy" }} ({% for month in settlement.projected %}{{ month|date:"M"|lower }}{% if not forloop.last %}, {% endif %}{% endfor %}) – {% if settlement.calibrated %}luki przed przekroczeniem progu wypełnione tak, by zgadzał się „Dochód 32%” z paska, dalsze miesiące średnio {{ settlement.average|zl }}{% else %}przyjęty średni dochód {{ settlement.average|zl }}{% endif %}, zaliczka liczona jak u płatnika.{% endif %}
+                    Tylko skala podatkowa i kwota zmniejszająca – bez ulg (dzieci, IKZE, internet, darowizny).
+                </p>
+            </section>
+        {% endif %}
+
         {% if missing %}
             <p class="ha-hint"><i class="bi bi-info-circle" aria-hidden="true"></i> Brak pasków za: {% for month in missing %}{{ month|date:"F"|lower }}{% if not forloop.last %}, {% endif %}{% endfor %}. Sumy obejmują tylko wgrane miesiące.</p>
         {% endif %}
@@ -104,7 +147,7 @@
                                     <td class="u-amount">{{ row.payslip.tax_advance|floatformat:"2g" }} zł</td>
                                     <td class="u-amount">{{ row.hours|floatformat:1 }} h</td>
                                     <td class="u-amount">{% if row.overtime %}{{ row.overtime|floatformat:1 }} h{% else %}–{% endif %}</td>
-                                    <td class="u-amount">{{ row.cumulative_tax_base|zl }}</td>
+                                    <td class="u-amount">{% if row.cumulative_tax_base != None %}{{ row.cumulative_tax_base|zl }}{% else %}<span class="ps-muted" title="Wypłata w styczniu – liczy się do następnego roku podatkowego">rok {{ year|add:1|unlocalize }}</span>{% endif %}</td>
                                 </tr>
                             {% else %}
                                 <tr class="ps-missing">
