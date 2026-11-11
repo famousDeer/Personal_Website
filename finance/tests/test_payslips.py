@@ -124,9 +124,20 @@ class PayslipViewTests(TestCase):
     def test_threshold_remaining_before_crossing(self):
         save_payslip(self.user, parse_payslip_text(sample_for(1, '0,00')))
         summary = build_year(self.user, 2026, today=date(2026, 3, 1))
-        # 11 834,77 + 205,73 − 300 = 11 740,50 dochodu
-        self.assertEqual(summary['threshold_remaining'], Decimal('108259.50'))
+        # Z zaliczki: (1965 + 300) / 12% = 18 875 dochodu
+        self.assertEqual(summary['threshold_remaining'], Decimal('101125.00'))
         self.assertEqual([m.month for m in summary['missing']], [2])
+
+    def test_tax_base_from_pit_advance_with_32_percent_part(self):
+        payslip, _ = save_payslip(self.user, parse_payslip_text(SAMPLE))
+        # (1965 + 300 − 20% × 3725,70) / 12% = 12 665,50; sprawdzenie: 12% × 8939,80 + 32% × 3725,70 − 300 = 1965
+        self.assertEqual(payslip.tax_base_estimate, Decimal('12665.50'))
+
+    def test_tax_base_falls_back_to_health_base_without_pit(self):
+        payslip, _ = save_payslip(self.user, parse_payslip_text(SAMPLE))
+        payslip.tax_advance = Decimal('0')
+        # 11 834,77 + 205,73 − 300
+        self.assertEqual(payslip.tax_base_estimate, Decimal('11740.50'))
 
     def test_other_user_cannot_see_or_delete(self):
         self.upload(SAMPLE)

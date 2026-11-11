@@ -785,7 +785,16 @@ class Payslip(models.Model):
 
     @property
     def tax_base_estimate(self):
-        """Dochód do progu podatkowego – szacunek: podstawa zdrowotnej + PPK firmy − koszty uzyskania."""
+        """Dochód do progu podatkowego (pasek nie podaje podstawy opodatkowania).
+
+        Odtwarzany z zaliczki PIT: zaliczka = 12% podstawy + 20% „Dochodu 32%” − ulga,
+        więc podstawa = (zaliczka + ulga − 20% × dochód 32%) / 12% (±4 zł przez
+        zaokrąglenie PIT). Podstawa zdrowotnej zaniża dochód w miesiącach
+        z delegacją, dlatego jest tylko zapasem, gdy zaliczki nie ma.
+        """
+        if self.tax_advance > 0:
+            base = (self.tax_advance + self.tax_relief - self.income_32 * Decimal('0.20')) / Decimal('0.12')
+            return max(Decimal('0'), base.quantize(Decimal('0.01')))
         return max(Decimal('0'), self.health_base + self.ppk_employer - self.tax_costs)
 
 

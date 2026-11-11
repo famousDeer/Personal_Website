@@ -65,12 +65,12 @@
                 <p class="ps-threshold-note">Stawką 32% opodatkowano już {{ income_32|floatformat:"2g" }} zł dochodu. Do końca roku zaliczki PIT będą wyższe.</p>
             {% else %}
                 <p class="ps-threshold-value">Zostało {{ threshold_remaining|zl }}</p>
-                <p class="ps-threshold-note">Dochód od stycznia około {{ totals.tax_base|zl }}{% if missing %}, bez brakujących miesięcy{% endif %}.</p>
+                <p class="ps-threshold-note">Dochód od stycznia {{ totals.tax_base|zl }}{% if missing %}, bez brakujących miesięcy{% endif %}.</p>
             {% endif %}
             <div class="u-meter" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ threshold_progress|floatformat:0 }}" aria-label="Postęp do progu">
                 <div class="u-meter-fill" style="width: {{ threshold_progress|unlocalize }}%"></div>
             </div>
-            <p class="ha-period-note">Dochód liczony szacunkowo: podstawa składki zdrowotnej + PPK pracodawcy − koszty uzyskania. O przekroczeniu decyduje pole „Dochód 32%” z paska.</p>
+            <p class="ha-period-note">Pasek nie podaje podstawy opodatkowania – dochód jest odtworzony z zaliczki PIT (12%, ulga, część ze stawką 32%), z dokładnością do kilku złotych na miesiąc. O przekroczeniu decyduje pole „Dochód 32%” z paska.</p>
         </section>
 
         {% if missing %}
