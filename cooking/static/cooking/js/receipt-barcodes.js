@@ -32,10 +32,9 @@
     const dateInput = select('[data-date-input]');
     const quickDates = (root.dataset.quickDates || '').split('|').filter(Boolean);
     const csrfToken = select('[data-csrf] input[name="csrfmiddlewaretoken"]').value;
-    const formats = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'];
     const REPEAT_MS = 4000;
 
-    const state = { busy: false, paused: false, lastCode: '', lastAt: 0, stream: null, controls: null, timer: null, merge: null };
+    const state = { busy: false, paused: false, lastCode: '', lastAt: 0, merge: null };
 
     function setStatus(text, tone = '') {
         statusLine.textContent = text;
@@ -230,88 +229,31 @@
         }
     }
 
+    // Aparat i dekodowanie wspólne ze stroną „Sprawdź” (barcode-camera.js).
+    const camera = window.BarcodeCamera.create({
+        video, frame: select('.rb-frame'), zxingUrl: root.dataset.zxingUrl, onCode: onBarcode,
+    });
+
     function stopCamera() {
-        window.clearTimeout(state.timer);
-        state.controls?.stop();
-        state.controls = null;
-        state.stream?.getTracks().forEach((track) => track.stop());
-        state.stream = null;
+        camera.stop();
     }
-
-    async function nativeDetector() {
-        if (!('BarcodeDetector' in window)) {
-            return null;
-        }
-        try {
-            const supported = await window.BarcodeDetector.getSupportedFormats();
-            const usable = formats.filter((format) => supported.includes(format));
-            return usable.length ? new window.BarcodeDetector({ formats: usable }) : null;
-        } catch (error) {
-            return null;
-        }
-    }
-
-    function loadZxing() {
-        if (window.ZXingBrowser) {
-            return Promise.resolve(window.ZXingBrowser);
-        }
-        return new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = root.dataset.zxingUrl;
-            script.onload = () => (window.ZXingBrowser ? resolve(window.ZXingBrowser) : reject(new Error('Brak czytnika kodów.')));
-            script.onerror = () => reject(new Error('Nie udało się wczytać czytnika kodów.'));
-            document.head.appendChild(script);
-        });
-    }
-
-    const constraints = {
-        audio: false,
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-    };
 
     async function startCamera() {
         startButton.hidden = true;
-        if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-            setStatus('Aparat działa tylko przez HTTPS – wpisz kody ręcznie.', 'error');
-            return;
-        }
         setStatus('Uruchamiam aparat…');
         try {
-            const detector = await nativeDetector();
-            if (detector) {
-                state.stream = await navigator.mediaDevices.getUserMedia(constraints);
-                video.srcObject = state.stream;
-                await video.play();
-                const tick = async () => {
-                    try {
-                        if (!state.busy && !state.paused && video.readyState >= 2) {
-                            const found = (await detector.detect(video)).find((item) => item.rawValue);
-                            if (found) {
-                                await onBarcode(found.rawValue);
-                            }
-                        }
-                    } catch (error) {
-                        // Pojedyncza nieczytelna klatka to norma, gdy opakowanie się rusza.
-                    }
-                    state.timer = window.setTimeout(tick, 150);
-                };
-                tick();
-            } else {
-                const ZXingBrowser = await loadZxing();
-                const reader = new ZXingBrowser.BrowserMultiFormatReader();
-                state.controls = await reader.decodeFromConstraints(constraints, video, (result) => {
-                    if (result) {
-                        onBarcode(typeof result.getText === 'function' ? result.getText() : result.text);
-                    }
-                });
-            }
+            await camera.start();
             setStatus('Skieruj aparat na kod pierwszego produktu.');
         } catch (error) {
             stopCamera();
             startButton.hidden = false;
-            setStatus(error?.name === 'NotAllowedError'
-                ? 'Brak dostępu do aparatu – zezwól i spróbuj ponownie albo wpisz kod ręcznie.'
-                : 'Nie udało się uruchomić aparatu. Spróbuj ponownie albo wpisz kod ręcznie.', 'error');
+            if (error?.name === 'InsecureContextError') {
+                setStatus('Aparat działa tylko przez HTTPS – wpisz kody ręcznie.', 'error');
+            } else {
+                setStatus(error?.name === 'NotAllowedError'
+                    ? 'Brak dostępu do aparatu – zezwól i spróbuj ponownie albo wpisz kod ręcznie.'
+                    : 'Nie udało się uruchomić aparatu. Spróbuj ponownie albo wpisz kod ręcznie.', 'error');
+            }
         }
     }
 

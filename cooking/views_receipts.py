@@ -23,6 +23,8 @@ from .services.receipts import (
     default_quantity, receipt_unpack_items, scan_receipt_barcode, start_ai_reading, start_processing,
 )
 from .services.receipt_ai import ai_enabled
+from .services.receipt_review_scan import clear_review_scan, scan_review_line
+from .services.receipt_undo import can_undo, undo_confirmation
 from .services.pantry_batches import date_undated_stock, parse_expiry, quick_dates
 from .views import normalize_pantry_barcode
 
@@ -90,10 +92,17 @@ def _line_rows(receipt):
         if alias.store_id in (receipt.store_id, None):
             aliases.setdefault(alias.normalized_text, alias)
     rows = []
-    for line in receipt.lines.select_related('product', 'group', 'movement'):
+    lines = list(receipt.lines.select_related('product', 'group', 'movement'))
+    # Kod zeskanowany na „Sprawdź”, który jest już w spiżarni, wskazuje produkt na sztywno.
+    owners = {
+        product.barcode: product
+        for product in PantryProduct.objects.filter(barcode__in=[line.barcode for line in lines if line.barcode])
+    }
+    for line in lines:
         alias = aliases.get(line.normalized_text)
         multiplier = alias.multiplier if alias and line.match_status == ReceiptLine.MATCH_AUTO else 1
-        target = line.group or line.product
+        owner = owners.get(line.barcode) if line.barcode else None
+        target = owner or line.group or line.product
         if line.match_status == ReceiptLine.MATCH_IGNORED:
             action = ACTION_IGNORE
         elif line.match_status == ReceiptLine.MATCH_SKIPPED or (
@@ -105,7 +114,11 @@ def _line_rows(receipt):
             action = ACTION_ADD
         rows.append({
             'line': line,
-            'target': target.label if target else '',
+            'target': target.label if target else line.target_name,
+            'locked': owner is not None,
+            'ambiguous': bool(
+                alias and alias.ambiguous and not line.barcode and line.match_status == ReceiptLine.MATCH_UNKNOWN
+            ),
             'quantity': default_quantity(line, multiplier),
             'action': action,
             'kind': (
@@ -139,6 +152,7 @@ class ReceiptDetailView(LoginRequiredMixin, View):
             'unpack_items': receipt_unpack_items(receipt) if receipt.status == Receipt.STATUS_DONE else [],
             'lines_total': receipt.lines_total,
             'ai_available': ai_available,
+            'can_undo': can_undo(receipt),
         })
 
     def post(self, request, receipt_uuid):
@@ -174,6 +188,44 @@ class ReceiptDetailView(LoginRequiredMixin, View):
         messages.success(request, '. '.join(parts) + '.')
         for warning in warnings[:5]:
             messages.warning(request, warning)
+        return redirect('cooking:receipt-detail', receipt_uuid=receipt.uuid)
+
+
+class ReceiptLineScanView(LoginRequiredMixin, View):
+    """Skan kodu na etapie „Sprawdź”: kod wskazuje produkt pozycji jeszcze
+    przed „Dodaj do spiżarni” (services/receipt_review_scan.py)."""
+
+    def post(self, request, receipt_uuid):
+        receipt = get_object_or_404(Receipt, uuid=receipt_uuid)
+        try:
+            payload = json.loads(request.body or b'{}')
+            line_id = int(payload.get('line_id') or 0) or None
+            if payload.get('action') == 'clear':
+                result = clear_review_scan(receipt, line_id)
+            else:
+                barcode = normalize_pantry_barcode(payload.get('barcode'))
+                result = scan_review_line(receipt, barcode, line_id)
+                result['barcode'] = barcode
+        except (ValueError, TypeError) as exc:
+            return JsonResponse({'ok': False, 'error': str(exc) or 'Niepoprawny kod.'}, status=400)
+        result['ok'] = True
+        return JsonResponse(result)
+
+
+class ReceiptUndoView(LoginRequiredMixin, View):
+    """„Cofnij dodanie”: zdejmuje ze spiżarni to, co dodał paragon, i wraca do „Sprawdź”."""
+
+    def post(self, request, receipt_uuid):
+        receipt = get_object_or_404(Receipt, uuid=receipt_uuid)
+        try:
+            result = undo_confirmation(receipt)
+        except ValueError as exc:
+            messages.error(request, str(exc))
+        else:
+            parts = [f'Cofnięto dodanie: {polish_count(result["movements"], "pozycja zdjęta", "pozycje zdjęte", "pozycji zdjętych")} ze spiżarni']
+            if result['products']:
+                parts.append(f'usunięto {polish_count(result["products"], "nowy produkt", "nowe produkty", "nowych produktów")}')
+            messages.success(request, ', '.join(parts) + '. Popraw pozycje i dodaj ponownie.')
         return redirect('cooking:receipt-detail', receipt_uuid=receipt.uuid)
 
 

@@ -1,5 +1,5 @@
 {% extends 'cooking/index.html' %}
-{% load ui %}
+{% load static ui %}
 
 {% block title %}Paragon – spiżarnia{% endblock %}
 {% block cooking_editor_assets %}{% endblock %}
@@ -13,6 +13,12 @@
         <form method="post" action="{% url 'cooking:receipt-retry' receipt.uuid %}">
             {% csrf_token %}
             <button type="submit" class="btn btn-outline-primary"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> Odczytaj ponownie</button>
+        </form>
+    {% endif %}
+    {% if can_undo %}
+        <form method="post" action="{% url 'cooking:receipt-undo' receipt.uuid %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-danger" title="Zdejmuje ze spiżarni to, co dodał ten paragon, i wraca do sprawdzania"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Cofnij dodanie</button>
         </form>
     {% endif %}
     {% if receipt.status != 'done' %}
@@ -85,7 +91,34 @@
     {% endif %}
 
     {% if receipt.status == 'review' %}
-        <form method="post" class="rc-review">
+        <section class="pc-card rs-scan" id="receipt-review-scan"
+                 data-scan-url="{% url 'cooking:receipt-line-scan' receipt.uuid %}"
+                 data-zxing-url="{% static 'cooking/vendor/zxing-browser-0.2.1.min.js' %}">
+            <div class="rs-scan-head">
+                <button type="button" class="btn btn-outline-primary" data-scan-toggle aria-expanded="false">
+                    <i class="bi bi-upc-scan" aria-hidden="true"></i> <span data-scan-toggle-label>Skanuj produkty</span>
+                </button>
+                <small>Ta sama nazwa z paragonu może oznaczać różne produkty. Zeskanuj opakowania w dowolnej kolejności – kod wskaże dokładny produkt.</small>
+            </div>
+            <div class="rs-scan-panel" data-scan-panel hidden>
+                <div class="rb-camera rs-camera">
+                    <video playsinline muted autoplay data-video aria-label="Podgląd aparatu"></video>
+                    <div class="rb-frame" aria-hidden="true"></div>
+                </div>
+                <p class="rb-status" role="status" aria-live="polite" data-status></p>
+                <div class="rs-choose" data-choose hidden>
+                    <p class="fw-bold mb-1" data-choose-title></p>
+                    <div class="pr-link-candidates" data-choose-list></div>
+                    <button type="button" class="btn btn-link btn-sm mt-2" data-choose-skip>To nie z tego paragonu</button>
+                </div>
+                <form class="rb-manual" data-manual>
+                    <label class="visually-hidden" for="rs-manual-code">Kod kreskowy</label>
+                    <input class="form-control" id="rs-manual-code" inputmode="numeric" autocomplete="off" placeholder="Albo wpisz kod ręcznie">
+                    <button class="btn btn-outline-primary" type="submit">Dodaj</button>
+                </form>
+            </div>
+        </section>
+        <form method="post" class="rc-review" data-review-form>
             {% csrf_token %}
             <p class="pc-hint mt-0">
                 Rozpoznane: <strong>{{ counts.known }}</strong> · propozycje: <strong>{{ counts.suggested }}</strong> · nowe: <strong>{{ counts.new }}</strong>.
@@ -94,9 +127,9 @@
             <datalist id="rc-products">{% for name in names %}<option value="{{ name }}">{% endfor %}</datalist>
             <ol class="rc-lines">
                 {% for row in rows %}
-                    <li class="pc-card rc-line is-{{ row.kind }}" data-receipt-line>
+                    <li class="pc-card rc-line is-{{ row.kind }}" data-receipt-line data-line-id="{{ row.line.pk }}" data-line-name="{{ row.line.name }}">
                         <div class="rc-line-head">
-                            <span class="rc-badge">{% if row.kind == 'known' %}Znany{% elif row.kind == 'suggested' %}Propozycja{% elif row.kind == 'ignored' %}Pomijany{% else %}Nowy{% endif %}</span>
+                            <span class="rc-badge" data-line-badge>{% if row.line.barcode %}Skan{% elif row.kind == 'known' %}Znany{% elif row.kind == 'suggested' %}Propozycja{% elif row.kind == 'ignored' %}Pomijany{% else %}Nowy{% endif %}</span>
                             <code class="rc-raw" title="Tekst z paragonu">{{ row.line.name }}</code>
                             <span class="rc-num rc-price">{{ row.line.paid_price }} zł</span>
                         </div>
@@ -104,8 +137,14 @@
                         <div class="rc-line-fields">
                             <label class="rc-field rc-field-target">
                                 <span>Produkt w spiżarni</span>
-                                <input class="form-control" name="target_{{ row.line.pk }}" list="rc-products"
-                                       value="{{ row.target }}" placeholder="Wpisz produkt albo nową nazwę" autocomplete="off">
+                                <span class="rs-target">
+                                    <input class="form-control" name="target_{{ row.line.pk }}" list="rc-products" data-line-target
+                                           value="{{ row.target }}" placeholder="Wpisz produkt albo nową nazwę" autocomplete="off"{% if row.locked %} readonly{% endif %}>
+                                    {% if not row.line.is_weighted %}
+                                        <button type="button" class="btn btn-outline-secondary" data-line-scan hidden
+                                                aria-label="Zeskanuj kod tej pozycji" title="Zeskanuj kod tej pozycji"><i class="bi bi-upc-scan" aria-hidden="true"></i></button>
+                                    {% endif %}
+                                </span>
                             </label>
                             <label class="rc-field rc-field-qty">
                                 <span>{% if row.line.is_weighted %}kg{% else %}Opakowania{% endif %}</span>
@@ -113,13 +152,21 @@
                             </label>
                             <label class="rc-field rc-field-action">
                                 <span>Co zrobić</span>
-                                <select class="form-select" name="action_{{ row.line.pk }}">
+                                <select class="form-select" name="action_{{ row.line.pk }}" data-line-action>
                                     <option value="add" {% if row.action == 'add' %}selected{% endif %}>Do spiżarni</option>
                                     <option value="skip" {% if row.action == 'skip' %}selected{% endif %}>Pomiń tym razem</option>
                                     <option value="ignore" {% if row.action == 'ignore' %}selected{% endif %}>Pomijaj zawsze</option>
                                 </select>
                             </label>
                         </div>
+                        <p class="rs-code" data-line-code{% if not row.line.barcode %} hidden{% endif %}>
+                            <i class="bi bi-upc" aria-hidden="true"></i> Kod <span data-line-code-value>{{ row.line.barcode }}</span>
+                            <span data-line-code-note>{% if row.locked %}– produkt ze spiżarni{% else %}– nowy kod, nazwę możesz poprawić{% endif %}</span>
+                            <button type="button" class="btn btn-link btn-sm" data-line-clear>Usuń skan</button>
+                        </p>
+                        {% if row.ambiguous %}
+                            <p class="pc-hint mt-1 mb-0">Ten skrót oznaczał już różne produkty – zeskanuj kod, żeby wskazać właściwy.</p>
+                        {% endif %}
                     </li>
                 {% endfor %}
             </ol>
@@ -166,4 +213,11 @@
     {% endif %}
 {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{% if receipt.status == 'review' %}
+<script src="{% static 'cooking/js/barcode-camera.js' %}" defer></script>
+<script src="{% static 'cooking/js/receipt-review-scan.js' %}" defer></script>
+{% endif %}
 {% endblock %}

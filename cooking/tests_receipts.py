@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db.models import Sum
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -1164,3 +1165,240 @@ class ReceiptDuplicateMergeTests(TestCase):
         result = self._scan(merge=True)
         self.assertEqual(result['status'], 'known')
         self.assertEqual(PantryProduct.objects.count(), 2)
+
+
+class ReceiptReviewScanTests(TestCase):
+    """Skan kodu na etapie „Sprawdź”: kod wskazuje produkt pozycji przed zatwierdzeniem."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='skan', password='pass12345')
+        self.client.force_login(self.user)
+        self.milk = PantryProduct.objects.create(
+            created_by=self.user, name='Mleko UHT 3,2%', category='Nabiał', unit=PantryProduct.UNIT_PIECE,
+        )
+        self.yogurt = PantryProduct.objects.create(
+            created_by=self.user, name='Jogurt naturalny Pilos', category='Nabiał', barcode='5900000000001',
+            unit=PantryProduct.UNIT_PIECE,
+        )
+        self.receipt = apply_ocr_text(Receipt.objects.create(created_by=self.user), BIEDRONKA)
+        self.url = reverse('cooking:receipt-line-scan', args=[self.receipt.uuid])
+
+    def _line(self, name):
+        return self.receipt.lines.get(name=name)
+
+    def _scan(self, barcode, line=None, **extra):
+        payload = {'barcode': barcode, 'line_id': line.pk if line else None, **extra}
+        return self.client.post(self.url, data=json.dumps(payload), content_type='application/json')
+
+    def _confirm(self, targets=None):
+        decisions = {}
+        for line in self.receipt.lines.exclude(barcode=''):
+            decisions[line.pk] = LineDecision(
+                action=ACTION_ADD, target=(targets or {}).get(line.name, ''), quantity=Decimal('1'),
+            )
+        return confirm_receipt(self.receipt, decisions, user=self.user)
+
+    def test_known_code_finds_its_line_and_page_locks_the_product(self):
+        result = self._scan('5900000000001').json()
+        self.assertEqual((result['status'], result['target'], result['locked']), ('known', 'Jogurt naturalny Pilos', True))
+        line = self._line('Jogurt nat. Pilos 400g')
+        self.assertEqual((result['line']['id'], line.barcode), (line.pk, '5900000000001'))
+        # Drugi skan tego samego opakowania nie zajmuje innej pozycji.
+        self.assertEqual(self._scan('5900000000001').json()['status'], 'already')
+        page = self.client.get(reverse('cooking:receipt-detail', args=[self.receipt.uuid]))
+        self.assertContains(page, 'Skanuj produkty')
+        self.assertContains(page, 'produkt ze spiżarni')
+
+    def test_scan_of_other_brand_beats_the_suggestion(self):
+        other = PantryProduct.objects.create(
+            created_by=self.user, name='Jogurt naturalny', brand='Bakoma', category='Nabiał',
+            barcode='5900000000002', unit=PantryProduct.UNIT_PIECE,
+        )
+        line = self._line('Jogurt nat. Pilos 400g')
+        self.assertEqual(line.product, self.yogurt)                      # propozycja z nazwy
+        self.assertEqual(self._scan('5900000000002', line).json()['target'], 'Jogurt naturalny (Bakoma)')
+        # Tekst w polu nie ma znaczenia - kod ze spiżarni wskazuje produkt.
+        self._confirm({'Jogurt nat. Pilos 400g': 'Jogurt naturalny Pilos'})
+        other.refresh_from_db(); self.yogurt.refresh_from_db()
+        self.assertEqual((other.current_quantity, self.yogurt.current_quantity), (Decimal('1.00'), Decimal('0.00')))
+
+    def test_unknown_code_creates_product_with_catalog_name_on_confirm(self):
+        with patch('cooking.services.receipt_review_scan._catalog_product',
+                   return_value=('Woda Żywiec', 'Żywiec Zdrój')):
+            result = self._scan('5900541000017').json()
+        self.assertEqual((result['status'], result['locked']), ('new', False))
+        self.assertEqual(result['target'], 'Woda Żywiec (Żywiec Zdrój)')
+        self.assertEqual(result['line']['name'], 'Woda Zywiec 6x1,5L')
+        self.assertFalse(PantryProduct.objects.filter(barcode='5900541000017').exists())   # dopiero przy zatwierdzeniu
+        page = self.client.get(reverse('cooking:receipt-detail', args=[self.receipt.uuid]))
+        self.assertContains(page, 'value="Woda Żywiec (Żywiec Zdrój)"')
+        # Nazwę można poprawić przed dodaniem.
+        self._confirm({'Woda Zywiec 6x1,5L': 'Woda Żywiec 1,5 l (Żywiec Zdrój)'})
+        water = PantryProduct.objects.get(barcode='5900541000017')
+        self.assertEqual((water.name, water.brand, water.current_quantity), ('Woda Żywiec 1,5 l', 'Żywiec Zdrój', Decimal('1.00')))
+
+    def test_unsure_scan_asks_for_line_and_keeps_suggestion_without_code(self):
+        asked = self._scan('5900000000099').json()                       # katalog nic nie wie
+        self.assertEqual(asked['status'], 'choose')
+        names = [item['name'] for item in asked['candidates']]
+        self.assertIn('Mleko UHT 3,2% 1L', names)
+        self.assertNotIn('Banany luz', names)                             # towar ważony nie ma kodu
+        line = self._line('Mleko UHT 3,2% 1L')
+        chosen = self._scan('5900000000099', line).json()
+        self.assertEqual((chosen['status'], chosen['target']), ('new', 'Mleko UHT 3,2%'))
+        self._confirm({'Mleko UHT 3,2% 1L': 'Mleko UHT 3,2%'})
+        self.milk.refresh_from_db()
+        self.assertEqual(self.milk.barcode, '5900000000099')
+
+    def test_clear_scan_and_no_scan_after_confirm(self):
+        line = self._line('Jogurt nat. Pilos 400g')
+        self._scan('5900000000001', line)
+        self.client.post(self.url, data=json.dumps({'action': 'clear', 'line_id': line.pk}), content_type='application/json')
+        line.refresh_from_db()
+        self.assertEqual(line.barcode, '')
+        confirm_receipt(self.receipt, {}, user=self.user)
+        self.assertEqual(self._scan('5900000000001').status_code, 400)
+
+    def test_scan_against_alias_marks_it_ambiguous_instead_of_overwriting(self):
+        line = self._line('Mleko UHT 3,2% 1L')
+        confirm_receipt(self.receipt, {line.pk: LineDecision(action=ACTION_ADD, target='Mleko UHT 3,2%')}, user=self.user)
+        alias = ReceiptAlias.objects.get(normalized_text=line.normalized_text)
+        self.assertEqual((alias.product, alias.ambiguous), (self.milk, False))
+
+        other = PantryProduct.objects.create(
+            created_by=self.user, name='Mleko UHT 3,2%', brand='Łaciate', category='Nabiał',
+            barcode='5900000000003', unit=PantryProduct.UNIT_PIECE,
+        )
+        self.receipt = apply_ocr_text(Receipt.objects.create(), BIEDRONKA.replace('nr wydr.4521', 'nr wydr.4600'))
+        self.url = reverse('cooking:receipt-line-scan', args=[self.receipt.uuid])
+        line = self._line('Mleko UHT 3,2% 1L')
+        self.assertEqual(line.match_status, ReceiptLine.MATCH_AUTO)      # słownik: zwykłe mleko
+        self._scan('5900000000003', line)
+        self._confirm()
+        other.refresh_from_db(); alias.refresh_from_db()
+        self.assertEqual(other.current_quantity, Decimal('1.00'))        # skan wygrał z aliasem
+        self.assertEqual((alias.product, alias.ambiguous), (self.milk, True))
+
+        third = apply_ocr_text(Receipt.objects.create(), BIEDRONKA.replace('nr wydr.4521', 'nr wydr.4700'))
+        line = third.lines.get(name='Mleko UHT 3,2% 1L')
+        self.assertEqual((line.match_status, line.product), (ReceiptLine.MATCH_UNKNOWN, self.milk))
+        page = self.client.get(reverse('cooking:receipt-detail', args=[third.uuid]))
+        self.assertContains(page, 'oznaczał już różne produkty')
+
+
+class ReceiptUndoTests(TestCase):
+    """„Cofnij dodanie”: paragon zdejmuje ze spiżarni to, co sam dodał."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='cofnij', password='pass12345')
+        self.client.force_login(self.user)
+        self.milk = PantryProduct.objects.create(
+            created_by=self.user, name='Mleko UHT 3,2%', category='Nabiał', unit=PantryProduct.UNIT_PIECE,
+            current_quantity=Decimal('1.00'),
+        )
+        self.receipt = apply_ocr_text(Receipt.objects.create(created_by=self.user), BIEDRONKA)
+        self.detail = reverse('cooking:receipt-detail', args=[self.receipt.uuid])
+        self.undo = reverse('cooking:receipt-undo', args=[self.receipt.uuid])
+
+    def _confirm(self, mapping):
+        decisions = {}
+        for line in self.receipt.lines.all():
+            if line.name in mapping:
+                target, quantity = mapping[line.name]
+                decisions[line.pk] = LineDecision(action=ACTION_ADD, target=target, quantity=Decimal(quantity))
+        return confirm_receipt(self.receipt, decisions, user=self.user)
+
+    def test_undo_removes_stock_products_ticks_and_aliases_and_returns_to_review(self):
+        from .services.pantry_batches import date_undated_stock
+
+        shopping_list = ShoppingList.objects.create(created_by=self.user, title='Zakupy')
+        item = ShoppingListItem.objects.create(
+            shopping_list=shopping_list, name='Mleko UHT 3,2%', pantry_product=self.milk, quantity=Decimal('2'),
+        )
+        self._confirm({'Mleko UHT 3,2% 1L': ('Mleko UHT 3,2%', '2'), 'Woda Zywiec 6x1,5L': ('Woda Żywiec 1,5 l', '6')})
+        self.milk.refresh_from_db()
+        self.assertEqual(self.milk.current_quantity, Decimal('3.00'))
+        date_undated_stock(self.milk, timezone.localdate() + timezone.timedelta(days=5))   # „Rozpakuj zakupy”
+        self.assertContains(self.client.get(self.detail), 'Cofnij dodanie')
+
+        response = self.client.post(self.undo, follow=True)
+        self.assertContains(response, 'Cofnięto dodanie: 2 pozycje zdjęte ze spiżarni, usunięto 1 nowy produkt')
+        self.assertContains(response, 'value="Woda Żywiec 1,5 l"')        # wybór został do ponownego dodania
+        self.assertNotContains(response, 'Cofnij dodanie')
+        self.receipt.refresh_from_db(); self.milk.refresh_from_db(); item.refresh_from_db()
+        self.assertEqual((self.receipt.status, self.receipt.confirm_log), (Receipt.STATUS_REVIEW, {}))
+        self.assertEqual(self.milk.current_quantity, Decimal('1.00'))
+        self.assertEqual(self.milk.batches.aggregate(total=Sum('quantity'))['total'], Decimal('1.00'))
+        self.assertFalse(PantryMovement.objects.exists())
+        self.assertFalse(PantryProduct.objects.filter(name='Woda Żywiec 1,5 l').exists())
+        self.assertFalse(ReceiptAlias.objects.exists())
+        self.assertFalse(item.is_purchased)
+        self.assertEqual(item.pantry_product, self.milk)
+
+        # Po poprawce paragon dodaje się normalnie drugi raz.
+        added, _linked, _ticked, warnings = self._confirm({'Woda Zywiec 6x1,5L': ('Woda Żywiec 1,5 l', '6')})
+        self.assertEqual((added, warnings), (1, []))
+        self.assertEqual(PantryProduct.objects.get(name='Woda Żywiec 1,5 l').current_quantity, Decimal('6.00'))
+
+    def test_undo_keeps_what_the_receipt_did_not_create(self):
+        line = self.receipt.lines.get(name='Mleko UHT 3,2% 1L')
+        alias = ReceiptAlias.objects.create(
+            store=self.receipt.store, normalized_text=line.normalized_text, product=self.milk, hits=3,
+        )
+        scanned = PantryMovement.objects.create(
+            product=self.milk, movement_type=PantryMovement.PURCHASE, quantity=Decimal('1.00'),
+            occurred_on=self.receipt.purchased_on,
+        )
+        _added, linked, _ticked, _warnings = self._confirm({
+            'Mleko UHT 3,2% 1L': ('Mleko UHT 3,2%', '2'), 'Woda Zywiec 6x1,5L': ('Woda', '1'),
+        })
+        self.assertEqual(linked, 1)
+        water = PantryProduct.objects.get(name='Woda')
+        PantryMovement.objects.create(                                    # ktoś już wypił jedną
+            product=water, movement_type=PantryMovement.CONSUME, quantity=Decimal('1.00'),
+        )
+        self.client.post(self.undo)
+        self.milk.refresh_from_db(); alias.refresh_from_db(); water.refresh_from_db()
+        self.assertEqual(self.milk.current_quantity, Decimal('1.00'))     # ruch ze skanera zostaje
+        self.assertTrue(PantryMovement.objects.filter(pk=scanned.pk).exists())
+        self.assertEqual((alias.product, alias.hits), (self.milk, 3))
+        self.assertEqual(water.current_quantity, Decimal('0.00'))         # produkt z historią zostaje
+        self.assertEqual(self.receipt.lines.get(name='Woda Zywiec 6x1,5L').product, water)
+
+    def test_undo_takes_back_scanned_code_and_photo(self):
+        media = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, media, ignore_errors=True)
+        outbox = Path(media) / 'outbox'
+        buffer = io.BytesIO()
+        Image.new('RGB', (40, 90), 'white').save(buffer, format='JPEG')
+        with override_settings(PRIVATE_MEDIA_ROOT=Path(media), RECEIPT_ARCHIVE_DIR=str(outbox)):
+            from .models import ReceiptPhoto
+
+            photo = ReceiptPhoto(receipt=self.receipt, position=1)
+            photo.image.save(f'{self.receipt.uuid}-1.jpg', SimpleUploadedFile('p.jpg', buffer.getvalue()), save=True)
+            line = self.receipt.lines.get(name='Mleko UHT 3,2% 1L')
+            self.client.post(
+                reverse('cooking:receipt-line-scan', args=[self.receipt.uuid]),
+                data=json.dumps({'barcode': '5900000000099', 'line_id': line.pk}), content_type='application/json',
+            )
+            with self.captureOnCommitCallbacks(execute=True):
+                self._confirm({'Mleko UHT 3,2% 1L': ('Mleko UHT 3,2%', '2')})
+            self.milk.refresh_from_db(); photo.refresh_from_db()
+            self.assertEqual(self.milk.barcode, '5900000000099')
+            self.assertFalse(photo.image)
+
+            self.client.post(self.undo)
+            self.milk.refresh_from_db(); photo.refresh_from_db(); line.refresh_from_db()
+            self.assertEqual((self.milk.barcode, line.barcode), ('', '5900000000099'))
+            self.assertTrue(photo.image)
+            self.assertTrue(Path(photo.image.path).exists())
+            self.assertEqual(list(outbox.iterdir()), [])
+
+    def test_receipt_confirmed_before_undo_existed_cannot_be_undone(self):
+        self._confirm({'Mleko UHT 3,2% 1L': ('Mleko UHT 3,2%', '2')})
+        Receipt.objects.filter(pk=self.receipt.pk).update(confirm_log={})
+        self.assertNotContains(self.client.get(self.detail), 'Cofnij dodanie')
+        response = self.client.post(self.undo, follow=True)
+        self.assertContains(response, 'nie da się cofnąć')
+        self.milk.refresh_from_db()
+        self.assertEqual(self.milk.current_quantity, Decimal('3.00'))

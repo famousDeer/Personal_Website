@@ -2938,6 +2938,18 @@ form:has(#one-off:checked) .pantry-restock-fields { opacity: 0.45; }
 .rb-list.is-done li { background: var(--income-bg); color: var(--income-ink); }
 .rb-list.is-done li::before { content: '✓ '; }
 .rb-manual { display: flex; gap: var(--sp-2); max-width: 24rem; }
+/* --- Skan kodów na etapie „Sprawdź” --- */
+.rs-scan-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); }
+.rs-scan-head small { flex: 1 1 16rem; color: var(--ink-3); }
+.rs-scan-panel { display: grid; gap: var(--sp-2); margin-top: var(--sp-3); }
+.rs-scan.is-open { position: sticky; top: var(--nav-h, 0px); z-index: 10; }
+.rs-camera { aspect-ratio: 16 / 7; border-radius: var(--r-md); }
+.rs-camera .rb-frame { inset: 22% 14%; }
+.rs-target { display: flex; gap: var(--sp-1); }
+.rs-target .form-control { min-width: 0; }
+.rs-code { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--sp-2); margin: var(--sp-1) 0 0; color: var(--ink-3); font-size: var(--fs-sm); }
+.rs-code .btn { padding: 0; }
+.rc-line.is-active { box-shadow: 0 0 0 2px var(--brand-500); }
 /* --- Terminy przydatności --- */
 .ex-panel { display: grid; gap: var(--sp-3); grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); margin-bottom: var(--sp-4); }
 .ex-panel .pc-card-title .bi { color: var(--brand-500); margin-right: 4px; }

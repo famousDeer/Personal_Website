@@ -226,7 +226,8 @@ def apply_ocr_text(receipt: Receipt, text: str, engine: str = 'text'):
             record.match_status = ReceiptLine.MATCH_IGNORED
         elif alias and (alias.product_id or alias.group_id):
             record.product, record.group = alias.product, alias.group
-            record.match_status = ReceiptLine.MATCH_AUTO
+            # Skrót, pod którym skan pokazał już różne produkty, tylko proponuje.
+            record.match_status = ReceiptLine.MATCH_UNKNOWN if alias.ambiguous else ReceiptLine.MATCH_AUTO
         else:
             candidate = suggest(line.name, context)
             if candidate:
@@ -280,8 +281,9 @@ def default_quantity(line: ReceiptLine, alias_multiplier: int = 1) -> Decimal:
     return (line.quantity * alias_multiplier).quantize(Decimal('1'))
 
 
-def resolve_target(name: str, user, line: ReceiptLine):
-    """Nazwa wpisana przy pozycji → (produkt, grupa). Nową nazwę zakłada jako produkt."""
+def resolve_target(name: str, user, line: ReceiptLine, created: list | None = None):
+    """Nazwa wpisana przy pozycji → (produkt, grupa). Nową nazwę zakłada jako produkt
+    (jego id trafia wtedy do ``created`` - dziennik dla „Cofnij dodanie”)."""
     name = re.sub(r'\s+', ' ', name or '').strip()[:160]
     if not name:
         return None, None
@@ -307,6 +309,8 @@ def resolve_target(name: str, user, line: ReceiptLine):
         unit=unit,
         notes=f'Dodany z paragonu: {line.name}'[:255] if size else '',
     )
+    if created is not None:
+        created.append(product.pk)
     return product, None
 
 
@@ -367,6 +371,7 @@ def _tick_shopping_list(product, group, movement, user):
     item = query.order_by('created_at').first()
     if item is None:
         return None
+    tick = {'id': item.pk, 'product_id': item.pantry_product_id}
     now = timezone.now()
     item.is_purchased = True
     item.purchased_at = now
@@ -376,56 +381,112 @@ def _tick_shopping_list(product, group, movement, user):
     if not ShoppingListItem.objects.filter(pantry_movement=movement).exists():
         item.pantry_movement = movement
     item.save()
-    return item
+    return tick
 
 
-def _remember_alias(receipt, line, *, product=None, group=None, ignore=False, multiplier=1):
+def _alias_state(alias):
+    return {
+        'product_id': alias.product_id, 'group_id': alias.group_id, 'ignore': alias.ignore,
+        'multiplier': alias.multiplier, 'ambiguous': alias.ambiguous, 'hits': alias.hits,
+        'last_used_at': alias.last_used_at.isoformat(),
+    }
+
+
+def _remember_alias(receipt, line, *, product=None, group=None, ignore=False, multiplier=1, scanned=False):
+    """Zapisuje skrót z paragonu w słowniku domu. Zwraca wpis do dziennika
+    zatwierdzenia (poprzedni stan aliasu), żeby dało się to cofnąć.
+
+    Skan kodu jest dowodem tylko dla tego zakupu. Gdy wskazał inny produkt niż
+    słownik, ten sam skrót oznacza różne produkty: aliasu nie nadpisujemy,
+    tylko oznaczamy go jako niejednoznaczny - odtąd daje propozycję, a nie
+    „Znany”. Ręczny wybór przy takim skrócie zmienia propozycję, ale nie
+    zdejmuje oznaczenia."""
     alias = ReceiptAlias.objects.filter(store=receipt.store, normalized_text=line.normalized_text).first()
+    entry = {'id': None, 'previous': _alias_state(alias) if alias else None}
     if alias is None:
         alias = ReceiptAlias(store=receipt.store, normalized_text=line.normalized_text)
-    alias.product = None if ignore else (None if group else product)
-    alias.group = None if ignore else group
-    alias.ignore = ignore
-    alias.multiplier = max(1, min(int(multiplier or 1), 100))
+    agrees = (
+        alias.product_id == product.pk or (alias.group_id and alias.group_id == product.group_id)
+    ) if product else False
+    if scanned and entry['previous'] and not alias.ignore and not agrees:
+        alias.ambiguous = True
+    else:
+        if not (scanned and agrees):
+            alias.product = None if ignore else (None if group else product)
+            alias.group = None if ignore else group
+        alias.ignore = ignore
+        alias.multiplier = max(1, min(int(multiplier or 1), 100))
     alias.hits += 1
     alias.last_used_at = timezone.now()
     alias.save()
+    entry['id'] = alias.pk
+    return entry
+
+
+def _scanned_target(line, decision, user, journal, warnings):
+    """Pozycja ze skanem z etapu „Sprawdź”: kod znany w spiżarni wskazuje
+    produkt bez względu na nazwę; nieznany trafia do produktu o wpisanej nazwie."""
+    owner = PantryProduct.objects.filter(barcode=line.barcode).first()
+    if owner is not None:
+        return owner
+    product, _group = resolve_target(decision.target or line.target_name, user, line, journal['products'])
+    if product is None:
+        return None
+    if product.barcode:
+        warnings.append(f'{line.name}: „{product.label}” ma już inny kod kreskowy - zeskanowanego nie przypisano.')
+        line.barcode = ''
+        return product
+    try:
+        product = assign_barcode(product, line.barcode)
+    except ValueError as exc:
+        warnings.append(f'{line.name}: {exc}')
+        line.barcode = ''
+    else:
+        journal['barcodes'].append(product.pk)
+    return product
 
 
 @transaction.atomic
 def confirm_receipt(receipt: Receipt, decisions: dict[int, LineDecision], user=None):
-    """Zatwierdza paragon. Zwraca (dodane, połączone_z_istniejącymi, ostrzeżenia)."""
+    """Zatwierdza paragon. Zwraca (dodane, połączone_z_istniejącymi, odhaczone, ostrzeżenia)."""
     receipt = Receipt.objects.select_for_update().get(pk=receipt.pk)
     if receipt.status != Receipt.STATUS_REVIEW:
         raise ValueError('Ten paragon jest już zatwierdzony albo jeszcze się odczytuje.')
     added = linked = 0
     warnings = []
     ticked = 0
+    journal = {'movements': [], 'products': [], 'ticks': [], 'aliases': [], 'barcodes': []}
     for line in receipt.lines.select_related('product', 'group'):
         decision = decisions.get(line.pk) or LineDecision(action=ACTION_SKIP)
         if decision.action == ACTION_IGNORE:
             line.match_status = ReceiptLine.MATCH_IGNORED
             line.product = line.group = None
             line.save(update_fields=['match_status', 'product', 'group'])
-            _remember_alias(receipt, line, ignore=True)
+            journal['aliases'].append(_remember_alias(receipt, line, ignore=True))
             continue
         if decision.action != ACTION_ADD:
             line.match_status = ReceiptLine.MATCH_SKIPPED
             line.save(update_fields=['match_status'])
             continue
 
-        product, group = resolve_target(decision.target, user, line)
+        scanned = bool(line.barcode)
+        if scanned:
+            product, group = _scanned_target(line, decision, user, journal, warnings), None
+        else:
+            product, group = resolve_target(decision.target or line.target_name, user, line, journal['products'])
         if product is None:
             warnings.append(f'{line.name}: nie wybrano produktu.')
             line.match_status = ReceiptLine.MATCH_SKIPPED
             line.save(update_fields=['match_status'])
             continue
+        scanned = bool(line.barcode)
         quantity = decision.quantity if decision.quantity and decision.quantity > 0 else default_quantity(line)
         was_auto = (
             line.match_status == ReceiptLine.MATCH_AUTO
             and line.product_id == product.pk and line.group_id == (group.pk if group else None)
         )
         line.product, line.group = product, group
+        line.target_name = ''
         line.match_status = ReceiptLine.MATCH_AUTO if was_auto else ReceiptLine.MATCH_CONFIRMED
 
         if not line.is_weighted and product.unit in (PantryProduct.UNIT_GRAM, PantryProduct.UNIT_MILLILITER,
@@ -442,23 +503,30 @@ def confirm_receipt(receipt: Receipt, decisions: dict[int, LineDecision], user=N
             try:
                 movement = _add_to_pantry(product, pantry_quantity(product, line, quantity), receipt)
                 added += 1
+                journal['movements'].append(movement.pk)
             except ValueError as exc:
                 warnings.append(f'{line.name}: nie dodano do spiżarni - {exc}')
                 movement = None
         line.movement = movement
         line.save()
-        if movement is not None and _tick_shopping_list(product, group, movement, user):
-            ticked += 1
+        if movement is not None:
+            tick = _tick_shopping_list(product, group, movement, user)
+            if tick:
+                ticked += 1
+                journal['ticks'].append(tick)
         multiplier = 1
         if not line.is_weighted and line.quantity and quantity != line.quantity:
             ratio = quantity / line.quantity
             if ratio == ratio.to_integral_value():
                 multiplier = int(ratio)
-        _remember_alias(receipt, line, product=product, group=group, multiplier=multiplier)
+        journal['aliases'].append(
+            _remember_alias(receipt, line, product=product, group=group, multiplier=multiplier, scanned=scanned),
+        )
 
     receipt.status = Receipt.STATUS_DONE
     receipt.confirmed_at = timezone.now()
-    receipt.save(update_fields=['status', 'confirmed_at', 'updated_at'])
+    receipt.confirm_log = journal
+    receipt.save(update_fields=['status', 'confirmed_at', 'confirm_log', 'updated_at'])
     transaction.on_commit(lambda: archive_photos(receipt.pk))
     return added, linked, ticked, warnings
 

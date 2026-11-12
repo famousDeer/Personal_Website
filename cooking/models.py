@@ -830,6 +830,10 @@ class Receipt(models.Model):
     error = models.CharField(max_length=255, blank=True)
     processing_started_at = models.DateTimeField(blank=True, null=True)
     confirmed_at = models.DateTimeField(blank=True, null=True)
+    # Dziennik zatwierdzenia: co „Dodaj do spiżarni” utworzyło i zmieniło
+    # (ruchy, produkty, odhaczenia, aliasy, kody). Z niego „Cofnij dodanie”
+    # odtwarza stan sprzed zatwierdzenia (services/receipt_undo.py).
+    confirm_log = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -928,6 +932,12 @@ class ReceiptLine(models.Model):
     movement = models.ForeignKey(
         PantryMovement, on_delete=models.SET_NULL, null=True, blank=True, related_name='receipt_lines',
     )
+    # Kod kreskowy zeskanowany na etapie „Sprawdź”. Jednoznacznie wskazuje
+    # produkt tej pozycji - wygrywa z propozycją i ze słownikiem domu.
+    barcode = models.CharField(max_length=64, blank=True)
+    # Nazwa produktu, którego jeszcze nie ma w spiżarni: z katalogu po skanie
+    # nieznanego kodu albo po cofnięciu dodania produktu założonego z paragonu.
+    target_name = models.CharField(max_length=200, blank=True)
 
     class Meta:
         db_table = 'receipt_lines'
@@ -957,6 +967,9 @@ class ReceiptAlias(models.Model):
     ignore = models.BooleanField(default=False)
     # Ile opakowań oznacza jedna sztuka z paragonu (zgrzewka wody = 6).
     multiplier = models.PositiveSmallIntegerField(default=1)
+    # Skan kodu wskazał pod tym skrótem inny produkt niż słownik: skrót oznacza
+    # kilka produktów (inna firma, wariant), więc daje już tylko propozycję.
+    ambiguous = models.BooleanField(default=False)
     hits = models.PositiveIntegerField(default=0)
     last_used_at = models.DateTimeField(default=timezone.now)
 
