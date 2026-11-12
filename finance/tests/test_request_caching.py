@@ -71,7 +71,9 @@ class LazyContextProcessorTests(TestCase):
         return [q['sql'] for q in ctx.captured_queries]
 
     def test_pages_outside_finance_do_not_query_accounts(self):
-        for url in (reverse('index'), reverse('cooking:index'), reverse('cars:garage')):
+        # Bez strony Start: jej kafelek Finanse celowo czyta aktywne konto
+        # (config/home.py).
+        for url in (reverse('cooking:index'), reverse('cars:garage')):
             with self.subTest(url=url):
                 queries = self._queries(url)
                 self.assertFalse([q for q in queries if 'finance_accounts' in q], url)
