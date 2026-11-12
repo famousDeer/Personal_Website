@@ -12,7 +12,7 @@
         <span class="u-tile-icon"><i class="bi bi-wallet2"></i></span>
         <span class="u-tile-body">
             <span class="u-tile-title">Finanse</span>
-            <span class="u-tile-text">Budżet, wydatki, przychody i raporty.</span>
+            <span class="u-tile-text">{{ summary.finance|default:"Budżet, wydatki, przychody i raporty." }}</span>
         </span>
         <i class="bi bi-chevron-right u-tile-arrow"></i>
     </a>
@@ -20,7 +20,7 @@
         <span class="u-tile-icon"><i class="bi bi-egg-fried"></i></span>
         <span class="u-tile-body">
             <span class="u-tile-title">Kuchnia</span>
-            <span class="u-tile-text">Spiżarnia, listy zakupów i przepisy.</span>
+            <span class="u-tile-text">{{ summary.cooking|default:"Spiżarnia, listy zakupów i przepisy." }}</span>
         </span>
         <i class="bi bi-chevron-right u-tile-arrow"></i>
     </a>
@@ -36,7 +36,7 @@
         <span class="u-tile-icon"><i class="bi bi-activity"></i></span>
         <span class="u-tile-body">
             <span class="u-tile-title">Sport</span>
-            <span class="u-tile-text">Pływanie, bieganie i siłownia.</span>
+            <span class="u-tile-text">{{ summary.sport|default:"Pływanie, bieganie i siłownia." }}</span>
         </span>
         <i class="bi bi-chevron-right u-tile-arrow"></i>
     </a>
@@ -44,7 +44,7 @@
         <span class="u-tile-icon"><i class="bi bi-hourglass-split"></i></span>
         <span class="u-tile-body">
             <span class="u-tile-title">Czas</span>
-            <span class="u-tile-text">Na co idzie dzień: stoper, luki i strata czasu.</span>
+            <span class="u-tile-text">{{ summary.timelog|default:"Na co idzie dzień: stoper, luki i strata czasu." }}</span>
         </span>
         <i class="bi bi-chevron-right u-tile-arrow"></i>
     </a>

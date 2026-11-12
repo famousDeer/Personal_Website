@@ -16,15 +16,16 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include, re_path
-from django.views.generic import RedirectView, TemplateView
+from django.views.generic import RedirectView
 from django.views.static import serve
 from django.conf import settings
 
+from config.views import home
 from habits.views import LegacyServiceWorkerView
 from utils.undo import UndoView
 
 urlpatterns = [
-    path('', TemplateView.as_view(template_name='home.html'), name='index'),
+    path('', home, name='index'),
     # „Cofnij” w dymku po usunięciu (utils/undo.py).
     path('cofnij/<str:token>/', UndoView.as_view(), name='undo'),
     path('admin/', admin.site.urls),
