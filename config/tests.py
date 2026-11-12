@@ -35,7 +35,7 @@ class HomeSummaryTests(TestCase):
         response = self.client.get('/')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['summary'], {
-            'finance': None, 'cooking': None, 'sport': None, 'timelog': None,
+            'finance': None, 'cars': None, 'cooking': None, 'sport': None, 'timelog': None,
         })
         self.assertContains(response, 'Budżet, wydatki, przychody i raporty.')
 
@@ -110,3 +110,31 @@ class HomeSummaryTests(TestCase):
         self.assertIn('Teraz: Praca', summary['timelog'])
         if now - start >= timedelta(minutes=1):
             self.assertIn('strata dziś', summary['timelog'])
+
+    def test_cars_show_nearest_deadline_within_a_month(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from cars.models import Cars
+        today = timezone.localdate()
+        Cars.objects.create(user=self.user, brand='Toyota', model='Corolla', year=2019, odometer=1, price=1,
+                            insurance_until=today + timedelta(days=12),
+                            inspection_until=today + timedelta(days=200))
+        Cars.objects.create(user=self.user, brand='Skoda', model='Fabia', year=2015, odometer=1, price=1,
+                            inspection_until=today - timedelta(days=2))
+        summary = self.client.get('/').context['summary']
+        self.assertEqual(summary['cars'], 'Fabia: przegląd po terminie od 2 dni')
+
+    def test_gem_signal_only_with_brokerage_account_and_cached(self):
+        from types import SimpleNamespace
+        from django.core.cache import cache
+        from finance.models import BrokerageAccount
+        cache.clear()
+        self.addCleanup(cache.clear)
+        gem = {'target': {'asset': SimpleNamespace(ticker='CSPX')}}
+        with mock.patch('config.home.build_gem_summary', return_value=gem) as build:
+            self.assertIsNone(self.client.get('/').context['summary']['finance'])
+            build.assert_not_called()
+            BrokerageAccount.objects.create(user=self.user, name='XTB', broker=BrokerageAccount.BROKER_CHOICES[0][0])
+            self.assertEqual(self.client.get('/').context['summary']['finance'], 'sygnał GEM: CSPX')
+            self.client.get('/')
+            build.assert_called_once()

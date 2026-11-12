@@ -1,8 +1,9 @@
-from datetime import date
+from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from cars.forms import FuelForm, TyreForm
 from cars.models import Cars, CarFuelConsumption, CarService, CarServicePart, CarTyres, CarTyreUsage
@@ -352,3 +353,36 @@ class CarServiceViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Przebieg przy zdjęciu nie może być mniejszy")
         self.assertFalse(CarTyreUsage.objects.filter(tyre=tyre).exists())
+
+
+class CarDeadlineTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="owner", password="pass12345")
+        self.client.login(username="owner", password="pass12345")
+        self.car = Cars.objects.create(
+            user=self.user, brand="Toyota", model="Corolla", year=2019, odometer=1000, price=1,
+        )
+
+    def test_deadlines_sorted_with_polish_text(self):
+        today = date(2026, 11, 12)
+        self.car.insurance_until = date(2026, 11, 13)
+        self.car.inspection_until = date(2026, 11, 2)
+        texts = [(item['text'], item['soon']) for item in self.car.deadlines(today)]
+        self.assertEqual(texts, [('przegląd po terminie od 10 dni', True), ('OC za 1 dzień', True)])
+        self.car.inspection_until = None
+        self.car.insurance_until = date(2027, 3, 1)
+        self.assertFalse(self.car.deadlines(today)[0]['soon'])
+
+    def test_edit_form_saves_deadlines_and_garage_shows_them(self):
+        soon = timezone.localdate() + timedelta(days=5)
+        response = self.client.post(reverse('cars:edit', args=[self.car.id]), {
+            'brand': 'Toyota', 'model': 'Corolla', 'year': 2019, 'odometer': 1000,
+            'fuel_type': 'Benzyna', 'price': '1',
+            'insurance_until': soon.strftime('%d.%m.%Y'), 'inspection_until': '',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.car.refresh_from_db()
+        self.assertEqual(self.car.insurance_until, soon)
+        self.assertIsNone(self.car.inspection_until)
+        self.assertContains(self.client.get(reverse('cars:garage')), 'OC za 5 dni')
+        self.assertContains(self.client.get(reverse('cars:dashboard', args=[self.car.id])), 'OC za 5 dni')

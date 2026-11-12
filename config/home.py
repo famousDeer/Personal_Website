@@ -6,27 +6,33 @@ strona główna jest otwierana najczęściej.
 """
 from datetime import timedelta
 
+from django.core.cache import cache
 from django.db.models import Sum
 from django.utils import timezone
 from django.utils.formats import date_format
 
 from accounts.templatetags.ui import pl, zl
+from cars.models import Cars
 from cooking.models import PantryBatch, ShoppingList, ShoppingListItem
 from cooking.services.pantry_batches import EAT_FIRST_DAYS
 from finance.account_utils import get_active_finance_account
 from finance.investment_funding import INVESTMENT_CATEGORY
-from finance.models import Daily, Monthly
+from finance.gem import build_gem_summary
+from finance.models import BrokerageAccount, Daily, Monthly
 from habits.models import ActivitySettings, Workout
 from timelog import services as timelog_services
 from timelog.models import Category
 from timelog.templatetags.timelog import hm
 from utils.tools import month_start
 
+GEM_CACHE_KEY = 'home-gem-signal'
+
 
 def home_summary(request):
     today = timezone.localdate()
     return {
-        'finance': _finance(request, today),
+        'finance': ' · '.join(filter(None, [_finance(request, today), _gem(request.user)])) or None,
+        'cars': _cars(request.user, today),
         'cooking': _cooking(today),
         'sport': _sport(request.user, today),
         'timelog': _timelog(request.user, today),
@@ -45,6 +51,29 @@ def _finance(request, today):
     )
     month_name = date_format(today, 'F').capitalize()
     return f'{month_name}: wydatki {zl(monthly.total_expense - invested)} · przychody {zl(monthly.total_income)}'
+
+
+def _gem(user):
+    """Sygnał GEM dla osób z kontem maklerskim. Wynik jest wspólny dla domu
+    i liczony z kilku lat notowań, więc trzymamy go godzinę w cache."""
+    if not BrokerageAccount.objects.filter(user=user).exists():
+        return None
+    signal = cache.get(GEM_CACHE_KEY)
+    if signal is None:
+        target = build_gem_summary()['target']
+        signal = target['asset'].ticker if target else ''
+        cache.set(GEM_CACHE_KEY, signal, 60 * 60)
+    return f'sygnał GEM: {signal}' if signal else None
+
+
+def _cars(user, today):
+    soon = [
+        (deadline['date'], f'{car.model}: {deadline["text"]}')
+        for car in Cars.objects.filter(user=user)
+        for deadline in car.deadlines(today)
+        if deadline['soon']
+    ]
+    return min(soon)[1] if soon else None
 
 
 def _cooking(today):

@@ -1,6 +1,6 @@
 # cars – samochody użytkownika
 
-Modele: Cars (per user) → CarFuelConsumption (tankowania), CarService → CarServicePart, CarTyres → CarTyreUsage (okresy założenia opon).
+Modele: Cars (per user; terminy `insurance_until`/`inspection_until`, `deadlines()` – garaż, kokpit i Start przez `config/home.py`) → CarFuelConsumption (tankowania), CarService → CarServicePart, CarTyres → CarTyreUsage (okresy założenia opon).
 Widoki (`views.py`):
 - GarageView, AddCarView, CarDashboardView.
 - CRUD tankowań, serwisów, opon i okresów użycia opon.

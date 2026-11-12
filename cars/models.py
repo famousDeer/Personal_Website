@@ -4,6 +4,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from decimal import Decimal
 from django.db.models import Sum
+from django.utils import timezone
 
 User = get_user_model()
 
@@ -24,6 +25,33 @@ class Cars(models.Model):
     odometer = models.PositiveIntegerField()
     fuel_type = models.CharField(max_length=50, choices=FUEL_TYPE_CHOICES, default='Benzyna')
     price = models.DecimalField(max_digits=10, decimal_places=2)
+    # Terminy auta: przypomnienie w garażu i na stronie Start.
+    insurance_until = models.DateField(blank=True, null=True)
+    inspection_until = models.DateField(blank=True, null=True)
+
+    DEADLINE_SOON_DAYS = 30
+
+    def deadlines(self, today=None):
+        """Terminy auta od najbliższego. `soon` = w ciągu 30 dni albo po terminie."""
+        from accounts.templatetags.ui import pl
+
+        today = today or timezone.localdate()
+        result = []
+        for label, until in (('OC', self.insurance_until), ('przegląd', self.inspection_until)):
+            if not until:
+                continue
+            days = (until - today).days
+            if days < 0:
+                text = f'{label} po terminie od {pl(-days, "dnia,dni,dni")}'
+            elif days == 0:
+                text = f'{label} kończy się dziś'
+            else:
+                text = f'{label} za {pl(days, "dzień,dni,dni")}'
+            result.append({
+                'label': label, 'date': until, 'days': days, 'text': text,
+                'soon': days <= self.DEADLINE_SOON_DAYS,
+            })
+        return sorted(result, key=lambda item: item['date'])
 
     class Meta:
         db_table = 'cars'

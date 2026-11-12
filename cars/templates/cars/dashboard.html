@@ -12,7 +12,7 @@
         <div class="min-w-0">
             <span class="u-eyebrow"><i class="bi bi-car-front" aria-hidden="true"></i>Garaż</span>
             <h1 class="u-page-title">{{ car.brand }} {{ car.model }}</h1>
-            <p class="u-page-sub">{{ car.year|unlocalize }} · {{ car.fuel_type }}</p>
+            <p class="u-page-sub">{{ car.year|unlocalize }} · {{ car.fuel_type }}{% for deadline in car.deadlines %} · {% if deadline.soon %}<strong>{{ deadline.text }}</strong>{% else %}{{ deadline.label }} do {{ deadline.date|date:"d.m.Y" }}{% endif %}{% endfor %}</p>
         </div>
     </div>
     {% if user.is_authenticated and user == car.user %}

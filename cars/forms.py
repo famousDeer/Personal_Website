@@ -16,10 +16,25 @@ class BootstrapFormMixin:
                     'placeholder': field.label
                 })
 
+def optional_date_field(label):
+    return forms.DateField(
+        label=label,
+        required=False,
+        input_formats=['%Y-%m-%d', '%d.%m.%Y'],
+        widget=forms.DateInput(
+            format='%d.%m.%Y',
+            attrs={'type': 'text', 'autocomplete': 'off', 'data-flatpickr': 'date'},
+        ),
+    )
+
+
 class CarForm(BootstrapFormMixin, forms.ModelForm):
+    insurance_until = optional_date_field('OC ważne do')
+    inspection_until = optional_date_field('Przegląd ważny do')
+
     class Meta:
         model = Cars
-        fields = ['brand', 'model', 'year', 'odometer', 'fuel_type', 'price']
+        fields = ['brand', 'model', 'year', 'odometer', 'fuel_type', 'price', 'insurance_until', 'inspection_until']
         labels = {
             'brand': 'Marka',
             'model': 'Model',
