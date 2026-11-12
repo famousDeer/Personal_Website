@@ -191,7 +191,9 @@ class GemSummaryTests(TestCase):
                 self.assertEqual((result['holding_status'], result['held_tickers']), (status, held))
 
 
-@override_settings(GEM_PRICES_ENABLED=True)
+# Bez klucza Stooq: z kluczem z .env nieudane pobranie z Yahoo szło do
+# prawdziwego Stooq (sieć w teście) i doklejało jego błąd do komunikatu.
+@override_settings(GEM_PRICES_ENABLED=True, STOOQ_API_KEY='')
 class SyncTests(TestCase):
     def setUp(self):
         cache.clear()
