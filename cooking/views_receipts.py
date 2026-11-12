@@ -226,6 +226,12 @@ class ReceiptUndoView(LoginRequiredMixin, View):
             if result['products']:
                 parts.append(f'usunięto {polish_count(result["products"], "nowy produkt", "nowe produkty", "nowych produktów")}')
             messages.success(request, ', '.join(parts) + '. Popraw pozycje i dodaj ponownie.')
+            if result['approximate']:
+                messages.warning(
+                    request,
+                    'Ten paragon dodano przed wprowadzeniem cofania: zapamiętane skróty z paragonu zostały, '
+                    'a kody kreskowe nadane przy dodawaniu trzeba poprawić ręcznie.',
+                )
         return redirect('cooking:receipt-detail', receipt_uuid=receipt.uuid)
 
 

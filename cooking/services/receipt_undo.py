@@ -8,11 +8,15 @@ pomyłkę i zatwierdzić ponownie.
 
 Ruch zakupu dowiązany do paragonu (towar zeskanowany tego samego dnia) nie
 jest w dzienniku: paragon go nie utworzył, więc zostaje w spiżarni.
+
+Paragon zatwierdzony, zanim powstał dziennik, cofa się w przybliżeniu
+(``_legacy_log``): ruchy poznajemy po notatce „Paragon: …”, a słownik domu
+zostaje bez zmian, bo nie wiadomo, co w nim było wcześniej.
 """
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -29,7 +33,32 @@ logger = logging.getLogger(__name__)
 
 
 def can_undo(receipt: Receipt) -> bool:
-    return receipt.status == Receipt.STATUS_DONE and bool(receipt.confirm_log)
+    return receipt.status == Receipt.STATUS_DONE
+
+
+def _legacy_log(receipt: Receipt) -> dict:
+    """Dziennik odtworzony dla paragonu sprzed cofania. Ruch utworzony przez
+    paragon ma notatkę „Paragon: …” (dowiązany ze skanera jej nie ma). Produkt
+    uznajemy za założony przez paragon, gdy powstał tuż przed zatwierdzeniem;
+    zniknie i tak tylko wtedy, gdy nie ma innej historii."""
+    lines = receipt.lines.exclude(movement=None).select_related('movement', 'product')
+    movements = sorted({line.movement_id for line in lines if line.movement.note.startswith('Paragon:')})
+    products, ticks = [], []
+    if receipt.confirmed_at:
+        start = receipt.confirmed_at - timedelta(minutes=2)
+        products = sorted({
+            line.product_id for line in lines
+            if line.product and start <= line.product.created_at <= receipt.confirmed_at
+        })
+        # Odhaczenie z paragonu: pozycja listy związana z ruchem paragonu, odhaczona przy zatwierdzeniu.
+        ticks = [
+            {'id': item.pk, 'product_id': item.pantry_product_id}
+            for item in ShoppingListItem.objects.filter(
+                pantry_movement_id__in=[line.movement_id for line in lines],
+                purchased_at__range=(start, receipt.confirmed_at),
+            )
+        ]
+    return {'movements': movements, 'products': products, 'ticks': ticks, 'aliases': [], 'barcodes': []}
 
 
 def _untick(log):
@@ -143,13 +172,13 @@ def _restore_photos(receipt):
 
 @transaction.atomic
 def undo_confirmation(receipt: Receipt) -> dict:
-    """Cofa zatwierdzenie paragonu. Zwraca liczby: movements, products."""
+    """Cofa zatwierdzenie paragonu. Zwraca liczby movements i products oraz
+    approximate - cofnięcie bez dziennika (stary paragon)."""
     receipt = Receipt.objects.select_for_update().get(pk=receipt.pk)
     if receipt.status != Receipt.STATUS_DONE:
         raise ValueError('Ten paragon nie jest dodany do spiżarni.')
-    log = receipt.confirm_log
-    if not log:
-        raise ValueError('Tego paragonu nie da się cofnąć - dodano go, zanim powstało cofanie. Popraw stany w spiżarni.')
+    approximate = not receipt.confirm_log
+    log = receipt.confirm_log or _legacy_log(receipt)
 
     _untick(log)
     movements = _remove_movements(receipt, log)
@@ -167,4 +196,4 @@ def undo_confirmation(receipt: Receipt) -> dict:
     receipt.confirm_log = {}
     receipt.save(update_fields=['status', 'confirmed_at', 'confirm_log', 'updated_at'])
     _restore_photos(receipt)
-    return {'movements': movements, 'products': products}
+    return {'movements': movements, 'products': products, 'approximate': approximate}

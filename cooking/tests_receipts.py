@@ -1394,11 +1394,34 @@ class ReceiptUndoTests(TestCase):
             self.assertTrue(Path(photo.image.path).exists())
             self.assertEqual(list(outbox.iterdir()), [])
 
-    def test_receipt_confirmed_before_undo_existed_cannot_be_undone(self):
-        self._confirm({'Mleko UHT 3,2% 1L': ('Mleko UHT 3,2%', '2')})
-        Receipt.objects.filter(pk=self.receipt.pk).update(confirm_log={})
-        self.assertNotContains(self.client.get(self.detail), 'Cofnij dodanie')
+    def test_receipt_confirmed_before_undo_existed_is_undone_approximately(self):
+        shopping_list = ShoppingList.objects.create(created_by=self.user, title='Zakupy')
+        item = ShoppingListItem.objects.create(
+            shopping_list=shopping_list, name='Mleko UHT 3,2%', pantry_product=self.milk, quantity=Decimal('2'),
+        )
+        scanned = PantryMovement.objects.create(
+            product=self.milk, movement_type=PantryMovement.PURCHASE, quantity=Decimal('1.00'),
+            occurred_on=self.receipt.purchased_on,
+        )
+        old = PantryProduct.objects.create(created_by=self.user, name='Chleb', unit=PantryProduct.UNIT_PIECE)
+        PantryProduct.objects.filter(pk=old.pk).update(created_at=timezone.now() - timezone.timedelta(days=30))
+        self._confirm({
+            'Mleko UHT 3,2% 1L': ('Mleko UHT 3,2%', '2'),                 # dowiązany ruch ze skanera
+            'Jogurt nat. Pilos 400g': ('Mleko UHT 3,2%', '1'),            # ruch z paragonu + odhaczenie
+            'Woda Zywiec 6x1,5L': ('Woda', '6'),                          # nowy produkt
+            'Chleb pszenno-zytni krojony 500g': ('Chleb', '1'),           # stary produkt bez historii
+        })
+        Receipt.objects.filter(pk=self.receipt.pk).update(confirm_log={})  # jak paragon sprzed dziennika
+        self.assertContains(self.client.get(self.detail), 'Cofnij dodanie')
+
         response = self.client.post(self.undo, follow=True)
-        self.assertContains(response, 'nie da się cofnąć')
-        self.milk.refresh_from_db()
-        self.assertEqual(self.milk.current_quantity, Decimal('3.00'))
+        self.assertContains(response, 'Cofnięto dodanie: 3 pozycje zdjęte ze spiżarni, usunięto 1 nowy produkt')
+        self.assertContains(response, 'przed wprowadzeniem cofania')
+        self.milk.refresh_from_db(); item.refresh_from_db(); self.receipt.refresh_from_db()
+        self.assertEqual(self.receipt.status, Receipt.STATUS_REVIEW)
+        self.assertEqual(self.milk.current_quantity, Decimal('1.00'))
+        self.assertEqual(list(PantryMovement.objects.all()), [scanned])
+        self.assertFalse(item.is_purchased)
+        self.assertFalse(PantryProduct.objects.filter(name='Woda').exists())
+        self.assertTrue(PantryProduct.objects.filter(pk=old.pk).exists())
+        self.assertTrue(ReceiptAlias.objects.exists())                    # słownik zostaje
