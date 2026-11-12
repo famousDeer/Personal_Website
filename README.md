@@ -186,7 +186,7 @@ SECRET_KEY=change-me
 DEBUG=0
 ALLOW_PUBLIC_SIGNUP=1
 ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,192.168.1.115,raspberrypi.local
-CSRF_TRUSTED_ORIGINS=http://localhost:8000,http://127.0.0.1:8000,http://192.168.1.115:8000,http://raspberrypi.local:8000
+CSRF_TRUSTED_ORIGINS=http://localhost:8000,http://127.0.0.1:8000,https://192.168.1.115,https://raspberrypi.local
 
 # Database connection. Django reads these, and docker-compose.yml uses the same
 # values to initialise the Postgres container, so the two cannot drift apart.
@@ -1181,7 +1181,7 @@ Required at minimum:
   flag, so turning DEBUG off does not break recipe or product images
 - ALLOW_PUBLIC_SIGNUP: 1 to allow new users to register; set 0 on a home server after creating accounts
 - ALLOWED_HOSTS: comma-separated list (include your domain/IP in prod)
-- CSRF_TRUSTED_ORIGINS: comma-separated origins with scheme and port, e.g. `http://192.168.1.115:8000,http://raspberrypi.local:8000`
+- CSRF_TRUSTED_ORIGINS: comma-separated origins with scheme and port, e.g. `https://192.168.1.115,https://raspberrypi.local`
 - CSRF_TRUSTED_PORTS: optional comma-separated local ports used to auto-build CSRF origins from ALLOWED_HOSTS; default `8000`
 - REMOTE_BASE_URL: optional address of the site away from home, e.g. `https://raspberrypi.tail1234.ts.net` (see "Remote access with Tailscale"); shown to iOS Shortcuts on `/czas/automatyzacja/`
 
@@ -1242,7 +1242,7 @@ Push notifications:
   initialised with.
 - `docker compose` refuses to start with a message about DATABASE_PASSWORD: the variable
   is missing from `.env`. The database credentials are intentionally not hardcoded.
-- CSRF verification failed: open the app consistently with one address, e.g. always `http://192.168.1.115:8000` or always `http://raspberrypi.local:8000`, and include that exact origin in `CSRF_TRUSTED_ORIGINS`
+- CSRF verification failed: open the app consistently with one address, e.g. always `https://192.168.1.115` or always `https://raspberrypi.local`, and include that exact origin in `CSRF_TRUSTED_ORIGINS`
 - Pantry live camera unavailable on a phone: browsers require HTTPS for camera streams (localhost is the development exception). Put the app behind an HTTPS reverse proxy and add its `https://` origin to `CSRF_TRUSTED_ORIGINS`; the scanner still offers photo and manual-code fallbacks over HTTP.
 - Pantry product was not recognized: Open Food Facts is community-maintained and does not contain every code. The scanner keeps the manual form available when a product is missing or the catalog is temporarily unavailable.
 

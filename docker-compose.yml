@@ -83,7 +83,10 @@ services:
       - ./media:/app/media
       - ./private_media:/app/private_media
     ports:
-      - "8000:8000"
+      # Tylko localhost hosta (diagnostyka na Pi: curl http://127.0.0.1:8000).
+      # Domownicy wchodzą przez Caddy (443); port otwarty na sieć omijał HTTPS,
+      # także przez Tailscale.
+      - "127.0.0.1:8000:8000"
     env_file:
       - .env
     environment:
