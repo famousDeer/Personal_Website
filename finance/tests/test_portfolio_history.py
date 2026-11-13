@@ -214,11 +214,82 @@ class PortfolioValueHistoryTests(TestCase):
                 'cash_value': '600.00',
                 'total_value': '1040.00',
                 'is_complete': True,
+                'net_contributions': '1000.00',
+                'profit': '40.00',
             },
         )
         self.assertEqual(history['points'][1]['securities_value'], '480.00')
         self.assertEqual(history['points'][1]['cash_value'], '608.10')
         self.assertEqual(history['points'][1]['total_value'], '1088.10')
+
+    def test_deposit_raises_contributions_not_profit(self):
+        account = self._account('XTB PLN', 'PLN')
+        self._cash(account, date(2026, 1, 1), '1000')
+        self._cash(account, date(2026, 1, 3), '500')
+        self._cash(account, date(2026, 1, 4), '15', BrokerageCashOperation.INTEREST)
+        self._cash(account, date(2026, 1, 5), '-200', BrokerageCashOperation.WITHDRAWAL)
+
+        history = build_portfolio_value_history(
+            self.user,
+            start_date=date(2026, 1, 2),
+            end_date=date(2026, 1, 5),
+            selected_account=account,
+        )
+
+        self.assertTrue(history['has_contributions'])
+        self.assertEqual(
+            [(p['total_value'], p['net_contributions'], p['profit']) for p in history['points']],
+            [
+                ('1000.00', '1000.00', '0.00'),
+                ('1500.00', '1500.00', '0.00'),
+                ('1515.00', '1500.00', '15.00'),
+                ('1315.00', '1300.00', '15.00'),
+            ],
+        )
+        summary = history['summary']
+        self.assertEqual(summary['total_change'], '315.00')
+        self.assertEqual(summary['latest_net_contributions'], '1300.00')
+        self.assertEqual(summary['latest_profit'], '15.00')
+        self.assertEqual(summary['period_profit'], '15.00')
+        self.assertEqual(summary['profit_percent'], '1.15')
+
+    def test_internal_transfer_counts_only_for_single_account(self):
+        first = self._account('XTB PLN', 'PLN')
+        second = self._account('XTB IKE', 'PLN')
+        self._cash(first, date(2026, 1, 1), '1000')
+        self._cash(first, date(2026, 1, 2), '-400', BrokerageCashOperation.INTERNAL_TRANSFER)
+        self._cash(second, date(2026, 1, 2), '400', BrokerageCashOperation.INTERNAL_TRANSFER)
+
+        both = build_portfolio_value_history(
+            self.user, start_date=date(2026, 1, 2), end_date=date(2026, 1, 2),
+        )
+        only_second = build_portfolio_value_history(
+            self.user, start_date=date(2026, 1, 2), end_date=date(2026, 1, 2),
+            selected_account=second,
+        )
+
+        self.assertEqual(both['points'][0]['net_contributions'], '1000.00')
+        self.assertEqual(both['points'][0]['profit'], '0.00')
+        self.assertEqual(only_second['points'][0]['net_contributions'], '400.00')
+        self.assertEqual(only_second['points'][0]['profit'], '0.00')
+
+    def test_without_recorded_deposits_profit_is_not_reported(self):
+        account = self._account('Ręczne', 'PLN')
+        instrument = self._instrument('MANUAL', 'PLN')
+        self._snapshot(
+            account, instrument, date(2026, 1, 2),
+            quantity='2', market_value='540', current_price='270',
+        )
+
+        history = build_portfolio_value_history(
+            self.user, start_date=date(2026, 1, 2), end_date=date(2026, 1, 2),
+            selected_account=account,
+        )
+
+        self.assertFalse(history['has_contributions'])
+        self.assertIsNone(history['points'][0]['net_contributions'])
+        self.assertIsNone(history['points'][0]['profit'])
+        self.assertIsNone(history['summary']['latest_profit'])
 
     def test_snapshot_only_account_produces_value_without_transactions(self):
         today = timezone.localdate()

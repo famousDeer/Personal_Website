@@ -74,6 +74,10 @@ def _summary(points):
             'total_change': None,
             'change_percent': None,
             'total_change_percent': None,
+            'latest_net_contributions': None,
+            'latest_profit': None,
+            'profit_percent': None,
+            'period_profit': None,
         }
 
     first_value = complete_points[0]['total_value']
@@ -88,6 +92,21 @@ def _summary(points):
         str(change_percent.quantize(Decimal('0.01')))
         if change_percent is not None else None
     )
+    # Zysk = wartość portfela minus wpłaty netto. Jego zmiana w okresie nie
+    # rośnie od samego doładowania konta, w przeciwieństwie do zmiany wartości.
+    profit_points = [
+        point for point in complete_points
+        if point.get('profit') is not None
+    ]
+    latest_contributions = latest.get('net_contributions')
+    latest_profit = latest.get('profit')
+    profit_percent = None
+    if latest_profit is not None and latest_contributions and latest_contributions > 0:
+        profit_percent = (latest_profit / latest_contributions) * Decimal('100')
+    period_profit = None
+    if profit_points and latest_profit is not None:
+        period_profit = latest_profit - profit_points[0]['profit']
+
     return {
         # Keep the original keys for existing clients. ``value`` now means the
         # whole account value instead of securities only.
@@ -99,6 +118,15 @@ def _summary(points):
         'total_change': str(money(change)),
         'change_percent': serialized_change_percent,
         'total_change_percent': serialized_change_percent,
+        'latest_net_contributions': (
+            str(money(latest_contributions)) if latest_contributions is not None else None
+        ),
+        'latest_profit': str(money(latest_profit)) if latest_profit is not None else None,
+        'profit_percent': (
+            str(profit_percent.quantize(Decimal('0.01')))
+            if profit_percent is not None else None
+        ),
+        'period_profit': str(money(period_profit)) if period_profit is not None else None,
     }
 
 
@@ -456,11 +484,41 @@ def build_portfolio_value_history(user, start_date, end_date, selected_account=N
             _apply_snapshot_batch(quantities, anchors, account_id, batch)
             activity_seen = True
 
+    # Wpłacone środki liczone tak samo jak w ``build_portfolio_summary``:
+    # wpłaty i wypłaty, a przelew wewnętrzny tylko w widoku jednego konta
+    # (dla całego portfela to przełożenie pieniędzy z kieszeni do kieszeni).
+    contribution_types = {
+        BrokerageCashOperation.DEPOSIT,
+        BrokerageCashOperation.WITHDRAWAL,
+    }
+    if selected_account is not None:
+        contribution_types.add(BrokerageCashOperation.INTERNAL_TRANSFER)
+    has_contributions = any(
+        operation.operation_type in contribution_types
+        for operation in cash_operations
+    )
+
     cash_balances = defaultdict(lambda: Decimal('0'))
+    contributions = defaultdict(lambda: Decimal('0'))
     for operation in cash_operations:
         if _local_date(operation.occurred_at) < start_date:
             cash_balances[(operation.account_id, operation.currency)] += operation.amount
+            if operation.operation_type in contribution_types:
+                contributions[operation.currency] += operation.amount
             activity_seen = True
+
+    def contributions_value():
+        total = ZERO
+        for currency, amount in contributions.items():
+            if not amount:
+                continue
+            converted = _convert_component(
+                amount, currency, target_currency, fx_rates, missing_fx,
+            )
+            if converted is None:
+                return None
+            total += converted
+        return money(total)
 
     last_prices = dict(initial_prices)
     points = []
@@ -484,6 +542,8 @@ def build_portfolio_value_history(user, start_date, end_date, selected_account=N
 
         for operation in cash_by_date.get(current_date, []):
             cash_balances[(operation.account_id, operation.currency)] += operation.amount
+            if operation.operation_type in contribution_types:
+                contributions[operation.currency] += operation.amount
             activity_seen = True
 
         securities_value = ZERO
@@ -563,6 +623,7 @@ def build_portfolio_value_history(user, start_date, end_date, selected_account=N
                 if is_complete else None
             ),
             'is_complete': is_complete,
+            'net_contributions': contributions_value(),
         })
 
     # The state card is authoritative for today. Reuse that exact computation
@@ -577,6 +638,7 @@ def build_portfolio_value_history(user, start_date, end_date, selected_account=N
                 'date': end_date.isoformat(),
                 **current_values,
                 'is_complete': True,
+                'net_contributions': contributions_value(),
             }
             if points and points[-1]['date'] == end_date.isoformat():
                 points[-1] = current_point
@@ -596,6 +658,15 @@ def build_portfolio_value_history(user, start_date, end_date, selected_account=N
 
     serialized_points = []
     for point in points:
+        point['profit'] = (
+            point['total_value'] - point['net_contributions']
+            if has_contributions
+            and point['total_value'] is not None
+            and point['net_contributions'] is not None
+            else None
+        )
+        if not has_contributions:
+            point['net_contributions'] = None
         serialized_points.append({
             'date': point['date'],
             # ``value`` remains as a compatibility alias for total_value.
@@ -607,6 +678,11 @@ def build_portfolio_value_history(user, start_date, end_date, selected_account=N
             'cash_value': str(point['cash_value']) if point['cash_value'] is not None else None,
             'total_value': str(point['total_value']) if point['total_value'] is not None else None,
             'is_complete': point['is_complete'],
+            'net_contributions': (
+                str(point['net_contributions'])
+                if point['net_contributions'] is not None else None
+            ),
+            'profit': str(money(point['profit'])) if point['profit'] is not None else None,
         })
 
     complete_days = sum(1 for point in points if point['is_complete'])
@@ -618,6 +694,7 @@ def build_portfolio_value_history(user, start_date, end_date, selected_account=N
         'fx_mode': fx_data.get('mode') or '',
         'price_sources': price_sources,
         'warnings': list(dict.fromkeys(warnings)),
+        'has_contributions': has_contributions,
         'coverage': {
             'is_complete': not missing_fx and not missing_prices,
             'complete_days': complete_days,

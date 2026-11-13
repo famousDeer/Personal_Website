@@ -291,9 +291,9 @@
                 <strong id="brokeragePortfolioLatestValue">-</strong>
             </div>
             <div class="brokerage-chart-stat">
-                <span>Zmiana wartości portfela</span>
+                <span id="brokeragePortfolioValueChangeLabel">Zysk ponad wpłacone środki</span>
                 <strong id="brokeragePortfolioValueChange">-</strong>
-                <small>Uwzględnia wpłaty, wypłaty, zakupy i sprzedaże; nie jest stopą zwrotu.</small>
+                <small id="brokeragePortfolioValueChangeNote">-</small>
             </div>
             <div class="brokerage-chart-stat">
                 <span>Źródła i pokrycie</span>
@@ -303,7 +303,7 @@
         </div>
         <div class="brokerage-chart-shell brokerage-portfolio-chart-shell" aria-busy="false">
             <canvas id="brokeragePortfolioValueChart" role="img" aria-labelledby="brokeragePortfolioChartTitle" aria-describedby="brokeragePortfolioValueMeta brokeragePortfolioChartA11ySummary"></canvas>
-            <div class="visually-hidden" id="brokeragePortfolioChartA11ySummary">Wykres dziennej wartości papierów, gotówki i całego portfela dla wybranego zakresu.</div>
+            <div class="visually-hidden" id="brokeragePortfolioChartA11ySummary">Wykres dziennej wartości papierów, gotówki i całego portfela na tle wpłaconych środków dla wybranego zakresu.</div>
             <div class="brokerage-chart-empty" id="brokeragePortfolioValueChartEmpty" role="status" aria-live="polite">Ładowanie wykresu wartości portfela.</div>
         </div>
         <div class="brokerage-table-note d-none" id="brokeragePortfolioValueWarning" role="alert"></div>
@@ -1361,9 +1361,24 @@
             document.getElementById('brokeragePortfolioLatestValue').textContent = formatMoney(latestTotalValue, currency);
             // Procent przez ten sam formatter co reszta strony: "19,02%", nie "141.02%".
             const changePercentText = formatPercent(totalChangePercent, true);
-            document.getElementById('brokeragePortfolioValueChange').textContent = totalChange !== null && totalChange !== undefined
-                ? `${formatSignedMoney(totalChange, currency)}${changePercentText !== '-' ? ` (${changePercentText})` : ''}`
-                : '-';
+            // Sama zmiana wartości rośnie też od doładowania konta, dlatego
+            // główną liczbą jest zysk: wartość portfela minus wpłaty netto.
+            const hasProfit = summary.latest_profit !== null && summary.latest_profit !== undefined;
+            const changeLabel = document.getElementById('brokeragePortfolioValueChangeLabel');
+            const changeValue = document.getElementById('brokeragePortfolioValueChange');
+            const changeNote = document.getElementById('brokeragePortfolioValueChangeNote');
+            if (hasProfit) {
+                const profitPercentText = formatPercent(summary.profit_percent, true);
+                changeLabel.textContent = 'Zysk ponad wpłacone środki';
+                changeValue.textContent = `${formatSignedMoney(summary.latest_profit, currency)}${profitPercentText !== '-' ? ` (${profitPercentText})` : ''}`;
+                changeNote.textContent = `Wpłacone środki: ${formatMoney(summary.latest_net_contributions, currency)} · w wybranym okresie: ${formatSignedMoney(summary.period_profit, currency)}`;
+            } else {
+                changeLabel.textContent = 'Zmiana wartości portfela';
+                changeValue.textContent = totalChange !== null && totalChange !== undefined
+                    ? `${formatSignedMoney(totalChange, currency)}${changePercentText !== '-' ? ` (${changePercentText})` : ''}`
+                    : '-';
+                changeNote.textContent = 'Brak zapisanych wpłat, więc nie da się policzyć zysku; zmiana uwzględnia zakupy i sprzedaże.';
+            }
 
             const priceSources = data.price_sources && data.price_sources.length ? data.price_sources.join(', ') : 'brak cen';
             const fxSource = data.fx_source ? `${data.fx_source}${data.fx_table_date ? ` · ${data.fx_table_date}` : ''}` : '';
@@ -1387,7 +1402,7 @@
             const chartA11ySummary = document.getElementById('brokeragePortfolioChartA11ySummary');
             if (chartA11ySummary) {
                 chartA11ySummary.textContent = points.length
-                    ? `${accountName}: od ${formatDate(points[0].date)} do ${formatDate(points[points.length - 1].date)}, ostatnia łączna wartość ${formatMoney(latestTotalValue, currency)}, w tym papiery ${formatMoney(summary.latest_securities_value, currency)} i gotówka ${formatMoney(summary.latest_cash_value, currency)}. Zmiana wartości ${formatMoney(totalChange, currency)}.`
+                    ? `${accountName}: od ${formatDate(points[0].date)} do ${formatDate(points[points.length - 1].date)}, ostatnia łączna wartość ${formatMoney(latestTotalValue, currency)}, w tym papiery ${formatMoney(summary.latest_securities_value, currency)} i gotówka ${formatMoney(summary.latest_cash_value, currency)}. ${hasProfit ? `Wpłacone środki ${formatMoney(summary.latest_net_contributions, currency)}, zysk ${formatMoney(summary.latest_profit, currency)}` : `Zmiana wartości ${formatMoney(totalChange, currency)}`}.`
                     : `${accountName}: brak punktów wartości portfela w wybranym okresie.`;
             }
             if (portfolioChartAccountSelect) {
@@ -1436,6 +1451,9 @@
             const securities = points.map((point) => toNumber(point.securities_value));
             const cash = points.map((point) => toNumber(point.cash_value));
             const totals = points.map((point) => toNumber(point.total_value));
+            const contributions = points.map((point) => toNumber(point.net_contributions));
+            const profits = points.map((point) => toNumber(point.profit));
+            const hasContributions = contributions.some((value) => value !== null);
             const cashColor = palette.categories[1];
             const hasCash = cash.some((value) => value !== null && value !== 0);
             // Ujemnego salda (debet) nie da się położyć jako warstwy -
@@ -1479,6 +1497,22 @@
                 });
             }
 
+            // Wpłacone środki jako linia odniesienia: odstęp między nią a górną
+            // krawędzią wartości to zysk (albo strata, gdy linia jest wyżej).
+            // Własny ``stack``, żeby nie dokładała się do warstw papiery + gotówka.
+            if (hasContributions) {
+                datasets.push({
+                    label: 'Wpłacone środki',
+                    data: contributions,
+                    ...line(palette.ink3),
+                    borderDash: [2, 3],
+                    tension: 0,
+                    stepped: true,
+                    stack: 'contributions',
+                    fill: false,
+                });
+            }
+
             const firstDate = new Date(points[0].date);
             const lastDate = new Date(points[points.length - 1].date);
             const longRange = (lastDate - firstDate) / 86400000 > 300;
@@ -1497,11 +1531,19 @@
                 title: (items) => formatDate(items[0].label),
                 label: (item) => ` ${item.dataset.label}: ${formatMoney(item.raw, currency)}`,
                 footer: (items) => {
-                    if (!stacked || !items.length) {
+                    if (!items.length) {
                         return '';
                     }
+                    const lines = [];
                     const total = totals[items[0].dataIndex];
-                    return total === null ? '' : `Razem: ${formatMoney(total, currency)}`;
+                    if (stacked && total !== null) {
+                        lines.push(`Razem: ${formatMoney(total, currency)}`);
+                    }
+                    const profit = profits[items[0].dataIndex];
+                    if (profit !== null) {
+                        lines.push(`Zysk: ${formatSignedMoney(profit, currency)}`);
+                    }
+                    return lines;
                 },
             };
             // Kolejność w podpowiedzi jak na wykresie: górna warstwa pierwsza.
