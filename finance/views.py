@@ -544,7 +544,7 @@ def _portfolio_history_cache_version(user, selected_account=None):
 def _portfolio_history_cache_key(user, selected_account, start_date, end_date):
     account_key = selected_account.id if selected_account is not None else 'all'
     version = _portfolio_history_cache_version(user, selected_account)
-    return f'brokerage-portfolio-history:v2:{user.id}:{account_key}:{start_date.isoformat()}:{end_date.isoformat()}:{version}'
+    return f'brokerage-portfolio-history:v3:{user.id}:{account_key}:{start_date.isoformat()}:{end_date.isoformat()}:{version}'
 
 
 def _portfolio_history_payload(user, selected_account, start_date, end_date, selected_days, range_mode):

@@ -296,6 +296,11 @@
                 <small id="brokeragePortfolioValueChangeNote">-</small>
             </div>
             <div class="brokerage-chart-stat">
+                <span>Otrzymane dywidendy</span>
+                <strong id="brokeragePortfolioDividends">-</strong>
+                <small id="brokeragePortfolioDividendsNote">-</small>
+            </div>
+            <div class="brokerage-chart-stat">
                 <span>Źródła i pokrycie</span>
                 <strong id="brokeragePortfolioValueSource">-</strong>
                 <small id="brokeragePortfolioCoverage">-</small>
@@ -1378,6 +1383,26 @@
                     ? `${formatSignedMoney(totalChange, currency)}${changePercentText !== '-' ? ` (${changePercentText})` : ''}`
                     : '-';
                 changeNote.textContent = 'Brak zapisanych wpłat, więc nie da się policzyć zysku; zmiana uwzględnia zakupy i sprzedaże.';
+            }
+
+            const dividends = data.dividends || {};
+            const dividendWord = (count) => {
+                const lastTwo = count % 100;
+                const last = count % 10;
+                if (count === 1) {
+                    return 'dywidenda';
+                }
+                return last >= 2 && last <= 4 && !(lastTwo >= 12 && lastTwo <= 14) ? 'dywidendy' : 'dywidend';
+            };
+            const dividendsValue = document.getElementById('brokeragePortfolioDividends');
+            const dividendsNote = document.getElementById('brokeragePortfolioDividendsNote');
+            if (dividends.count) {
+                dividendsValue.textContent = `${dividends.count} ${dividendWord(dividends.count)} · ${formatMoney(dividends.net, currency)}`;
+                const taxNote = Number(dividends.tax) ? `Brutto ${formatMoney(dividends.gross, currency)}, podatek u źródła ${formatMoney(dividends.tax, currency)} · ` : '';
+                dividendsNote.textContent = `${taxNote}w wybranym okresie: ${dividends.period_count ? `${dividends.period_count} · ${formatMoney(dividends.period_net, currency)}` : 'brak'}`;
+            } else {
+                dividendsValue.textContent = 'Brak';
+                dividendsNote.textContent = 'Brak wypłaconych dywidend w zapisanych operacjach.';
             }
 
             const priceSources = data.price_sources && data.price_sources.length ? data.price_sources.join(', ') : 'brak cen';

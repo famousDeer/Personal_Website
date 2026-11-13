@@ -390,6 +390,59 @@ def _current_summary_values(user, selected_account, target_currency, fx_rates, m
     }
 
 
+def _dividend_summary(cash_operations, start_date, target_currency, fx_rates, missing_fx):
+    """Otrzymane dywidendy: liczba wypłat i suma, łącznie i w wybranym okresie."""
+    count = period_count = 0
+    gross = defaultdict(lambda: ZERO)
+    tax = defaultdict(lambda: ZERO)
+    period_net = defaultdict(lambda: ZERO)
+    for operation in cash_operations:
+        is_dividend = operation.operation_type == BrokerageCashOperation.DIVIDEND
+        if not is_dividend and operation.operation_type != BrokerageCashOperation.WITHHOLDING_TAX:
+            continue
+        in_period = _local_date(operation.occurred_at) >= start_date
+        if is_dividend:
+            count += 1
+            period_count += in_period
+            gross[operation.currency] += operation.amount
+        else:
+            tax[operation.currency] += operation.amount
+        if in_period:
+            period_net[operation.currency] += operation.amount
+
+    def total(amounts):
+        result = ZERO
+        for currency, amount in amounts.items():
+            converted = _convert_component(
+                amount, currency, target_currency, fx_rates, missing_fx,
+            )
+            if converted is None:
+                return None
+            result += converted
+        return result
+
+    gross_total = total(gross)
+    tax_total = total(tax)
+    period_net_total = total(period_net)
+    net_total = (
+        gross_total + tax_total
+        if gross_total is not None and tax_total is not None else None
+    )
+
+    def serialize(value):
+        return str(money(value)) if value is not None else None
+
+    return {
+        'count': count,
+        'gross': serialize(gross_total),
+        # Podatek u źródła jest w operacjach ujemny; tu jako kwota dodatnia.
+        'tax': serialize(-tax_total if tax_total is not None else None),
+        'net': serialize(net_total),
+        'period_count': period_count,
+        'period_net': serialize(period_net_total),
+    }
+
+
 def build_portfolio_value_history(user, start_date, end_date, selected_account=None):
     account_queryset = BrokerageAccount.objects.filter(user=user)
     if selected_account is not None:
@@ -645,6 +698,10 @@ def build_portfolio_value_history(user, start_date, end_date, selected_account=N
             else:
                 points.append(current_point)
 
+    dividends = _dividend_summary(
+        cash_operations, start_date, target_currency, fx_rates, missing_fx,
+    )
+
     if missing_fx:
         warnings.append(
             f'Brak wiarygodnego kursu dla: {", ".join(sorted(missing_fx))}. '
@@ -695,6 +752,7 @@ def build_portfolio_value_history(user, start_date, end_date, selected_account=N
         'price_sources': price_sources,
         'warnings': list(dict.fromkeys(warnings)),
         'has_contributions': has_contributions,
+        'dividends': dividends,
         'coverage': {
             'is_complete': not missing_fx and not missing_prices,
             'complete_days': complete_days,

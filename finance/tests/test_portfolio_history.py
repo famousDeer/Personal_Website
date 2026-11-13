@@ -253,6 +253,31 @@ class PortfolioValueHistoryTests(TestCase):
         self.assertEqual(summary['period_profit'], '15.00')
         self.assertEqual(summary['profit_percent'], '1.15')
 
+    def test_dividends_are_counted_with_totals_and_period(self):
+        account = self._account('XTB PLN', 'PLN')
+        self._cash(account, date(2026, 1, 1), '1000')
+        self._cash(account, date(2026, 1, 1), '20', BrokerageCashOperation.DIVIDEND)
+        self._cash(account, date(2026, 1, 1), '-3.80', BrokerageCashOperation.WITHHOLDING_TAX)
+        self._cash(account, date(2026, 1, 3), '10', BrokerageCashOperation.DIVIDEND)
+        self._cash(account, date(2026, 1, 3), '-1.90', BrokerageCashOperation.WITHHOLDING_TAX)
+        self._cash(account, date(2026, 1, 9), '50', BrokerageCashOperation.DIVIDEND)
+
+        history = build_portfolio_value_history(
+            self.user,
+            start_date=date(2026, 1, 2),
+            end_date=date(2026, 1, 5),
+            selected_account=account,
+        )
+
+        self.assertEqual(history['dividends'], {
+            'count': 2,
+            'gross': '30.00',
+            'tax': '5.70',
+            'net': '24.30',
+            'period_count': 1,
+            'period_net': '8.10',
+        })
+
     def test_internal_transfer_counts_only_for_single_account(self):
         first = self._account('XTB PLN', 'PLN')
         second = self._account('XTB IKE', 'PLN')

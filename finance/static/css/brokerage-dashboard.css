@@ -546,6 +546,13 @@
     min-width: 0;
 }
 
+/* Trend portfela ma cztery kafelki (zysk, dywidendy), wykres instrumentu trzy. */
+@media (min-width: 992px) {
+    .brokerage-portfolio-chart-section .brokerage-chart-summary {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
+
 .brokerage-chart-stat strong {
     white-space: normal;
 }
