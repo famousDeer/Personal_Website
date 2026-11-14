@@ -132,12 +132,33 @@
                             <div class="d-flex flex-wrap gap-2 my-3">
                                 <span class="badge rounded-pill bg-light text-muted border"><i class="bi bi-stopwatch me-1"></i>{{ recipe.preparation_time }} min</span>
                                 <span class="badge rounded-pill bg-light text-muted border"><i class="bi bi-people me-1"></i>{{ recipe.portions }} porcji</span>
-                                {% if recipe.kcal %}<span class="badge rounded-pill bg-light text-muted border"><i class="bi bi-fire me-1"></i>{{ recipe.kcal }} kcal</span>{% endif %}
+                                {% if recipe.portion_nutrients %}
+                                    <span class="badge rounded-pill bg-light text-muted border" title="Na porcję"><i class="bi bi-fire me-1"></i>{{ recipe.portion_nutrients.kcal|floatformat:0 }} kcal</span>
+                                    {% if recipe.nutrition.counted %}
+                                        <span class="badge rounded-pill bg-light text-muted border" title="Białko, tłuszcz i węglowodany na porcję">B {{ recipe.portion_nutrients.protein|floatformat:0 }} · T {{ recipe.portion_nutrients.fat|floatformat:0 }} · W {{ recipe.portion_nutrients.carbs|floatformat:0 }} g</span>
+                                    {% endif %}
+                                {% endif %}
                             </div>
+                            {% if recipe.nutrition.missing %}
+                                <p class="small text-muted mb-3" data-nutrition-missing>
+                                    <i class="bi bi-info-circle me-1" aria-hidden="true"></i>{% if recipe.kcal %}Makro{% else %}Kalorie{% endif %} bez: {{ recipe.nutrition.missing_names }}.
+                                </p>
+                            {% endif %}
 
-                            <a href="{% url 'cooking:cook' %}?recipe={{ recipe.id }}" class="btn btn-sm btn-success rounded-pill px-3 align-self-start mb-3">
-                                <i class="bi bi-play-circle me-1"></i> Gotuj
-                            </a>
+                            <div class="d-flex flex-wrap gap-2 mb-3">
+                                <a href="{% url 'cooking:cook' %}?recipe={{ recipe.id }}" class="btn btn-sm btn-success rounded-pill px-3">
+                                    <i class="bi bi-play-circle me-1"></i> Gotuj
+                                </a>
+                                {% if recipe.portion_nutrients %}
+                                    <form method="post" action="{% url 'cooking:diary-add' %}">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="recipe" value="{{ recipe.id }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
+                                            <i class="bi bi-journal-plus me-1"></i> Zjadłem porcję
+                                        </button>
+                                    </form>
+                                {% endif %}
+                            </div>
 
                             {% if recipe.description %}
                                 <p class="text-muted small border-start border-3 border-warning ps-3 mb-3">{{ recipe.description }}</p>

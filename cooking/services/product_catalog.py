@@ -43,6 +43,7 @@ OPEN_FOOD_FACTS_FIELDS = (
     'categories_tags',
     'ingredients_text',
     'ingredients_text_pl',
+    'nutriments',
     'selected_images',
     'image_front_small_url',
     'image_front_url',
@@ -420,6 +421,35 @@ def _pick_product_name(product):
     return '', ''
 
 
+def _nutrient(nutriments, key):
+    """Liczba z `nutriments` Open Food Facts albo None (brak, śmieci, wartość spoza zakresu)."""
+    try:
+        value = Decimal(str(nutriments.get(key)))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    if not value.is_finite() or value < 0 or value > 9999:
+        return None
+    return value.quantize(Decimal('0.1'))
+
+
+def _nutrition(product):
+    """Wartości odżywcze na 100 g/ml. Bez kcal bierzemy kJ (1 kcal = 4,184 kJ)."""
+    nutriments = product.get('nutriments')
+    if not isinstance(nutriments, dict):
+        nutriments = {}
+    kcal = _nutrient(nutriments, 'energy-kcal_100g')
+    if kcal is None:
+        kilojoules = _nutrient(nutriments, 'energy-kj_100g')
+        if kilojoules is not None:
+            kcal = (kilojoules / Decimal('4.184')).quantize(Decimal('0.1'))
+    return {
+        'kcal_100': kcal,
+        'protein_100': _nutrient(nutriments, 'proteins_100g'),
+        'fat_100': _nutrient(nutriments, 'fat_100g'),
+        'carbs_100': _nutrient(nutriments, 'carbohydrates_100g'),
+    }
+
+
 def _normalize_product(product, lookup_barcode):
     canonical_barcode = _clean_text(product.get('code'), max_length=64) or lookup_barcode
     product_name, name_language = _pick_product_name(product)
@@ -466,6 +496,7 @@ def _normalize_product(product, lookup_barcode):
         'image_source_url': _selected_front_image(product),
         'attribution_url': f'https://{product_host}/product/{quote(canonical_barcode, safe="")}',
         'source_updated_at': _source_timestamp(product),
+        **_nutrition(product),
     }
 
 

@@ -166,6 +166,44 @@
                         </div>
                     </div>
 
+                    <h3 class="h6 text-uppercase fw-bold text-muted mt-4 mb-2">Wartości odżywcze na 100 g / 100 ml</h3>
+                    <p class="form-text mt-0 ms-1">
+                        Z nich liczą się kalorie przepisów i dziennik posiłków.
+                        {% if nutrition_entry.kcal_100 is not None %}
+                            Puste pola biorą dane z Open Food Facts:
+                            {{ nutrition_entry.kcal_100 }} kcal, B {{ nutrition_entry.protein_100|default_if_none:"–" }},
+                            T {{ nutrition_entry.fat_100|default_if_none:"–" }}, W {{ nutrition_entry.carbs_100|default_if_none:"–" }} g.
+                        {% endif %}
+                    </p>
+                    <div class="row g-3">
+                        <div class="col-6 col-sm-3">
+                            <label class="form-label small fw-bold text-muted ms-1" for="kcal-100">Kcal</label>
+                            <input type="text" inputmode="decimal" class="form-control" id="kcal-100" name="kcal_100"
+                                   value="{{ form_values.kcal_100|default_if_none:'' }}">
+                        </div>
+                        <div class="col-6 col-sm-3">
+                            <label class="form-label small fw-bold text-muted ms-1" for="protein-100">Białko (g)</label>
+                            <input type="text" inputmode="decimal" class="form-control" id="protein-100" name="protein_100"
+                                   value="{{ form_values.protein_100|default_if_none:'' }}">
+                        </div>
+                        <div class="col-6 col-sm-3">
+                            <label class="form-label small fw-bold text-muted ms-1" for="fat-100">Tłuszcz (g)</label>
+                            <input type="text" inputmode="decimal" class="form-control" id="fat-100" name="fat_100"
+                                   value="{{ form_values.fat_100|default_if_none:'' }}">
+                        </div>
+                        <div class="col-6 col-sm-3">
+                            <label class="form-label small fw-bold text-muted ms-1" for="carbs-100">Węglowodany (g)</label>
+                            <input type="text" inputmode="decimal" class="form-control" id="carbs-100" name="carbs_100"
+                                   value="{{ form_values.carbs_100|default_if_none:'' }}">
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label small fw-bold text-muted ms-1" for="unit-weight">Waga 1 szt. / opak. (g albo ml)</label>
+                            <input type="text" inputmode="decimal" class="form-control" id="unit-weight" name="unit_weight"
+                                   value="{{ form_values.unit_weight|default_if_none:'' }}" aria-describedby="unit-weight-help">
+                            <div class="form-text ms-1" id="unit-weight-help">Potrzebna, gdy produkt albo składnik przepisu jest w sztukach.</div>
+                        </div>
+                    </div>
+
                     <h3 class="h6 text-uppercase fw-bold text-muted mt-4 mb-3">Zdjęcie i notatki</h3>
                     {% if product.image %}
                         <div class="d-flex align-items-center gap-3 mb-3">

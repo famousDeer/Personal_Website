@@ -80,10 +80,22 @@ kroków obsługuje cooking/static/cooking/js/recipe-form.js.
                         <div>
                             <label for="rf-kcal" class="form-label small fw-semibold">Kcal/porcja</label>
                             <input type="number" name="kcal" id="rf-kcal" class="form-control{% if form.errors.kcal %} is-invalid{% endif %}"
-                                   value="{{ form.kcal }}" min="0" max="20000" step="1" inputmode="numeric" placeholder="–">
+                                   value="{{ form.kcal }}" min="0" max="20000" step="1" inputmode="numeric" placeholder="auto">
                         </div>
                     </div>
-                    <div class="form-text" id="rf-time-hint" data-time-hint>Pusty czas = suma czasów kroków. Kcal można pominąć.</div>
+                    <div class="form-text" id="rf-time-hint" data-time-hint>Pusty czas = suma czasów kroków. Puste kcal = wyliczone ze składników.</div>
+                    {% if recipe_nutrition.counted or recipe_nutrition.missing %}
+                        <div class="form-text" data-recipe-nutrition>
+                            {% if recipe_nutrition.counted %}
+                                Ze składników: <strong>{{ recipe_nutrition.portion.kcal|floatformat:0 }} kcal</strong> na porcję
+                                (B {{ recipe_nutrition.portion.protein|floatformat:0 }} · T {{ recipe_nutrition.portion.fat|floatformat:0 }} · W {{ recipe_nutrition.portion.carbs|floatformat:0 }} g).
+                            {% endif %}
+                            {% if recipe_nutrition.missing %}
+                                Nie policzono:
+                                {% for name, reason in recipe_nutrition.missing %}{{ name }} ({{ reason }}){% if not forloop.last %}, {% endif %}{% endfor %}.
+                            {% endif %}
+                        </div>
+                    {% endif %}
                     {% if form.errors.portions %}<div class="rf-field-error mt-2">{{ form.errors.portions }}</div>{% endif %}
                     {% if form.errors.preparation_time %}<div class="rf-field-error mt-2">{{ form.errors.preparation_time }}</div>{% endif %}
                     {% if form.errors.kcal %}<div class="rf-field-error mt-2">{{ form.errors.kcal }}</div>{% endif %}

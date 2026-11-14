@@ -48,6 +48,7 @@ from .services.product_groups import (
 )
 from .services import recipe_form, recipe_pantry, recipe_units
 from .services.categories import category_names
+from .services.nutrition import NutritionIndex, parse_nutrient, recipe_nutrition, recipe_portion
 from .services.product_catalog import (
     cached_open_food_facts_entry,
     household_catalog_entry,
@@ -567,6 +568,8 @@ def get_recipe_form_context(request, state, recipe=None, failed=False, problems=
             state['type_of_dish'],
         ])),
         'keyword_rules': recipe_pantry.keyword_rules(),
+        # Zapisany przepis: kcal i makro porcji wyliczone ze składników.
+        'recipe_nutrition': recipe_nutrition(recipe, NutritionIndex()) if recipe is not None and recipe.pk else None,
     }
 
 
@@ -648,6 +651,12 @@ class RecipeListView(LoginRequiredMixin, View):
 
         if search_query:
             recipes = recipes.filter(title__icontains=search_query)
+
+        # Kcal i makro porcji liczone ze składników (services/nutrition.py).
+        recipes = list(recipes.select_related('user').prefetch_related('ingredient_items'))
+        nutrition_index = NutritionIndex()
+        for recipe in recipes:
+            recipe.portion_nutrients, recipe.nutrition = recipe_portion(recipe, nutrition_index)
 
         # 4. Przygotowujemy kontekst
         context = {
@@ -1578,6 +1587,16 @@ class AddPantryProductView(LoginRequiredMixin, View):
             )
 
 
+# Pola wartości odżywczych w edycji produktu: (pole, etykieta, dokładność).
+NUTRITION_FORM_FIELDS = [
+    ('kcal_100', 'Kcal na 100 g', Decimal('0.1')),
+    ('protein_100', 'Białko', Decimal('0.1')),
+    ('fat_100', 'Tłuszcz', Decimal('0.1')),
+    ('carbs_100', 'Węglowodany', Decimal('0.1')),
+    ('unit_weight', 'Waga sztuki', Decimal('0.01')),
+]
+
+
 class EditPantryProductView(LoginRequiredMixin, View):
     """Pełna edycja produktu ze wspólnej spiżarni.
 
@@ -1592,7 +1611,7 @@ class EditPantryProductView(LoginRequiredMixin, View):
     editable_fields = [
         'name', 'brand', 'barcode', 'category', 'unit', 'quantity_per_scan', 'current_quantity',
         'current_package_count', 'minimum_quantity', 'restock_lead_days', 'notes', 'group_id',
-        'one_off',
+        'one_off', 'kcal_100', 'protein_100', 'fat_100', 'carbs_100', 'unit_weight',
     ]
 
     def _initial_values(self, product):
@@ -1615,6 +1634,8 @@ class EditPantryProductView(LoginRequiredMixin, View):
             product=product,
             form_values=values,
             remembered_entry=remembered,
+            # Podpowiedź kcal z Open Food Facts, gdy produkt nie ma własnych.
+            nutrition_entry=cached_open_food_facts_entry(product.barcode) if product.barcode else None,
             movement_count_label=polish_count(product.movements.count(), 'ruch', 'ruchy', 'ruchów'),
             open_shopping_item_count=product.shopping_items.filter(
                 is_purchased=False,
@@ -1794,6 +1815,10 @@ class EditPantryProductView(LoginRequiredMixin, View):
         product.restock_lead_days = restock_lead_days
         if 'one_off_field' in post:
             product.one_off = post.get('one_off') == '1'
+        for field, label, places in NUTRITION_FORM_FIELDS:
+            if field in post:
+                value = parse_nutrient(post.get(field), label)
+                setattr(product, field, None if value is None else value.quantize(places))
         if 'notes' in post:
             product.notes = post.get('notes', '').strip()
         if 'group' in post:

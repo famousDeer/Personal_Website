@@ -1,6 +1,6 @@
 # cooking/urls.py
 from django.urls import path
-from . import shopping_app_views, views, views_categories as category_views, views_receipts as receipt_views
+from . import shopping_app_views, views, views_categories as category_views, views_diary as diary_views, views_receipts as receipt_views
 
 app_name = 'cooking'
 
@@ -11,6 +11,11 @@ urlpatterns = [
     path('recipes/add/', views.AddRecipeView.as_view(), name='add-recipe'),
     path('recipes/edit/<int:recipe_id>/', views.EditRecipeView.as_view(), name='edit-recipe'),
     path('recipes/delete/<int:recipe_id>/', views.DeleteRecipeView.as_view(), name='delete-recipe'),
+    # Dziennik posiłków i kalorii (cooking/views_diary.py)
+    path('diary/', diary_views.DiaryView.as_view(), name='diary'),
+    path('diary/add/', diary_views.DiaryAddView.as_view(), name='diary-add'),
+    path('diary/goal/', diary_views.DiaryGoalView.as_view(), name='diary-goal'),
+    path('diary/<int:entry_id>/delete/', diary_views.DiaryDeleteView.as_view(), name='diary-delete'),
     path('pantry/', views.PantryListView.as_view(), name='pantry'),
     path('pantry/add/', views.AddPantryProductView.as_view(), name='add-pantry-product'),
     path('pantry/barcode/lookup/', views.PantryBarcodeLookupView.as_view(), name='pantry-barcode-lookup'),

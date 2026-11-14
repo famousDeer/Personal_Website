@@ -1,0 +1,166 @@
+{% extends 'cooking/index.html' %}
+{% load ui %}
+
+{% block title %}Dziennik kalorii{% endblock %}
+{% block cooking_editor_assets %}{% endblock %}
+
+{% block content_cooking %}
+{% url 'cooking:index' as kitchen_url %}
+{% page_head title="Dziennik kalorii" eyebrow="Kuchnia" icon="bi-fire" sub="Twój osobisty dziennik: co zjadłeś, ile to kcal i makroskładników." back=kitchen_url back_label="Wróć do kuchni" %}{% endpage_head %}
+
+<div class="animate-fade-in-up">
+    {% comment %} Wybór dnia {% endcomment %}
+    <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
+        <a class="btn btn-light rounded-pill" href="{{ prev_url }}" aria-label="Poprzedni dzień"><i class="bi bi-chevron-left"></i></a>
+        <div class="text-center">
+            <div class="fw-bold">{% if is_today %}Dziś, {% endif %}{{ day|date:"l, j E" }}</div>
+            {% if not is_today %}<a class="small" href="{{ today_url }}">Wróć do dziś</a>{% endif %}
+        </div>
+        {% if next_url %}
+            <a class="btn btn-light rounded-pill" href="{{ next_url }}" aria-label="Następny dzień"><i class="bi bi-chevron-right"></i></a>
+        {% else %}
+            <span class="btn btn-light rounded-pill disabled" aria-hidden="true"><i class="bi bi-chevron-right"></i></span>
+        {% endif %}
+    </div>
+
+    {% comment %} Podsumowanie dnia {% endcomment %}
+    <div class="u-card u-card-pad mb-3" data-diary-summary>
+        <div class="d-flex flex-wrap align-items-baseline justify-content-between gap-2">
+            <div>
+                <span class="display-6 fw-bold">{{ total.kcal|floatformat:0 }}</span>
+                <span class="text-muted">{% if goal %}/ {{ goal }} {% endif %}kcal</span>
+            </div>
+            {% if goal %}
+                <div class="fw-semibold {% if remaining < 0 %}text-danger{% else %}text-success{% endif %}">
+                    {% if remaining < 0 %}Ponad cel o {{ remaining|floatformat:0|cut:"-" }} kcal{% else %}Zostało {{ remaining|floatformat:0 }} kcal{% endif %}
+                </div>
+            {% endif %}
+        </div>
+        {% if goal %}
+            <div class="progress mt-2" role="progressbar" aria-label="Wykorzystanie celu dziennego"
+                 aria-valuenow="{{ goal_percent }}" aria-valuemin="0" aria-valuemax="100" style="height: 10px;">
+                <div class="progress-bar {% if remaining < 0 %}bg-danger{% else %}bg-success{% endif %}" style="width: {{ goal_percent }}%"></div>
+            </div>
+        {% endif %}
+        <div class="d-flex flex-wrap gap-3 mt-3 small">
+            <span>Białko <strong>{{ total.protein|floatformat:0 }} g</strong></span>
+            <span>Tłuszcz <strong>{{ total.fat|floatformat:0 }} g</strong></span>
+            <span>Węglowodany <strong>{{ total.carbs|floatformat:0 }} g</strong></span>
+        </div>
+        <details class="mt-3">
+            <summary class="small text-muted">{% if goal %}Zmień cel dzienny{% else %}Ustaw cel dzienny{% endif %}</summary>
+            <form method="post" action="{% url 'cooking:diary-goal' %}" class="d-flex gap-2 mt-2" style="max-width: 320px;">
+                {% csrf_token %}
+                <input type="hidden" name="date" value="{{ day|date:'Y-m-d' }}">
+                <div class="input-group">
+                    <input type="number" class="form-control" name="kcal" min="0" max="20000" step="1" inputmode="numeric"
+                           value="{% if goal %}{{ goal|stringformat:'d' }}{% endif %}" placeholder="np. 2200" aria-label="Cel dzienny w kcal">
+                    <span class="input-group-text">kcal</span>
+                </div>
+                <button type="submit" class="btn btn-outline-secondary">Zapisz</button>
+            </form>
+            <div class="form-text">Cel jest tylko Twój. Puste pole albo 0 wyłącza cel.</div>
+        </details>
+    </div>
+
+    {% comment %} Dodawanie pozycji {% endcomment %}
+    <div class="u-card u-card-pad mb-3">
+        <h2 class="h6 fw-bold mb-3">Dodaj posiłek</h2>
+        <form method="post" action="{% url 'cooking:diary-add' %}" data-diary-add>
+            {% csrf_token %}
+            <input type="hidden" name="date" value="{{ day|date:'Y-m-d' }}">
+            <div class="row g-2">
+                <div class="col-12 col-md-5">
+                    <label class="form-label small fw-semibold" for="diary-name">Co zjadłeś?</label>
+                    <input type="text" class="form-control" id="diary-name" name="name" list="diary-names" maxlength="255"
+                           autocomplete="off" autocapitalize="sentences" placeholder="Produkt ze spiżarni, przepis albo dowolna nazwa" required>
+                    <datalist id="diary-names">
+                        {% for title in recipe_titles %}<option value="{{ title }}" label="przepis"></option>{% endfor %}
+                        {% for name in product_names %}<option value="{{ name }}"></option>{% endfor %}
+                    </datalist>
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label small fw-semibold" for="diary-quantity">Ilość</label>
+                    <input type="text" inputmode="decimal" class="form-control" id="diary-quantity" name="quantity" placeholder="np. 150">
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label small fw-semibold" for="diary-unit">Jednostka</label>
+                    <select class="form-select" id="diary-unit" name="unit">
+                        {% for value, label in units %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-md-3">
+                    <label class="form-label small fw-semibold" for="diary-meal">Posiłek</label>
+                    <select class="form-select" id="diary-meal" name="meal">
+                        {% for value, label in meal_choices %}<option value="{{ value }}" {% if value == default_meal %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select>
+                </div>
+            </div>
+            <details class="mt-2">
+                <summary class="small text-muted">Wpisz kcal ręcznie (jedzenie spoza spiżarni)</summary>
+                <div class="row g-2 mt-1">
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small fw-semibold" for="diary-kcal">Kcal razem</label>
+                        <input type="text" inputmode="decimal" class="form-control" id="diary-kcal" name="kcal">
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small fw-semibold" for="diary-protein">Białko (g)</label>
+                        <input type="text" inputmode="decimal" class="form-control" id="diary-protein" name="protein">
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small fw-semibold" for="diary-fat">Tłuszcz (g)</label>
+                        <input type="text" inputmode="decimal" class="form-control" id="diary-fat" name="fat">
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small fw-semibold" for="diary-carbs">Węglowodany (g)</label>
+                        <input type="text" inputmode="decimal" class="form-control" id="diary-carbs" name="carbs">
+                    </div>
+                </div>
+                <div class="form-text">Wpisane kcal dotyczą całej zjedzonej ilości i mają pierwszeństwo przed danymi produktu.</div>
+            </details>
+            <button type="submit" class="btn btn-primary mt-3"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Dodaj</button>
+        </form>
+    </div>
+
+    {% comment %} Pozycje dnia {% endcomment %}
+    {% for meal in meals %}
+        <div class="u-card u-card-pad mb-3">
+            <div class="d-flex justify-content-between align-items-baseline mb-2">
+                <h2 class="h6 fw-bold mb-0">{{ meal.label }}</h2>
+                <span class="small text-muted">{{ meal.total.kcal|floatformat:0 }} kcal</span>
+            </div>
+            <ul class="list-unstyled mb-0">
+                {% for entry in meal.entries %}
+                    <li class="d-flex align-items-center gap-2 py-2 {% if not forloop.first %}border-top{% endif %}" data-diary-entry="{{ entry.pk }}">
+                        <div class="flex-grow-1">
+                            <div class="fw-semibold">{{ entry.name }}{% if entry.amount %} <span class="fw-normal text-muted">· {{ entry.amount }}</span>{% endif %}</div>
+                            <div class="small text-muted">B {{ entry.protein|floatformat:0 }} · T {{ entry.fat|floatformat:0 }} · W {{ entry.carbs|floatformat:0 }} g</div>
+                        </div>
+                        <strong class="text-nowrap">{{ entry.kcal|floatformat:0 }} kcal</strong>
+                        <form method="post" action="{% url 'cooking:diary-delete' entry.pk %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-light rounded-circle" aria-label="Usuń {{ entry.name }}" title="Usuń"><i class="bi bi-trash"></i></button>
+                        </form>
+                    </li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% empty %}
+        <p class="text-muted text-center my-4">{% if is_today %}Dziś nic jeszcze nie zapisano.{% else %}Tego dnia nic nie zapisano.{% endif %}</p>
+    {% endfor %}
+
+    {% comment %} Ostatnie 7 dni {% endcomment %}
+    <div class="u-card u-card-pad mb-3">
+        <h2 class="h6 fw-bold mb-3">Ostatnie 7 dni</h2>
+        {% for item in week %}
+            <a href="{{ item.url }}" class="d-flex align-items-center gap-2 py-1 text-decoration-none text-reset">
+                <span class="small {% if item.current %}fw-bold{% else %}text-muted{% endif %}" style="width: 4.5rem;">{{ item.date|date:"D j.m" }}</span>
+                <span class="progress flex-grow-1" style="height: 8px;">
+                    <span class="progress-bar {% if item.over %}bg-danger{% else %}bg-success{% endif %}" style="width: {{ item.percent }}%"></span>
+                </span>
+                <span class="small text-nowrap text-end" style="width: 5rem;">{{ item.kcal|floatformat:0 }} kcal</span>
+            </a>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

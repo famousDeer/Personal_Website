@@ -237,6 +237,15 @@ class PantryProduct(models.Model):
         verbose_name='Nie kupuję ponownie',
         help_text='Bez prognozy zakupu i bez listy zakupów; stan i historia zostają.',
     )
+    # Wartości odżywcze na 100 g (albo 100 ml). Puste = nie podano; wtedy
+    # liczy się wpis Open Food Facts dla kodu (services/nutrition.py).
+    kcal_100 = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True)
+    protein_100 = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True)
+    fat_100 = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True)
+    carbs_100 = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True)
+    # Ile gramów (ml) ma jedna sztuka albo opakowanie - potrzebne do kcal,
+    # gdy produkt albo składnik przepisu jest liczony w szt./opak.
+    unit_weight = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     notes = models.TextField(blank=True)
     image = models.ImageField(
         upload_to='pantry_product_images',
@@ -375,6 +384,11 @@ class ProductCatalogEntry(models.Model):
         null=True,
     )
     suggested_unit = models.CharField(max_length=10, choices=PANTRY_UNIT_CHOICES, blank=True)
+    # Wartości odżywcze na 100 g/ml z Open Food Facts (puste = baza nie podała).
+    kcal_100 = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True)
+    protein_100 = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True)
+    fat_100 = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True)
+    carbs_100 = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True)
     image = models.ImageField(upload_to='pantry_catalog_images', blank=True)
     image_source_url = models.URLField(max_length=500, blank=True)
     attribution_url = models.URLField(max_length=500, blank=True)
@@ -1017,3 +1031,61 @@ class PantryBatch(models.Model):
     @property
     def days_left(self):
         return (self.expires_on - timezone.localdate()).days
+
+
+class NutritionGoal(models.Model):
+    """Dzienny cel kalorii domownika (dziennik posiłków)."""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='nutrition_goal')
+    kcal = models.PositiveIntegerField(default=0)  # 0 = bez celu
+
+    class Meta:
+        db_table = 'nutrition_goals'
+
+    def __str__(self):
+        return f'{self.user.username}: {self.kcal} kcal'
+
+
+class MealEntry(models.Model):
+    """Pozycja dziennika posiłków - osobista, per domownik.
+
+    Kalorie i makroskładniki są zapisane w chwili dodania: późniejsza zmiana
+    produktu albo przepisu nie przepisuje historii.
+    """
+    MEAL_BREAKFAST = 'sniadanie'
+    MEAL_LUNCH = 'obiad'
+    MEAL_DINNER = 'kolacja'
+    MEAL_SNACK = 'przekaska'
+    MEAL_CHOICES = [
+        (MEAL_BREAKFAST, 'Śniadanie'),
+        (MEAL_LUNCH, 'Obiad'),
+        (MEAL_DINNER, 'Kolacja'),
+        (MEAL_SNACK, 'Przekąski'),
+    ]
+    UNIT_PORTION = 'porcja'
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='meal_entries')
+    date = models.DateField(db_index=True)
+    meal = models.CharField(max_length=12, choices=MEAL_CHOICES, default=MEAL_SNACK)
+    name = models.CharField(max_length=255)
+    # Ilość tak, jak ją wpisano („150 g”, „1 porcja”); pusta przy samych kcal.
+    quantity = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    unit = models.CharField(max_length=10, blank=True)
+    kcal = models.DecimalField(max_digits=7, decimal_places=1, default=Decimal('0'))
+    protein = models.DecimalField(max_digits=6, decimal_places=1, default=Decimal('0'))
+    fat = models.DecimalField(max_digits=6, decimal_places=1, default=Decimal('0'))
+    carbs = models.DecimalField(max_digits=6, decimal_places=1, default=Decimal('0'))
+    product = models.ForeignKey(
+        PantryProduct, on_delete=models.SET_NULL, null=True, blank=True, related_name='meal_entries',
+    )
+    recipe = models.ForeignKey(
+        Recipe, on_delete=models.SET_NULL, null=True, blank=True, related_name='meal_entries',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'meal_entries'
+        ordering = ['date', 'created_at', 'id']
+        indexes = [models.Index(fields=['user', 'date'], name='meal_entries_user_date_idx')]
+
+    def __str__(self):
+        return f'{self.date} {self.name} ({self.kcal} kcal)'

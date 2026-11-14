@@ -1,0 +1,223 @@
+"""Kalorie i makro: produkty, Open Food Facts, przepisy i dziennik posiłków."""
+from datetime import timedelta
+from decimal import Decimal
+
+from django.contrib.auth.models import User
+from django.test import TestCase
+from django.urls import reverse
+from django.utils import timezone
+
+from .models import (
+    MealEntry,
+    NutritionGoal,
+    PantryProduct,
+    ProductCatalogEntry,
+    Recipe,
+    RecipeStepIngredient,
+)
+from .services.nutrition import (
+    REASON_NO_DATA,
+    REASON_UNIT,
+    REASON_UNKNOWN,
+    NutritionIndex,
+    recipe_nutrition,
+    recipe_portion,
+)
+from .services.product_catalog import _normalize_product
+
+
+class NutritionBase(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='ola', password='pass12345')
+        self.other = User.objects.create_user(username='kuba', password='pass12345')
+        self.client.force_login(self.user)
+        self.rice = PantryProduct.objects.create(
+            name='Ryż', unit='g', kcal_100=Decimal('350'), protein_100=Decimal('7'),
+            fat_100=Decimal('1'), carbs_100=Decimal('78'),
+        )
+        self.oil = PantryProduct.objects.create(
+            name='Olej', unit='ml', kcal_100=Decimal('900'), fat_100=Decimal('100'),
+        )
+        self.egg = PantryProduct.objects.create(
+            name='Jajko', unit='szt', kcal_100=Decimal('140'), protein_100=Decimal('12.5'),
+            fat_100=Decimal('10'), unit_weight=Decimal('60'),
+        )
+
+    def recipe(self, ingredients, portions=2, kcal=0):
+        recipe = Recipe.objects.create(
+            user=self.user, title='Ryż z jajkiem', ingredients='', instructions='',
+            portions=portions, kcal=kcal,
+        )
+        for order, (name, quantity, unit) in enumerate(ingredients, start=1):
+            RecipeStepIngredient.objects.create(
+                recipe=recipe, order=order, name=name, quantity=Decimal(quantity), unit=unit,
+            )
+        return recipe
+
+
+class RecipeNutritionTests(NutritionBase):
+    def test_sums_ingredients_and_divides_by_portions(self):
+        recipe = self.recipe([
+            ('ryz', '200', 'g'),          # 700 kcal; nazwa bez ogonków
+            ('Olej', '1', 'lyzka'),       # 15 ml -> 135 kcal
+            ('Jajko', '2', 'szt'),        # 120 g -> 168 kcal
+            ('Sól', '0', 'do_smaku'),     # pomijana, nie jest brakiem
+        ])
+        result = recipe_nutrition(recipe, NutritionIndex())
+        self.assertTrue(result.complete)
+        self.assertEqual(result.total.kcal, Decimal('1003.0'))
+        self.assertEqual(result.portion.kcal, Decimal('501.5'))
+        self.assertEqual(result.portion.protein, Decimal('14.5'))   # (14 + 15) / 2
+        self.assertEqual(result.portion.carbs, Decimal('78.0'))
+
+    def test_missing_ingredients_are_listed_with_reason(self):
+        PantryProduct.objects.create(name='Mąka', unit='g')
+        self.egg.unit_weight = None
+        self.egg.save()
+        recipe = self.recipe([
+            ('Ryż', '100', 'g'),
+            ('Bazylia', '10', 'g'),
+            ('Mąka', '100', 'g'),
+            ('Ryż', '1', 'szklanka'),     # szklanka produktu liczonego wagą
+            ('Jajko', '1', 'szt'),        # sztuka bez wagi
+        ])
+        result = recipe_nutrition(recipe, NutritionIndex())
+        self.assertEqual(result.counted, 1)
+        self.assertEqual(result.missing, [
+            ('Bazylia', REASON_UNKNOWN), ('Mąka', REASON_NO_DATA),
+            ('Ryż', REASON_UNIT), ('Jajko', REASON_UNIT),
+        ])
+
+    def test_open_food_facts_fills_in_for_product_without_own_values(self):
+        PantryProduct.objects.create(name='Jogurt', unit='g', barcode='5900000000111')
+        ProductCatalogEntry.objects.create(
+            source=ProductCatalogEntry.SOURCE_OPEN_FOOD_FACTS, lookup_barcode='5900000000111',
+            status=ProductCatalogEntry.STATUS_FOUND, kcal_100=Decimal('60'), protein_100=Decimal('4'),
+        )
+        result = recipe_nutrition(self.recipe([('Jogurt', '200', 'g')], portions=1), NutritionIndex())
+        self.assertEqual((result.total.kcal, result.total.protein), (Decimal('120.0'), Decimal('8.0')))
+
+    def test_manual_kcal_wins_but_macros_stay_computed(self):
+        recipe = self.recipe([('Ryż', '100', 'g')], portions=1, kcal=999)
+        portion, _ = recipe_portion(recipe, NutritionIndex())
+        self.assertEqual((portion.kcal, portion.carbs), (Decimal('999'), Decimal('78.0')))
+
+    def test_recipe_list_shows_computed_kcal_and_missing(self):
+        self.recipe([('Ryż', '200', 'g'), ('Bazylia', '10', 'g')])
+        response = self.client.get(reverse('cooking:recipe-list'))
+        self.assertContains(response, '350 kcal')
+        self.assertContains(response, 'Kalorie bez: Bazylia.')
+        self.assertContains(response, 'Zjadłem porcję')
+
+
+class CatalogNutritionTests(TestCase):
+    def test_nutriments_are_read_from_open_food_facts(self):
+        data = _normalize_product({
+            'code': '5900000000111', 'product_name': 'Jogurt',
+            'nutriments': {
+                'energy-kcal_100g': 61.4, 'proteins_100g': '4.3', 'fat_100g': 3,
+                'carbohydrates_100g': 'x',
+            },
+        }, '5900000000111')
+        self.assertEqual(data['kcal_100'], Decimal('61.4'))
+        self.assertEqual(data['protein_100'], Decimal('4.3'))
+        self.assertEqual(data['fat_100'], Decimal('3.0'))
+        self.assertIsNone(data['carbs_100'])
+
+    def test_kilojoules_are_converted_when_kcal_missing(self):
+        data = _normalize_product({'code': '1', 'nutriments': {'energy-kj_100g': 418.4}}, '1')
+        self.assertEqual(data['kcal_100'], Decimal('100.0'))
+        self.assertIsNone(_normalize_product({'code': '1'}, '1')['kcal_100'])
+
+
+class PantryNutritionEditTests(NutritionBase):
+    def test_edit_saves_and_clears_nutrition(self):
+        url = reverse('cooking:edit-pantry-product', args=[self.rice.pk])
+        response = self.client.post(url, {
+            'name': 'Ryż', 'kcal_100': '344,5', 'protein_100': '', 'fat_100': '0.7',
+            'carbs_100': '77', 'unit_weight': '100',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.rice.refresh_from_db()
+        self.assertEqual(self.rice.kcal_100, Decimal('344.5'))
+        self.assertIsNone(self.rice.protein_100)
+        self.assertEqual(self.rice.unit_weight, Decimal('100.00'))
+
+        response = self.client.post(url, {'name': 'Ryż', 'kcal_100': 'dużo'})
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(response, 'Kcal na 100 g: podaj liczbę.', status_code=400)
+
+
+class DiaryTests(NutritionBase):
+    def add(self, **data):
+        return self.client.post(reverse('cooking:diary-add'), data, follow=True)
+
+    def test_product_entry_is_computed_from_pantry(self):
+        self.add(name='Ryż', quantity='150', unit='g', meal='obiad')
+        entry = MealEntry.objects.get()
+        self.assertEqual((entry.user, entry.date, entry.meal), (self.user, timezone.localdate(), 'obiad'))
+        self.assertEqual((entry.kcal, entry.carbs, entry.product), (Decimal('525.0'), Decimal('117.0'), self.rice))
+
+    def test_pieces_use_unit_weight(self):
+        self.add(name='Jajko', quantity='2', unit='szt')
+        self.assertEqual(MealEntry.objects.get().kcal, Decimal('168.0'))
+
+    def test_manual_kcal_for_unknown_food(self):
+        self.add(name='Pizza na mieście', kcal='800', protein='30', meal='kolacja')
+        entry = MealEntry.objects.get()
+        self.assertEqual((entry.kcal, entry.protein, entry.quantity, entry.product), (Decimal('800.0'), Decimal('30.0'), None, None))
+
+    def test_unknown_or_incomplete_food_is_rejected_with_hint(self):
+        response = self.add(name='Pizza na mieście', quantity='1', unit='szt')
+        self.assertContains(response, 'Wpisz kcal ręcznie.')
+        self.egg.unit_weight = None
+        self.egg.save()
+        response = self.add(name='Jajko', quantity='2', unit='szt')
+        self.assertContains(response, 'uzupełnij wagę sztuki')
+        self.assertFalse(MealEntry.objects.exists())
+
+    def test_recipe_portion_by_button_and_by_name(self):
+        recipe = self.recipe([('Ryż', '200', 'g')])     # 350 kcal na porcję
+        self.add(recipe=recipe.pk)
+        self.add(name='ryż z jajkiem', quantity='1,5', unit='porcja')
+        kcals = list(MealEntry.objects.order_by('id').values_list('kcal', 'recipe_id', 'unit'))
+        self.assertEqual(kcals, [(Decimal('350.0'), recipe.pk, 'porcja'), (Decimal('525.0'), recipe.pk, 'porcja')])
+
+    def test_recipe_without_any_calories_is_rejected(self):
+        recipe = self.recipe([('Bazylia', '10', 'g')])
+        response = self.add(recipe=recipe.pk)
+        self.assertContains(response, 'nie ma kalorii')
+        self.assertFalse(MealEntry.objects.exists())
+
+    def test_day_page_totals_goal_and_privacy(self):
+        today = timezone.localdate()
+        MealEntry.objects.create(user=self.user, date=today, meal='obiad', name='Zupa', kcal=Decimal('400'))
+        MealEntry.objects.create(user=self.user, date=today, meal='kolacja', name='Kanapka', kcal=Decimal('350'))
+        MealEntry.objects.create(user=self.user, date=today - timedelta(days=1), name='Wczorajsze', kcal=Decimal('111'))
+        MealEntry.objects.create(user=self.other, date=today, name='Cudze', kcal=Decimal('999'))
+        self.client.post(reverse('cooking:diary-goal'), {'kcal': '2000'})
+        self.assertEqual(NutritionGoal.objects.get(user=self.user).kcal, 2000)
+
+        response = self.client.get(reverse('cooking:diary'))
+        self.assertEqual(response.context['total'].kcal, Decimal('750'))
+        self.assertEqual(response.context['remaining'], Decimal('1250'))
+        self.assertContains(response, 'Zostało 1\xa0250 kcal')   # separator tysięcy (pl)
+        self.assertNotContains(response, 'Cudze')
+        self.assertNotContains(response, 'Wczorajsze')
+
+        response = self.client.get(reverse('cooking:diary'), {'date': (today - timedelta(days=1)).isoformat()})
+        self.assertContains(response, 'Wczorajsze')
+
+    def test_delete_own_entry_with_undo_and_not_someone_elses(self):
+        mine = MealEntry.objects.create(user=self.user, date=timezone.localdate(), name='Zupa', kcal=Decimal('400'))
+        theirs = MealEntry.objects.create(user=self.other, date=timezone.localdate(), name='Cudze', kcal=Decimal('1'))
+        response = self.client.post(reverse('cooking:diary-delete', args=[mine.pk]), follow=True)
+        self.assertContains(response, 'Usunięto z dziennika: Zupa.')
+        self.assertFalse(MealEntry.objects.filter(pk=mine.pk).exists())
+        self.assertEqual(self.client.post(reverse('cooking:diary-delete', args=[theirs.pk])).status_code, 404)
+
+    def test_requires_login(self):
+        self.client.logout()
+        self.assertEqual(self.client.get(reverse('cooking:diary')).status_code, 302)
+        self.client.post(reverse('cooking:diary-add'), {'name': 'Ryż', 'quantity': '100', 'unit': 'g'})
+        self.assertFalse(MealEntry.objects.exists())
