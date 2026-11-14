@@ -55,6 +55,7 @@ from .services.nutrition import (
     recipe_portion,
 )
 from .services.pantry_names import product_label
+from .services.polish import polish_count
 from .services.product_catalog import (
     SUPPORTED_BARCODE_PATTERN,
     CatalogUnavailable,
@@ -65,6 +66,11 @@ from .services.receipt_parser import normalize_text
 from .services.recipe_units import VOLUME_UNITS, amount_text
 
 MAX_GOAL_KCAL = 20000
+MAX_GOAL_GRAMS = 2000
+GOAL_FIELDS = [
+    ('kcal', 'Kcal', MAX_GOAL_KCAL), ('protein', 'Białko', MAX_GOAL_GRAMS),
+    ('fat', 'Tłuszcz', MAX_GOAL_GRAMS), ('carbs', 'Węglowodany', MAX_GOAL_GRAMS),
+]
 MAX_ENTRY_KCAL = Decimal('20000')
 DIARY_UNITS = [
     (UNIT_GRAM, 'g'),
@@ -126,13 +132,31 @@ class DiaryView(LoginRequiredMixin, View):
         entries = list(MealEntry.objects.filter(user=request.user, date=day))
         for entry in entries:
             entry.amount = _amount(entry)
+            entry.unit_label = 'porcje' if entry.unit == MealEntry.UNIT_PORTION else UNIT_LABELS.get(entry.unit, entry.unit)
         meals = [
             {'label': label, 'entries': rows, 'total': _sum(rows)}
             for code, label in MealEntry.MEAL_CHOICES
             if (rows := [entry for entry in entries if entry.meal == code])
         ]
         total = _sum(entries)
-        goal = NutritionGoal.objects.filter(user=request.user).values_list('kcal', flat=True).first() or 0
+        goals = NutritionGoal.objects.filter(user=request.user).first() or NutritionGoal()
+        goal = goals.kcal
+        # Makro: zjedzone, cel i pasek (bez celu sam wynik).
+        macros = [
+            {
+                'label': label, 'eaten': eaten, 'goal': target,
+                'percent': min(int(eaten * 100 / target), 100) if target else 0,
+            }
+            for label, eaten, target in (
+                ('Białko', total.protein, goals.protein), ('Tłuszcz', total.fat, goals.fat),
+                ('Węglowodany', total.carbs, goals.carbs),
+            )
+        ]
+        # Kopiowanie z poprzedniego dnia: cały dzień albo jeden posiłek.
+        previous = day - timedelta(days=1)
+        previous_meals = set(
+            MealEntry.objects.filter(user=request.user, date=previous).values_list('meal', flat=True)
+        )
 
         week_start = day - timedelta(days=6)
         by_day = dict(
@@ -162,6 +186,10 @@ class DiaryView(LoginRequiredMixin, View):
             'meals': meals,
             'total': total,
             'goal': goal,
+            'goals': goals,
+            'macros': macros,
+            'copy_meals': [(code, label) for code, label in MealEntry.MEAL_CHOICES if code in previous_meals],
+            'copy_label': 'wczoraj' if day == today else 'poprzedniego dnia',
             'remaining': goal - total.kcal if goal else None,
             'goal_percent': min(int(total.kcal * 100 / goal), 100) if goal else 0,
             'week': week,
@@ -450,17 +478,81 @@ class DiaryDeleteView(LoginRequiredMixin, View):
 class DiaryGoalView(LoginRequiredMixin, View):
     def post(self, request):
         day = _day(request.POST.get('date'))
-        raw = request.POST.get('kcal', '').strip().replace(' ', '')
-        try:
-            kcal = int(raw or 0)
-            if kcal < 0 or kcal > MAX_GOAL_KCAL:
-                raise ValueError
-        except ValueError:
-            messages.error(request, f'Cel dzienny: podaj liczbę od 0 do {MAX_GOAL_KCAL}.')
-            return redirect(_diary_url(day))
-        NutritionGoal.objects.update_or_create(user=request.user, defaults={'kcal': kcal})
-        messages.success(request, f'Cel dzienny: {kcal} kcal.' if kcal else 'Wyłączono cel dzienny.')
+        values = {}
+        for field, label, maximum in GOAL_FIELDS:
+            raw = request.POST.get(field, '').strip().replace(' ', '')
+            try:
+                values[field] = int(raw or 0)
+                if values[field] < 0 or values[field] > maximum:
+                    raise ValueError
+            except ValueError:
+                messages.error(request, f'Cel dzienny – {label.lower()}: podaj liczbę od 0 do {maximum}.')
+                return redirect(_diary_url(day))
+        NutritionGoal.objects.update_or_create(user=request.user, defaults=values)
+        parts = [f'{values["kcal"]} kcal'] if values['kcal'] else []
+        parts += [f'{short} {values[field]} g' for field, short in (('protein', 'B'), ('fat', 'T'), ('carbs', 'W')) if values[field]]
+        messages.success(request, f'Cel dzienny: {", ".join(parts)}.' if parts else 'Wyłączono cel dzienny.')
         return redirect(_diary_url(day))
+
+
+class DiaryCopyView(LoginRequiredMixin, View):
+    """Kopiuje pozycje z poprzedniego dnia (cały dzień albo jeden posiłek)."""
+
+    def post(self, request):
+        day = _day(request.POST.get('date'))
+        meal = request.POST.get('meal', '')
+        source = MealEntry.objects.filter(user=request.user, date=day - timedelta(days=1))
+        if meal in MEALS:
+            source = source.filter(meal=meal)
+        copies = [
+            MealEntry(
+                user=request.user, date=day, meal=entry.meal, name=entry.name, quantity=entry.quantity,
+                unit=entry.unit, kcal=entry.kcal, protein=entry.protein, fat=entry.fat, carbs=entry.carbs,
+                product_id=entry.product_id, recipe_id=entry.recipe_id, food_id=entry.food_id,
+            )
+            for entry in source
+        ]
+        if not copies:
+            messages.error(request, 'Poprzedniego dnia nie ma nic do skopiowania.')
+            return redirect(_diary_url(day))
+        MealEntry.objects.bulk_create(copies)
+        kcal = sum(entry.kcal for entry in copies)
+        what = MEALS[meal].lower() if meal in MEALS else 'cały dzień'
+        messages.success(request, f'Skopiowano {what}: {polish_count(len(copies), "pozycja", "pozycje", "pozycji")}, {kcal:.0f} kcal.')
+        return redirect(_diary_url(day))
+
+
+class DiaryEditView(LoginRequiredMixin, View):
+    """Zmiana ilości albo posiłku pozycji. Nowa ilość przelicza kcal i makro
+    proporcjonalnie - z wartości zapisanych przy dodaniu, nie z bieżących
+    danych produktu. Pozycja bez ilości (kcal wpisane ręcznie) zmienia kcal."""
+
+    def post(self, request, entry_id):
+        entry = get_object_or_404(MealEntry, pk=entry_id, user=request.user)
+        post = request.POST
+        try:
+            if entry.quantity:
+                quantity = parse_nutrient(post.get('quantity'), 'Ilość', Decimal('99999'))
+                if quantity is None or quantity <= 0:
+                    raise ValueError('Ilość musi być większa od zera.')
+                scaled = Nutrients(entry.kcal, entry.protein, entry.fat, entry.carbs).scaled(quantity / entry.quantity).rounded()
+                entry.quantity = quantity
+            else:
+                kcal = parse_nutrient(post.get('kcal'), 'Kcal', MAX_ENTRY_KCAL)
+                if kcal is None:
+                    raise ValueError('Podaj kcal.')
+                scaled = Nutrients(kcal, entry.protein, entry.fat, entry.carbs).rounded()
+            if scaled.kcal > MAX_ENTRY_KCAL:
+                raise ValueError('Za dużo kalorii w jednej pozycji – sprawdź ilość.')
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            return redirect(_diary_url(entry.date))
+        entry.kcal, entry.protein, entry.fat, entry.carbs = scaled.kcal, scaled.protein, scaled.fat, scaled.carbs
+        if post.get('meal') in MEALS:
+            entry.meal = post.get('meal')
+        entry.save()
+        messages.success(request, f'Zmieniono: {entry.name} – {entry.kcal:.0f} kcal.')
+        return redirect(_diary_url(entry.date))
 
 
 class FoodCreateView(LoginRequiredMixin, View):

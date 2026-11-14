@@ -1073,9 +1073,12 @@ class Food(models.Model):
 
 
 class NutritionGoal(models.Model):
-    """Dzienny cel kalorii domownika (dziennik posiłków)."""
+    """Dzienne cele domownika (dziennik posiłków): kcal i makro w gramach."""
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='nutrition_goal')
     kcal = models.PositiveIntegerField(default=0)  # 0 = bez celu
+    protein = models.PositiveIntegerField(default=0)
+    fat = models.PositiveIntegerField(default=0)
+    carbs = models.PositiveIntegerField(default=0)
 
     class Meta:
         db_table = 'nutrition_goals'

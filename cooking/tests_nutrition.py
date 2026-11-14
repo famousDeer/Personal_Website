@@ -416,3 +416,74 @@ class DiaryLabelledProductTests(NutritionBase):
     def test_own_food_keeps_scanned_barcode(self):
         self.client.post(reverse('cooking:food-add'), {'name': 'Baton', 'kcal_100': '450', 'barcode': '5900000000338'})
         self.assertEqual(self.scan('5900000000338')['result']['name'], 'Baton')
+
+
+class DiaryStageThreeTests(NutritionBase):
+    """Cele makro, kopiowanie z poprzedniego dnia i edycja pozycji."""
+
+    def entry(self, user=None, days_ago=0, **values):
+        defaults = {'meal': 'obiad', 'name': 'Zupa', 'kcal': Decimal('400'), 'protein': Decimal('20')}
+        defaults.update(values)
+        return MealEntry.objects.create(
+            user=user or self.user, date=timezone.localdate() - timedelta(days=days_ago), **defaults,
+        )
+
+    def test_macro_goals_are_saved_and_shown_with_progress(self):
+        self.entry(protein=Decimal('60'))
+        response = self.client.post(
+            reverse('cooking:diary-goal'), {'kcal': '2000', 'protein': '120', 'fat': '', 'carbs': '250'}, follow=True,
+        )
+        goal = NutritionGoal.objects.get(user=self.user)
+        self.assertEqual((goal.kcal, goal.protein, goal.fat, goal.carbs), (2000, 120, 0, 250))
+        self.assertContains(response, 'Cel dzienny: 2000 kcal, B 120 g, W 250 g.')
+        macros = {macro['label']: macro for macro in response.context['macros']}
+        self.assertEqual((macros['Białko']['goal'], macros['Białko']['percent']), (120, 50))
+        self.assertEqual((macros['Tłuszcz']['goal'], macros['Tłuszcz']['percent']), (0, 0))
+        self.assertContains(response, '60 / 120 g')
+
+        response = self.client.post(reverse('cooking:diary-goal'), {'kcal': '2000', 'protein': 'dużo'}, follow=True)
+        self.assertContains(response, 'białko: podaj liczbę od 0 do 2000.')
+        self.assertEqual(NutritionGoal.objects.get(user=self.user).protein, 120)
+
+    def test_copy_whole_previous_day_or_one_meal(self):
+        self.entry(days_ago=1, name='Owsianka', meal='sniadanie', kcal=Decimal('300'), quantity=Decimal('250'), unit='g', product=self.rice)
+        self.entry(days_ago=1, name='Zupa', meal='obiad')
+        self.entry(days_ago=2, name='Stare')
+        self.entry(user=self.other, days_ago=1, name='Cudze')
+        url = reverse('cooking:diary-copy')
+        self.assertEqual(self.client.get(reverse('cooking:diary')).context['copy_meals'], [('sniadanie', 'Śniadanie'), ('obiad', 'Obiad')])
+
+        response = self.client.post(url, {'meal': 'sniadanie'}, follow=True)
+        self.assertContains(response, 'Skopiowano śniadanie: 1 pozycja, 300 kcal.')
+        today = MealEntry.objects.filter(user=self.user, date=timezone.localdate())
+        copy = today.get()
+        self.assertEqual((copy.name, copy.meal, copy.quantity, copy.unit, copy.product), ('Owsianka', 'sniadanie', Decimal('250.00'), 'g', self.rice))
+
+        self.client.post(url)
+        self.assertEqual(sorted(today.values_list('name', flat=True)), ['Owsianka', 'Owsianka', 'Zupa'])
+        self.assertFalse(MealEntry.objects.filter(user=self.other, date=timezone.localdate()).exists())
+
+        two_days_later = (timezone.localdate() + timedelta(days=2)).isoformat()
+        response = self.client.post(url, {'date': two_days_later}, follow=True)
+        self.assertContains(response, 'nie ma nic do skopiowania')
+
+    def test_edit_scales_by_quantity_and_moves_meal(self):
+        entry = self.entry(name='Ryż', quantity=Decimal('100'), unit='g', kcal=Decimal('350'), protein=Decimal('7'), carbs=Decimal('78'))
+        url = reverse('cooking:diary-edit', args=[entry.pk])
+        response = self.client.post(url, {'quantity': '150', 'meal': 'kolacja'}, follow=True)
+        self.assertContains(response, 'Zmieniono: Ryż – 525 kcal.')
+        entry.refresh_from_db()
+        self.assertEqual((entry.quantity, entry.kcal, entry.protein, entry.carbs, entry.meal),
+                         (Decimal('150.00'), Decimal('525.0'), Decimal('10.5'), Decimal('117.0'), 'kolacja'))
+
+        self.assertContains(self.client.post(url, {'quantity': '0'}, follow=True), 'Ilość musi być większa od zera.')
+        entry.refresh_from_db()
+        self.assertEqual(entry.kcal, Decimal('525.0'))
+
+    def test_edit_manual_entry_changes_kcal_and_only_own(self):
+        manual = self.entry(name='Pizza', kcal=Decimal('800'))
+        self.client.post(reverse('cooking:diary-edit', args=[manual.pk]), {'kcal': '650,5'})
+        manual.refresh_from_db()
+        self.assertEqual((manual.kcal, manual.protein, manual.meal), (Decimal('650.5'), Decimal('20.0'), 'obiad'))
+        theirs = self.entry(user=self.other)
+        self.assertEqual(self.client.post(reverse('cooking:diary-edit', args=[theirs.pk]), {'kcal': '1'}).status_code, 404)

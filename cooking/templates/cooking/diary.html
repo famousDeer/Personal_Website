@@ -43,24 +43,50 @@
                 <div class="progress-bar {% if remaining < 0 %}bg-danger{% else %}bg-success{% endif %}" style="width: {{ goal_percent }}%"></div>
             </div>
         {% endif %}
-        <div class="d-flex flex-wrap gap-3 mt-3 small">
-            <span>Białko <strong>{{ total.protein|floatformat:0 }} g</strong></span>
-            <span>Tłuszcz <strong>{{ total.fat|floatformat:0 }} g</strong></span>
-            <span>Węglowodany <strong>{{ total.carbs|floatformat:0 }} g</strong></span>
+        <div class="row g-3 mt-1 small" data-diary-macros>
+            {% for macro in macros %}
+                <div class="col-4">
+                    <div>{{ macro.label }}</div>
+                    <strong>{{ macro.eaten|floatformat:0 }}{% if macro.goal %} / {{ macro.goal }}{% endif %} g</strong>
+                    {% if macro.goal %}
+                        <div class="progress mt-1" role="progressbar" aria-label="{{ macro.label }}: wykorzystanie celu"
+                             aria-valuenow="{{ macro.percent }}" aria-valuemin="0" aria-valuemax="100" style="height: 6px;">
+                            <div class="progress-bar bg-success" style="width: {{ macro.percent }}%"></div>
+                        </div>
+                    {% endif %}
+                </div>
+            {% endfor %}
         </div>
         <details class="mt-3">
-            <summary class="small text-muted">{% if goal %}Zmień cel dzienny{% else %}Ustaw cel dzienny{% endif %}</summary>
-            <form method="post" action="{% url 'cooking:diary-goal' %}" class="d-flex gap-2 mt-2" style="max-width: 320px;">
+            <summary class="small text-muted">{% if goal or goals.protein or goals.fat or goals.carbs %}Zmień cele dzienne{% else %}Ustaw cele dzienne{% endif %}</summary>
+            <form method="post" action="{% url 'cooking:diary-goal' %}" class="mt-2" style="max-width: 520px;">
                 {% csrf_token %}
                 <input type="hidden" name="date" value="{{ day|date:'Y-m-d' }}">
-                <div class="input-group">
-                    <input type="number" class="form-control" name="kcal" min="0" max="20000" step="1" inputmode="numeric"
-                           value="{% if goal %}{{ goal|stringformat:'d' }}{% endif %}" placeholder="np. 2200" aria-label="Cel dzienny w kcal">
-                    <span class="input-group-text">kcal</span>
+                <div class="row g-2 align-items-end">
+                    <div class="col-6 col-sm-3">
+                        <label class="form-label small fw-semibold" for="goal-kcal">Kcal</label>
+                        <input type="number" class="form-control" id="goal-kcal" name="kcal" min="0" max="20000" step="1" inputmode="numeric"
+                               value="{% if goal %}{{ goal|stringformat:'d' }}{% endif %}" placeholder="2200">
+                    </div>
+                    <div class="col-6 col-sm-3">
+                        <label class="form-label small fw-semibold" for="goal-protein">Białko (g)</label>
+                        <input type="number" class="form-control" id="goal-protein" name="protein" min="0" max="2000" step="1" inputmode="numeric"
+                               value="{% if goals.protein %}{{ goals.protein|stringformat:'d' }}{% endif %}" placeholder="130">
+                    </div>
+                    <div class="col-6 col-sm-3">
+                        <label class="form-label small fw-semibold" for="goal-fat">Tłuszcz (g)</label>
+                        <input type="number" class="form-control" id="goal-fat" name="fat" min="0" max="2000" step="1" inputmode="numeric"
+                               value="{% if goals.fat %}{{ goals.fat|stringformat:'d' }}{% endif %}" placeholder="70">
+                    </div>
+                    <div class="col-6 col-sm-3">
+                        <label class="form-label small fw-semibold" for="goal-carbs">Węglow. (g)</label>
+                        <input type="number" class="form-control" id="goal-carbs" name="carbs" min="0" max="2000" step="1" inputmode="numeric"
+                               value="{% if goals.carbs %}{{ goals.carbs|stringformat:'d' }}{% endif %}" placeholder="260">
+                    </div>
                 </div>
-                <button type="submit" class="btn btn-outline-secondary">Zapisz</button>
+                <button type="submit" class="btn btn-outline-secondary mt-2">Zapisz cele</button>
             </form>
-            <div class="form-text">Cel jest tylko Twój. Puste pole albo 0 wyłącza cel.</div>
+            <div class="form-text">Cele są tylko Twoje. Puste pole albo 0 wyłącza dany cel.</div>
         </details>
     </div>
 
@@ -170,9 +196,37 @@
                             <div class="small text-muted">B {{ entry.protein|floatformat:0 }} · T {{ entry.fat|floatformat:0 }} · W {{ entry.carbs|floatformat:0 }} g</div>
                         </div>
                         <strong class="text-nowrap">{{ entry.kcal|floatformat:0 }} kcal</strong>
+                        <button type="button" class="btn btn-sm btn-light rounded-circle" data-bs-toggle="collapse"
+                                data-bs-target="#diary-edit-{{ entry.pk }}" aria-expanded="false" aria-controls="diary-edit-{{ entry.pk }}"
+                                aria-label="Zmień {{ entry.name }}" title="Zmień"><i class="bi bi-pencil"></i></button>
                         <form method="post" action="{% url 'cooking:diary-delete' entry.pk %}">
                             {% csrf_token %}
                             <button type="submit" class="btn btn-sm btn-light rounded-circle" aria-label="Usuń {{ entry.name }}" title="Usuń"><i class="bi bi-trash"></i></button>
+                        </form>
+                    </li>
+                    <li class="collapse" id="diary-edit-{{ entry.pk }}">
+                        <form method="post" action="{% url 'cooking:diary-edit' entry.pk %}" class="row g-2 align-items-end pb-3">
+                            {% csrf_token %}
+                            <div class="col-5 col-sm-3">
+                                {% if entry.quantity %}
+                                    <label class="form-label small fw-semibold" for="diary-edit-q-{{ entry.pk }}">Ilość ({{ entry.unit_label }})</label>
+                                    <input type="text" inputmode="decimal" class="form-control" id="diary-edit-q-{{ entry.pk }}" name="quantity"
+                                           value="{{ entry.quantity|floatformat:'-2u' }}" required>
+                                {% else %}
+                                    <label class="form-label small fw-semibold" for="diary-edit-q-{{ entry.pk }}">Kcal</label>
+                                    <input type="text" inputmode="decimal" class="form-control" id="diary-edit-q-{{ entry.pk }}" name="kcal"
+                                           value="{{ entry.kcal|floatformat:'-1u' }}" required>
+                                {% endif %}
+                            </div>
+                            <div class="col-7 col-sm-4">
+                                <label class="form-label small fw-semibold" for="diary-edit-m-{{ entry.pk }}">Posiłek</label>
+                                <select class="form-select" id="diary-edit-m-{{ entry.pk }}" name="meal">
+                                    {% for value, label in meal_choices %}<option value="{{ value }}" {% if value == entry.meal %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-12 col-sm-auto">
+                                <button type="submit" class="btn btn-outline-secondary">Zapisz</button>
+                            </div>
                         </form>
                     </li>
                 {% endfor %}
@@ -181,6 +235,18 @@
     {% empty %}
         <p class="text-muted text-center my-4">{% if is_today %}Dziś nic jeszcze nie zapisano.{% else %}Tego dnia nic nie zapisano.{% endif %}</p>
     {% endfor %}
+
+    {% if copy_meals %}
+        <form method="post" action="{% url 'cooking:diary-copy' %}" class="d-flex flex-wrap align-items-center gap-2 mb-3" data-diary-copy>
+            {% csrf_token %}
+            <input type="hidden" name="date" value="{{ day|date:'Y-m-d' }}">
+            <span class="small text-muted"><i class="bi bi-copy me-1" aria-hidden="true"></i>Skopiuj z {{ copy_label }}:</span>
+            <button type="submit" class="btn btn-sm btn-light border rounded-pill">Cały dzień</button>
+            {% for value, label in copy_meals %}
+                <button type="submit" name="meal" value="{{ value }}" class="btn btn-sm btn-light border rounded-pill">{{ label }}</button>
+            {% endfor %}
+        </form>
+    {% endif %}
 
     {% comment %} Ostatnie 7 dni {% endcomment %}
     <div class="u-card u-card-pad mb-3">
