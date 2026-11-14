@@ -68,7 +68,10 @@
     <div class="u-card u-card-pad mb-3">
         <h2 class="h6 fw-bold mb-3">Dodaj posiłek</h2>
         <form method="post" action="{% url 'cooking:diary-add' %}" data-diary-add
-              data-search-url="{% url 'cooking:diary-search' %}" data-food-add-url="{% url 'cooking:food-add' %}">
+              data-search-url="{% url 'cooking:diary-search' %}" data-food-add-url="{% url 'cooking:food-add' %}"
+              data-barcode-url="{% url 'cooking:diary-barcode' %}"
+              {% if off_enabled %}data-off-search-url="{% url 'cooking:diary-search-off' %}"{% endif %}
+              data-zxing-url="{% static 'cooking/vendor/zxing-browser-0.2.1.min.js' %}">
             {% csrf_token %}
             <input type="hidden" name="date" value="{{ day|date:'Y-m-d' }}">
             {% comment %} Pozycja wybrana z wyszukiwarki (diary.js); puste = liczy się sama nazwa. {% endcomment %}
@@ -78,9 +81,18 @@
             <div class="row g-2">
                 <div class="col-12 col-md-5">
                     <label class="form-label small fw-semibold" for="diary-name">Co zjadłeś?</label>
-                    <input type="search" class="form-control" id="diary-name" name="name" maxlength="255"
-                           autocomplete="off" autocapitalize="sentences" placeholder="Szukaj: pierś z kurczaka, jogurt, przepis…"
-                           data-diary-search aria-controls="diary-results" required>
+                    <div class="input-group">
+                        <input type="search" class="form-control" id="diary-name" name="name" maxlength="255"
+                               autocomplete="off" autocapitalize="sentences" placeholder="Szukaj: pierś z kurczaka, jogurt, przepis…"
+                               data-diary-search aria-controls="diary-results" required>
+                        <button type="button" class="btn btn-outline-secondary" data-diary-scan hidden
+                                aria-label="Zeskanuj kod kreskowy" title="Zeskanuj kod kreskowy"><i class="bi bi-upc-scan"></i></button>
+                    </div>
+                    <div class="small mt-1" data-diary-status role="status" hidden></div>
+                    <div class="rb-camera rounded mt-2" data-diary-camera hidden>
+                        <video data-diary-video playsinline muted></video>
+                        <div class="rb-frame" aria-hidden="true"></div>
+                    </div>
                     <div class="list-group mt-1 shadow-sm" id="diary-results" data-diary-results hidden></div>
                 </div>
                 <div class="col-6 col-md-2">
@@ -187,5 +199,6 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'cooking/js/barcode-camera.js' %}"></script>
 <script src="{% static 'cooking/js/diary.js' %}"></script>
 {% endblock %}

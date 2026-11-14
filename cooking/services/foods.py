@@ -22,6 +22,7 @@ from ..models import (
     UNIT_TEASPOON,
     Food,
 )
+from .pantry_names import product_label
 from .receipt_parser import normalize_text
 
 DATA_FILE = Path(__file__).resolve().parent.parent / 'data' / 'foods.json'
@@ -62,6 +63,35 @@ def load_builtin_foods():
     if changed:
         Food.objects.bulk_update(changed, list(values))
     return len(new) + len(changed)
+
+
+def food_from_catalog_entry(entry):
+    """Pozycja bazy dla produktu z Open Food Facts (skan albo wybór z listy).
+
+    Zwraca istniejącą pozycję z tym kodem albo nazwą, inaczej tworzy nową.
+    None, gdy wpis nie ma nazwy albo kcal. „Sztuka” to całe opakowanie,
+    jeśli baza podała jego wagę.
+    """
+    if entry is None or not entry.product_name or entry.kcal_100 is None:
+        return None
+    barcode = entry.canonical_barcode or entry.lookup_barcode
+    # „Milbona (Lidl), Lidl” → „Milbona”: pierwsza marka, bez dopisków w nawiasie.
+    name = product_label(entry.product_name, entry.brand.split(',')[0].split('(')[0])[:160]
+    food = (
+        Food.objects.filter(barcode__in=[barcode, entry.lookup_barcode]).first()
+        or Food.objects.filter(search_key=normalize_text(name)).first()
+    )
+    if food is not None:
+        return food
+    package = None
+    factor = BASE_FACTOR.get(entry.suggested_unit)
+    if factor and entry.suggested_quantity_per_scan:
+        package = _number(entry.suggested_quantity_per_scan * factor)
+    return Food.objects.create(
+        name=name, search_key=normalize_text(name), barcode=barcode, source=Food.SOURCE_OFF,
+        kcal_100=entry.kcal_100, protein_100=entry.protein_100 or 0, fat_100=entry.fat_100 or 0,
+        carbs_100=entry.carbs_100 or 0, piece_weight=package,
+    )
 
 
 def search_foods(query, limit=12):

@@ -15,6 +15,7 @@ from datetime import timedelta
 from collections import Counter
 from decimal import Decimal
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Sum
@@ -42,7 +43,7 @@ from .models import (
     PantryProduct,
     Recipe,
 )
-from .services.foods import food_grams, search_foods
+from .services.foods import food_from_catalog_entry, food_grams, search_foods
 from .services.nutrition import (
     REASON_UNIT,
     NutritionIndex,
@@ -52,6 +53,13 @@ from .services.nutrition import (
     named_nutrients,
     parse_nutrient,
     recipe_portion,
+)
+from .services.pantry_names import product_label
+from .services.product_catalog import (
+    SUPPORTED_BARCODE_PATTERN,
+    CatalogUnavailable,
+    lookup_open_food_facts,
+    search_open_food_facts,
 )
 from .services.receipt_parser import normalize_text
 from .services.recipe_units import VOLUME_UNITS, amount_text
@@ -161,6 +169,7 @@ class DiaryView(LoginRequiredMixin, View):
             'default_meal': default_meal(),
             'units': DIARY_UNITS,
             'recent': recent_entries(request.user),
+            'off_enabled': settings.OPEN_FOOD_FACTS_ENABLED,
         })
 
 
@@ -206,6 +215,27 @@ def _result(kind, obj_id, name, note, per_100, units):
     }
 
 
+def _product_result(index, product):
+    """Wynik dla produktu spiżarni albo None, gdy nie ma wartości odżywczych."""
+    per_100 = index.per_100(product)
+    if per_100 is None:
+        return None
+    food = index.food(product.name)
+    base = UNIT_MILLILITER if product.unit in VOLUME_UNITS else UNIT_GRAM
+    units = _units(lambda unit: grams(1, unit, product) or (food_grams(1, unit, food) if food else None), base)
+    return _result(
+        'product', product.pk, product.label, f'{per_100.kcal:.0f} kcal / 100 {base} · spiżarnia', per_100, units,
+    )
+
+
+def _food_result(food):
+    per_100 = Nutrients(food.kcal_100, food.protein_100, food.fat_100, food.carbs_100)
+    return _result(
+        'food', food.pk, food.name, f'{food.kcal_100:.0f} kcal / 100 g', per_100,
+        _units(lambda unit: food_grams(1, unit, food)),
+    )
+
+
 class DiarySearchView(LoginRequiredMixin, View):
     """Wyszukiwarka dziennika: spiżarnia, przepisy i baza produktów (JSON)."""
 
@@ -221,17 +251,10 @@ class DiarySearchView(LoginRequiredMixin, View):
             return all(word in key for word in words)
 
         for product in sorted(index.products(), key=lambda product: product.label.casefold()):
-            per_100 = index.per_100(product)
-            if per_100 is None or not matches(product.label):
+            result = _product_result(index, product) if matches(product.label) else None
+            if result is None:
                 continue
-            food = index.food(product.name)
-            base = UNIT_MILLILITER if product.unit in VOLUME_UNITS else UNIT_GRAM
-            units = _units(
-                lambda unit: grams(1, unit, product) or (food_grams(1, unit, food) if food else None), base,
-            )
-            results.append(_result(
-                'product', product.pk, product.label, f'{per_100.kcal:.0f} kcal / 100 {base} · spiżarnia', per_100, units,
-            ))
+            results.append(result)
             taken.add(normalize_text(product.name))
 
         for recipe in Recipe.objects.prefetch_related('ingredient_items'):
@@ -249,12 +272,57 @@ class DiarySearchView(LoginRequiredMixin, View):
         for food in search_foods(' '.join(words), SEARCH_LIMIT):
             if food.search_key in taken:
                 continue  # produkt spiżarni o tej nazwie ma pierwszeństwo
-            per_100 = Nutrients(food.kcal_100, food.protein_100, food.fat_100, food.carbs_100)
-            results.append(_result(
-                'food', food.pk, food.name, f'{food.kcal_100:.0f} kcal / 100 g', per_100,
-                _units(lambda unit: food_grams(1, unit, food)),
-            ))
+            results.append(_food_result(food))
         return JsonResponse({'results': results[:SEARCH_LIMIT]})
+
+
+class DiaryOffSearchView(LoginRequiredMixin, View):
+    """Produkty z etykietą po nazwie, z Open Food Facts (JSON). Wybrany
+    produkt diary.js pobiera potem po kodzie przez DiaryBarcodeView."""
+
+    def get(self, request):
+        try:
+            found = search_open_food_facts(request.GET.get('q', ''))
+        except CatalogUnavailable:
+            return JsonResponse({'results': [], 'error': 'Open Food Facts teraz nie odpowiada. Spróbuj za chwilę.'})
+        return JsonResponse({'results': [
+            {
+                'barcode': item['barcode'],
+                'name': product_label(item['name'], item['brand']),
+                'note': ' · '.join(filter(None, [item['quantity_text'], f'{item["kcal_100"]:.0f} kcal / 100 g'])),
+            }
+            for item in found
+        ]})
+
+
+class DiaryBarcodeView(LoginRequiredMixin, View):
+    """Kod kreskowy w dzienniku: produkt spiżarni, pozycja bazy albo Open
+    Food Facts - wtedy produkt zapisuje się w bazie produktów (Food)."""
+
+    def get(self, request):
+        from .views import normalize_pantry_barcode
+        try:
+            barcode = normalize_pantry_barcode(request.GET.get('barcode'))
+        except ValueError as exc:
+            return JsonResponse({'found': False, 'message': str(exc)}, status=400)
+        product = PantryProduct.objects.filter(barcode=barcode).first()
+        result = _product_result(NutritionIndex(), product) if product else None
+        name = product.label if product else ''
+        if result is None:
+            food = Food.objects.filter(barcode=barcode).first()
+            if food is None:
+                entry = lookup_open_food_facts(barcode).entry
+                food = food_from_catalog_entry(entry)
+                name = name or (entry.product_name if entry else '')
+            if food is not None:
+                result = _food_result(food)
+        if result is None:
+            message = (
+                f'„{name}” nie ma wartości odżywczych w Open Food Facts.' if name
+                else f'Nie znam kodu {barcode}.'
+            )
+            return JsonResponse({'found': False, 'barcode': barcode, 'name': name, 'message': message})
+        return JsonResponse({'found': True, 'result': result})
 
 
 class DiaryAddView(LoginRequiredMixin, View):
@@ -411,7 +479,9 @@ class FoodCreateView(LoginRequiredMixin, View):
         }, status=status)
 
     def get(self, request):
-        return self._render(request, {'name': request.GET.get('name', '').strip()[:160]})
+        return self._render(request, {
+            'name': request.GET.get('name', '').strip()[:160], 'barcode': request.GET.get('barcode', '').strip()[:64],
+        })
 
     def post(self, request):
         post = request.POST
@@ -425,13 +495,17 @@ class FoodCreateView(LoginRequiredMixin, View):
             numbers = {field: parse_nutrient(post.get(field), label) for field, label in self.fields}
             if numbers['kcal_100'] is None:
                 raise ValueError('Podaj kcal na 100 g.')
+            # Kod ze skanera: następny skan znajdzie ten produkt.
+            barcode = post.get('barcode', '').strip()
+            if not SUPPORTED_BARCODE_PATTERN.fullmatch(barcode) or Food.objects.filter(barcode=barcode).exists():
+                barcode = ''
         except ValueError as exc:
             messages.error(request, str(exc))
             return self._render(request, post, status=400)
         for field in ('protein_100', 'fat_100', 'carbs_100'):
             numbers[field] = numbers[field] or Decimal('0')
         Food.objects.create(
-            name=name, search_key=key, source=Food.SOURCE_OWN, created_by=request.user,
+            name=name, search_key=key, source=Food.SOURCE_OWN, created_by=request.user, barcode=barcode,
             **{field: None if value is None else value.quantize(Decimal('0.1')) for field, value in numbers.items()},
         )
         messages.success(request, f'Dodano do bazy produktów: {name}. Znajdziesz go w wyszukiwarce.')

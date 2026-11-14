@@ -44,6 +44,7 @@ OPEN_FOOD_FACTS_FIELDS = (
     'ingredients_text',
     'ingredients_text_pl',
     'nutriments',
+    'nutrition',
     'selected_images',
     'image_front_small_url',
     'image_front_url',
@@ -211,6 +212,71 @@ def _request_product(barcode):
     if not isinstance(payload.get('product'), dict):
         raise CatalogUnavailable()
     return payload['product']
+
+
+OPEN_FOOD_FACTS_SEARCH_FIELDS = (
+    'code', 'lang', 'product_name', 'product_name_pl', 'product_name_en', 'brands', 'quantity', 'nutriments',
+    'nutrition',
+)
+
+
+def _request_search(query, limit):
+    """Surowa lista produktów z wyszukiwarki Open Food Facts (po nazwie)."""
+    params = urlencode({
+        'search_terms': query,
+        'search_simple': 1,
+        'action': 'process',
+        'json': 1,
+        'page_size': limit,
+        'cc': 'pl',
+        'lc': 'pl',
+        'fields': ','.join(OPEN_FOOD_FACTS_SEARCH_FIELDS),
+    })
+    raw_payload, _ = _open_url(f'{OPEN_FOOD_FACTS_ROOT}/cgi/search.pl?{params}', MAX_JSON_RESPONSE_BYTES, 'application/json')
+    try:
+        payload = json.loads(raw_payload.decode('utf-8'))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise CatalogUnavailable() from exc
+    products = payload.get('products') if isinstance(payload, dict) else None
+    if not isinstance(products, list):
+        raise CatalogUnavailable()
+    return [product for product in products if isinstance(product, dict)]
+
+
+def search_open_food_facts(query, limit=10):
+    """Produkty z etykietą po nazwie - tylko te z kodem, nazwą i kcal.
+
+    Każde wyszukanie to jedno zapytanie do sieci z tego samego limitu co
+    skaner. Wynik nie trafia do cache: wybrany produkt pobiera się potem po
+    kodzie (lookup_open_food_facts). Rzuca CatalogUnavailable, gdy baza jest
+    wyłączona, limit wyczerpany albo sieć nie odpowiada.
+    """
+    query = _clean_text(query, max_length=80)
+    if not query:
+        return []
+    if not settings.OPEN_FOOD_FACTS_ENABLED:
+        raise CatalogUnavailable()
+    if not _take_quota_slot(timezone.now()):
+        raise CatalogUnavailable(60)
+    try:
+        products = _request_search(query, limit)
+    except CatalogProductNotFound:
+        return []
+    results = []
+    for product in products:
+        barcode = _clean_text(product.get('code'), max_length=64)
+        name, _ = _pick_product_name(product)
+        nutrition = _nutrition(product)
+        if not SUPPORTED_BARCODE_PATTERN.fullmatch(barcode) or not name or nutrition['kcal_100'] is None:
+            continue
+        results.append({
+            'barcode': barcode,
+            'name': name,
+            'brand': _clean_text(product.get('brands'), max_length=160).split(',')[0].split('(')[0].strip(),
+            'quantity_text': _clean_text(product.get('quantity'), max_length=80),
+            **nutrition,
+        })
+    return results
 
 
 def _safe_image_url(value):
@@ -432,11 +498,28 @@ def _nutrient(nutriments, key):
     return value.quantize(Decimal('0.1'))
 
 
+def _nutriments(product):
+    """Wartości na 100 g/ml pod kluczami „…_100g”.
+
+    Open Food Facts podaje je na dwa sposoby: w `nutriments` (wyszukiwarka,
+    starsze API) albo - w API v3.6, gdzie `nutriments` bywa puste - w
+    `nutrition.aggregated_set.nutrients` jako {value, unit}.
+    """
+    nutriments = product.get('nutriments')
+    values = dict(nutriments) if isinstance(nutriments, dict) else {}
+    nutrition = product.get('nutrition')
+    aggregated = nutrition.get('aggregated_set') if isinstance(nutrition, dict) else None
+    if isinstance(aggregated, dict) and aggregated.get('per') in ('100g', '100ml'):
+        nutrients = aggregated.get('nutrients')
+        for name, data in (nutrients.items() if isinstance(nutrients, dict) else ()):
+            if isinstance(data, dict):
+                values.setdefault(f'{name}_100g', data.get('value'))
+    return values
+
+
 def _nutrition(product):
     """Wartości odżywcze na 100 g/ml. Bez kcal bierzemy kJ (1 kcal = 4,184 kJ)."""
-    nutriments = product.get('nutriments')
-    if not isinstance(nutriments, dict):
-        nutriments = {}
+    nutriments = _nutriments(product)
     kcal = _nutrient(nutriments, 'energy-kcal_100g')
     if kcal is None:
         kilojoules = _nutrient(nutriments, 'energy-kj_100g')

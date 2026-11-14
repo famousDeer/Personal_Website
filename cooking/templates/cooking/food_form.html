@@ -11,6 +11,7 @@
     <form method="post">
         {% csrf_token %}
         <input type="hidden" name="next" value="{{ back_url }}">
+        <input type="hidden" name="barcode" value="{{ values.barcode|default:'' }}">
         <label class="form-label small fw-semibold" for="food-name">Nazwa</label>
         <input type="text" class="form-control" id="food-name" name="name" maxlength="160" value="{{ values.name|default:'' }}"
                autocapitalize="sentences" required>

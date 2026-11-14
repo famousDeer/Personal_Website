@@ -1043,7 +1043,10 @@ class Food(models.Model):
     """
     SOURCE_BUILTIN = 'builtin'
     SOURCE_OWN = 'own'
-    SOURCE_CHOICES = [(SOURCE_BUILTIN, 'Wbudowane'), (SOURCE_OWN, 'Dodane w domu')]
+    SOURCE_OFF = 'off'
+    SOURCE_CHOICES = [
+        (SOURCE_BUILTIN, 'Wbudowane'), (SOURCE_OWN, 'Dodane w domu'), (SOURCE_OFF, 'Open Food Facts'),
+    ]
 
     name = models.CharField(max_length=160, unique=True)
     # Nazwa bez ogonków i wielkości liter (normalize_text) - do wyszukiwania.
@@ -1055,6 +1058,8 @@ class Food(models.Model):
     piece_weight = models.DecimalField(max_digits=7, decimal_places=1, null=True, blank=True)
     spoon_weight = models.DecimalField(max_digits=7, decimal_places=1, null=True, blank=True)
     glass_weight = models.DecimalField(max_digits=7, decimal_places=1, null=True, blank=True)
+    # Kod kreskowy produktu z etykietą (skaner w dzienniku, Open Food Facts).
+    barcode = models.CharField(max_length=64, blank=True, db_index=True)
     source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default=SOURCE_OWN)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='foods')
     created_at = models.DateTimeField(auto_now_add=True)

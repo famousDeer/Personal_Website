@@ -1,9 +1,10 @@
 """Kalorie i makro: produkty, Open Food Facts, przepisy i dziennik posiłków."""
 from datetime import timedelta
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -25,7 +26,7 @@ from .services.nutrition import (
     recipe_nutrition,
     recipe_portion,
 )
-from .services.product_catalog import _normalize_product
+from .services.product_catalog import CatalogProductNotFound, CatalogUnavailable, _normalize_product
 
 
 class NutritionBase(TestCase):
@@ -125,6 +126,22 @@ class CatalogNutritionTests(TestCase):
         self.assertEqual(data['protein_100'], Decimal('4.3'))
         self.assertEqual(data['fat_100'], Decimal('3.0'))
         self.assertIsNone(data['carbs_100'])
+
+    def test_nutrition_block_of_api_v3_is_read_when_nutriments_are_empty(self):
+        data = _normalize_product({'code': '1', 'nutriments': {}, 'nutrition': {'aggregated_set': {
+            'per': '100g', 'nutrients': {
+                'energy-kcal': {'unit': 'kcal', 'value': 60}, 'proteins': {'unit': 'g', 'value': 11},
+                'fat': {'unit': 'g', 'value': 0.2}, 'carbohydrates': {'unit': 'g', 'value': 4},
+            },
+        }}}, '1')
+        self.assertEqual(
+            (data['kcal_100'], data['protein_100'], data['fat_100'], data['carbs_100']),
+            (Decimal('60.0'), Decimal('11.0'), Decimal('0.2'), Decimal('4.0')),
+        )
+        per_serving = {'code': '1', 'nutrition': {'aggregated_set': {
+            'per': 'serving', 'nutrients': {'energy-kcal': {'value': 90}},
+        }}}
+        self.assertIsNone(_normalize_product(per_serving, '1')['kcal_100'])
 
     def test_kilojoules_are_converted_when_kcal_missing(self):
         data = _normalize_product({'code': '1', 'nutriments': {'energy-kj_100g': 418.4}}, '1')
@@ -326,3 +343,76 @@ class FoodBaseTests(NutritionBase):
         ]:
             self.assertContains(self.client.post(url, data), text, status_code=400)
         self.assertEqual(Food.objects.filter(source='own').count(), 1)
+
+
+@override_settings(OPEN_FOOD_FACTS_ENABLED=True, OPEN_FOOD_FACTS_RATE_LIMIT=12)
+class DiaryLabelledProductTests(NutritionBase):
+    """Skaner i szukanie po nazwie w Open Food Facts (sieć mockowana)."""
+
+    SKYR = {
+        'code': '5902409703887', 'product_name_pl': 'Skyr naturalny', 'brands': 'Fruvita, Biedronka',
+        'quantity': '150 g', 'product_quantity': 150, 'product_quantity_unit': 'g',
+        'nutriments': {'energy-kcal_100g': 66, 'proteins_100g': 12, 'fat_100g': 0, 'carbohydrates_100g': 4.1},
+    }
+
+    def scan(self, barcode):
+        return self.client.get(reverse('cooking:diary-barcode'), {'barcode': barcode}).json()
+
+    @patch('cooking.services.product_catalog._request_product')
+    def test_scan_saves_open_food_facts_product_in_food_base(self, request_product):
+        request_product.return_value = self.SKYR
+        data = self.scan('5902409703887')
+        food = Food.objects.get(barcode='5902409703887')
+        self.assertEqual((food.name, food.kcal_100, food.piece_weight, food.source),
+                         ('Skyr naturalny (Fruvita)', Decimal('66.0'), Decimal('150.0'), 'off'))
+        self.assertEqual((data['found'], data['result']['kind'], data['result']['id']), (True, 'food', food.pk))
+        self.assertEqual([unit['value'] for unit in data['result']['units']], ['szt', 'g'])
+
+        self.scan('5902409703887')                      # drugi skan: z bazy, bez sieci
+        self.assertEqual((request_product.call_count, Food.objects.filter(source='off').count()), (1, 1))
+        self.client.post(reverse('cooking:diary-add'), {'food': food.pk, 'quantity': '1', 'unit': 'szt'})
+        self.assertEqual(MealEntry.objects.get().kcal, Decimal('99.0'))
+
+    @patch('cooking.services.product_catalog._request_product')
+    def test_scan_prefers_pantry_product_and_reports_unknown_code(self, request_product):
+        self.rice.barcode = '5900000000222'
+        self.rice.save()
+        data = self.scan('5900000000222')
+        self.assertEqual((data['result']['kind'], data['result']['id']), ('product', self.rice.pk))
+        request_product.assert_not_called()
+
+        request_product.side_effect = CatalogProductNotFound()
+        data = self.scan('5900000000338')
+        self.assertEqual((data['found'], data['barcode']), (False, '5900000000338'))
+        self.assertIn('Nie znam kodu', data['message'])
+        self.assertEqual(self.client.get(reverse('cooking:diary-barcode'), {'barcode': ''}).status_code, 400)
+
+    @patch('cooking.services.product_catalog._request_search')
+    def test_name_search_lists_only_products_with_calories(self, request_search):
+        request_search.return_value = [
+            self.SKYR,
+            {'code': '5900000000345', 'product_name': 'Bez kalorii', 'nutriments': {}},
+            {'code': 'x', 'product_name': 'Zły kod', 'nutriments': {'energy-kcal_100g': 10}},
+        ]
+        data = self.client.get(reverse('cooking:diary-search-off'), {'q': 'skyr'}).json()
+        self.assertEqual(data['results'], [
+            {'barcode': '5902409703887', 'name': 'Skyr naturalny (Fruvita)', 'note': '150 g · 66 kcal / 100 g'},
+        ])
+        self.assertEqual(request_search.call_args.args[0], 'skyr')
+        self.assertFalse(Food.objects.exists())          # zapis dopiero po wyborze
+
+    @patch('cooking.services.product_catalog._request_search')
+    def test_name_search_respects_switch_and_errors(self, request_search):
+        request_search.side_effect = CatalogUnavailable()
+        url = reverse('cooking:diary-search-off')
+        self.assertIn('nie odpowiada', self.client.get(url, {'q': 'skyr'}).json()['error'])
+        with override_settings(OPEN_FOOD_FACTS_ENABLED=False):
+            request_search.reset_mock()
+            self.assertEqual(self.client.get(url, {'q': 'skyr'}).json()['results'], [])
+            request_search.assert_not_called()
+            self.assertNotContains(self.client.get(reverse('cooking:diary')), 'data-off-search-url')
+        self.assertContains(self.client.get(reverse('cooking:diary')), 'data-off-search-url')
+
+    def test_own_food_keeps_scanned_barcode(self):
+        self.client.post(reverse('cooking:food-add'), {'name': 'Baton', 'kcal_100': '450', 'barcode': '5900000000338'})
+        self.assertEqual(self.scan('5900000000338')['result']['name'], 'Baton')
