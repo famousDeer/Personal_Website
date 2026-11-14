@@ -1,5 +1,6 @@
 {% extends 'cooking/index.html' %}
 {% load ui %}
+{% load static %}
 
 {% block title %}Dziennik kalorii{% endblock %}
 {% block cooking_editor_assets %}{% endblock %}
@@ -66,18 +67,21 @@
     {% comment %} Dodawanie pozycji {% endcomment %}
     <div class="u-card u-card-pad mb-3">
         <h2 class="h6 fw-bold mb-3">Dodaj posiłek</h2>
-        <form method="post" action="{% url 'cooking:diary-add' %}" data-diary-add>
+        <form method="post" action="{% url 'cooking:diary-add' %}" data-diary-add
+              data-search-url="{% url 'cooking:diary-search' %}" data-food-add-url="{% url 'cooking:food-add' %}">
             {% csrf_token %}
             <input type="hidden" name="date" value="{{ day|date:'Y-m-d' }}">
+            {% comment %} Pozycja wybrana z wyszukiwarki (diary.js); puste = liczy się sama nazwa. {% endcomment %}
+            <input type="hidden" name="food" data-diary-pick="food">
+            <input type="hidden" name="product" data-diary-pick="product">
+            <input type="hidden" name="recipe" data-diary-pick="recipe">
             <div class="row g-2">
                 <div class="col-12 col-md-5">
                     <label class="form-label small fw-semibold" for="diary-name">Co zjadłeś?</label>
-                    <input type="text" class="form-control" id="diary-name" name="name" list="diary-names" maxlength="255"
-                           autocomplete="off" autocapitalize="sentences" placeholder="Produkt ze spiżarni, przepis albo dowolna nazwa" required>
-                    <datalist id="diary-names">
-                        {% for title in recipe_titles %}<option value="{{ title }}" label="przepis"></option>{% endfor %}
-                        {% for name in product_names %}<option value="{{ name }}"></option>{% endfor %}
-                    </datalist>
+                    <input type="search" class="form-control" id="diary-name" name="name" maxlength="255"
+                           autocomplete="off" autocapitalize="sentences" placeholder="Szukaj: pierś z kurczaka, jogurt, przepis…"
+                           data-diary-search aria-controls="diary-results" required>
+                    <div class="list-group mt-1 shadow-sm" id="diary-results" data-diary-results hidden></div>
                 </div>
                 <div class="col-6 col-md-2">
                     <label class="form-label small fw-semibold" for="diary-quantity">Ilość</label>
@@ -118,7 +122,24 @@
                 </div>
                 <div class="form-text">Wpisane kcal dotyczą całej zjedzonej ilości i mają pierwszeństwo przed danymi produktu.</div>
             </details>
-            <button type="submit" class="btn btn-primary mt-3"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Dodaj</button>
+            <div class="d-flex flex-wrap align-items-center gap-3 mt-3">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Dodaj</button>
+                <span class="small text-muted" data-diary-preview aria-live="polite"></span>
+            </div>
+
+            {% if recent %}
+                <h3 class="small text-uppercase fw-bold text-muted mt-4 mb-2">Ostatnio i najczęściej</h3>
+                <div class="d-flex flex-wrap gap-2" data-diary-recent>
+                    {% for entry in recent %}
+                        <button type="submit" name="repeat" value="{{ entry.pk }}" formnovalidate
+                                class="btn btn-sm btn-light border rounded-pill text-start">
+                            <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>{{ entry.name }}{% if entry.amount %} · {{ entry.amount }}{% endif %}
+                            <span class="text-muted">· {{ entry.kcal|floatformat:0 }} kcal</span>
+                        </button>
+                    {% endfor %}
+                </div>
+                <div class="form-text">Dodaje się do dnia i posiłku wybranych wyżej.</div>
+            {% endif %}
         </form>
     </div>
 
@@ -163,4 +184,8 @@
         {% endfor %}
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'cooking/js/diary.js' %}"></script>
 {% endblock %}

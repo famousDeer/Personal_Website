@@ -1,0 +1,61 @@
+{% extends 'cooking/index.html' %}
+{% load ui %}
+
+{% block title %}Własny produkt – dziennik kalorii{% endblock %}
+{% block cooking_editor_assets %}{% endblock %}
+
+{% block content_cooking %}
+{% page_head title="Własny produkt" eyebrow="Dziennik kalorii" icon="bi-plus-circle" sub="Trafia do wspólnej bazy produktów: znajdzie go wyszukiwarka dziennika i policzą przepisy." back=back_url back_label="Wróć do dziennika" %}{% endpage_head %}
+
+<div class="u-card u-card-pad animate-fade-in-up" style="max-width: 640px;">
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ back_url }}">
+        <label class="form-label small fw-semibold" for="food-name">Nazwa</label>
+        <input type="text" class="form-control" id="food-name" name="name" maxlength="160" value="{{ values.name|default:'' }}"
+               autocapitalize="sentences" required>
+
+        <h2 class="h6 fw-bold mt-4 mb-2">Na 100 g</h2>
+        <div class="row g-2">
+            <div class="col-6 col-sm-3">
+                <label class="form-label small fw-semibold" for="food-kcal">Kcal</label>
+                <input type="text" inputmode="decimal" class="form-control" id="food-kcal" name="kcal_100" value="{{ values.kcal_100|default:'' }}" required>
+            </div>
+            <div class="col-6 col-sm-3">
+                <label class="form-label small fw-semibold" for="food-protein">Białko (g)</label>
+                <input type="text" inputmode="decimal" class="form-control" id="food-protein" name="protein_100" value="{{ values.protein_100|default:'' }}">
+            </div>
+            <div class="col-6 col-sm-3">
+                <label class="form-label small fw-semibold" for="food-fat">Tłuszcz (g)</label>
+                <input type="text" inputmode="decimal" class="form-control" id="food-fat" name="fat_100" value="{{ values.fat_100|default:'' }}">
+            </div>
+            <div class="col-6 col-sm-3">
+                <label class="form-label small fw-semibold" for="food-carbs">Węglowodany (g)</label>
+                <input type="text" inputmode="decimal" class="form-control" id="food-carbs" name="carbs_100" value="{{ values.carbs_100|default:'' }}">
+            </div>
+        </div>
+
+        <h2 class="h6 fw-bold mt-4 mb-1">Miary domowe <span class="fw-normal text-muted">(opcjonalnie)</span></h2>
+        <p class="form-text mt-0">Ile gramów ma jedna sztuka, łyżka i szklanka – wtedy można wpisać „2 szt.” zamiast gramów.</p>
+        <div class="row g-2">
+            <div class="col-4">
+                <label class="form-label small fw-semibold" for="food-piece">Sztuka (g)</label>
+                <input type="text" inputmode="decimal" class="form-control" id="food-piece" name="piece_weight" value="{{ values.piece_weight|default:'' }}">
+            </div>
+            <div class="col-4">
+                <label class="form-label small fw-semibold" for="food-spoon">Łyżka (g)</label>
+                <input type="text" inputmode="decimal" class="form-control" id="food-spoon" name="spoon_weight" value="{{ values.spoon_weight|default:'' }}">
+            </div>
+            <div class="col-4">
+                <label class="form-label small fw-semibold" for="food-glass">Szklanka (g)</label>
+                <input type="text" inputmode="decimal" class="form-control" id="food-glass" name="glass_weight" value="{{ values.glass_weight|default:'' }}">
+            </div>
+        </div>
+
+        <div class="d-flex gap-2 mt-4">
+            <button type="submit" class="btn btn-primary"><i class="bi bi-check2 me-1" aria-hidden="true"></i>Dodaj do bazy</button>
+            <a href="{{ back_url }}" class="btn btn-light">Anuluj</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

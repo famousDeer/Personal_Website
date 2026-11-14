@@ -1,0 +1,227 @@
+# polska nazwa|frazy (wszystkie muszą wystąpić; !fraza = nie może)|g/szt|g/łyżka|g/szklanka
+Pierś z kurczaka|chicken, broiler;breast;meat only, raw|200||
+Udko z kurczaka|chicken, broilers or fryers, thigh, meat and skin, raw|150||
+Podudzie z kurczaka|chicken, broilers or fryers, drumstick, meat and skin, raw|110||
+Skrzydełka z kurczaka|chicken, broilers or fryers, wing, meat and skin, raw|90||
+Kurczak cały|chicken, broilers or fryers, meat and skin, raw;!giblets;!neck|||
+Wątróbka drobiowa|chicken, liver, all classes, raw|||
+Mięso mielone z indyka|turkey, ground, raw;!fat free;!93;!85|||
+Pierś z indyka|turkey;breast, meat only, raw;!enhanced;!young|||
+Mięso mielone wołowe|beef, ground, 85% lean meat / 15% fat, raw|||
+Wołowina (udziec)|beef, round, top round;separable lean only;all grades, raw;!trimmed to 1/8|||
+Polędwica wołowa|beef, tenderloin, steak, separable lean only, trimmed to 1/8" fat, all grades, raw|||
+Antrykot wołowy|beef, rib eye steak, boneless;lean only;all grades, raw|||
+Schab wieprzowy|pork, fresh, loin, center loin (chops), boneless, separable lean only, raw|||
+Karkówka wieprzowa|pork, fresh, shoulder, (boston butt), blade (steaks), separable lean and fat, raw|||
+Łopatka wieprzowa|pork, fresh, shoulder, whole, separable lean and fat, raw|||
+Polędwiczka wieprzowa|pork, fresh, loin, tenderloin, separable lean only, raw|||
+Mięso mielone wieprzowe|pork, fresh, ground, raw|||
+Żeberka wieprzowe|pork, fresh, spareribs, separable lean and fat, raw|||
+Boczek surowy|pork, fresh, belly, raw|||
+Boczek wędzony|pork, cured, bacon, unprepared|||
+Szynka gotowana|ham, sliced, regular (approximately 11% fat)|20||
+Kiełbasa|kielbasa, fully cooked, unheated|||
+Parówki|frankfurter, pork|50||
+Salami|salami, dry or hard, pork, beef|||
+Łosoś|fish, salmon, atlantic, farmed, raw|||
+Dorsz|fish, cod, atlantic, raw|||
+Tuńczyk w sosie własnym|fish, tuna, light, canned in water, drained solids|||
+Tuńczyk w oleju|fish, tuna, light, canned in oil, drained solids|||
+Makrela|fish, mackerel, atlantic, raw|||
+Śledź|fish, herring, atlantic, raw|||
+Pstrąg|fish, trout, rainbow, farmed, raw|||
+Krewetki|crustaceans, shrimp, mixed species, raw|||
+Mintaj|fish, pollock, alaska, raw|||
+Jajko|egg, whole, raw, fresh|60||
+Białko jaja|egg, white, raw, fresh|35||
+Żółtko jaja|egg, yolk, raw, fresh|18||
+Mleko 3,2%|milk, whole, 3.25% milkfat, with added vitamin d||15|250
+Mleko 2%|milk, reduced fat, fluid, 2% milkfat, with added vitamin a and vitamin d||15|250
+Mleko 0,5%|milk, nonfat, fluid, with added vitamin a and vitamin d (fat free or skim)||15|250
+Jogurt naturalny|yogurt, plain, whole milk||20|250
+Jogurt grecki|yogurt, greek, plain, whole milk||20|250
+Jogurt grecki 0%|yogurt, greek, plain, nonfat||20|250
+Kefir|kefir, lowfat, plain|||250
+Maślanka|milk, buttermilk, fluid, cultured, lowfat|||250
+Śmietana 18%|cream, sour, cultured||20|
+Śmietanka 30%|cream, fluid, heavy whipping||15|250
+Masło|butter, without salt||14|
+Serek wiejski|cheese, cottage, creamed, large or small curd||25|
+Serek wiejski lekki|cheese, cottage, lowfat, 1% milkfat;!lactose;!sodium||25|
+Ser żółty|cheese, gouda|20||
+Ser cheddar|cheese, cheddar;!sharp;!reduced;!low;!nonfat|20||
+Mozzarella|cheese, mozzarella, whole milk;!low moisture|125||
+Parmezan|cheese, parmesan, grated||5|
+Feta|cheese, feta|||
+Ser pleśniowy|cheese, blue|||
+Serek śmietankowy|cheese, cream;!fat free;!low fat||20|
+Ricotta|cheese, ricotta, whole milk|||
+Ryż biały|rice, white, long-grain, regular, raw, unenriched||15|185
+Ryż brązowy|rice, brown, long-grain, raw||15|185
+Kasza gryczana|buckwheat groats, roasted, dry||15|165
+Kasza jaglana|millet, raw||15|200
+Kasza jęczmienna|barley, pearled, raw||15|200
+Kasza bulgur|bulgur, dry||15|140
+Kuskus|couscous, dry||15|175
+Komosa ryżowa|quinoa, uncooked||15|170
+Płatki owsiane|cereals, oats, regular and quick, not fortified, dry||10|80
+Makaron|pasta, dry, unenriched|||
+Makaron pełnoziarnisty|pasta, whole-wheat, dry|||
+Mąka pszenna|wheat flour, white, all-purpose, unenriched||10|125
+Mąka pełnoziarnista|wheat flour, whole-grain;!soft||10|120
+Mąka żytnia|rye flour, medium||10|100
+Skrobia kukurydziana|cornstarch||8|130
+Bułka tarta|bread, crumbs, dry, grated, plain||8|110
+Chleb pszenny|bread, white, commercially prepared (includes soft bread crumbs)|35||
+Chleb żytni|bread, rye|35||
+Chleb pełnoziarnisty|bread, whole-wheat, commercially prepared|35||
+Bułka pszenna|rolls, hard (includes kaiser)|60||
+Tortilla pszenna|tortillas, ready-to-bake or -fry, flour;!refrigerated;!shelf|60||
+Ziemniaki|potatoes, flesh and skin, raw|150||
+Bataty|sweet potato, raw, unprepared|200||
+Marchew|carrots, raw|60||
+Pietruszka korzeń|parsnips, raw|80||
+Seler korzeń|celeriac, raw|||
+Seler naciowy|celery, raw|40||
+Cebula|onions, raw|110||
+Cebula czerwona|onions, raw|110||
+Czosnek|garlic, raw|5||
+Por|leeks, (bulb and lower leaf-portion), raw|150||
+Pomidor|tomatoes, red, ripe, raw, year round average|150||
+Pomidorki koktajlowe|tomatoes, red, ripe, raw, year round average|15||
+Pomidory z puszki|tomatoes, red, ripe, canned, packed in tomato juice;!no salt|||
+Passata pomidorowa|tomato products, canned, puree, without salt added|||250
+Koncentrat pomidorowy|tomato products, canned, paste, without salt added||20|
+Ogórek|cucumber, with peel, raw|200||
+Ogórek kiszony|pickles, cucumber, sour;!low sodium|60||
+Papryka czerwona|peppers, sweet, red, raw|200||
+Papryka zielona|peppers, sweet, green, raw|200||
+Papryka żółta|peppers, sweet, yellow, raw|200||
+Cukinia|squash, summer, zucchini, includes skin, raw|300||
+Bakłażan|eggplant, raw|300||
+Dynia|pumpkin, raw|||
+Brokuł|broccoli, raw|400||
+Kalafior|cauliflower, raw|600||
+Kapusta biała|cabbage, raw|||
+Kapusta czerwona|cabbage, red, raw|||
+Kapusta kiszona|sauerkraut, canned, solids and liquids|||
+Kapusta pekińska|cabbage, chinese (pe-tsai), raw|||
+Brukselka|brussels sprouts, raw|||
+Jarmuż|kale, raw|||
+Szpinak|spinach, raw|||
+Sałata|lettuce, green leaf, raw|||
+Sałata lodowa|lettuce, iceberg (includes crisphead types), raw|||
+Rukola|arugula, raw|||
+Rzodkiewka|radishes, raw|10||
+Burak|beets, raw|150||
+Fasolka szparagowa|beans, snap, green, raw|||
+Groszek zielony|peas, green, raw|||
+Kukurydza konserwowa|corn, sweet, yellow, canned, whole kernel, drained solids|||
+Pieczarki|mushrooms, white, raw|20||
+Szparagi|asparagus, raw|20||
+Awokado|avocados, raw, all commercial varieties|140||
+Oliwki zielone|olives, pickled, canned or bottled, green|4||
+Oliwki czarne|olives, ripe, canned (small-extra large)|4||
+Imbir|ginger root, raw|||
+Natka pietruszki|parsley, fresh||4|
+Koperek|dill weed, fresh||2|
+Bazylia świeża|basil, fresh|||
+Szczypiorek|chives, raw||3|
+Kolendra świeża|coriander (cilantro) leaves, raw|||
+Papryczka chili|peppers, hot chili, red, raw|15||
+Fasola biała sucha|beans, white, mature seeds, raw|||200
+Fasola czerwona z puszki|beans, kidney, red, mature seeds, canned, drained solids;!rinsed|||
+Ciecierzyca sucha|chickpeas (garbanzo beans, bengal gram), mature seeds, raw|||200
+Ciecierzyca z puszki|chickpeas (garbanzo beans, bengal gram), mature seeds, canned, drained solids|||
+Soczewica czerwona|lentils, pink or red, raw||15|190
+Soczewica zielona|lentils, raw||15|190
+Groch łuskany|peas, green, split, mature seeds, raw|||200
+Tofu|tofu, raw, firm, prepared with calcium sulfate|||
+Jabłko|apples, raw, with skin|180||
+Gruszka|pears, raw|170||
+Banan|bananas, raw|120||
+Pomarańcza|oranges, raw, all commercial varieties|180||
+Mandarynka|tangerines, (mandarin oranges), raw|70||
+Grejpfrut|grapefruit, raw, pink and red, all areas|250||
+Cytryna|lemons, raw, without peel|80||
+Sok z cytryny|lemon juice, raw||15|
+Limonka|limes, raw|60||
+Truskawki|strawberries, raw|15||150
+Maliny|raspberries, raw|||125
+Borówki|blueberries, raw|||150
+Jeżyny|blackberries, raw|||145
+Wiśnie|cherries, sour, red, raw|||
+Czereśnie|cherries, sweet, raw|8||
+Winogrona|grapes, red or green (european type, such as thompson seedless), raw|5||
+Śliwka|plums, raw|50||
+Brzoskwinia|peaches, yellow, raw|150||
+Nektarynka|nectarines, raw|140||
+Morela|apricots, raw|35||
+Kiwi|kiwifruit, green, raw|75||
+Ananas|pineapple, raw, all varieties|||
+Mango|mangos, raw|300||
+Arbuz|watermelon, raw|||
+Melon|melons, cantaloupe, raw|||
+Granat|pomegranates, raw|250||
+Rodzynki|raisins, dark, seedless||12|
+Daktyle suszone|dates, deglet noor|7||
+Morele suszone|apricots, dried, sulfured, uncooked|8||
+Śliwki suszone|plums, dried (prunes), uncooked|9||
+Żurawina suszona|cranberries, dried, sweetened||10|
+Orzechy włoskie|nuts, walnuts, english||8|100
+Orzechy laskowe|nuts, hazelnuts or filberts;!blanched;!roasted||10|130
+Migdały|nuts, almonds;!blanched;!roasted;!butter;!paste;!honey;!oil||10|140
+Orzechy nerkowca|nuts, cashew nuts, raw||10|130
+Orzeszki ziemne|peanuts, all types, raw||10|145
+Pistacje|nuts, pistachio nuts, raw|||
+Masło orzechowe|peanut butter, smooth style, without salt||16|
+Pestki dyni|seeds, pumpkin and squash seed kernels, dried||10|
+Słonecznik łuskany|seeds, sunflower seed kernels, dried||10|
+Sezam|seeds, sesame seeds, whole, dried||9|
+Siemię lniane|seeds, flaxseed||10|
+Nasiona chia|seeds, chia seeds, dried||12|
+Wiórki kokosowe|nuts, coconut meat, dried (desiccated), not sweetened||6|
+Mleko kokosowe|nuts, coconut milk, canned (liquid expressed from grated meat and water)||15|240
+Oliwa z oliwek|oil, olive, salad or cooking||14|
+Olej rzepakowy|oil, canola||14|
+Olej słonecznikowy|oil, sunflower, linoleic, (approx. 65%)||14|
+Olej kokosowy|oil, coconut||14|
+Smalec|lard||13|
+Margaryna|margarine, regular, 80% fat, composite, stick, without salt||14|
+Majonez|salad dressing, mayonnaise, regular||15|
+Ketchup|catsup||17|
+Musztarda|mustard, prepared, yellow||15|
+Sos sojowy|soy sauce made from soy and wheat (shoyu)||16|
+Ocet|vinegar, distilled||15|
+Ocet balsamiczny|vinegar, balsamic||16|
+Cukier|sugars, granulated||12|200
+Cukier brązowy|sugars, brown||12|200
+Cukier puder|sugars, powdered||8|120
+Miód|honey||21|
+Syrop klonowy|syrups, maple||20|
+Dżem|jams and preserves;!apricot;!dietetic||20|
+Czekolada gorzka|chocolate, dark, 70-85% cacao solids|||
+Czekolada mleczna|candies, milk chocolate;!almonds;!rice;!coated|||
+Kakao|cocoa, dry powder, unsweetened;!processed;!hi-fat||6|
+Drożdże świeże|leavening agents, yeast, baker's, compressed|||
+Drożdże suche|leavening agents, yeast, baker's, active dry|||
+Proszek do pieczenia|leavening agents, baking powder, double-acting, sodium aluminum sulfate|||
+Sól|salt, table|||
+Pieprz czarny|spices, pepper, black|||
+Papryka słodka mielona|spices, paprika|||
+Cynamon|spices, cinnamon, ground|||
+Żelatyna|gelatins, dry powder, unsweetened||10|
+Sok pomarańczowy|orange juice, raw|||250
+Sok jabłkowy|apple juice, canned or bottled, unsweetened, without added ascorbic acid|||250
+Piwo|alcoholic beverage, beer, regular, all|||250
+Wino czerwone|alcoholic beverage, wine, table, red;!merlot;!cabernet;!pinot;!syrah;!zinfandel;!burgundy;!barbera;!claret;!gamay;!lemberger;!mouvedre;!petite;!sangiovese;!carignane;!franc|||
+Wino białe|alcoholic beverage, wine, table, white;!chardonnay;!riesling;!sauvignon;!pinot;!chenin;!fume;!gewurz;!muller;!muscat;!semillon;!late|||
+Wódka|alcoholic beverage, distilled, vodka, 80 proof|||
+Chipsy ziemniaczane|snacks, potato chips, plain, salted|||
+Popcorn|snacks, popcorn, air-popped;!white|||
+Herbatniki|cookies, butter, commercially prepared, enriched|||
+Lody waniliowe|ice creams, vanilla;!light;!rich;!fat free;!soft;!no sugar|||
+Frytki mrożone|potatoes, french fried, all types, salt not added in processing, frozen, as purchased|||
+Hummus|hummus, commercial||15|
+Pesto|sauce, pesto, ready-to-serve, refrigerated||15|
+Woda||||

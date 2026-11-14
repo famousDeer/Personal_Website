@@ -1033,6 +1033,40 @@ class PantryBatch(models.Model):
         return (self.expires_on - timezone.localdate()).days
 
 
+class Food(models.Model):
+    """Baza produktów spożywczych do kalorii - niezależna od spiżarni.
+
+    Produkty bez etykiety (pierś z kurczaka, jabłko) i własne pozycje domu.
+    Wbudowana lista pochodzi z USDA FoodData Central (cooking/data/foods.json,
+    ładuje ją services/foods.py). Wartości na 100 g; miary domowe mówią, ile
+    gramów ma sztuka, łyżka i szklanka.
+    """
+    SOURCE_BUILTIN = 'builtin'
+    SOURCE_OWN = 'own'
+    SOURCE_CHOICES = [(SOURCE_BUILTIN, 'Wbudowane'), (SOURCE_OWN, 'Dodane w domu')]
+
+    name = models.CharField(max_length=160, unique=True)
+    # Nazwa bez ogonków i wielkości liter (normalize_text) - do wyszukiwania.
+    search_key = models.CharField(max_length=160, db_index=True)
+    kcal_100 = models.DecimalField(max_digits=6, decimal_places=1)
+    protein_100 = models.DecimalField(max_digits=6, decimal_places=1, default=Decimal('0'))
+    fat_100 = models.DecimalField(max_digits=6, decimal_places=1, default=Decimal('0'))
+    carbs_100 = models.DecimalField(max_digits=6, decimal_places=1, default=Decimal('0'))
+    piece_weight = models.DecimalField(max_digits=7, decimal_places=1, null=True, blank=True)
+    spoon_weight = models.DecimalField(max_digits=7, decimal_places=1, null=True, blank=True)
+    glass_weight = models.DecimalField(max_digits=7, decimal_places=1, null=True, blank=True)
+    source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default=SOURCE_OWN)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='foods')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'foods'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
 class NutritionGoal(models.Model):
     """Dzienny cel kalorii domownika (dziennik posiłków)."""
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='nutrition_goal')
@@ -1079,6 +1113,9 @@ class MealEntry(models.Model):
     )
     recipe = models.ForeignKey(
         Recipe, on_delete=models.SET_NULL, null=True, blank=True, related_name='meal_entries',
+    )
+    food = models.ForeignKey(
+        Food, on_delete=models.SET_NULL, null=True, blank=True, related_name='meal_entries',
     )
     created_at = models.DateTimeField(auto_now_add=True)
 

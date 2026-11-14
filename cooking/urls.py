@@ -14,6 +14,8 @@ urlpatterns = [
     # Dziennik posiłków i kalorii (cooking/views_diary.py)
     path('diary/', diary_views.DiaryView.as_view(), name='diary'),
     path('diary/add/', diary_views.DiaryAddView.as_view(), name='diary-add'),
+    path('diary/search/', diary_views.DiarySearchView.as_view(), name='diary-search'),
+    path('foods/add/', diary_views.FoodCreateView.as_view(), name='food-add'),
     path('diary/goal/', diary_views.DiaryGoalView.as_view(), name='diary-goal'),
     path('diary/<int:entry_id>/delete/', diary_views.DiaryDeleteView.as_view(), name='diary-delete'),
     path('pantry/', views.PantryListView.as_view(), name='pantry'),

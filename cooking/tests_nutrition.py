@@ -8,6 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .models import (
+    Food,
     MealEntry,
     NutritionGoal,
     PantryProduct,
@@ -15,6 +16,7 @@ from .models import (
     Recipe,
     RecipeStepIngredient,
 )
+from .services.foods import load_builtin_foods
 from .services.nutrition import (
     REASON_NO_DATA,
     REASON_UNIT,
@@ -169,7 +171,7 @@ class DiaryTests(NutritionBase):
 
     def test_unknown_or_incomplete_food_is_rejected_with_hint(self):
         response = self.add(name='Pizza na mieście', quantity='1', unit='szt')
-        self.assertContains(response, 'Wpisz kcal ręcznie.')
+        self.assertContains(response, 'Nie znam produktu „Pizza na mieście”.')
         self.egg.unit_weight = None
         self.egg.save()
         response = self.add(name='Jajko', quantity='2', unit='szt')
@@ -203,7 +205,9 @@ class DiaryTests(NutritionBase):
         self.assertEqual(response.context['remaining'], Decimal('1250'))
         self.assertContains(response, 'Zostało 1\xa0250 kcal')   # separator tysięcy (pl)
         self.assertNotContains(response, 'Cudze')
-        self.assertNotContains(response, 'Wczorajsze')
+        # Wczorajsza pozycja jest tylko w „Ostatnio i najczęściej”, nie w posiłkach dnia.
+        self.assertEqual([entry.name for meal in response.context['meals'] for entry in meal['entries']], ['Zupa', 'Kanapka'])
+        self.assertEqual([entry.name for entry in response.context['recent']], ['Wczorajsze', 'Kanapka', 'Zupa'])
 
         response = self.client.get(reverse('cooking:diary'), {'date': (today - timedelta(days=1)).isoformat()})
         self.assertContains(response, 'Wczorajsze')
@@ -221,3 +225,104 @@ class DiaryTests(NutritionBase):
         self.assertEqual(self.client.get(reverse('cooking:diary')).status_code, 302)
         self.client.post(reverse('cooking:diary-add'), {'name': 'Ryż', 'quantity': '100', 'unit': 'g'})
         self.assertFalse(MealEntry.objects.exists())
+
+
+class FoodBaseTests(NutritionBase):
+    """Baza produktów spożywczych: lista wbudowana, przepisy, wyszukiwarka dziennika."""
+
+    def setUp(self):
+        super().setUp()
+        load_builtin_foods()
+
+    def add(self, **data):
+        return self.client.post(reverse('cooking:diary-add'), data, follow=True)
+
+    def search(self, query):
+        return self.client.get(reverse('cooking:diary-search'), {'q': query}).json()['results']
+
+    def test_builtin_list_loads_once_and_keeps_own_foods(self):
+        count = Food.objects.count()
+        self.assertGreater(count, 200)
+        chicken = Food.objects.get(name='Pierś z kurczaka')
+        self.assertEqual((chicken.kcal_100, chicken.protein_100, chicken.source), (Decimal('120.0'), Decimal('22.5'), 'builtin'))
+        Food.objects.filter(name='Banan').update(source=Food.SOURCE_OWN, kcal_100=Decimal('1'))
+        Food.objects.filter(name='Jabłko').update(kcal_100=Decimal('1'))
+        load_builtin_foods()
+        self.assertEqual(Food.objects.count(), count)
+        self.assertEqual(Food.objects.get(name='Banan').kcal_100, Decimal('1.0'))      # własny zostaje
+        self.assertEqual(Food.objects.get(name='Jabłko').kcal_100, Decimal('52.0'))    # wbudowany wraca
+
+    def test_recipe_counts_ingredients_missing_from_pantry_and_household_measures(self):
+        butter = PantryProduct.objects.create(name='Masło', unit='g', kcal_100=Decimal('700'))
+        recipe = self.recipe([
+            ('pierś z kurczaka', '500', 'g'),   # tylko w bazie: 600 kcal
+            ('Banan', '2', 'szt'),              # 2 × 120 g × 89 kcal = 213,6
+            ('Masło', '1', 'lyzka'),            # kcal ze spiżarni (700), waga łyżki z bazy (14 g) = 98
+        ], portions=1)
+        result = recipe_nutrition(recipe, NutritionIndex())
+        self.assertEqual(result.missing, [])
+        self.assertEqual(result.total.kcal, Decimal('911.6'))
+        self.assertEqual(butter.kcal_100, Decimal('700'))
+
+    def test_search_merges_pantry_recipes_and_food_base(self):
+        self.recipe([('Ryż', '200', 'g')])                       # „Ryż z jajkiem”
+        results = self.search('ryz')
+        kinds = [(item['kind'], item['name']) for item in results]
+        self.assertEqual(kinds[:2], [('product', 'Ryż'), ('recipe', 'Ryż z jajkiem')])
+        self.assertIn(('food', 'Ryż biały'), kinds)
+        self.assertEqual(results[1]['units'], [{'value': 'porcja', 'label': 'porcja', 'grams': 100.0}])
+
+        chicken = self.search('piers kurcz')[0]
+        self.assertEqual((chicken['kind'], chicken['name'], chicken['per_100']['kcal']), ('food', 'Pierś z kurczaka', 120.0))
+        self.assertEqual([unit['value'] for unit in chicken['units']], ['szt', 'g'])
+        self.assertEqual(chicken['quantity'], 1)
+        self.assertEqual(self.search(''), [])
+        # Produkt spiżarni o nazwie z bazy zastępuje pozycję bazy.
+        self.assertEqual([item['kind'] for item in self.search('jajko') if item['name'] == 'Jajko'], ['product'])
+
+    def test_add_picked_food_product_and_plain_name(self):
+        chicken = Food.objects.get(name='Pierś z kurczaka')
+        self.add(food=chicken.pk, name='Pierś z kurczaka', quantity='150', unit='g')
+        self.add(product=self.egg.pk, name='Jajko', quantity='2', unit='szt')
+        self.add(name='banan', quantity='1', unit='szt')
+        rows = list(MealEntry.objects.order_by('id').values_list('name', 'kcal', 'food_id', 'product_id'))
+        self.assertEqual(rows, [
+            ('Pierś z kurczaka', Decimal('180.0'), chicken.pk, None),
+            ('Jajko', Decimal('168.0'), None, self.egg.pk),
+            ('Banan', Decimal('106.8'), Food.objects.get(name='Banan').pk, None),
+        ])
+        response = self.add(food=chicken.pk, quantity='1', unit='szklanka')
+        self.assertContains(response, 'Podaj ilość w gramach.')
+
+    def test_repeat_copies_own_entry_only(self):
+        yesterday = timezone.localdate() - timedelta(days=1)
+        mine = MealEntry.objects.create(
+            user=self.user, date=yesterday, meal='obiad', name='Zupa', quantity=Decimal('300'), unit='g',
+            kcal=Decimal('210'), protein=Decimal('9'),
+        )
+        theirs = MealEntry.objects.create(user=self.other, date=yesterday, name='Cudze', kcal=Decimal('1'))
+        response = self.client.get(reverse('cooking:diary'))
+        self.assertContains(response, 'name="repeat" value="%d"' % mine.pk)
+        self.assertNotContains(response, 'Cudze')
+
+        self.add(repeat=mine.pk, meal='kolacja')
+        copy = MealEntry.objects.get(date=timezone.localdate())
+        self.assertEqual((copy.name, copy.kcal, copy.protein, copy.meal, copy.user), ('Zupa', Decimal('210.0'), Decimal('9.0'), 'kolacja', self.user))
+        self.assertEqual(self.client.post(reverse('cooking:diary-add'), {'repeat': theirs.pk}).status_code, 404)
+
+    def test_own_food_is_added_and_found(self):
+        url = reverse('cooking:food-add')
+        self.assertContains(self.client.get(url, {'name': 'Pierogi babci'}), 'value="Pierogi babci"')
+        response = self.client.post(url, {'name': 'Pierogi babci', 'kcal_100': '210,5', 'protein_100': '6', 'piece_weight': '40'})
+        self.assertRedirects(response, reverse('cooking:diary'), fetch_redirect_response=False)
+        food = Food.objects.get(name='Pierogi babci')
+        self.assertEqual((food.kcal_100, food.fat_100, food.piece_weight, food.source, food.created_by),
+                         (Decimal('210.5'), Decimal('0'), Decimal('40.0'), 'own', self.user))
+        self.assertEqual(self.search('pierogi')[0]['name'], 'Pierogi babci')
+
+        for data, text in [
+            ({'name': 'pierogi BABCI', 'kcal_100': '1'}, 'W bazie jest już'),
+            ({'name': 'Nowe', 'kcal_100': ''}, 'Podaj kcal na 100 g.'),
+        ]:
+            self.assertContains(self.client.post(url, data), text, status_code=400)
+        self.assertEqual(Food.objects.filter(source='own').count(), 1)

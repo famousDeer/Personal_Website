@@ -3,6 +3,8 @@
 Źródło prawdy to produkt w spiżarni: kcal, białko, tłuszcz i węglowodany
 na 100 g/ml. Gdy produkt ich nie ma, liczy się wpis Open Food Facts dla
 jego kodu kreskowego (cache w ProductCatalogEntry - bez sięgania do sieci).
+Nazwa, której nie ma w spiżarni, trafia do bazy produktów (Food, services/
+foods.py) - stąd „pierś z kurczaka” i miary domowe (sztuka, łyżka, szklanka).
 
 - NutritionIndex: wszystkie produkty i grupy wczytane raz, żeby lista
   przepisów nie robiła zapytania na każdy składnik.
@@ -22,10 +24,12 @@ from ..models import (
     UNIT_MILLILITER,
     UNIT_PACKAGE,
     UNIT_PIECE,
+    Food,
     PantryProduct,
     ProductCatalogEntry,
     ProductGroup,
 )
+from .foods import food_grams
 from .receipt_parser import normalize_text
 from .recipe_units import ML_PER_UNIT, SKIPPED_IN_COOKING, VOLUME_UNITS
 
@@ -39,7 +43,7 @@ BASE_FACTOR = {
 }
 NUTRIENT_FIELDS = ('kcal_100', 'protein_100', 'fat_100', 'carbs_100')
 
-REASON_UNKNOWN = 'nie ma go w spiżarni'
+REASON_UNKNOWN = 'nie ma go w spiżarni ani w bazie produktów'
 REASON_NO_DATA = 'produkt nie ma wartości odżywczych'
 REASON_UNIT = 'nie da się przeliczyć na gramy'
 
@@ -116,14 +120,21 @@ class NutritionIndex:
             if key and product not in self._by_name.get(key, []):
                 self._by_name.setdefault(key, []).append(product)
 
+        # Baza produktów spożywczych: dla składników, których nie ma w spiżarni,
+        # i dla miar domowych (sztuka, łyżka, szklanka).
+        self._foods = {food.search_key: food for food in Food.objects.all()}
+
+    def food(self, name):
+        return self._foods.get(normalize_text(name or ''))
+
     def catalog_entry(self, product):
         return self._catalog.get(product.barcode) if product.barcode else None
 
     def per_100(self, product):
         return _own_nutrients(product) or _own_nutrients(self.catalog_entry(product))
 
-    def by_id(self, product_id):
-        return self._by_id.get(product_id)
+    def products(self):
+        return self._by_id.values()
 
     def product(self, name):
         """Produkt dla nazwy składnika: najpierw taki, który ma wartości
@@ -163,6 +174,36 @@ def product_nutrients(index, product, quantity, unit):
     return per_100.scaled(weight / 100), ''
 
 
+def food_nutrients(food, quantity, unit):
+    """(Nutrients, '') dla ilości produktu z bazy albo (None, powód)."""
+    weight = food_grams(quantity, unit, food)
+    if weight is None:
+        return None, REASON_UNIT
+    return _own_nutrients(food).scaled(weight / 100), ''
+
+
+def named_nutrients(index, name, quantity, unit):
+    """Wartości dla nazwy (składnik przepisu, wpis w dzienniku).
+
+    Zwraca (Nutrients, '', produkt spiżarni, pozycja bazy) albo
+    (None, powód, ...). Wartości na 100 g: spiżarnia, potem baza produktów.
+    Waga: spiżarnia, a gdy się nie da (łyżka masła, sztuka bez wagi) -
+    miary domowe z bazy.
+    """
+    product, food = index.product(name), index.food(name)
+    if product is None and food is None:
+        return None, REASON_UNKNOWN, None, None
+    per_100 = (index.per_100(product) if product else None) or _own_nutrients(food)
+    if per_100 is None:
+        return None, REASON_NO_DATA, product, food
+    weight = grams(quantity, unit, product) if product else None
+    if weight is None and food is not None:
+        weight = food_grams(quantity, unit, food)
+    if weight is None:
+        return None, REASON_UNIT, product, food
+    return per_100.scaled(weight / 100), '', product, food
+
+
 @dataclass
 class RecipeNutrition:
     total: Nutrients = Nutrients()
@@ -185,11 +226,7 @@ def recipe_nutrition(recipe, index):
     for item in recipe.ingredient_items.all():
         if item.unit in SKIPPED_IN_COOKING:
             continue  # szczypta, do smaku
-        product = index.product(item.name)
-        if product is None:
-            result.missing.append((item.name, REASON_UNKNOWN))
-            continue
-        nutrients, reason = product_nutrients(index, product, item.quantity, item.unit)
+        nutrients, reason, _, _ = named_nutrients(index, item.name, item.quantity, item.unit)
         if nutrients is None:
             result.missing.append((item.name, reason))
             continue
