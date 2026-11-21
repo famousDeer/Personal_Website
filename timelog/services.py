@@ -8,6 +8,7 @@ import datetime
 import unicodedata
 from collections import defaultdict
 
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 
@@ -57,11 +58,11 @@ def day_bounds(day):
     """Początek i koniec dnia w strefie lokalnej (doba przy zmianie czasu ma 23 albo 25 h)."""
     start = timezone.make_aware(datetime.datetime.combine(day, datetime.time.min))
     end = timezone.make_aware(datetime.datetime.combine(day + datetime.timedelta(days=1), datetime.time.min))
-    return start, end
+    return start.astimezone(datetime.timezone.utc), end.astimezone(datetime.timezone.utc)
 
 
 def local_time(day, value):
-    return timezone.make_aware(datetime.datetime.combine(day, value))
+    return timezone.make_aware(datetime.datetime.combine(day, value)).astimezone(datetime.timezone.utc)
 
 
 def normalize(text):
@@ -112,6 +113,8 @@ def start_timer(user, category, *, source=Entry.TIMER, at=None, note=''):
     poprawka pomyłki z 60 s - Instagram otwarty zaraz po starcie Pracy
     zamieniłby Pracę w Instagram i nie byłoby do czego wracać.
     """
+    # Stała blokada działa także wtedy, gdy nie ma jeszcze żadnego stopera.
+    get_user_model().objects.select_for_update().get(pk=user.pk)
     at = at or now()
     running = list(Entry.objects.select_for_update().filter(user=user, end__isnull=True).order_by('-start'))
     current = running[0] if running else None
@@ -137,6 +140,7 @@ def stop_timer(user, at=None, *, resume=False):
     (`resume_target`); nowy wpis jest w `stopped.resumed`. Zerknięcie
     krótsze niż minuta znika, a przerwany wpis po prostu biegnie dalej.
     """
+    get_user_model().objects.select_for_update().get(pk=user.pk)
     at = at or now()
     # of=self: Postgres nie blokuje wierszy z LEFT JOIN (interrupted bywa pusty).
     running = list(Entry.objects.select_for_update(of=('self',)).filter(user=user, end__isnull=True)

@@ -1,9 +1,12 @@
 import datetime
 import json
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from unittest import mock
 
 from django.contrib.auth.models import User
-from django.test import Client, TestCase
+from django.db import connections
+from django.test import Client, TestCase, TransactionTestCase, skipUnlessDBFeature
 from django.urls import reverse
 from django.utils import timezone
 
@@ -371,3 +374,48 @@ class BubbleTests(TimelogTestCase):
         self.assertNotContains(self.client.get(reverse('timelog:index')), 'data-time-bubble')
         self.client.logout()
         self.assertNotContains(self.client.get('/'), 'data-time-bubble')
+
+
+class DaylightSavingTests(TimelogTestCase):
+    def test_short_and_long_days(self):
+        self.freeze(at(datetime.date(2026, 11, 21), 12))
+        for day, hours in [(datetime.date(2026, 3, 29), 23), (datetime.date(2026, 10, 25), 25)]:
+            with self.subTest(day=day):
+                data = services.day_data(self.user, day)
+                self.assertEqual(data['untracked'], hours * 3600)
+                self.assertEqual(services.period_summary(self.user, day, day)['untracked'], hours * 3600)
+                Entry.objects.create(user=self.user, category=self.work, start=data['lo'], end=data['hi'])
+                data = services.day_data(self.user, day)
+                self.assertEqual(data['tracked'], hours * 3600)
+                self.assertEqual(data['bars'][0]['width'], 100)
+
+
+@skipUnlessDBFeature('has_select_for_update')
+class ConcurrentTimerTests(TransactionTestCase):
+    def test_simultaneous_starts_have_one_running_entry(self):
+        user = User.objects.create_user('concurrent')
+        category = Category.objects.create(user=user, name='Praca')
+        barrier = Barrier(2)
+
+        def start():
+            connection = connections['default']
+            first = True
+
+            def synchronize(execute, sql, params, many, context):
+                nonlocal first
+                if first and 'FOR UPDATE' in sql:
+                    first = False
+                    barrier.wait(timeout=10)
+                return execute(sql, params, many, context)
+
+            try:
+                with connection.execute_wrapper(synchronize):
+                    return services.start_timer(user, category).pk
+            finally:
+                connection.close()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(start) for _ in range(2)]
+            ids = [future.result(timeout=20) for future in futures]
+        self.assertEqual(ids[0], ids[1])
+        self.assertEqual(Entry.objects.filter(user=user, end=None).count(), 1)

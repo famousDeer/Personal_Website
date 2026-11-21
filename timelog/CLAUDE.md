@@ -9,6 +9,7 @@ Modele (`models.py`):
 
 `services.py`:
 - `start_timer` (zamyka biegnący; ta sama kategoria = bez zmian; przełączenie w ciągu 60 s poprawia kategorię zamiast tworzyć wpis – poza chwilową, która zapisuje `interrupted`), `stop_timer(resume=...)` – przy chwilowej wznawia przerwaną czynność nowym wpisem (`stopped.resumed`, łańcuch YouTube → Instagram się odwija), zerknięcie < 60 s znika, a przerwany wpis biegnie dalej; bez powrotu po `RESUME_LIMIT` (3 h) i do ukrytej kategorii. `resume_target` mówi, dokąd wróci (przycisk „Wróć do: …”).
+- Start i zatrzymanie stopera blokują rekord użytkownika w transakcji, również przy braku aktywnego wpisu. Granice dni i godziny lokalne są przeliczane na UTC przed arytmetyką czasu (zmiany czasu letniego/zimowego).
 - `flatten` – wpisy mogą się nakładać; przy liczeniu wygrywa wpis, który zaczął się później. `day_data`/`period_summary` liczą tylko czas do „teraz”, dzień = doba lokalna (23/25 h przy zmianie czasu, podziałka z `scale`).
 - `import_automatic(user, od, do)` – sen z `DailyHealth.raw['sleep']['dailySleepDTO']` (`sleepStart/EndTimestampGMT`) i treningi z `Workout` (data + `start_time` + `duration_s`). Wołany przy otwarciu dnia i podsumowania (bez crona, to tylko zapytania do bazy). Sen przycina stoper/skrót zostawiony na noc. Edytowany wpis dostaje `source=manual` i import go nie rusza; trening usunięty w Sporcie (`habits`) znika.
 
