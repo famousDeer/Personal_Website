@@ -6,6 +6,7 @@
 # stare obrazy, żeby nie zapychały karty SD.
 #
 #   deploy/update.sh            aktualizacja, jeśli są zmiany
+#   deploy/update.sh --current  przebudowa bieżącego commita bez pobierania zmian
 #   deploy/update.sh --force    przebudowa nawet bez nowych commitów
 #
 # Cron (codziennie o 4:30, log w ~/logs):
@@ -18,9 +19,10 @@
 main() {
     set -euo pipefail
 
-    local app_dir force=0 old new
+    local app_dir force=0 current=0 old new
     app_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
     [ "${1:-}" = "--force" ] && force=1
+    [ "${1:-}" = "--current" ] && current=1
     cd "$app_dir"
 
     # Dwa uruchomienia naraz (cron + ręcznie) budowałyby ten sam obraz dwa razy.
@@ -30,16 +32,23 @@ main() {
         return 0
     fi
 
-    git fetch --quiet
     old="$(git rev-parse HEAD)"
-    new="$(git rev-parse '@{u}')"
+    if [ "$current" -eq 1 ]; then
+        new="$old"
+        force=1
+    else
+        git fetch --quiet
+        new="$(git rev-parse '@{u}')"
+    fi
     if [ "$old" = "$new" ] && [ "$force" -eq 0 ]; then
         log "Brak zmian (${old:0:7})."
         return 0
     fi
 
     log "Aktualizacja ${old:0:7} -> ${new:0:7}"
-    git merge --ff-only --quiet '@{u}'
+    if [ "$current" -eq 0 ]; then
+        git merge --ff-only --quiet '@{u}'
+    fi
 
     # Tylko Caddy. Obraz PostgreSQL aktualizujemy świadomie: nowa wersja
     # główna (np. 15 -> 16) nie odczyta danych bez migracji.
@@ -51,7 +60,7 @@ main() {
         log "BŁĄD: aplikacja nie wstała. Ostatnie logi:"
         docker compose logs --tail 60 web || true
         log "Powrót do poprzedniej wersji:"
-        log "  git -C $app_dir reset --hard ${old:0:7} && $app_dir/deploy/update.sh --force"
+        log "  git -C $app_dir reset --hard ${old:0:7} && docker compose --project-directory $app_dir up -d --build web"
         return 1
     fi
     log "Strona działa (${new:0:7})."
