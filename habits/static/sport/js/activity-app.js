@@ -110,6 +110,7 @@
         snapshot: null,
         queue: [],
         user: null,
+        userId: null,
         csrf: null,
         syncedAt: null,
         syncing: false,
@@ -128,6 +129,7 @@
             snapshot: state.snapshot,
             queue: state.queue,
             user: state.user,
+            userId: state.userId,
             csrf: state.csrf,
             syncedAt: state.syncedAt
         });
@@ -199,11 +201,13 @@
     }
 
     function applyPayload(data) {
-        if (state.user && data.user && state.user !== data.user) {
+        if ((state.userId && state.userId !== data.user_id) ||
+                (!state.userId && state.user !== data.user)) {
             // Inna osoba zalogowała się na tym telefonie - jej dane od zera.
             state.queue = [];
         }
         state.user = data.user;
+        state.userId = data.user_id;
         state.csrf = data.csrf_token || state.csrf;
         state.snapshot = data.snapshot;
         state.syncedAt = new Date().toISOString();
@@ -242,7 +246,15 @@
         state.syncing = true;
         renderStatus();
         var ops = state.queue.slice();
-        var call = ops.length ? postJson(config.syncUrl, { ops: ops }) : request(config.snapshotUrl);
+        var call = request(config.snapshotUrl).then(function (fresh) {
+            if (!fresh.ok) { return fresh; }
+            applyPayload(fresh.data);
+            ops = state.queue.slice();
+            var owner = state.userId;
+            return persist().then(function () {
+                return ops.length ? postJson(config.syncUrl, { ops: ops, user_id: owner }) : fresh;
+            });
+        });
         return call.then(function (result) {
             if (result.status === 401) {
                 state.authNeeded = true;
@@ -1236,6 +1248,7 @@
             state.snapshot = saved.snapshot || null;
             state.queue = saved.queue || [];
             state.user = saved.user || null;
+            state.userId = saved.userId || null;
             state.csrf = saved.csrf || null;
             state.syncedAt = saved.syncedAt || null;
         }

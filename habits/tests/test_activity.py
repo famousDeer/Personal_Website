@@ -104,7 +104,17 @@ class ActivityApiTests(TestCase):
         self.client.force_login(self.user)
 
     def sync(self, ops):
-        return self.client.post(reverse('sport:api-sync'), data=json.dumps({'ops': ops}), content_type='application/json')
+        return self.client.post(reverse('sport:api-sync'), data=json.dumps({'ops': ops, 'user_id': self.user.pk}), content_type='application/json')
+
+    def test_sync_rejects_queue_from_previous_account(self):
+        self.client.force_login(self.other)
+        response = self.sync([{'id': 'old', 'type': 'save', 'workout': workout_payload()}])
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(Workout.objects.exists())
+
+    def test_old_client_without_owner_cannot_sync(self):
+        response = self.client.post(reverse('sport:api-sync'), data=json.dumps({'ops': []}), content_type='application/json')
+        self.assertEqual(response.status_code, 409)
 
     def test_api_returns_401_without_login(self):
         self.client.logout()

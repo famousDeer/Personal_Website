@@ -214,6 +214,7 @@ class ActivityApiMixin:
         data = {
             'ok': True,
             'user': request.user.get_username(),
+            'user_id': request.user.pk,
             'csrf_token': get_token(request),
             'app_version': app_version(),
             'snapshot': activity_snapshot(request.user),
@@ -235,6 +236,8 @@ class SyncApiView(ActivityApiMixin, View):
             data = json.loads(request.body or b'{}')
             if not isinstance(data, dict):
                 raise ValueError
+            if data.get('user_id') != request.user.pk:
+                return JsonResponse({'ok': False, 'message': 'Zmieniło się konto. Odśwież aplikację Sport.'}, status=409)
             results = apply_operations(data.get('ops', []), request.user)
         except (ValueError, UnicodeDecodeError):
             return JsonResponse(
