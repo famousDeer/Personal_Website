@@ -88,7 +88,7 @@
            kliknięty moduł (data-segmented, static/js/app-actions.js). {% endcomment %}
         <nav class="app-nav-links d-none d-lg-flex" aria-label="Główna nawigacja" data-segmented>
             {% with ns=request.resolver_match.namespace url_name=request.resolver_match.url_name %}
-            {% url 'index' as home_url %}{% url 'finance:index' as finance_url %}{% url 'cooking:index' as cooking_url %}{% url 'cars:garage' as cars_url %}
+            {% url 'index' as home_url %}{% url 'finance:dashboard' as finance_url %}{% url 'cooking:index' as cooking_url %}{% url 'cars:garage' as cars_url %}
             <a class="app-nav-link {% if request.path == home_url %}is-active{% endif %}" href="{{ home_url }}"
                {% if request.path == home_url %}aria-current="page"{% endif %}>
                 <i class="bi bi-house-door-fill" aria-hidden="true"></i> Start
@@ -176,7 +176,7 @@
    przewija na górę (static/js/app-actions.js). Na komputerze ukryta. {% endcomment %}
 <nav class="app-tabbar" aria-label="Nawigacja mobilna">
     {% with ns=request.resolver_match.namespace %}
-    {% url 'index' as home_url %}{% url 'finance:index' as finance_url %}{% url 'cooking:index' as cooking_url %}{% url 'cars:garage' as cars_url %}{% url 'sport:index' as sport_url %}{% url 'timelog:index' as timelog_url %}
+    {% url 'index' as home_url %}{% url 'finance:dashboard' as finance_url %}{% url 'cooking:index' as cooking_url %}{% url 'cars:garage' as cars_url %}{% url 'sport:index' as sport_url %}{% url 'timelog:index' as timelog_url %}
     <div class="app-tabbar-inner">
         <a class="app-tab {% if request.path == home_url %}is-active{% endif %}" href="{{ home_url }}"
            {% if request.path == home_url %}aria-current="page"{% endif %}>

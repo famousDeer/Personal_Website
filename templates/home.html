@@ -7,49 +7,6 @@
 {% if user.is_authenticated %}
 {% page_head title="Dzień dobry, "|add:user.username eyebrow="Panel domowy" icon="bi-house-heart" sub="Finanse, kuchnia, garaż, sport i czas w jednym miejscu." %}{% endpage_head %}
 
-<div class="u-tile-grid animate-fade-in-up">
-    <a href="{% url 'finance:dashboard' %}" class="u-tile">
-        <span class="u-tile-icon"><i class="bi bi-wallet2"></i></span>
-        <span class="u-tile-body">
-            <span class="u-tile-title">Finanse</span>
-            <span class="u-tile-text">{{ summary.finance|default:"Budżet, wydatki, przychody i raporty." }}</span>
-        </span>
-        <i class="bi bi-chevron-right u-tile-arrow"></i>
-    </a>
-    <a href="{% url 'cooking:pantry' %}" class="u-tile">
-        <span class="u-tile-icon"><i class="bi bi-egg-fried"></i></span>
-        <span class="u-tile-body">
-            <span class="u-tile-title">Kuchnia</span>
-            <span class="u-tile-text">{{ summary.cooking|default:"Spiżarnia, listy zakupów i przepisy." }}</span>
-        </span>
-        <i class="bi bi-chevron-right u-tile-arrow"></i>
-    </a>
-    <a href="{% url 'cars:garage' %}" class="u-tile">
-        <span class="u-tile-icon"><i class="bi bi-car-front-fill"></i></span>
-        <span class="u-tile-body">
-            <span class="u-tile-title">Garaż</span>
-            <span class="u-tile-text">{{ summary.cars|default:"Serwis, paliwo i opony." }}</span>
-        </span>
-        <i class="bi bi-chevron-right u-tile-arrow"></i>
-    </a>
-    <a href="{% url 'sport:index' %}" class="u-tile">
-        <span class="u-tile-icon"><i class="bi bi-activity"></i></span>
-        <span class="u-tile-body">
-            <span class="u-tile-title">Sport</span>
-            <span class="u-tile-text">{{ summary.sport|default:"Pływanie, bieganie i siłownia." }}</span>
-        </span>
-        <i class="bi bi-chevron-right u-tile-arrow"></i>
-    </a>
-    <a href="{% url 'timelog:index' %}" class="u-tile">
-        <span class="u-tile-icon"><i class="bi bi-hourglass-split"></i></span>
-        <span class="u-tile-body">
-            <span class="u-tile-title">Czas</span>
-            <span class="u-tile-text">{{ summary.timelog|default:"Na co idzie dzień: stoper, luki i strata czasu." }}</span>
-        </span>
-        <i class="bi bi-chevron-right u-tile-arrow"></i>
-    </a>
-</div>
-
 <div class="u-quick-actions">
     <a href="{% url 'finance:add_expense' %}" class="btn u-btn-expense">
         <i class="bi bi-dash-circle"></i> Wydatek
@@ -67,6 +24,62 @@
         <i class="bi bi-stopwatch"></i> Stoper
     </a>
 </div>
+<section class="home-today u-card u-card-pad mb-4" aria-labelledby="home-today-title">
+    <div class="u-section-head"><h2 class="u-section-title" id="home-today-title">Na dziś</h2></div>
+    <div class="home-today-grid">
+        {% if summary.cooking %}<a href="{% url 'cooking:pantry' %}" class="home-today-item"><i class="bi bi-basket" aria-hidden="true"></i><span><strong>Kuchnia</strong><span>{{ summary.cooking }}</span></span></a>{% endif %}
+        {% if summary.cars %}<a href="{% url 'cars:garage' %}" class="home-today-item"><i class="bi bi-calendar-check" aria-hidden="true"></i><span><strong>Terminy auta</strong><span>{{ summary.cars }}</span></span></a>{% endif %}
+        {% if summary.timelog %}<a href="{% url 'timelog:index' %}" class="home-today-item"><i class="bi bi-stopwatch" aria-hidden="true"></i><span><strong>Twój czas</strong><span>{{ summary.timelog }}</span></span></a>{% endif %}
+        {% if summary.sport %}<a href="{% url 'sport:index' %}" class="home-today-item"><i class="bi bi-activity" aria-hidden="true"></i><span><strong>Cel sportowy</strong><span>{{ summary.sport }}</span></span></a>{% endif %}
+        {% if summary.finance %}<a href="{% url 'finance:dashboard' %}" class="home-today-item"><i class="bi bi-wallet2" aria-hidden="true"></i><span><strong>Ten miesiąc</strong><span>{{ summary.finance }}</span></span></a>{% endif %}
+        {% if not summary.cooking and not summary.cars and not summary.timelog and not summary.sport and not summary.finance %}<p class="u-page-sub mb-0">Tutaj zobaczysz terminy, zakupy i postępy, gdy zaczniesz uzupełniać dane.</p>{% endif %}
+    </div>
+</section>
+<h2 class="u-section-title mb-3">Twoje moduły</h2>
+
+<div class="u-tile-grid animate-fade-in-up">
+    <a href="{% url 'finance:dashboard' %}" class="u-tile">
+        <span class="u-tile-icon"><i class="bi bi-wallet2"></i></span>
+        <span class="u-tile-body">
+            <span class="u-tile-title">Finanse</span>
+            <span class="u-tile-text">Budżet, wydatki, przychody i raporty.</span>
+        </span>
+        <i class="bi bi-chevron-right u-tile-arrow"></i>
+    </a>
+    <a href="{% url 'cooking:pantry' %}" class="u-tile">
+        <span class="u-tile-icon"><i class="bi bi-egg-fried"></i></span>
+        <span class="u-tile-body">
+            <span class="u-tile-title">Kuchnia</span>
+            <span class="u-tile-text">Spiżarnia, listy zakupów i przepisy.</span>
+        </span>
+        <i class="bi bi-chevron-right u-tile-arrow"></i>
+    </a>
+    <a href="{% url 'cars:garage' %}" class="u-tile">
+        <span class="u-tile-icon"><i class="bi bi-car-front-fill"></i></span>
+        <span class="u-tile-body">
+            <span class="u-tile-title">Garaż</span>
+            <span class="u-tile-text">Serwis, paliwo i opony.</span>
+        </span>
+        <i class="bi bi-chevron-right u-tile-arrow"></i>
+    </a>
+    <a href="{% url 'sport:index' %}" class="u-tile">
+        <span class="u-tile-icon"><i class="bi bi-activity"></i></span>
+        <span class="u-tile-body">
+            <span class="u-tile-title">Sport</span>
+            <span class="u-tile-text">Pływanie, bieganie i siłownia.</span>
+        </span>
+        <i class="bi bi-chevron-right u-tile-arrow"></i>
+    </a>
+    <a href="{% url 'timelog:index' %}" class="u-tile">
+        <span class="u-tile-icon"><i class="bi bi-hourglass-split"></i></span>
+        <span class="u-tile-body">
+            <span class="u-tile-title">Czas</span>
+            <span class="u-tile-text">Na co idzie dzień: stoper, luki i strata czasu.</span>
+        </span>
+        <i class="bi bi-chevron-right u-tile-arrow"></i>
+    </a>
+</div>
+
 {% else %}
 <section class="home-login-shell animate-fade-in">
     <div class="home-login-panel">

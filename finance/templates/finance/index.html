@@ -33,7 +33,7 @@
         {% if active_finance_account.account_type == 'shared' %}Wspólne{% else %}Osobiste{% endif %}
     </span>
 
-    <a href="{% url 'profile' %}" class="u-btn u-btn-ghost ms-auto">
+    <a href="{% url 'profile' %}" class="u-btn u-btn-ghost ms-auto u-account-manage" aria-label="Zarządzaj kontami">
         <i class="bi bi-sliders"></i><span class="d-none d-sm-inline">Zarządzaj kontami</span>
     </a>
 </div>

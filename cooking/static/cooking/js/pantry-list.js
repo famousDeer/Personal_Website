@@ -204,6 +204,9 @@
         if (sortSelect.value !== state.sort) {
             sortSelect.value = state.sort;
         }
+        const extraCount = select('[data-filter-extra-count]', toolbar);
+        const extra = state.categories.size + (['undated', 'nobarcode', 'ok', 'oneoff'].includes(state.status) ? 1 : 0);
+        if (extraCount) { extraCount.textContent = extra ? `· aktywne: ${extra}` : ''; }
         groupedBox.checked = state.grouped;
         save();
     }

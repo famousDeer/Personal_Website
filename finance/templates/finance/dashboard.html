@@ -42,8 +42,30 @@
         </form>
         <a href="{% url 'finance:add_expense' %}" class="u-btn u-btn-expense"><i class="bi bi-dash-circle"></i> Wydatek</a>
         <a href="{% url 'finance:add_income' %}" class="u-btn u-btn-income"><i class="bi bi-plus-circle"></i> Przychód</a>
-        <a href="{% url 'finance:reports' %}" class="u-btn u-btn-ghost"><i class="bi bi-graph-up"></i> Raporty</a>
+        <a href="{% url 'finance:index' %}" class="u-btn u-btn-ghost"><i class="bi bi-grid"></i> Wszystkie funkcje</a>
     </div>
+</div>
+
+{% load humanize %}
+<div class="u-metric-grid finance-overview mb-4">
+        <div class="u-metric is-income">
+            <div class="u-metric-label"><i class="bi bi-arrow-up-circle"></i> Przychody</div>
+            <div class="u-metric-value is-income" title="{{ total_income|floatformat:2|intcomma }} zł">{{ total_income|zl }}</div>
+            {% include 'finance/partials/metric_delta.html' with change=changes.income label=changes.label %}
+        </div>
+
+        <div class="u-metric is-expense">
+            <div class="u-metric-label"><i class="bi bi-arrow-down-circle"></i> Wydatki</div>
+            <div class="u-metric-value is-expense" title="{{ spending_total|floatformat:2|intcomma }} zł">{{ spending_total|zl }}</div>
+            {% include 'finance/partials/metric_delta.html' with change=changes.spending label=changes.label %}
+            <div class="u-metric-note">Bez inwestycji</div>
+        </div>
+
+        <div class="u-metric is-invest">
+            <div class="u-metric-label"><i class="bi bi-piggy-bank"></i> Inwestycje</div>
+            <div class="u-metric-value is-invest" title="{{ investment_total|floatformat:2|intcomma }} zł">{{ investment_total|zl }}</div>
+            {% include 'finance/partials/metric_delta.html' with change=changes.investment label=changes.label %}
+        </div>
 </div>
 
 <div class="u-card u-card-pad mb-4">
@@ -158,28 +180,6 @@
             <div class="u-metric-note">
                 Prognoza na koniec miesiąca: <strong>{{ projected_expense|zl }}</strong>
             </div>
-        </div>
-</div>
-
-{% load humanize %}
-<div class="u-metric-grid mb-4">
-        <div class="u-metric is-income">
-            <div class="u-metric-label"><i class="bi bi-arrow-up-circle"></i> Przychody</div>
-            <div class="u-metric-value is-income" title="{{ total_income|floatformat:2|intcomma }} zł">{{ total_income|zl }}</div>
-            {% include 'finance/partials/metric_delta.html' with change=changes.income label=changes.label %}
-        </div>
-
-        <div class="u-metric is-expense">
-            <div class="u-metric-label"><i class="bi bi-arrow-down-circle"></i> Wydatki</div>
-            <div class="u-metric-value is-expense" title="{{ spending_total|floatformat:2|intcomma }} zł">{{ spending_total|zl }}</div>
-            {% include 'finance/partials/metric_delta.html' with change=changes.spending label=changes.label %}
-            <div class="u-metric-note">Bez inwestycji</div>
-        </div>
-
-        <div class="u-metric is-invest">
-            <div class="u-metric-label"><i class="bi bi-piggy-bank"></i> Inwestycje</div>
-            <div class="u-metric-value is-invest" title="{{ investment_total|floatformat:2|intcomma }} zł">{{ investment_total|zl }}</div>
-            {% include 'finance/partials/metric_delta.html' with change=changes.investment label=changes.label %}
         </div>
 </div>
 
