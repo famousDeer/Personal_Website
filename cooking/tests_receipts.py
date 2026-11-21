@@ -503,7 +503,7 @@ class BiedronkaEReceiptTests(TestCase):
             block = page[page.index(f'name="action_{line.pk}"'):][:400]
             self.assertIn('value="skip" selected', block)
 
-    @skipUnless(shutil.which('pdftoppm'), 'brak poppler-utils')
+    @skipUnless(shutil.which('pdftoppm') and shutil.which('pdftotext'), 'brak poppler-utils')
     def test_pdf_upload_is_rendered_to_pages(self):
         user = User.objects.create_user(username='pdf', password='pass12345')
         self.client.force_login(user)
@@ -933,6 +933,9 @@ SUMA PLN 57,27'''
 @override_settings(RECEIPT_AI_ENABLED=True, ANTHROPIC_API_KEY='test-key', RECEIPT_AI_MODEL='claude-haiku-5-5')
 class ReceiptAiTests(TestCase):
     def setUp(self):
+        network = patch('urllib.request.urlopen', side_effect=AssertionError('Niezamockowana sieć w teście AI'))
+        network.start()
+        self.addCleanup(network.stop)
         self.user = User.objects.create_user(username='ai', password='pass12345')
         self.client.force_login(self.user)
         self.media = tempfile.mkdtemp()
@@ -942,7 +945,7 @@ class ReceiptAiTests(TestCase):
         buffer = io.BytesIO()
         Image.new('RGB', (400, 900), 'white').save(buffer, format='JPEG')
         upload = SimpleUploadedFile('paragon.jpg', buffer.getvalue(), content_type='image/jpeg')
-        with patch('cooking.services.receipts.read_text', return_value=ocr_text):
+        with override_settings(RECEIPT_AI_ENABLED=False), patch('cooking.services.receipts.read_text', return_value=ocr_text):
             self.client.post(reverse('cooking:receipts'), {'photos': [upload]})
         return Receipt.objects.get()
 
