@@ -359,3 +359,17 @@ class NoNativeConfirmTests(TestCase):
                 self.assertEqual(page.status_code, 200)
                 self.assertNotContains(page, 'return confirm(')
                 self.assertContains(page, 'id="app-confirm"')
+
+
+class UndoLaterChangesTests(UndoTestCase):
+    def test_later_product_assignment_survives_undo(self):
+        old = ProductGroup.objects.create(name='Stara')
+        new = ProductGroup.objects.create(name='Nowa')
+        product = PantryProduct.objects.create(name='Produkt', group=old)
+        self.client.post(reverse('cooking:delete-product-group', args=[old.pk]))
+        product.group = new
+        product.save(update_fields=['group'])
+        self.client.post(self.undo_url())
+        product.refresh_from_db()
+        self.assertEqual(product.group_id, new.pk)
+        self.assertTrue(ProductGroup.objects.filter(pk=old.pk).exists())

@@ -136,7 +136,8 @@ def restore(entry):
             restored.append(deserialized.object)
         for label, pk, attname, value in entry['updates']:
             model = apps.get_model(label)
-            model._default_manager.using(using).filter(pk=pk).update(**{attname: value})
+            # Domownik mógł już wybrać inne powiązanie po usunięciu.
+            model._default_manager.using(using).filter(pk=pk, **{attname: None}).update(**{attname: value})
         if entry.get('hook'):
             import_string(entry['hook'])(restored)
     return restored
