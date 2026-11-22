@@ -577,10 +577,8 @@
     order: 1;
 }
 
-.brokerage-sidebar {
-    position: static !important;
-    order: 2;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+.brokerage-account-list {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
 }
 
 .brokerage-registry,
@@ -590,7 +588,7 @@
 }
 
 .brokerage-main-panel,
-.brokerage-sidebar > .brokerage-panel,
+.brokerage-accounts-panel,
 .brokerage-flow-panel,
 .brokerage-bottom-grid > .brokerage-panel {
     border-radius: var(--brokerage-panel-radius);
@@ -772,10 +770,6 @@
         grid-template-columns: minmax(0, 1fr);
     }
 
-    .brokerage-sidebar {
-        grid-template-columns: minmax(0, 1fr);
-    }
-
     .brokerage-attention-panel {
         grid-template-columns: minmax(0, 1fr);
     }
@@ -841,7 +835,7 @@
     .brokerage-market-panel,
     .brokerage-portfolio-chart-section,
     .brokerage-main-panel,
-    .brokerage-sidebar > .brokerage-panel {
+    .brokerage-accounts-panel {
         padding: 0.85rem;
         border-radius: 15px;
     }

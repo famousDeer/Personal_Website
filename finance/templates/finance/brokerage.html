@@ -319,73 +319,6 @@
     {% include 'finance/partials/gem_panel.html' %}
 
     <div class="brokerage-layout">
-        <aside class="brokerage-sidebar" id="brokerage-data-management" aria-label="Zarządzanie danymi maklerskimi">
-            <section class="brokerage-panel">
-                <div class="brokerage-section-heading">
-                    <div>
-                        <h2>Konta</h2>
-                        <p>
-                            {% if selected_brokerage_account %}
-                                Aktualnie wybrane konto.
-                            {% else %}
-                                Podział według brokera i waluty.
-                            {% endif %}
-                        </p>
-                    </div>
-                    <span class="brokerage-count-pill">{{ account_totals|length }}</span>
-                </div>
-                <div class="brokerage-account-list">
-                    {% for item in account_totals %}
-                        <article class="brokerage-account-card {% if selected_brokerage_account_id == item.account.id %}is-selected{% endif %}">
-                            <div class="brokerage-account-card-head">
-                                <a href="{% url 'finance:brokerage' %}?account={{ item.account.id }}" class="brokerage-account-identity"{% if selected_brokerage_account_id == item.account.id %} aria-current="page"{% endif %}>
-                                    <span class="brokerage-account-logo">{{ item.account.get_broker_display|slice:":1" }}</span>
-                                    <span>
-                                        <strong>{{ item.account.name }}</strong>
-                                        <small>{{ item.account.get_broker_display }} · {{ item.account.get_account_type_display }}</small>
-                                    </span>
-                                </a>
-                                <span class="brokerage-currency-code">{{ item.currency }}</span>
-                            </div>
-                            <div class="brokerage-account-total">
-                                <span>Łączna wartość</span>
-                                <strong>{{ item.total_value|floatformat:2|intcomma }} <small>{{ item.currency }}</small></strong>
-                            </div>
-                            <div class="brokerage-account-breakdown">
-                                <div><span>Papiery</span><strong>{{ item.securities_value|floatformat:2|intcomma }}</strong></div>
-                                <div><span>Gotówka</span><strong>{{ item.cash_balance|floatformat:2|intcomma }}</strong></div>
-                                <div><span>Wynik</span><strong class="{% if item.unrealized >= 0 %}text-success{% else %}text-danger{% endif %}">{{ item.unrealized|floatformat:2|intcomma }}</strong></div>
-                                <div><span>Wpłaty netto</span><strong>{{ item.net_contributions|floatformat:2|intcomma }}</strong></div>
-                            </div>
-                            <div class="brokerage-account-card-foot">
-                                <span>
-                                    <i class="bi bi-clock-history me-1"></i>
-                                    {% if item.account.last_import_at %}Import {{ item.account.last_import_at|date:"d.m.Y H:i" }}{% else %}Nie importowano raportu{% endif %}
-                                </span>
-                                <div class="brokerage-inline-actions">
-                                    <a href="{% url 'finance:edit_brokerage_account' item.account.id %}" class="btn btn-sm btn-outline-primary rounded-pill" title="Edytuj konto">
-                                        <i class="bi bi-pencil"></i><span class="visually-hidden">Edytuj konto</span>
-                                    </a>
-                                    <form method="post" action="{% url 'finance:delete_brokerage_account' item.account.id %}"
-                                          data-confirm="Usunąć konto maklerskie „{{ item.account }}”?"
-                                          data-confirm-detail="Razem z nim znikną jego transakcje, dywidendy i historia wartości. Tego nie da się cofnąć."
-                                          data-confirm-action="Usuń konto">
-                                        {% csrf_token %}
-                                        <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill" title="Usuń konto">
-                                            <i class="bi bi-trash"></i><span class="visually-hidden">Usuń konto</span>
-                                        </button>
-                                    </form>
-                                </div>
-                            </div>
-                        </article>
-                    {% empty %}
-                        <div class="brokerage-empty-state">Brak kont maklerskich. Import XTB może utworzyć je automatycznie.</div>
-                    {% endfor %}
-                </div>
-            </section>
-
-        </aside>
-
         <section class="brokerage-main">
             <section class="brokerage-panel brokerage-main-panel">
                 <div class="brokerage-table-toolbar">
@@ -413,7 +346,7 @@
                                             <div class="brokerage-row-meta">{{ position.instrument.name }}</div>
                                         </div>
                                     </div>
-                                    <div class="brokerage-row-meta">{{ position.account.name }}</div>
+                                    <div class="brokerage-row-meta">{{ position.account.name }} · <strong>{{ position.quantity|floatformat:-6|intcomma }} szt.</strong></div>
                                 </div>
                                 <div class="brokerage-position-quick brokerage-position-quick-pro">
                                     <div class="brokerage-metric-tile brokerage-number">
@@ -514,42 +447,6 @@
                     <span><i class="bi bi-check2-circle"></i> Wycena {{ portfolio_health.priced_positions_count }} / {{ portfolio_health.positions_count }} pozycji</span>
                     <span><i class="bi bi-calendar-check"></i> Zmiana sesyjna {{ portfolio_health.daily_coverage_count }} / {{ portfolio_health.positions_count }}</span>
                     <span><i class="bi bi-currency-exchange"></i> Wartości pozostają w walucie rachunku</span>
-                </div>
-            </section>
-
-            <section class="brokerage-panel brokerage-flow-panel">
-                <div class="brokerage-section-heading">
-                    <div>
-                        <h2>Aktywność na rachunkach</h2>
-                        <p>Operacje gotówkowe odtworzone z historii brokera.</p>
-                    </div>
-                    <span class="brokerage-count-pill">{{ brokerage_cash_operations|length }}</span>
-                </div>
-                <div class="brokerage-ledger-list">
-                    {% for operation in brokerage_cash_operations %}
-                        <article class="brokerage-ledger-row">
-                            <span class="brokerage-operation-icon operation-{{ operation.operation_type }}">
-                                {% if operation.operation_type == 'deposit' %}<i class="bi bi-arrow-down-left"></i>
-                                {% elif operation.operation_type == 'withdrawal' %}<i class="bi bi-arrow-up-right"></i>
-                                {% elif operation.operation_type == 'buy' %}<i class="bi bi-cart-plus"></i>
-                                {% elif operation.operation_type == 'sell' %}<i class="bi bi-cash-stack"></i>
-                                {% elif operation.operation_type == 'dividend' %}<i class="bi bi-coin"></i>
-                                {% elif operation.operation_type == 'internal_transfer' %}<i class="bi bi-arrow-left-right"></i>
-                                {% else %}<i class="bi bi-receipt"></i>{% endif %}
-                            </span>
-                            <div class="brokerage-ledger-main">
-                                <strong>{{ operation.get_operation_type_display }}{% if operation.instrument %} · {{ operation.instrument.ticker }}{% endif %}</strong>
-                                <span>{{ operation.account.name }} · {{ operation.occurred_at|date:"d.m.Y H:i" }}</span>
-                                {% if operation.description %}<small title="{{ operation.description }}">{{ operation.description|truncatechars:72 }}</small>{% endif %}
-                            </div>
-                            <div class="brokerage-ledger-amount {% if operation.amount > 0 %}is-positive{% elif operation.amount < 0 %}is-negative{% endif %}">
-                                <strong>{% if operation.amount > 0 %}+{% endif %}{{ operation.amount|floatformat:2|intcomma }}</strong>
-                                <span>{{ operation.currency }}</span>
-                            </div>
-                        </article>
-                    {% empty %}
-                        <div class="brokerage-empty-state">Brak operacji. Import raportu XTB uzupełni wpłaty, transakcje, dywidendy i podatki.</div>
-                    {% endfor %}
                 </div>
             </section>
 
@@ -776,6 +673,106 @@
                     {% endif %}
                 </div>
             </details>
+
+            <section class="brokerage-panel brokerage-accounts-panel" id="brokerage-data-management" aria-labelledby="brokerageAccountsTitle">
+                <div class="brokerage-section-heading">
+                    <div>
+                        <h2 id="brokerageAccountsTitle">Konta</h2>
+                        <p>
+                            {% if selected_brokerage_account %}
+                                Aktualnie wybrane konto.
+                            {% else %}
+                                Podział według brokera i waluty.
+                            {% endif %}
+                        </p>
+                    </div>
+                    <span class="brokerage-count-pill">{{ account_totals|length }}</span>
+                </div>
+                <div class="brokerage-account-list">
+                    {% for item in account_totals %}
+                        <article class="brokerage-account-card {% if selected_brokerage_account_id == item.account.id %}is-selected{% endif %}">
+                            <div class="brokerage-account-card-head">
+                                <a href="{% url 'finance:brokerage' %}?account={{ item.account.id }}" class="brokerage-account-identity"{% if selected_brokerage_account_id == item.account.id %} aria-current="page"{% endif %}>
+                                    <span class="brokerage-account-logo">{{ item.account.get_broker_display|slice:":1" }}</span>
+                                    <span>
+                                        <strong>{{ item.account.name }}</strong>
+                                        <small>{{ item.account.get_broker_display }} · {{ item.account.get_account_type_display }}</small>
+                                    </span>
+                                </a>
+                                <span class="brokerage-currency-code">{{ item.currency }}</span>
+                            </div>
+                            <div class="brokerage-account-total">
+                                <span>Łączna wartość</span>
+                                <strong>{{ item.total_value|floatformat:2|intcomma }} <small>{{ item.currency }}</small></strong>
+                            </div>
+                            <div class="brokerage-account-breakdown">
+                                <div><span>Papiery</span><strong>{{ item.securities_value|floatformat:2|intcomma }}</strong></div>
+                                <div><span>Gotówka</span><strong>{{ item.cash_balance|floatformat:2|intcomma }}</strong></div>
+                                <div><span>Wynik</span><strong class="{% if item.unrealized >= 0 %}text-success{% else %}text-danger{% endif %}">{{ item.unrealized|floatformat:2|intcomma }}</strong></div>
+                                <div><span>Wpłaty netto</span><strong>{{ item.net_contributions|floatformat:2|intcomma }}</strong></div>
+                            </div>
+                            <div class="brokerage-account-card-foot">
+                                <span>
+                                    <i class="bi bi-clock-history me-1"></i>
+                                    {% if item.account.last_import_at %}Import {{ item.account.last_import_at|date:"d.m.Y H:i" }}{% else %}Nie importowano raportu{% endif %}
+                                </span>
+                                <div class="brokerage-inline-actions">
+                                    <a href="{% url 'finance:edit_brokerage_account' item.account.id %}" class="btn btn-sm btn-outline-primary rounded-pill" title="Edytuj konto">
+                                        <i class="bi bi-pencil"></i><span class="visually-hidden">Edytuj konto</span>
+                                    </a>
+                                    <form method="post" action="{% url 'finance:delete_brokerage_account' item.account.id %}"
+                                          data-confirm="Usunąć konto maklerskie „{{ item.account }}”?"
+                                          data-confirm-detail="Razem z nim znikną jego transakcje, dywidendy i historia wartości. Tego nie da się cofnąć."
+                                          data-confirm-action="Usuń konto">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill" title="Usuń konto">
+                                            <i class="bi bi-trash"></i><span class="visually-hidden">Usuń konto</span>
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </article>
+                    {% empty %}
+                        <div class="brokerage-empty-state">Brak kont maklerskich. Import XTB może utworzyć je automatycznie.</div>
+                    {% endfor %}
+                </div>
+            </section>
+
+            <section class="brokerage-panel brokerage-flow-panel">
+                <div class="brokerage-section-heading">
+                    <div>
+                        <h2>Aktywność na rachunkach</h2>
+                        <p>Operacje gotówkowe odtworzone z historii brokera.</p>
+                    </div>
+                    <span class="brokerage-count-pill">{{ brokerage_cash_operations|length }}</span>
+                </div>
+                <div class="brokerage-ledger-list">
+                    {% for operation in brokerage_cash_operations %}
+                        <article class="brokerage-ledger-row">
+                            <span class="brokerage-operation-icon operation-{{ operation.operation_type }}">
+                                {% if operation.operation_type == 'deposit' %}<i class="bi bi-arrow-down-left"></i>
+                                {% elif operation.operation_type == 'withdrawal' %}<i class="bi bi-arrow-up-right"></i>
+                                {% elif operation.operation_type == 'buy' %}<i class="bi bi-cart-plus"></i>
+                                {% elif operation.operation_type == 'sell' %}<i class="bi bi-cash-stack"></i>
+                                {% elif operation.operation_type == 'dividend' %}<i class="bi bi-coin"></i>
+                                {% elif operation.operation_type == 'internal_transfer' %}<i class="bi bi-arrow-left-right"></i>
+                                {% else %}<i class="bi bi-receipt"></i>{% endif %}
+                            </span>
+                            <div class="brokerage-ledger-main">
+                                <strong>{{ operation.get_operation_type_display }}{% if operation.instrument %} · {{ operation.instrument.ticker }}{% endif %}</strong>
+                                <span>{{ operation.account.name }} · {{ operation.occurred_at|date:"d.m.Y H:i" }}</span>
+                                {% if operation.description %}<small title="{{ operation.description }}">{{ operation.description|truncatechars:72 }}</small>{% endif %}
+                            </div>
+                            <div class="brokerage-ledger-amount {% if operation.amount > 0 %}is-positive{% elif operation.amount < 0 %}is-negative{% endif %}">
+                                <strong>{% if operation.amount > 0 %}+{% endif %}{{ operation.amount|floatformat:2|intcomma }}</strong>
+                                <span>{{ operation.currency }}</span>
+                            </div>
+                        </article>
+                    {% empty %}
+                        <div class="brokerage-empty-state">Brak operacji. Import raportu XTB uzupełni wpłaty, transakcje, dywidendy i podatki.</div>
+                    {% endfor %}
+                </div>
+            </section>
         </section>
     </div>
 </div>
