@@ -1344,3 +1344,29 @@
     .gem-chart { padding: 0.75rem 0.6rem 0.5rem; }
     .gem-chart-shell { height: 240px; }
 }
+
+/* Zwięzłe listy; dane techniczne są dostępne po rozwinięciu. */
+.brokerage-position-summary { grid-template-columns: minmax(160px, 1fr) minmax(280px, 1.3fr) auto; }
+.brokerage-position-quick-pro { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.brokerage-instrument-row { display: block; cursor: default; }
+.brokerage-instrument-heading { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
+.brokerage-instrument-heading > div { min-width: 0; overflow-wrap: anywhere; }
+.brokerage-instrument-heading > button { flex-shrink: 0; }
+.brokerage-instrument-settings { margin-top: .5rem; }
+.brokerage-instrument-settings summary { color: var(--ink-3); font-size: var(--fs-sm); cursor: pointer; padding: .35rem 0; }
+.brokerage-instrument-settings[open] summary { margin-bottom: .5rem; }
+.brokerage-instrument-settings .brokerage-inline-actions { margin-top: .75rem; }
+@media (max-width: 767.98px) {
+    .brokerage-position-summary { grid-template-columns: minmax(0, 1fr) auto; }
+    .brokerage-position-main { grid-column: 1; }
+    .brokerage-position-quick-pro { grid-column: 1 / -1; grid-row: 2; }
+    .brokerage-position-summary > .brokerage-expand-indicator { grid-column: 2; grid-row: 1; }
+}
+
+.brokerage-instrument-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.brokerage-extra-details > summary { cursor: pointer; padding: .8rem 0; font-weight: 600; }
+.brokerage-extra-details[open] > summary { margin-bottom: .5rem; }
+.brokerage-extra-details > section { margin-top: 1rem; }
+
+.brokerage-custom-dates > summary { cursor: pointer; padding: .5rem; color: var(--ink-2); }
+.brokerage-custom-dates[open] .brokerage-custom-range { margin-top: .5rem; }

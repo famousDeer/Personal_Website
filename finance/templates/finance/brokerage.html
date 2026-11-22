@@ -411,8 +411,17 @@
                             data-search="{{ instrument.name }} {{ instrument.ticker }} {{ instrument.isin }} {{ instrument.price_symbol }} {{ instrument.currency }}"
                             data-instrument-detail-url="{% url 'finance:brokerage_instrument_detail_data' instrument.id %}"
                         >
-                            <div>
-                                <div class="brokerage-row-title">{{ instrument.name }}</div>
+                            <div class="brokerage-instrument-heading">
+                                <div>
+                                    <div class="brokerage-row-title">{{ instrument.ticker }}</div>
+                                    <div class="brokerage-row-meta">{{ instrument.name }}</div>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-instrument-detail-trigger aria-label="Wykres cen: {{ instrument.name }}">
+                                    <i class="bi bi-graph-up-arrow" aria-hidden="true"></i> Wykres
+                                </button>
+                            </div>
+                            <details class="brokerage-instrument-settings">
+                                <summary>Szczegóły i edycja</summary>
                                 <div class="brokerage-row-meta">
                                     {{ instrument.ticker }} · {{ instrument.isin|default:"brak ISIN" }} · {{ instrument.currency }}
                                 </div>
@@ -429,11 +438,7 @@
                                         <span class="badge rounded-pill bg-warning-subtle text-warning">brak ceny</span>
                                     {% endif %}
                                 </div>
-                            </div>
-                            <div class="brokerage-inline-actions">
-                                <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" title="Pokaż analizę instrumentu" data-instrument-detail-trigger>
-                                    <i class="bi bi-graph-up-arrow"></i><span class="visually-hidden">Pokaż analizę {{ instrument.name }}</span>
-                                </button>
+                                <div class="brokerage-inline-actions">
                                 <a href="{% url 'finance:edit_brokerage_instrument' instrument.id %}" class="btn btn-sm btn-outline-primary rounded-pill" title="Edytuj instrument" data-instrument-action>
                                     <i class="bi bi-pencil"></i><span class="visually-hidden">Edytuj instrument</span>
                                 </a>
@@ -446,7 +451,8 @@
                                         <i class="bi bi-trash"></i><span class="visually-hidden">Usuń instrument</span>
                                     </button>
                                 </form>
-                            </div>
+                                </div>
+                            </details>
                         </article>
                     {% empty %}
                         <div class="brokerage-empty-state">Brak instrumentów.</div>
@@ -474,7 +480,7 @@
                 </div>
                 <div class="brokerage-position-list" id="brokerage-positions">
                     {% for position in positions %}
-                        <details class="brokerage-position-row" data-filter-row data-search="{{ position.instrument.ticker }} {{ position.instrument.name }} {{ position.account.name }} {{ position.currency }} {{ position.instrument.isin }} {{ position.instrument.price_symbol }}">
+                        <details class="brokerage-position-row" data-instrument-detail-url="{% url 'finance:brokerage_instrument_detail_data' position.instrument.id %}" data-filter-row data-search="{{ position.instrument.ticker }} {{ position.instrument.name }} {{ position.account.name }} {{ position.currency }} {{ position.instrument.isin }} {{ position.instrument.price_symbol }}">
                             <summary class="brokerage-position-summary">
                                 <div class="brokerage-position-main">
                                     <div class="brokerage-symbol-line">
@@ -482,17 +488,8 @@
                                             <div class="brokerage-symbol">{{ position.instrument.ticker }}</div>
                                             <div class="brokerage-row-meta">{{ position.instrument.name }}</div>
                                         </div>
-                                        <span class="brokerage-currency-code">{{ position.currency }}</span>
                                     </div>
-                                    <div class="brokerage-row-meta">
-                                        {{ position.account.name }} · {{ position.account.get_broker_display }} · {{ position.account.get_account_type_display }}
-                                    </div>
-                                    <div class="brokerage-row-tags">
-                                        <span class="badge rounded-pill bg-secondary-subtle text-secondary">{{ position.instrument.get_asset_type_display }}</span>
-                                        {% if position.instrument.price_symbol %}
-                                            <span class="badge rounded-pill bg-info-subtle text-info">Cena: {{ position.instrument.price_symbol }}</span>
-                                        {% endif %}
-                                    </div>
+                                    <div class="brokerage-row-meta">{{ position.account.name }}</div>
                                 </div>
                                 <div class="brokerage-position-quick brokerage-position-quick-pro">
                                     <div class="brokerage-metric-tile brokerage-number">
@@ -501,17 +498,6 @@
                                             <strong>{{ position.current_value|floatformat:2|intcomma }} <small>{{ position.currency }}</small></strong>
                                         {% else %}
                                             <strong class="text-muted">brak wyceny</strong>
-                                        {% endif %}
-                                    </div>
-                                    <div class="brokerage-metric-tile brokerage-number">
-                                        <span>Ostatnia sesja</span>
-                                        {% if position.day_impact != None %}
-                                            <strong class="{% if position.day_impact > 0 %}text-success{% elif position.day_impact < 0 %}text-danger{% endif %}">
-                                                {% if position.day_impact > 0 %}+{% endif %}{{ position.day_impact|floatformat:2|intcomma }} <small>{{ position.currency }}</small>
-                                                {% if position.day_change_percent != None %}<small>({% if position.day_change_percent > 0 %}+{% endif %}{{ position.day_change_percent|floatformat:2 }}%)</small>{% endif %}
-                                            </strong>
-                                        {% else %}
-                                            <strong class="text-muted">brak porównania</strong>
                                         {% endif %}
                                     </div>
                                     <div class="brokerage-metric-tile brokerage-number">
@@ -525,10 +511,6 @@
                                             <strong class="text-muted">-</strong>
                                         {% endif %}
                                     </div>
-                                    <div class="brokerage-metric-tile brokerage-number">
-                                        <span>Udział w walucie</span>
-                                        <strong>{% if position.allocation_percent != None %}{{ position.allocation_percent|floatformat:2 }}%{% else %}-{% endif %}</strong>
-                                    </div>
                                 </div>
                                 <span class="brokerage-expand-indicator">
                                     <i class="bi bi-chevron-down"></i>
@@ -536,6 +518,22 @@
                             </summary>
                             <div class="brokerage-position-details">
                                 <div class="brokerage-position-metrics">
+                                    <div class="brokerage-metric-tile brokerage-number">
+                                        <span>Ostatnia sesja</span>
+                                        {% if position.day_impact != None %}
+                                            <strong class="{% if position.day_impact > 0 %}text-success{% elif position.day_impact < 0 %}text-danger{% endif %}">
+                                                {% if position.day_impact > 0 %}+{% endif %}{{ position.day_impact|floatformat:2|intcomma }} <small>{{ position.currency }}</small>
+                                                {% if position.day_change_percent != None %}<small>({% if position.day_change_percent > 0 %}+{% endif %}{{ position.day_change_percent|floatformat:2 }}%)</small>{% endif %}
+                                            </strong>
+                                        {% else %}
+                                            <strong class="text-muted">brak porównania</strong>
+                                        {% endif %}
+                                    </div>
+                                    <div class="brokerage-metric-tile brokerage-number">
+                                        <span>Udział w walucie</span>
+                                        <strong>{% if position.allocation_percent != None %}{{ position.allocation_percent|floatformat:2 }}%{% else %}-{% endif %}</strong>
+                                    </div>
+
                                     <div class="brokerage-metric-tile brokerage-number">
                                         <span>Śr. koszt</span>
                                         <strong>{{ position.average_cost|floatformat:4|intcomma }} {{ position.currency }}</strong>
@@ -573,6 +571,9 @@
                                         </small>
                                     </div>
                                     <div class="brokerage-position-actions">
+                                        <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-instrument-detail-trigger aria-label="Wykres cen: {{ position.instrument.name }}">
+                                            <i class="bi bi-graph-up-arrow" aria-hidden="true"></i> Wykres cen
+                                        </button>
                                         <a href="{% url 'finance:edit_brokerage_instrument' position.instrument.id %}" class="btn btn-sm btn-outline-primary rounded-pill" title="Edytuj instrument">
                                             <i class="bi bi-pencil"></i><span class="visually-hidden">Edytuj instrument</span>
                                         </a>
@@ -894,6 +895,58 @@
                             <strong id="instrumentActualProfit">-</strong>
                             <small id="instrumentActualProfitMeta">-</small>
                         </div>
+                    </section>
+
+                    <section class="brokerage-instrument-chart-section">
+                        <div class="brokerage-section-heading brokerage-chart-heading">
+                            <div>
+                                <h3>Historia cen</h3>
+                                <p id="instrumentHistoryCount">-</p>
+                            </div>
+                            <div class="brokerage-chart-controls">
+                                <div class="brokerage-range-buttons" role="group" aria-label="Zakres wykresu">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-history-since-purchase>Od zakupu</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-history-days="30">1M</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-history-days="90">3M</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-history-days="180">6M</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-history-days="365">1R</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-history-days="1095">3L</button>
+                                </div>
+                                <details class="brokerage-custom-dates"><summary>Własne daty</summary>
+                                <form class="brokerage-custom-range" id="brokerageCustomRangeForm">
+                                    <input type="date" class="form-control form-control-sm" id="brokerageHistoryStartDate" aria-label="Data początku wykresu">
+                                    <input type="date" class="form-control form-control-sm" id="brokerageHistoryEndDate" aria-label="Data końca wykresu">
+                                    <button type="submit" class="btn btn-sm btn-primary rounded-pill fw-bold">Zastosuj</button>
+                                </form>
+                                </details>
+                            </div>
+                        </div>
+                        <div class="brokerage-chart-shell">
+                            <canvas id="brokerageInstrumentChart" role="img" aria-label="Historia cen wybranego instrumentu"></canvas>
+                            <div class="brokerage-chart-empty d-none" id="brokerageInstrumentChartEmpty" role="status" aria-live="polite">Brak danych historycznych dla wykresu.</div>
+                        </div>
+                        <div class="brokerage-chart-summary">
+                            <div class="brokerage-chart-stat">
+                                <span>Zmiana w zakresie</span>
+                                <strong id="instrumentHistoryChange">-</strong>
+                                <small id="instrumentHistoryRange">-</small>
+                            </div>
+                            <div class="brokerage-chart-stat">
+                                <span>Zakres cen</span>
+                                <strong id="instrumentHistoryHighLow">-</strong>
+                                <small>minimum — maksimum</small>
+                            </div>
+                            <div class="brokerage-chart-stat">
+                                <span>Źródło</span>
+                                <strong id="instrumentHistorySource">-</strong>
+                                <small>dzienna historia zapisana lokalnie</small>
+                            </div>
+                        </div>
+                    </section>
+
+                    <details class="brokerage-extra-details">
+                        <summary>Statystyki i dane instrumentu</summary>
+                        <div class="brokerage-instrument-overview">
                         <div class="brokerage-detail-stat">
                             <span>Cena od pierwszego zakupu</span>
                             <strong id="instrumentSincePurchase">-</strong>
@@ -904,8 +957,7 @@
                             <strong id="instrumentCagr">-</strong>
                             <small id="instrumentCagrMeta">-</small>
                         </div>
-                    </section>
-
+                        </div>
                     <section class="brokerage-economic-stats">
                         <div class="brokerage-section-heading brokerage-economic-heading">
                             <div>
@@ -948,51 +1000,6 @@
                         </div>
                     </section>
 
-                    <section class="brokerage-instrument-chart-section">
-                        <div class="brokerage-section-heading brokerage-chart-heading">
-                            <div>
-                                <h3>Historia cen</h3>
-                                <p id="instrumentHistoryCount">-</p>
-                            </div>
-                            <div class="brokerage-chart-controls">
-                                <div class="brokerage-range-buttons" role="group" aria-label="Zakres wykresu">
-                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-history-since-purchase>Od zakupu</button>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-history-days="30">1M</button>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-history-days="90">3M</button>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-history-days="180">6M</button>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-history-days="365">1R</button>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-history-days="1095">3L</button>
-                                </div>
-                                <form class="brokerage-custom-range" id="brokerageCustomRangeForm">
-                                    <input type="date" class="form-control form-control-sm" id="brokerageHistoryStartDate" aria-label="Data początku wykresu">
-                                    <input type="date" class="form-control form-control-sm" id="brokerageHistoryEndDate" aria-label="Data końca wykresu">
-                                    <button type="submit" class="btn btn-sm btn-primary rounded-pill fw-bold">Zastosuj</button>
-                                </form>
-                            </div>
-                        </div>
-                        <div class="brokerage-chart-summary">
-                            <div class="brokerage-chart-stat">
-                                <span>Zmiana w zakresie</span>
-                                <strong id="instrumentHistoryChange">-</strong>
-                                <small id="instrumentHistoryRange">-</small>
-                            </div>
-                            <div class="brokerage-chart-stat">
-                                <span>Zakres cen</span>
-                                <strong id="instrumentHistoryHighLow">-</strong>
-                                <small>minimum — maksimum</small>
-                            </div>
-                            <div class="brokerage-chart-stat">
-                                <span>Źródło</span>
-                                <strong id="instrumentHistorySource">-</strong>
-                                <small>dzienna historia zapisana lokalnie</small>
-                            </div>
-                        </div>
-                        <div class="brokerage-chart-shell">
-                            <canvas id="brokerageInstrumentChart" role="img" aria-label="Historia cen wybranego instrumentu"></canvas>
-                            <div class="brokerage-chart-empty d-none" id="brokerageInstrumentChartEmpty" role="status" aria-live="polite">Brak danych historycznych dla wykresu.</div>
-                        </div>
-                    </section>
-
                     <section class="brokerage-instrument-info-grid">
                         <div class="brokerage-info-list">
                             <h3>Dane instrumentu</h3>
@@ -1014,6 +1021,7 @@
                             <div id="instrumentLatestTransaction"></div>
                         </div>
                     </section>
+                    </details>
                 </div>
             </div>
         </div>
