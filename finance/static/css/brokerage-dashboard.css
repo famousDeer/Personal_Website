@@ -1348,14 +1348,6 @@
 /* Zwięzłe listy; dane techniczne są dostępne po rozwinięciu. */
 .brokerage-position-summary { grid-template-columns: minmax(160px, 1fr) minmax(280px, 1.3fr) auto; }
 .brokerage-position-quick-pro { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.brokerage-instrument-row { display: block; cursor: default; }
-.brokerage-instrument-heading { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
-.brokerage-instrument-heading > div { min-width: 0; overflow-wrap: anywhere; }
-.brokerage-instrument-heading > button { flex-shrink: 0; }
-.brokerage-instrument-settings { margin-top: .5rem; }
-.brokerage-instrument-settings summary { color: var(--ink-3); font-size: var(--fs-sm); cursor: pointer; padding: .35rem 0; }
-.brokerage-instrument-settings[open] summary { margin-bottom: .5rem; }
-.brokerage-instrument-settings .brokerage-inline-actions { margin-top: .75rem; }
 @media (max-width: 767.98px) {
     .brokerage-position-summary { grid-template-columns: minmax(0, 1fr) auto; }
     .brokerage-position-main { grid-column: 1; }
@@ -1370,3 +1362,35 @@
 
 .brokerage-custom-dates > summary { cursor: pointer; padding: .5rem; color: var(--ink-2); }
 .brokerage-custom-dates[open] .brokerage-custom-range { margin-top: .5rem; }
+
+/* Przyciski z tekstem nie mogą dziedziczyć wymiarów przycisku ikonowego. */
+.brokerage-position-actions .btn[data-instrument-detail-trigger] {
+    width: auto;
+    min-height: 2.5rem;
+    height: auto;
+    padding: .5rem .9rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .4rem;
+    line-height: 1.25;
+    white-space: nowrap;
+}
+.brokerage-range-buttons .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.5rem;
+    line-height: 1.25;
+    white-space: nowrap;
+    padding: .5rem .75rem;
+}
+@media (max-width: 767.98px) {
+    #brokerageInstrumentModal .brokerage-range-buttons {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        border-radius: 1rem;
+        gap: .25rem;
+    }
+}
+
+.brokerage-position-actions { gap: .5rem; align-items: center; flex-wrap: wrap; }

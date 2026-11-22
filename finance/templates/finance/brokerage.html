@@ -384,82 +384,6 @@
                 </div>
             </section>
 
-            <section class="brokerage-panel">
-                <div class="brokerage-section-heading">
-                    <div>
-                        <h2>Instrumenty</h2>
-                        <p>
-                            {% if selected_brokerage_account %}
-                                Instrumenty użyte na tym koncie.
-                            {% else %}
-                                Rejestr symboli i ISIN.
-                            {% endif %}
-                        </p>
-                    </div>
-                    <span class="brokerage-count-pill">{{ brokerage_instruments|length }}</span>
-                </div>
-                <div class="brokerage-search">
-                    <i class="bi bi-search"></i>
-                    <label class="visually-hidden" for="brokerageInstrumentSearch">Szukaj instrumentu</label>
-                    <input type="search" class="form-control" id="brokerageInstrumentSearch" aria-label="Szukaj instrumentu" placeholder="Szukaj instrumentu" data-brokerage-filter="#brokerage-instruments [data-filter-row]" data-brokerage-empty="#brokerage-instruments-empty">
-                </div>
-                <div class="brokerage-registry" id="brokerage-instruments">
-                    {% for instrument in brokerage_instruments %}
-                        <article
-                            class="brokerage-instrument-row"
-                            data-filter-row
-                            data-search="{{ instrument.name }} {{ instrument.ticker }} {{ instrument.isin }} {{ instrument.price_symbol }} {{ instrument.currency }}"
-                            data-instrument-detail-url="{% url 'finance:brokerage_instrument_detail_data' instrument.id %}"
-                        >
-                            <div class="brokerage-instrument-heading">
-                                <div>
-                                    <div class="brokerage-row-title">{{ instrument.ticker }}</div>
-                                    <div class="brokerage-row-meta">{{ instrument.name }}</div>
-                                </div>
-                                <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-instrument-detail-trigger aria-label="Wykres cen: {{ instrument.name }}">
-                                    <i class="bi bi-graph-up-arrow" aria-hidden="true"></i> Wykres
-                                </button>
-                            </div>
-                            <details class="brokerage-instrument-settings">
-                                <summary>Szczegóły i edycja</summary>
-                                <div class="brokerage-row-meta">
-                                    {{ instrument.ticker }} · {{ instrument.isin|default:"brak ISIN" }} · {{ instrument.currency }}
-                                </div>
-                                <div class="brokerage-row-tags">
-                                    <span class="badge rounded-pill bg-secondary-subtle text-secondary">{{ instrument.get_asset_type_display }}</span>
-                                    {% if instrument.price_symbol %}
-                                        <span class="badge rounded-pill bg-info-subtle text-info">Cena: {{ instrument.price_symbol }}</span>
-                                    {% endif %}
-                                    {% if instrument.last_price %}
-                                        <span class="badge rounded-pill bg-success-subtle text-success">
-                                            {{ instrument.last_price|floatformat:4|intcomma }}{% if instrument.market_data_source != 'XTB' %} {{ instrument.currency }}{% else %} · cena XTB{% endif %}
-                                        </span>
-                                    {% else %}
-                                        <span class="badge rounded-pill bg-warning-subtle text-warning">brak ceny</span>
-                                    {% endif %}
-                                </div>
-                                <div class="brokerage-inline-actions">
-                                <a href="{% url 'finance:edit_brokerage_instrument' instrument.id %}" class="btn btn-sm btn-outline-primary rounded-pill" title="Edytuj instrument" data-instrument-action>
-                                    <i class="bi bi-pencil"></i><span class="visually-hidden">Edytuj instrument</span>
-                                </a>
-                                <form method="post" action="{% url 'finance:delete_brokerage_instrument' instrument.id %}" data-instrument-action
-                                      data-confirm="Usunąć instrument {{ instrument.ticker|default:instrument.name }}?"
-                                      data-confirm-detail="Razem z nim znikną jego transakcje, dywidendy i zapisane ceny. Tego nie da się cofnąć."
-                                      data-confirm-action="Usuń instrument">
-                                    {% csrf_token %}
-                                    <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill" title="Usuń instrument">
-                                        <i class="bi bi-trash"></i><span class="visually-hidden">Usuń instrument</span>
-                                    </button>
-                                </form>
-                                </div>
-                            </details>
-                        </article>
-                    {% empty %}
-                        <div class="brokerage-empty-state">Brak instrumentów.</div>
-                    {% endfor %}
-                    <div class="brokerage-empty-state d-none" id="brokerage-instruments-empty" role="status" aria-live="polite">Brak instrumentów pasujących do filtra.</div>
-                </div>
-            </section>
         </aside>
 
         <section class="brokerage-main">
@@ -572,7 +496,7 @@
                                     </div>
                                     <div class="brokerage-position-actions">
                                         <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-instrument-detail-trigger aria-label="Wykres cen: {{ position.instrument.name }}">
-                                            <i class="bi bi-graph-up-arrow" aria-hidden="true"></i> Wykres cen
+                                            <i class="bi bi-graph-up-arrow" aria-hidden="true"></i><span>Wykres cen</span>
                                         </button>
                                         <a href="{% url 'finance:edit_brokerage_instrument' position.instrument.id %}" class="btn btn-sm btn-outline-primary rounded-pill" title="Edytuj instrument">
                                             <i class="bi bi-pencil"></i><span class="visually-hidden">Edytuj instrument</span>
