@@ -1341,11 +1341,27 @@
 
 /* Zwięzłe listy; dane techniczne są dostępne po rozwinięciu. */
 .brokerage-position-summary { grid-template-columns: minmax(160px, 1fr) minmax(280px, 1.3fr) auto; }
-.brokerage-position-quick-pro { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.brokerage-position-quick-pro {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: start;
+}
+
+.brokerage-position-quick-pro strong {
+    overflow-wrap: anywhere;
+}
 @media (max-width: 767.98px) {
     .brokerage-position-summary { grid-template-columns: minmax(0, 1fr) auto; }
     .brokerage-position-main { grid-column: 1; }
-    .brokerage-position-quick-pro { grid-column: 1 / -1; grid-row: 2; }
+    .brokerage-position-quick-pro {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        gap: .5rem;
+    }
+
+    .brokerage-position-quick-pro .brokerage-metric-tile:first-child {
+        padding-top: .55rem;
+        border-top: 1px solid var(--surface-border);
+    }
     .brokerage-position-summary > .brokerage-expand-indicator { grid-column: 2; grid-row: 1; }
 }
 

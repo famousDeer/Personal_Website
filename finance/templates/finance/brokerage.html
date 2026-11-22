@@ -181,6 +181,70 @@
         {% endif %}
     </section>
 
+    <section class="brokerage-panel brokerage-accounts-panel" id="brokerage-data-management" aria-labelledby="brokerageAccountsTitle">
+        <div class="brokerage-section-heading">
+            <div>
+                <h2 id="brokerageAccountsTitle">Konta</h2>
+                <p>
+                    {% if selected_brokerage_account %}
+                        Aktualnie wybrane konto.
+                    {% else %}
+                        Podział według brokera i waluty.
+                    {% endif %}
+                </p>
+            </div>
+            <span class="brokerage-count-pill">{{ account_totals|length }}</span>
+        </div>
+        <div class="brokerage-account-list">
+            {% for item in account_totals %}
+                <article class="brokerage-account-card {% if selected_brokerage_account_id == item.account.id %}is-selected{% endif %}">
+                    <div class="brokerage-account-card-head">
+                        <a href="{% url 'finance:brokerage' %}?account={{ item.account.id }}" class="brokerage-account-identity"{% if selected_brokerage_account_id == item.account.id %} aria-current="page"{% endif %}>
+                            <span class="brokerage-account-logo">{{ item.account.get_broker_display|slice:":1" }}</span>
+                            <span>
+                                <strong>{{ item.account.name }}</strong>
+                                <small>{{ item.account.get_broker_display }} · {{ item.account.get_account_type_display }}</small>
+                            </span>
+                        </a>
+                        <span class="brokerage-currency-code">{{ item.currency }}</span>
+                    </div>
+                    <div class="brokerage-account-total">
+                        <span>Łączna wartość</span>
+                        <strong>{{ item.total_value|floatformat:2|intcomma }} <small>{{ item.currency }}</small></strong>
+                    </div>
+                    <div class="brokerage-account-breakdown">
+                        <div><span>Papiery</span><strong>{{ item.securities_value|floatformat:2|intcomma }}</strong></div>
+                        <div><span>Gotówka</span><strong>{{ item.cash_balance|floatformat:2|intcomma }}</strong></div>
+                        <div><span>Wynik</span><strong class="{% if item.unrealized >= 0 %}text-success{% else %}text-danger{% endif %}">{{ item.unrealized|floatformat:2|intcomma }}</strong></div>
+                        <div><span>Wpłaty netto</span><strong>{{ item.net_contributions|floatformat:2|intcomma }}</strong></div>
+                    </div>
+                    <div class="brokerage-account-card-foot">
+                        <span>
+                            <i class="bi bi-clock-history me-1"></i>
+                            {% if item.account.last_import_at %}Import {{ item.account.last_import_at|date:"d.m.Y H:i" }}{% else %}Nie importowano raportu{% endif %}
+                        </span>
+                        <div class="brokerage-inline-actions">
+                            <a href="{% url 'finance:edit_brokerage_account' item.account.id %}" class="btn btn-sm btn-outline-primary rounded-pill" title="Edytuj konto">
+                                <i class="bi bi-pencil"></i><span class="visually-hidden">Edytuj konto</span>
+                            </a>
+                            <form method="post" action="{% url 'finance:delete_brokerage_account' item.account.id %}"
+                                  data-confirm="Usunąć konto maklerskie „{{ item.account }}”?"
+                                  data-confirm-detail="Razem z nim znikną jego transakcje, dywidendy i historia wartości. Tego nie da się cofnąć."
+                                  data-confirm-action="Usuń konto">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill" title="Usuń konto">
+                                    <i class="bi bi-trash"></i><span class="visually-hidden">Usuń konto</span>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </article>
+            {% empty %}
+                <div class="brokerage-empty-state">Brak kont maklerskich. Import XTB może utworzyć je automatycznie.</div>
+            {% endfor %}
+        </div>
+    </section>
+
     <div class="brokerage-analytics-grid">
     <section class="brokerage-market-panel" aria-labelledby="brokerageMarketTitle">
         <div class="brokerage-section-heading">
@@ -349,6 +413,10 @@
                                     <div class="brokerage-row-meta">{{ position.account.name }} · <strong>{{ position.quantity|floatformat:-6|intcomma }} szt.</strong></div>
                                 </div>
                                 <div class="brokerage-position-quick brokerage-position-quick-pro">
+                                    <div class="brokerage-metric-tile brokerage-number">
+                                        <span>Koszt zakupu</span>
+                                        <strong>{{ position.cost|floatformat:2|intcomma }} <small>{{ position.currency }}</small></strong>
+                                    </div>
                                     <div class="brokerage-metric-tile brokerage-number">
                                         <span>Wartość</span>
                                         {% if position.current_value != None %}
@@ -673,70 +741,6 @@
                     {% endif %}
                 </div>
             </details>
-
-            <section class="brokerage-panel brokerage-accounts-panel" id="brokerage-data-management" aria-labelledby="brokerageAccountsTitle">
-                <div class="brokerage-section-heading">
-                    <div>
-                        <h2 id="brokerageAccountsTitle">Konta</h2>
-                        <p>
-                            {% if selected_brokerage_account %}
-                                Aktualnie wybrane konto.
-                            {% else %}
-                                Podział według brokera i waluty.
-                            {% endif %}
-                        </p>
-                    </div>
-                    <span class="brokerage-count-pill">{{ account_totals|length }}</span>
-                </div>
-                <div class="brokerage-account-list">
-                    {% for item in account_totals %}
-                        <article class="brokerage-account-card {% if selected_brokerage_account_id == item.account.id %}is-selected{% endif %}">
-                            <div class="brokerage-account-card-head">
-                                <a href="{% url 'finance:brokerage' %}?account={{ item.account.id }}" class="brokerage-account-identity"{% if selected_brokerage_account_id == item.account.id %} aria-current="page"{% endif %}>
-                                    <span class="brokerage-account-logo">{{ item.account.get_broker_display|slice:":1" }}</span>
-                                    <span>
-                                        <strong>{{ item.account.name }}</strong>
-                                        <small>{{ item.account.get_broker_display }} · {{ item.account.get_account_type_display }}</small>
-                                    </span>
-                                </a>
-                                <span class="brokerage-currency-code">{{ item.currency }}</span>
-                            </div>
-                            <div class="brokerage-account-total">
-                                <span>Łączna wartość</span>
-                                <strong>{{ item.total_value|floatformat:2|intcomma }} <small>{{ item.currency }}</small></strong>
-                            </div>
-                            <div class="brokerage-account-breakdown">
-                                <div><span>Papiery</span><strong>{{ item.securities_value|floatformat:2|intcomma }}</strong></div>
-                                <div><span>Gotówka</span><strong>{{ item.cash_balance|floatformat:2|intcomma }}</strong></div>
-                                <div><span>Wynik</span><strong class="{% if item.unrealized >= 0 %}text-success{% else %}text-danger{% endif %}">{{ item.unrealized|floatformat:2|intcomma }}</strong></div>
-                                <div><span>Wpłaty netto</span><strong>{{ item.net_contributions|floatformat:2|intcomma }}</strong></div>
-                            </div>
-                            <div class="brokerage-account-card-foot">
-                                <span>
-                                    <i class="bi bi-clock-history me-1"></i>
-                                    {% if item.account.last_import_at %}Import {{ item.account.last_import_at|date:"d.m.Y H:i" }}{% else %}Nie importowano raportu{% endif %}
-                                </span>
-                                <div class="brokerage-inline-actions">
-                                    <a href="{% url 'finance:edit_brokerage_account' item.account.id %}" class="btn btn-sm btn-outline-primary rounded-pill" title="Edytuj konto">
-                                        <i class="bi bi-pencil"></i><span class="visually-hidden">Edytuj konto</span>
-                                    </a>
-                                    <form method="post" action="{% url 'finance:delete_brokerage_account' item.account.id %}"
-                                          data-confirm="Usunąć konto maklerskie „{{ item.account }}”?"
-                                          data-confirm-detail="Razem z nim znikną jego transakcje, dywidendy i historia wartości. Tego nie da się cofnąć."
-                                          data-confirm-action="Usuń konto">
-                                        {% csrf_token %}
-                                        <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill" title="Usuń konto">
-                                            <i class="bi bi-trash"></i><span class="visually-hidden">Usuń konto</span>
-                                        </button>
-                                    </form>
-                                </div>
-                            </div>
-                        </article>
-                    {% empty %}
-                        <div class="brokerage-empty-state">Brak kont maklerskich. Import XTB może utworzyć je automatycznie.</div>
-                    {% endfor %}
-                </div>
-            </section>
 
             <section class="brokerage-panel brokerage-flow-panel">
                 <div class="brokerage-section-heading">
