@@ -8,7 +8,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import PantryBatch, PantryProduct, ReceiptAlias
+from .models import PantryBatch, PantryProduct, ProductGroup, ReceiptAlias
 from .services.pantry_batches import add_batch
 
 
@@ -115,6 +115,22 @@ class PantryListTests(TestCase):
         self.assertEqual(set(self._rows(self.client.get(url, {'status': 'expiring'}))), {self.yogurt.pk})
         self.assertEqual(set(self._rows(self.client.get(url, {'status': 'undated'}))), {self.milk.pk})
         self.assertEqual(set(self._rows(self.client.get(url, {'status': 'nobarcode'}))), {self.milk.pk})
+
+    def test_filter_without_brand_and_show_group_on_list(self):
+        group = ProductGroup.objects.create(name='Jogurty naturalne')
+        PantryProduct.objects.filter(pk=self.yogurt.pk).update(brand='Pilos', group=group)
+        PantryProduct.objects.filter(pk=self.rice.pk).update(brand='   ')
+
+        url = reverse('cooking:pantry')
+        page = self.client.get(url)
+        rows = self._rows(page)
+        self.assertNotIn('nobrand', rows[self.yogurt.pk].split())
+        self.assertIn('nobrand', rows[self.rice.pk].split())
+        self.assertContains(page, 'Marka: Pilos')
+        self.assertContains(page, 'Grupa: Jogurty naturalne')
+
+        filtered = self.client.get(url, {'status': 'nobrand'})
+        self.assertEqual(set(self._rows(filtered)), {self.milk.pk, self.rice.pk})
 
     def test_search_text_includes_receipt_alias(self):
         ReceiptAlias.objects.create(normalized_text='ryz bial 1kg', product=self.rice)

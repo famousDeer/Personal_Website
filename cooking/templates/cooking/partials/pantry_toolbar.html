@@ -13,9 +13,10 @@ grupowanie i układ (pantry-list.js). Bez JavaScriptu to zwykły formularz GET
                    autocomplete="off" data-filter-search>
         </label>
     </div>
-    <div class="pt-chips" role="group" aria-label="Stan">
+    <div class="pt-chips" role="group" aria-label="Szybkie filtry">
         <button type="submit" name="status" value="" class="pt-chip{% if not current_status %} is-active{% endif %}" data-filter-status="">Wszystko</button>
         <button type="submit" name="status" value="empty" class="pt-chip{% if current_status == 'empty' %} is-active{% endif %}" data-filter-status="empty">Brak</button>
+        <button type="submit" name="status" value="nobrand" class="pt-chip{% if current_status == 'nobrand' %} is-active{% endif %}" data-filter-status="nobrand">Bez marki</button>
         <button type="submit" name="status" value="low" class="pt-chip{% if current_status == 'low' %} is-active{% endif %}" data-filter-status="buy">Do kupienia</button>
         <button type="button" class="pt-chip" data-filter-status="expiring">Kończy się termin</button>
     </div>

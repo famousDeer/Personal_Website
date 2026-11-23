@@ -847,6 +847,8 @@ def pantry_row_context(product, card, batches, undated, last_purchase, receipt_n
         flags.append('undated')
     if not product.barcode and product.unit != PantryProduct.UNIT_KILOGRAM:
         flags.append('nobarcode')
+    if not product.brand.strip():
+        flags.append('nobrand')
     if product.skips_restock:
         flags.append('oneoff')
     rating = card.get('rating')
@@ -1006,7 +1008,7 @@ class PantryListView(LoginRequiredMixin, View):
                 matches_status = not needs_restock
             elif status_filter == 'jednorazowe':
                 matches_status = product.skips_restock
-            elif status_filter in ('expiring', 'undated', 'nobarcode'):
+            elif status_filter in ('expiring', 'undated', 'nobarcode', 'nobrand'):
                 matches_status = status_filter in card['flags'].split()
             else:
                 matches_status = not status_filter or product.stock_status == status_filter

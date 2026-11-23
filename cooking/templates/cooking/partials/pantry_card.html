@@ -51,12 +51,12 @@ Kontekst: card (słownik z PantryListView), product = card.product.
                 {% endif %}
             </div>
             <p>
-                {% if card.catalog_entry.brand %}<span>{{ card.catalog_entry.brand }}</span>{% endif %}
+                {% if card.catalog_entry.brand and not product.brand %}<span>Marka z katalogu: {{ card.catalog_entry.brand }}</span>{% endif %}
                 {% if product.barcode %}<span><i class="bi bi-upc" aria-hidden="true"></i> {{ product.barcode }}</span>{% endif %}
                 {% if product.group %}
                     <span title="O braku decyduje cała grupa: {{ product.group.packages_in_stock }} z {{ product.group.minimum_packages }} opak.">
                         <i class="bi bi-collection" aria-hidden="true"></i>
-                        {{ product.group.name }} · {{ product.group.packages_in_stock }} opak.
+                        Grupa: {{ product.group.name }} · {{ product.group.packages_in_stock }} opak.
                     </span>
                 {% endif %}
             </p>

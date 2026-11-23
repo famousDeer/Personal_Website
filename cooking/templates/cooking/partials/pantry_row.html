@@ -13,7 +13,7 @@ Kontekst: card (słownik z PantryListView), product = card.product.
     data-usage="{{ card.sort_usage|unlocalize }}" data-price-change="{{ card.sort_price_change|unlocalize }}"
     data-rating="{{ card.sort_rating|unlocalize }}">
     <a class="pt-row-main" href="#product-{{ product.id }}" data-open-detail="{{ product.id }}"
-       aria-label="{{ product.label }} – szczegóły">
+       aria-label="{{ product.label }}{% if product.group_id %}, grupa {{ product.group.name }}{% endif %} – szczegóły">
         <span class="pt-thumb" aria-hidden="true">
             {% if product.image %}
                 <img src="{% url 'cooking:pantry-product-image' product.id %}" alt="" loading="lazy">
@@ -24,7 +24,13 @@ Kontekst: card (słownik z PantryListView), product = card.product.
             {% endif %}
         </span>
         <span class="pt-text">
-            <strong class="pt-name">{{ product.name }}{% if product.brand %} <span class="pt-brand">{{ product.brand }}</span>{% endif %}</strong>
+            <strong class="pt-name">{{ product.name }}</strong>
+            {% if 'nobrand' not in card.flags or product.group_id %}
+                <small class="pt-identity">
+                    {% if 'nobrand' not in card.flags %}Marka: {{ product.brand }}{% endif %}
+                    {% if product.group_id %}{% if 'nobrand' not in card.flags %} · {% endif %}Grupa: {{ product.group.name }}{% endif %}
+                </small>
+            {% endif %}
             <small class="pt-meta">
                 {% if product.tracks_packages %}{{ product.current_package_count }} opak.{% if product.unit != 'szt' and product.unit != 'opak' %} · {{ product.current_quantity|qty }} {{ product.display_unit }}{% endif %}
                 {% else %}{{ product.current_quantity|qty }} {{ product.display_unit }}{% endif %}
