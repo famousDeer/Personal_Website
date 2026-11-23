@@ -50,7 +50,7 @@ grupowanie i układ (pantry-list.js). Bez JavaScriptu to zwykły formularz GET
         <button type="submit" name="status" value="ok" class="pt-chip{% if current_status == 'ok' %} is-active{% endif %}" data-filter-status="ok">W zapasie</button>
         <button type="submit" name="status" value="jednorazowe" class="pt-chip{% if current_status == 'jednorazowe' %} is-active{% endif %}" data-filter-status="oneoff">Nie kupuję ponownie</button>
         </div>
-    <div class="pt-chips pt-chips-categories" role="group" aria-label="Kategorie">
+    <div class="pt-chips pt-chips-categories" id="pantry-category-filters" role="group" aria-label="Kategorie">
         {% for group in product_groups %}
             <button type="submit" name="category" value="{{ group.name }}" class="pt-chip is-category{% if current_category == group.name %} is-active{% endif %}"
                     data-filter-category="{{ group.name }}">{{ group.name }} <span>{{ group.count }}</span></button>

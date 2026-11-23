@@ -4,9 +4,9 @@
     {% url 'cooking:pantry-catalog-image' card.catalog_entry.id as image_url %}
 {% endif %}
 {% if image_url %}
-    <a class="pantry-photo-link" href="{{ image_url }}" data-pantry-photo="{{ product.label }}"
+    <a class="pantry-photo-link" href="{{ image_url }}{% if product.image %}?v={{ product.updated_at|date:'U' }}{% endif %}" data-pantry-photo="{{ product.label }}"
        aria-label="Powiększ zdjęcie: {{ product.label }}">
-        <img class="{{ thumbnail_class }}" src="{{ image_url }}" alt="" loading="lazy">
+        <img class="{{ thumbnail_class }}" src="{{ image_url }}{% if product.image %}?v={{ product.updated_at|date:'U' }}{% endif %}" alt="" loading="lazy">
     </a>
 {% else %}
     <span class="{{ placeholder_class }}" aria-hidden="true"><i class="bi bi-box-seam"></i></span>

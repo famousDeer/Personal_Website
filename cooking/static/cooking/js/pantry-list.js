@@ -13,7 +13,7 @@
 (function () {
     'use strict';
 
-    const list = document.querySelector('[data-pantry-list]');
+    let list = document.querySelector('[data-pantry-list]');
     const toolbar = document.querySelector('[data-pantry-toolbar]');
     if (!list || !toolbar) {
         return;
@@ -28,10 +28,10 @@
     const sortSelect = select('[data-filter-sort]', toolbar);
     const groupedBox = select('[data-filter-grouped]', toolbar);
     const resultLine = select('[data-filter-result]', toolbar);
-    const flatSection = select('[data-flat-section]', list);
-    const flatRows = select('[data-flat-rows]', list);
-    const flatTiles = select('[data-flat-tiles]', list);
-    const emptyState = select('[data-filter-empty]', list);
+    let flatSection = select('[data-flat-section]', list);
+    let flatRows = select('[data-flat-rows]', list);
+    let flatTiles = select('[data-flat-tiles]', list);
+    let emptyState = select('[data-filter-empty]', list);
     const detail = document.querySelector('[data-pantry-detail]');
     const detailBody = detail ? select('[data-pantry-detail-body]', detail) : null;
     const detailTitle = detail ? select('#pantry-detail-title', detail) : null;
@@ -71,11 +71,18 @@
     // Kolejność z serwera (kategorie w ustalonym porządku) - dla sortowania „kategorie”.
     const homeIndex = new Map();
     const homeSection = new Map();
-    selectAll('[data-pantry-row]', list).forEach((row, index) => {
-        homeIndex.set(row.dataset.pantryRow, index);
-        homeSection.set(row.dataset.pantryRow, row.closest('[data-section]')?.dataset.section || '');
-    });
-    const total = homeIndex.size;
+    function indexRows() {
+        homeIndex.clear();
+        homeSection.clear();
+        if (!list) {
+            return;
+        }
+        selectAll('[data-pantry-row]', list).forEach((row, index) => {
+            homeIndex.set(row.dataset.pantryRow, index);
+            homeSection.set(row.dataset.pantryRow, row.closest('[data-section]')?.dataset.section || '');
+        });
+    }
+    indexRows();
 
     const cardOf = (id) => document.getElementById(`product-${id}`);
     const sectionOf = (key) => select(`[data-section="${CSS.escape(key)}"]`, list);
@@ -151,6 +158,11 @@
     }
 
     function apply() {
+        if (!list) {
+            resultLine.textContent = '0 produktów';
+            return;
+        }
+        const total = homeIndex.size;
         let visible = 0;
         placeRows();
         selectAll('[data-pantry-row]', list).forEach((row) => {
@@ -311,9 +323,9 @@
         return true;
     }
 
-    list.addEventListener('click', (event) => {
+    document.addEventListener('click', (event) => {
         const opener = event.target.closest('[data-open-detail]');
-        if (opener && list.dataset.layout === 'list' && openDetail(opener.dataset.openDetail)) {
+        if (opener && list?.contains(opener) && list.dataset.layout === 'list' && openDetail(opener.dataset.openDetail)) {
             event.preventDefault();
             // „Oceń” w wierszu: panel od razu przy sekcji oceny.
             const hash = opener.getAttribute('href') || '';
@@ -324,7 +336,24 @@
     });
     detail?.addEventListener('hidden.bs.offcanvas', returnCard);
 
-    document.addEventListener('partial:swapped', () => apply());
+    document.addEventListener('partial:swapped', () => {
+        const refreshedList = select('[data-pantry-list]');
+        if (refreshedList !== list) {
+            const detailId = openCardId;
+            openCardId = null;
+            detailBody.replaceChildren();
+            list = refreshedList;
+            flatSection = list?.querySelector('[data-flat-section]');
+            flatRows = list?.querySelector('[data-flat-rows]');
+            flatTiles = list?.querySelector('[data-flat-tiles]');
+            emptyState = list?.querySelector('[data-filter-empty]');
+            indexRows();
+            if (detailId && !openDetail(detailId)) {
+                window.bootstrap.Offcanvas.getInstance(detail)?.hide();
+            }
+        }
+        apply();
+    });
 
     apply();
 })();

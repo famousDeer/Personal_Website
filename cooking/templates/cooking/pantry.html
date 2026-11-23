@@ -59,6 +59,7 @@
     {% include 'cooking/partials/pantry_toolbar.html' %}
     {% endif %}
 
+    <div id="pantry-products">
     {% if view_mode == 'grupy' %}
         {% if proposals %}
             <section class="pantry-group-tools animate-fade-in-up">
@@ -287,6 +288,9 @@
             </button>
         </div>
     {% endif %}
+
+    </div>
+    {% include 'cooking/partials/pantry_detail.html' %}
 
     <button type="button" class="btn pantry-mobile-scan-button pt-fab d-md-none" data-bs-toggle="modal"
             data-bs-target="#pantryScannerModal" data-open-scanner aria-label="Uruchom skaner produktów">
@@ -763,6 +767,16 @@
         </div>
     </div>
 </div>
+<dialog class="pantry-photo-dialog pantry-edit-dialog" aria-labelledby="pantry-edit-title" data-pantry-edit-dialog>
+    <div class="pantry-photo-content">
+        <div class="pantry-photo-header">
+            <h2 class="h5 mb-0" id="pantry-edit-title">Edytuj produkt</h2>
+            <button class="btn-close" type="button" aria-label="Zamknij edycję" data-pantry-edit-close autofocus></button>
+        </div>
+        <p class="alert alert-danger" role="alert" data-pantry-edit-error hidden></p>
+        <div data-pantry-edit-body></div>
+    </div>
+</dialog>
 <dialog class="pantry-photo-dialog" aria-labelledby="pantry-photo-title" data-pantry-photo-dialog>
     <div class="pantry-photo-content">
         <div class="pantry-photo-header">
@@ -779,5 +793,7 @@
 {% block extra_js %}
 <script src="{% static 'cooking/js/pantry-scanner.js' %}"></script>
 <script src="{% static 'cooking/js/pantry-list.js' %}" defer></script>
+<script src="{% static 'cooking/js/pantry-edit-fields.js' %}" defer></script>
+<script src="{% static 'cooking/js/pantry-edit.js' %}" defer></script>
 <script src="{% static 'cooking/js/pantry-photo.js' %}" defer></script>
 {% endblock %}

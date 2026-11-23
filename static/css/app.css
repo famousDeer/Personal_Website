@@ -3269,3 +3269,11 @@ img.pt-thumb { object-fit: cover; }
     object-fit: contain;
     border-radius: var(--r-md);
 }
+
+.pantry-edit-dialog { width: min(94vw, 46rem); }
+.pantry-edit-dialog .pantry-photo-header {
+    position: sticky;
+    top: calc(-1 * var(--sp-3));
+    z-index: 1;
+    background: var(--surface-1);
+}

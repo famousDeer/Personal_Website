@@ -25,7 +25,7 @@ Kontekst: card (słownik z PantryListView), product = card.product.
             <div class="pantry-product-title-row">
                 <h4>{{ product.name }}{% if product.brand %} <span class="pantry-product-brand">{{ product.brand }}</span>{% endif %}</h4>
                 <a class="pantry-product-edit" href="{% url 'cooking:edit-pantry-product' product.id %}"
-                   title="Edytuj lub usuń produkt" aria-label="Edytuj lub usuń {{ product.label }}">
+                   title="Edytuj produkt" aria-label="Edytuj {{ product.label }}" data-pantry-edit="{{ product.id }}">
                     <i class="bi bi-pencil" aria-hidden="true"></i>
                 </a>
                 {% if product.skips_restock and product.stock_status == 'empty' %}
