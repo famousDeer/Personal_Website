@@ -36,7 +36,8 @@ from .pantry_quantities import (
 from .product_groups import restock_target
 from .receipt_matching import MatchContext, find_alias, suggest
 from .receipt_ocr import OCR_VARIANTS, ReceiptOcrError, read_text
-from .receipt_parser import fingerprint, normalize_text, package_size, parse_receipt, price_per_base_unit
+from .receipt_parser import fingerprint, is_nip_label, normalize_text, package_size, parse_receipt, price_per_base_unit
+from .receipt_barcodes import find_barcode_owner
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,12 @@ def store_for(parsed) -> ReceiptStore | None:
     if parsed.nip:
         store = ReceiptStore.objects.filter(nip=parsed.nip).first()
         if store:
+            if parsed.store_name and is_nip_label(store.name):
+                updated = ReceiptStore.objects.filter(pk=store.pk, name=store.name).update(name=parsed.store_name)
+                if updated:
+                    store.name = parsed.store_name
+                else:
+                    store.refresh_from_db(fields=['name'])
             return store
     if parsed.store_name:
         store = ReceiptStore.objects.filter(name__iexact=parsed.store_name).first()
@@ -706,7 +713,7 @@ def scan_receipt_barcode(receipt: Receipt, barcode: str, product_id: int | None 
     from .receipt_matching import name_score
 
     remaining = receipt_products_without_barcode(receipt)
-    owner = PantryProduct.objects.filter(barcode=barcode).first()
+    owner = find_barcode_owner(barcode)
     if owner is not None:
         # Produkt z paragonu dostał nową nazwę, a ten towar już stoi w spiżarni z kodem:
         # to duplikat. Ta sama nazwa (bez ogonków i wielkości liter) i firma - łączymy
@@ -716,6 +723,12 @@ def scan_receipt_barcode(receipt: Receipt, barcode: str, product_id: int | None 
             if source is None:
                 raise ValueError('Tego produktu nie ma już na liście z paragonu.')
             return _merged(source, owner)
+        if receipt.lines.filter(product=owner, match_status__in=[
+            ReceiptLine.MATCH_AUTO, ReceiptLine.MATCH_CONFIRMED,
+        ]).exists():
+            if _needs_date(owner):
+                return {'status': 'date', 'product': owner.label, 'product_id': owner.pk}
+            return {'status': 'known', 'product': owner.label}
         twin = next((item for item in remaining if same_product(item, owner)), None)
         if twin is not None:
             return _merged(twin, owner)
@@ -748,7 +761,7 @@ def scan_receipt_barcode(receipt: Receipt, barcode: str, product_id: int | None 
     )
     best_score, _index, best = scored[0]
     second = scored[1][0] if len(scored) > 1 else 0.0
-    if len(remaining) == 1 or (best_score >= AUTO_LINK_SCORE and best_score - second >= AUTO_LINK_MARGIN):
+    if best_score >= AUTO_LINK_SCORE and best_score - second >= AUTO_LINK_MARGIN:
         best = assign_barcode(best, barcode)
         return {'status': 'linked', 'product': best.name, 'product_id': best.pk, 'catalog_name': catalog_name,
                 'needs_date': _needs_date(best)}

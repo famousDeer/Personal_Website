@@ -1,7 +1,7 @@
 /* „Rozpakuj zakupy” po zatwierdzeniu paragonu.
  *
  * Aparat działa bez przerwy. Każdy kod idzie na serwer, który sam wybiera
- * produkt (jedyny pozostały albo pasujący do nazwy z Open Food Facts).
+ * produkt (według zapisanego kodu lub nazwy z Open Food Facts).
  * Użytkownik dotyka ekranu tylko wtedy, gdy serwer nie jest pewny, i przy
  * nabiale - raz, wybierając datę z opakowania.
  */
@@ -146,7 +146,7 @@
         } else {
             chooseHint.textContent = result.catalog_name
                 ? `Kod ${barcode} – w katalogu: „${result.catalog_name}”.`
-                : `Kod ${barcode}.`;
+                : `Nie znam kodu ${barcode}. Porównaj go z kodem na opakowaniu przed przypisaniem.`;
         }
         chooseList.replaceChildren(...(result.candidates || []).map((candidate) => {
             const button = document.createElement('button');
@@ -203,7 +203,7 @@
         } else if (result.candidates && result.candidates.length) {
             showChoice(barcode, result);
         } else {
-            setStatus('Wszystkie produkty z paragonu mają już kody.');
+            setStatus(`Nie rozpoznano kodu ${barcode}. Sprawdź kod na opakowaniu i zeskanuj go ponownie.`);
         }
     }
 

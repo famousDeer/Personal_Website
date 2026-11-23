@@ -6,7 +6,7 @@
 
 {% block content_cooking %}
 {% url 'cooking:receipt-detail' receipt.uuid as receipt_url %}
-{% page_head title="Rozpakuj zakupy" eyebrow=receipt.store.name|default:"Paragon" icon="bi-box-seam" sub="Skanuj opakowania w dowolnej kolejności, wkładając je do szafki. Kod sam trafi do produktu; przy nabiale dotknij daty z opakowania." back=receipt_url back_label="Wróć do paragonu" %}{% endpage_head %}
+{% page_head title="Rozpakuj zakupy" eyebrow=receipt.store.name|default:"Paragon" icon="bi-box-seam" sub="Skanuj opakowania w dowolnej kolejności, wkładając je do szafki. Przy nieznanym kodzie wybierz produkt. Przy nabiale wybierz datę z opakowania." back=receipt_url back_label="Wróć do paragonu" %}{% endpage_head %}
 
 <div class="pc-page animate-fade-in-up" id="receipt-barcodes"
      data-scan-url="{% url 'cooking:receipt-barcodes' receipt.uuid %}"

@@ -21,6 +21,7 @@ from django.db import transaction
 from ..models import PantryProduct, Receipt, ReceiptLine
 from .pantry_names import product_label, same_product
 from .receipt_matching import name_score
+from .receipt_barcodes import find_barcode_owner
 
 AUTO_LINE_SCORE = 0.55
 AUTO_LINE_MARGIN = 0.15
@@ -89,7 +90,9 @@ def scan_review_line(receipt: Receipt, barcode: str, line_id: int | None = None)
     if receipt.status != Receipt.STATUS_REVIEW:
         raise ValueError('Ten paragon nie jest już na etapie sprawdzania.')
     lines = list(receipt.lines.select_related('product', 'group'))
-    owner = PantryProduct.objects.filter(barcode=barcode).first()
+    owner = find_barcode_owner(barcode)
+    if owner is not None:
+        barcode = owner.barcode
     name, brand = ('', '') if owner else _catalog_product(barcode)
     label = owner.label if owner else product_label(name, brand)
 
@@ -102,7 +105,7 @@ def scan_review_line(receipt: Receipt, barcode: str, line_id: int | None = None)
         line, status, candidates = _pick_line(lines, barcode, owner, names)
         if status != 'ok':
             return {
-                'status': status, 'product': label, 'known': owner is not None,
+                'status': status, 'product': label, 'known': owner is not None, 'barcode': barcode,
                 'line': _line_info(line) if line else None,
                 'candidates': [_line_info(item) for item in candidates],
             }
@@ -131,7 +134,7 @@ def scan_review_line(receipt: Receipt, barcode: str, line_id: int | None = None)
     line.save(update_fields=['barcode', 'product', 'group', 'target_name', 'match_status'])
     return {
         'status': status, 'line': _line_info(line), 'target': target, 'product': label,
-        'locked': owner is not None,
+        'locked': owner is not None, 'barcode': barcode,
     }
 
 

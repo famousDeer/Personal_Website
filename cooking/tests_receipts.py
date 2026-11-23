@@ -18,7 +18,7 @@ from django.utils import timezone
 from PIL import Image
 
 from .models import (
-    PantryMovement, PantryProduct, ProductGroup, Receipt, ReceiptAlias, ReceiptLine,
+    PantryMovement, PantryProduct, ProductGroup, Receipt, ReceiptAlias, ReceiptLine, ReceiptStore,
     ShoppingList, ShoppingListItem,
 )
 from .services.receipt_matching import name_score
@@ -65,6 +65,15 @@ SUMA PLN 21,87
 
 
 class ReceiptParserTests(SimpleTestCase):
+    def test_recognizes_biedronka_when_ocr_only_reads_its_nip(self):
+        receipt = parse_receipt('NIP PL 779-10-11-327\nPARAGON FISKALNY\nMleko 1 x 4,00 4,00 C')
+        self.assertEqual((receipt.store_name, receipt.nip), ('Biedronka', '7791011327'))
+
+    def test_skips_nip_and_uses_unknown_store_name_from_header(self):
+        receipt = parse_receipt('NIP: 1234567890\nSklep Przykładowy\nPARAGON FISKALNY')
+        self.assertEqual(receipt.store_name, 'Sklep Przykładowy')
+        self.assertEqual(parse_receipt('NIP: 1234567890\nPARAGON FISKALNY').store_name, '')
+
     def test_biedronka_receipt(self):
         receipt = parse_receipt(BIEDRONKA)
         self.assertEqual(receipt.store_name, 'Biedronka')
@@ -114,6 +123,15 @@ class ReceiptParserTests(SimpleTestCase):
 
 
 class ReceiptFlowTests(TestCase):
+    def test_reading_receipt_repairs_existing_store_named_after_nip(self):
+        store = ReceiptStore.objects.create(name='Nip 7791011327', nip='7791011327')
+        previous = Receipt.objects.create(store=store)
+        receipt = apply_ocr_text(Receipt.objects.create(), 'NIP 7791011327\nPARAGON FISKALNY')
+
+        self.assertEqual(receipt.store_id, store.pk)
+        previous.refresh_from_db()
+        self.assertEqual(previous.store.name, 'Biedronka')
+
     def setUp(self):
         self.user = User.objects.create_user(username='paragon', password='pass12345')
         self.client.force_login(self.user)
@@ -791,6 +809,16 @@ class ReceiptBarcodeScanModeTests(TestCase):
         return self.client.post(self.url, data=json.dumps({'barcode': barcode, 'product_id': product_id}),
                                 content_type='application/json').json()
 
+    def test_equivalent_upc_scan_recognizes_product_already_on_receipt(self):
+        product = PantryProduct.objects.get(name='Mutti Pomidory polpa')
+        product.barcode = '0036000291452'
+        product.save(update_fields=['barcode'])
+
+        result = self._scan('036000291452')
+
+        self.assertEqual((result['status'], result['product']), ('known', product.label))
+        self.assertEqual([item['name'] for item in result['remaining']], ['Mrożone maliny'])
+
     def test_done_page_offers_scan_mode_without_weighted_items(self):
         page = self.client.get(reverse('cooking:receipt-detail', args=[self.receipt.uuid]))
         self.assertContains(page, 'Rozpakuj zakupy (2)')   # cytryny luzem bez kodu
@@ -798,14 +826,19 @@ class ReceiptBarcodeScanModeTests(TestCase):
         self.assertContains(scan_page, 'Mrożone maliny')
         self.assertNotContains(scan_page, 'data-product-id="%d"' % PantryProduct.objects.get(name='Cytryny luz').pk)
 
-    def test_ambiguous_scan_asks_then_last_one_links_itself(self):
+    def test_unknown_scan_asks_even_with_one_product_remaining(self):
         first = self._scan('5900000000017')
         self.assertEqual(first['status'], 'choose')
         maliny = PantryProduct.objects.get(name='Mrożone maliny')
         chosen = self._scan('5900000000017', maliny.pk)
         self.assertEqual(chosen['status'], 'linked')
         self.assertEqual([item['name'] for item in chosen['remaining']], ['Mutti Pomidory polpa'])
-        last = self._scan('8005110070600')                                # jeden został - bez pytania
+        product = PantryProduct.objects.get(name='Mutti Pomidory polpa')
+        with patch('cooking.services.receipts._catalog_name', return_value=''):
+            self.assertEqual(self._scan('8005110070600')['status'], 'choose')
+        product.refresh_from_db()
+        self.assertEqual(product.barcode, '')
+        last = self._scan('8005110070600', product.pk)
         self.assertEqual((last['status'], last['product']), ('linked', 'Mutti Pomidory polpa'))
         self.assertEqual(last['remaining'], [])
         self.assertEqual(self._scan('8005110070600')['status'], 'known')

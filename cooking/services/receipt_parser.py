@@ -65,6 +65,9 @@ DISCOUNT_RE = re.compile(
 PAYMENT_RE = re.compile(rf'^\s*(?:KARTA|GOTOWKA|BLIK)\b.*?(?P<amount>{_AMOUNT})\s*(?:PLN)?\s*$')
 TOTAL_RE = re.compile(rf'^\s*(?:suma|razem|do\s+zap[lł]aty)\b(?!\s*ptu)(?P<label>[^\d]*)(?P<amount>{_AMOUNT})', re.IGNORECASE)
 NIP_RE = re.compile(r'NIP[\s:.]*(?:PL)?\s*(?P<nip>\d[\d\- ]{8,14}\d)', re.IGNORECASE)
+# Numer sprzedawcy z nagłówka paragonów Biedronki.
+KNOWN_STORE_NIPS = {'7791011327': 'Biedronka'}
+STORE_METADATA_RE = re.compile(r'^(?:NIP\b|PARAGON\b|E[- ]?PARAGON\b|NR\b|KASA\b|DATA\b)')
 DATE_RE = re.compile(r'\b(?:(?P<y>2[08]\d{2})[-./](?P<m>[018]\d)[-./](?P<d>[0-38]\d)|(?P<d2>[0-38]\d)[-./](?P<m2>[018]\d)[-./](?P<y2>2[08]\d{2}))\b')
 TIME_RE = re.compile(r'\b(?P<h>[01]\d|2[0-3]):(?P<mi>[0-5]\d)\b')
 RECEIPT_NO_RE = re.compile(
@@ -300,15 +303,22 @@ def _make_line(raw: str, name: str, qty_text: str, price_text: str, total_text: 
     )
 
 
-def _store_name(lines: list[str]) -> str:
+def is_nip_label(value: str) -> bool:
+    return bool(re.fullmatch(r'(?:NIP[\s:.–-]*)?(?:PL\s*)?[\d\s–-]+', value.strip(), re.IGNORECASE)
+                or re.fullmatch(r'NIP[\s:.–-]*', value.strip(), re.IGNORECASE))
+
+
+def _store_name(lines: list[str], nip: str) -> str:
     folded = _fold(' '.join(lines[:12]))
     compact = folded.replace(' ', '')
     for key, label in KNOWN_STORES:
         if key in compact:
             return label
-    for line in lines[:4]:
+    if nip in KNOWN_STORE_NIPS:
+        return KNOWN_STORE_NIPS[nip]
+    for line in lines[:12]:
         text = _clean_name(line)
-        if len(text) >= 3 and not any(ch.isdigit() for ch in text[:3]):
+        if len(text) >= 3 and text[0].isalpha() and not is_nip_label(text) and not STORE_METADATA_RE.match(_fold(text)):
             return text.title()[:120]
     return ''
 
@@ -347,13 +357,8 @@ def _purchased_at(text: str) -> datetime | None:
 def parse_receipt(text: str) -> ParsedReceipt:
     raw_lines = [line.strip() for line in (text or '').splitlines()]
     lines = [line for line in raw_lines if line]
-    result = ParsedReceipt(store_name=_store_name(lines))
+    result = ParsedReceipt()
 
-    nip_match = NIP_RE.search(text or '')
-    if nip_match:
-        digits = re.sub(r'\D', '', nip_match.group('nip'))
-        if len(digits) == 10:
-            result.nip = digits
     result.purchased_at = _purchased_at(text or '')
     no_match = RECEIPT_NO_RE.search(text or '')
     if no_match:
@@ -364,6 +369,14 @@ def parse_receipt(text: str) -> ParsedReceipt:
         if any(marker in _fold(line) for marker in ITEMS_START_MARKERS):
             start = index + 1
             break
+
+    header = lines[:start - 1] if start else lines[:12]
+    nip_match = NIP_RE.search('\n'.join(header))
+    if nip_match:
+        digits = re.sub(r'\D', '', nip_match.group('nip'))
+        if len(digits) == 10:
+            result.nip = digits
+    result.store_name = _store_name(header, result.nip)
 
     pending_name = ''
     in_items = True

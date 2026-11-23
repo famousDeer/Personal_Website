@@ -20,6 +20,7 @@ window.BarcodeCamera = (() => {
     // Natywny czytnik nic nie znalazł przez tyle czasu → co drugą klatkę próbuje też ZXing.
     const ZXING_ASSIST_AFTER_MS = 3000;
     const NATIVE_ERROR_LIMIT = 5;
+    const CONFIRM_WINDOW_MS = 750;
 
     let zxingPromise = null;
 
@@ -65,11 +66,8 @@ window.BarcodeCamera = (() => {
         }
     }
 
-    // EAN-13 i UPC-A mają cyfrę kontrolną; odczyt z rozmytej klatki bywa przekłamany.
+    // EAN-8, EAN-13 i UPC-A mają cyfrę kontrolną.
     function hasValidCheckDigit(code) {
-        if (!/^\d{12,13}$/.test(code)) {
-            return true;
-        }
         const digits = code.split('').map(Number);
         const check = digits.pop();
         const sum = digits.reverse().reduce((total, digit, index) => total + digit * (index % 2 === 0 ? 3 : 1), 0);
@@ -161,7 +159,12 @@ window.BarcodeCamera = (() => {
             try {
                 const results = await state.detector.detect(canvas);
                 state.nativeErrors = 0;
-                return results.map((result) => result.rawValue).find(Boolean) || null;
+                return results.find(({ rawValue, format }) => {
+                    if (format === 'ean_8') {
+                        return /^[0-9]{8}$/.test(rawValue) && hasValidCheckDigit(rawValue);
+                    }
+                    return rawValue && (!/^[0-9]{12,13}$/.test(rawValue) || hasValidCheckDigit(rawValue));
+                })?.rawValue || null;
             } catch (error) {
                 // BarcodeDetector jest, ale detect() rzuca za każdym razem → ZXing.
                 state.nativeErrors += 1;
@@ -240,6 +243,8 @@ window.BarcodeCamera = (() => {
             state.lastFrameTime = -1;
             state.nativeErrors = 0;
 
+            let previousCode = '';
+            let previousAt = 0;
             const tick = async () => {
                 if (generation !== state.generation) {
                     return;
@@ -255,8 +260,16 @@ window.BarcodeCamera = (() => {
                         // Pojedyncza nieczytelna klatka to norma, gdy opakowanie się rusza.
                     }
                     barcode = String(barcode || '').trim();
-                    if (barcode && generation === state.generation && hasValidCheckDigit(barcode)) {
-                        await onCode(barcode);
+                    if (barcode && generation === state.generation
+                        && (!/^[0-9]{12,13}$/.test(barcode) || hasValidCheckDigit(barcode))) {
+                        const now = performance.now();
+                        if (previousCode === barcode && now - previousAt <= CONFIRM_WINDOW_MS) {
+                            previousCode = '';
+                            await onCode(barcode);
+                        } else {
+                            previousCode = barcode;
+                            previousAt = now;
+                        }
                     }
                 }
                 if (generation === state.generation) {

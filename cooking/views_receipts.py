@@ -205,7 +205,6 @@ class ReceiptLineScanView(LoginRequiredMixin, View):
             else:
                 barcode = normalize_pantry_barcode(payload.get('barcode'))
                 result = scan_review_line(receipt, barcode, line_id)
-                result['barcode'] = barcode
         except (ValueError, TypeError) as exc:
             return JsonResponse({'ok': False, 'error': str(exc) or 'Niepoprawny kod.'}, status=400)
         result['ok'] = True
