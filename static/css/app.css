@@ -3057,12 +3057,12 @@ a.pt-today-item:hover { border-color: var(--line-2); color: var(--ink-1); }
 .pt-row.is-warn::before { background: var(--cat-4); }
 .pt-row.is-muted { opacity: 0.6; }
 .pt-row-main {
-    flex: 1; min-width: 0; min-height: 48px; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto;
+    flex: 1; min-width: 0; min-height: 48px; display: grid; grid-template-columns: minmax(0, 1fr) auto;
     align-items: center; column-gap: var(--sp-3); color: inherit; text-decoration: none; border-radius: var(--r-md);
 }
 @media (hover: hover) { .pt-row-main:hover .pt-name { color: var(--brand-600); } }
-.pt-thumb { width: 40px; height: 40px; border-radius: var(--r-md); background: var(--surface-2); display: grid; place-items: center; overflow: hidden; color: var(--ink-3); }
-.pt-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.pt-thumb { flex: none; width: 40px; height: 40px; border-radius: var(--r-md); background: var(--surface-2); display: grid; place-items: center; overflow: hidden; color: var(--ink-3); }
+img.pt-thumb { object-fit: cover; }
 .pt-text { display: flex; flex-direction: column; min-width: 0; }
 .pt-name { font-weight: 600; color: var(--ink-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pt-identity { color: var(--ink-2); font-size: var(--fs-caption); overflow-wrap: anywhere; }
@@ -3095,11 +3095,11 @@ a.pt-today-item:hover { border-color: var(--line-2); color: var(--ink-1); }
     .pt-toggle button { width: 38px; }
     .pt-row { flex-wrap: wrap; padding: 4px var(--sp-2) 4px var(--sp-3); gap: 6px; }
     /* Dwie linie: nazwa, a pod nią najważniejsza informacja · stan. */
-    .pt-row-main { grid-template-columns: 36px auto minmax(0, 1fr); grid-template-areas: "thumb name name" "thumb key meta"; column-gap: 0; row-gap: 0; min-height: 44px; }
-    .pt-row-main:has(.pt-identity) { grid-template-areas: "thumb name name" "thumb identity identity" "thumb key meta"; }
+    .pt-row-main { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "name name" "key meta"; column-gap: 0; row-gap: 0; min-height: 44px; }
+    .pt-row-main:has(.pt-identity) { grid-template-areas: "name name" "identity identity" "key meta"; }
     .pt-identity { grid-area: identity; }
     .pt-text { display: contents; }
-    .pt-thumb { grid-area: thumb; width: 36px; height: 36px; margin-right: var(--sp-3); }
+    .pt-thumb { width: 36px; height: 36px; }
     .pt-name { grid-area: name; font-size: var(--fs-sm); }
     .pt-key { grid-area: key; text-align: left; font-size: var(--fs-caption); }
     .pt-key:not(:empty)::after { content: "·"; margin: 0 5px; color: var(--ink-4); font-weight: 400; }
@@ -3237,3 +3237,35 @@ a.pt-today-item:hover { border-color: var(--line-2); color: var(--ink-1); }
 .pt-filterbar .pt-filters { order: 2; margin: 0; }
 .pt-filterbar .pt-filters[open] { order: 0; flex-basis: 100%; }
 .pt-filterbar .pt-toolbar-foot { margin: 0; }
+
+/* Podgląd zdjęcia produktu w spiżarni. */
+.pantry-photo-link { display: block; flex: none; cursor: zoom-in; border-radius: var(--r-md); }
+.pantry-photo-link:focus-visible { outline: 2px solid var(--brand-500); outline-offset: 2px; }
+.pantry-photo-dialog {
+    max-width: min(92vw, 52rem);
+    max-height: 92dvh;
+    padding: 0;
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-lg);
+    background: var(--surface-1);
+    color: var(--ink-1);
+}
+.pantry-photo-dialog::backdrop { background: rgb(0 0 0 / .72); }
+.pantry-photo-content { padding: var(--sp-3); }
+.pantry-photo-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-3);
+}
+.pantry-photo-header h2 { overflow-wrap: anywhere; }
+.pantry-photo-header .btn-close { box-sizing: border-box; width: 44px; height: 44px; }
+.pantry-photo-dialog img {
+    display: block;
+    max-width: 100%;
+    max-height: 72dvh;
+    margin-inline: auto;
+    object-fit: contain;
+    border-radius: var(--r-md);
+}

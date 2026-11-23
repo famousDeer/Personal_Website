@@ -12,17 +12,9 @@ Kontekst: card (słownik z PantryListView), product = card.product.
     data-expires="{{ card.sort_expires }}" data-buy="{{ card.sort_buy }}" data-last="{{ card.sort_last }}"
     data-usage="{{ card.sort_usage|unlocalize }}" data-price-change="{{ card.sort_price_change|unlocalize }}"
     data-rating="{{ card.sort_rating|unlocalize }}">
+    {% include 'cooking/partials/pantry_product_photo.html' with thumbnail_class='pt-thumb' placeholder_class='pt-thumb' %}
     <a class="pt-row-main" href="#product-{{ product.id }}" data-open-detail="{{ product.id }}"
        aria-label="{{ product.label }}{% if product.group_id %}, grupa {{ product.group.name }}{% endif %} – szczegóły">
-        <span class="pt-thumb" aria-hidden="true">
-            {% if product.image %}
-                <img src="{% url 'cooking:pantry-product-image' product.id %}" alt="" loading="lazy">
-            {% elif card.catalog_entry.image %}
-                <img src="{% url 'cooking:pantry-catalog-image' card.catalog_entry.id %}" alt="" loading="lazy">
-            {% else %}
-                <i class="bi bi-box-seam"></i>
-            {% endif %}
-        </span>
         <span class="pt-text">
             <strong class="pt-name">{{ product.name }}</strong>
             {% if 'nobrand' not in card.flags or product.group_id %}

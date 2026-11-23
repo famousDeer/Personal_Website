@@ -763,9 +763,21 @@
         </div>
     </div>
 </div>
+<dialog class="pantry-photo-dialog" aria-labelledby="pantry-photo-title" data-pantry-photo-dialog>
+    <div class="pantry-photo-content">
+        <div class="pantry-photo-header">
+            <h2 class="h5 mb-0" id="pantry-photo-title"></h2>
+            <form method="dialog">
+                <button class="btn-close" type="submit" aria-label="Zamknij zdjęcie" autofocus></button>
+            </form>
+        </div>
+        <img alt="">
+    </div>
+</dialog>
 {% endblock %}
 
 {% block extra_js %}
 <script src="{% static 'cooking/js/pantry-scanner.js' %}"></script>
 <script src="{% static 'cooking/js/pantry-list.js' %}" defer></script>
+<script src="{% static 'cooking/js/pantry-photo.js' %}" defer></script>
 {% endblock %}

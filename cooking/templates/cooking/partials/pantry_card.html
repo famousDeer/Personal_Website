@@ -19,19 +19,7 @@ Kontekst: card (słownik z PantryListView), product = card.product.
          data-product-unit="{{ product.unit }}">
     <div class="pantry-product-card-head">
         <div class="pantry-product-visual">
-            {% if product.image %}
-                <img class="pantry-product-thumb"
-                     src="{% url 'cooking:pantry-product-image' product.id %}"
-                     alt="Zdjęcie produktu {{ product.label }}" loading="lazy">
-            {% elif card.catalog_entry.image %}
-                <img class="pantry-product-thumb"
-                     src="{% url 'cooking:pantry-catalog-image' card.catalog_entry.id %}"
-                     alt="Zdjęcie produktu {{ product.label }}" loading="lazy">
-            {% else %}
-                <span class="pantry-product-thumb-placeholder" aria-hidden="true">
-                    <i class="bi bi-box-seam"></i>
-                </span>
-            {% endif %}
+            {% include 'cooking/partials/pantry_product_photo.html' with thumbnail_class='pantry-product-thumb' placeholder_class='pantry-product-thumb-placeholder' %}
         </div>
         <div class="pantry-product-title min-w-0">
             <div class="pantry-product-title-row">
