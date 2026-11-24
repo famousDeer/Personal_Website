@@ -67,7 +67,7 @@ class PantryBrandTests(TestCase):
 
     def test_pantry_shows_brand_and_searches_by_it(self):
         response = self.client.get(reverse('cooking:pantry'))
-        self.assertContains(response, '<span class="pt-brand">Łaciate</span>')
+        self.assertContains(response, 'Marka: Łaciate')
         self.assertContains(response, '<span class="pantry-product-brand">Łaciate</span>')
         response = self.client.get(reverse('cooking:pantry'), {'q': 'łaciate'})
         self.assertContains(response, f'data-pantry-row="{self.laciate.pk}"')
