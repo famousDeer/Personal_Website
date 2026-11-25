@@ -63,7 +63,7 @@
         q: (searchInput?.value || '').trim().toLocaleLowerCase('pl'),
         status: serverStatus !== null ? (SERVER_STATUS[serverStatus] ?? serverStatus) : (saved.status || ''),
         categories: new Set(serverCategory ? [serverCategory] : (saved.categories || [])),
-        sort: saved.sort || 'category',
+        sort: [...sortSelect.options].some((option) => option.value === saved.sort) ? saved.sort : 'category',
         layout: saved.layout || 'list',
         grouped: saved.grouped !== false,
     };
@@ -120,9 +120,8 @@
         last: (row) => row.dataset.last || '0000',
         usage: (row) => Number(row.dataset.usage || 0),
         price: (row) => Number(row.dataset.priceChange || 0),
-        rating: (row) => Number(row.dataset.rating || 0),
     };
-    const DESCENDING = new Set(['last', 'usage', 'price', 'rating']);
+    const DESCENDING = new Set(['last', 'usage', 'price']);
 
     function compare(a, b) {
         const key = SORTS[state.sort] || SORTS.category;
@@ -327,11 +326,6 @@
         const opener = event.target.closest('[data-open-detail]');
         if (opener && list?.contains(opener) && list.dataset.layout === 'list' && openDetail(opener.dataset.openDetail)) {
             event.preventDefault();
-            // „Oceń” w wierszu: panel od razu przy sekcji oceny.
-            const hash = opener.getAttribute('href') || '';
-            if (hash.startsWith('#rating-')) {
-                document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'center' });
-            }
         }
     });
     detail?.addEventListener('hidden.bs.offcanvas', returnCard);

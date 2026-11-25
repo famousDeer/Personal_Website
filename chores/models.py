@@ -5,7 +5,6 @@ from django.db import models
 class Chore(models.Model):
     title = models.CharField('Nazwa zadania', max_length=160)
     notes = models.TextField('Notatka', blank=True)
-    due_on = models.DateField('Termin', blank=True, null=True)
     assignees = models.ManyToManyField(
         settings.AUTH_USER_MODEL, through='ChoreAssignment',
         related_name='household_chores', verbose_name='Odpowiedzialni',

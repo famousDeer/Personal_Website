@@ -38,7 +38,7 @@ def home_summary(request):
         'sport': _sport(request.user, today),
         'timelog': _timelog(request.user, today),
         'chores': Chore.objects.filter(
-            assignees=request.user, completed_at__isnull=True, due_on__lte=today,
+            assignees=request.user, completed_at__isnull=True,
         ).count(),
     }
 

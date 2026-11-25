@@ -1,7 +1,6 @@
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
-from django.db.models import F
 from django.http import HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -13,6 +12,7 @@ from utils.undo import delete_with_undo
 
 from .forms import ChoreForm
 from .models import Chore
+from .reminders import notify_chore_created
 
 
 class ChoreListView(LoginRequiredMixin, View):
@@ -22,9 +22,7 @@ class ChoreListView(LoginRequiredMixin, View):
         if view == 'wykonane':
             chores = chores.filter(completed_at__isnull=False).order_by('-completed_at', '-pk')
         else:
-            chores = chores.filter(completed_at__isnull=True).order_by(
-                F('due_on').asc(nulls_last=True), '-pk',
-            )
+            chores = chores.filter(completed_at__isnull=True).order_by('-pk')
             if view == 'moje':
                 chores = chores.filter(assignees=request.user)
             else:
@@ -32,7 +30,6 @@ class ChoreListView(LoginRequiredMixin, View):
         return render(request, 'chores/list.html', {
             'chores': chores,
             'view': view,
-            'today': timezone.localdate(),
             'push_available': push_enabled(),
         })
 
@@ -48,7 +45,9 @@ class ChoreEditView(LoginRequiredMixin, View):
             chore = get_object_or_404(Chore.objects.select_for_update(), pk=pk) if pk is not None else None
             form = ChoreForm(request.POST, instance=chore)
             if form.is_valid():
-                form.save()
+                saved = form.save()
+                if chore is None:
+                    transaction.on_commit(lambda: notify_chore_created(saved), robust=True)
                 messages.success(request, 'Zapisano zadanie.' if chore else 'Dodano zadanie.')
                 return redirect('chores:index')
         return render(request, 'chores/form.html', {'form': form, 'chore': chore})

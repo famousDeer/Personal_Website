@@ -849,7 +849,6 @@ Without the keys everything else works; sending is simply off and the command sa
 docker compose exec -T web python manage.py send_reminders
 docker compose exec -T web python manage.py send_reminders --dry-run
 docker compose exec -T web python manage.py send_reminders --kind spizarnia
-docker compose exec -T web python manage.py send_reminders --kind zadania --dry-run
 ```
 - `spizarnia` — the products the automatic shopping list would suggest. The same set of
   products is not sent twice (`SentNotification`, migration `0016`), so it does not
@@ -857,10 +856,10 @@ docker compose exec -T web python manage.py send_reminders --kind zadania --dry-
 - `lista` — how much is left on the active list. It goes out every day the command runs,
   once per list per day; on the household's usual shopping weekday the title says
   "Zakupy dziś" instead of "Lista zakupów".
-- `zadania` — a daily summary of open household chores due today or overdue.
-  The default `send_reminders` command sends one summary per assignee to their
-  devices with notifications enabled in the shopping app. Tapping the
-  notification opens the Tasks tab with the “Moje” filter.
+- On devices that support app icon badges, the shopping reminder also updates
+  the count of unchecked items across all active lists.
+- Creating a household chore sends a notification to its assignees after saving.
+  Tapping it opens the Zadania tab with the “Moje” filter.
 - Tapping a shopping notification follows its link via the shopping service
   worker. The log of sent notifications is pruned after 90 days.
 

@@ -70,8 +70,8 @@ def send_to_subscription(subscription, payload):
     return True
 
 
-def notify(kind, title, body, url='', tag='', once_per=None, subscriptions=None):
-    """Wysyła powiadomienie na wszystkie telefony domu.
+def notify(kind, title, body, url='', tag='', once_per=None, subscriptions=None, *, app_badge=None):
+    """Wysyła powiadomienie do podanych subskrypcji (domyślnie do całego domu).
 
     ``once_per`` (tekst) pilnuje, żeby ta sama treść nie przyszła drugi raz -
     zapisujemy jej odcisk w SentNotification. Zwraca liczbę telefonów,
@@ -89,6 +89,8 @@ def notify(kind, title, body, url='', tag='', once_per=None, subscriptions=None)
             return 0
 
     payload = {'title': title, 'body': body, 'url': url, 'tag': tag or kind}
+    if app_badge is not None:
+        payload['app_badge'] = app_badge
     targets = subscriptions if subscriptions is not None else PushSubscription.objects.all()
     return sum(1 for subscription in targets if send_to_subscription(subscription, payload))
 

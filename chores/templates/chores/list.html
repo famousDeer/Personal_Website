@@ -29,21 +29,13 @@
 
 <ul class="list-unstyled d-grid gap-2">
     {% for chore in chores %}
-    <li class="u-card u-card-pad">
+    <li class="u-card u-card-pad" id="zadanie-{{ chore.pk }}">
         <div class="d-flex flex-wrap justify-content-between gap-3">
             <div class="text-break mw-100">
                 <h2 class="h5 mb-2">{{ chore.title }}</h2>
                 <div class="d-flex flex-wrap align-items-center gap-2 small">
                     {% if chore.completed_at %}
                         <span class="badge text-bg-success">Wykonano {{ chore.completed_at|date:"j.m.Y" }}</span>
-                    {% elif chore.due_on %}
-                        {% if chore.due_on < today %}
-                            <span class="badge text-bg-danger">Po terminie · {{ chore.due_on|date:"j.m.Y" }}</span>
-                        {% elif chore.due_on == today %}
-                            <span class="badge text-bg-warning">Na dziś</span>
-                        {% else %}
-                            <span class="text-muted"><i class="bi bi-calendar3" aria-hidden="true"></i> {{ chore.due_on|date:"j.m.Y" }}</span>
-                        {% endif %}
                     {% endif %}
                     <span class="text-muted"><i class="bi bi-people" aria-hidden="true"></i>
                         <span class="visually-hidden">Odpowiedzialni</span>

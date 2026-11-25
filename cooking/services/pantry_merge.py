@@ -2,7 +2,7 @@
 
 Typowy przypadek: produkt założony z paragonu (bez kodu) okazuje się tym
 samym, który już stoi w spiżarni z kodem kreskowym. Stan, historia ruchów,
-partie z terminami, linie paragonów (ceny), skróty z paragonów, oceny i pozycje
+partie z terminami, linie paragonów (ceny), skróty z paragonów i pozycje
 list zakupów przechodzą na produkt docelowy, a duplikat znika.
 """
 from __future__ import annotations
@@ -12,7 +12,6 @@ from decimal import Decimal
 from django.db import transaction
 
 from ..models import PantryBatch, PantryMovement, PantryProduct, ReceiptAlias, ReceiptLine, ShoppingListItem
-from .pantry_ratings import merge_ratings
 from .pantry_quantities import convert_pantry_quantity, counts_in_packages, sync_package_count_from_quantity
 from .pantry_names import find_product_by_name, name_taken, same_product  # noqa: F401 - receipts.py importuje stąd
 
@@ -62,7 +61,6 @@ def merge_products(source: PantryProduct, target: PantryProduct) -> PantryProduc
     ReceiptLine.objects.filter(product=source).update(product=target)
     ReceiptAlias.objects.filter(product=source).update(product=target)
     ShoppingListItem.objects.filter(pantry_product=source).update(pantry_product=target)
-    merge_ratings(source, target)
 
     target.current_quantity += _scaled(source.current_quantity, factor)
     sync_package_count_from_quantity(target)

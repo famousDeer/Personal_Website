@@ -167,6 +167,16 @@ self.addEventListener('message', (event) => {
 });
 
 // --- Powiadomienia -------------------------------------------------------
+async function updateShoppingBadge(count) {
+    if (Number.isSafeInteger(count) && count >= 0 && 'setAppBadge' in self.navigator) {
+        try {
+            await self.navigator.setAppBadge(count);
+        } catch (error) {
+            // Ustawienia systemowe mogą blokować licznik niezależnie od powiadomień.
+        }
+    }
+}
+
 self.addEventListener('push', (event) => {
     let payload = {};
     try {
@@ -175,14 +185,15 @@ self.addEventListener('push', (event) => {
         payload = { title: 'Dom', body: event.data ? event.data.text() : '' };
     }
     const title = payload.title || 'Lista zakupów';
-    event.waitUntil(self.registration.showNotification(title, {
+    const notification = self.registration.showNotification(title, {
         body: payload.body || '',
         icon: payload.icon || NOTIFICATION_ICON,
         badge: payload.badge || NOTIFICATION_ICON,
         tag: payload.tag || 'dom',
         renotify: false,
         data: { url: payload.url || SHELL_URL },
-    }));
+    });
+    event.waitUntil(Promise.all([notification, updateShoppingBadge(payload.app_badge)]));
 });
 
 self.addEventListener('notificationclick', (event) => {

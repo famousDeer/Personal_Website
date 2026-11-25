@@ -1,5 +1,7 @@
 import json
 import re
+import shutil
+import subprocess
 import sys
 import tempfile
 import types
@@ -4870,6 +4872,21 @@ class SendRemindersCommandTests(TestCase):
 
         self.assertEqual(calls, [])
 
+    def test_shopping_badge_counts_unchecked_items_across_active_lists(self):
+        self.add_active_list(title='Starsza lista')
+        self.add_active_list(title='Nowsza lista')
+        self.add_active_list(title='Odhaczona lista', purchased=True)
+        completed = self.add_active_list(title='Zakończona lista')
+        completed.status = ShoppingList.COMPLETED
+        completed.save()
+
+        _, calls = self.send('--kind', 'lista')
+
+        self.assertEqual(len(calls), 1)
+        payload = json.loads(calls[0]['data'])
+        self.assertIn('Nowsza lista', payload['title'])
+        self.assertEqual(payload['app_badge'], 2)
+
     def test_no_active_list_means_no_reminder(self):
         with patch('cooking.views.get_household_typical_shopping_weekday', return_value=None):
             output, calls = self.send('--kind', 'lista')
@@ -4920,6 +4937,46 @@ class ServiceWorkerPushHandlerTests(TestCase):
         self.assertIn("addEventListener('notificationclick'", body)
         self.assertIn('showNotification', body)
         self.assertIn('clients.openWindow', body)
+
+    def test_shopping_push_updates_the_app_badge_without_an_open_window(self):
+        node = shutil.which('node')
+        if not node:
+            self.skipTest('Test wymaga Node.js.')
+        worker = self.client.get(reverse('cooking:shopping-app-sw')).content.decode('utf-8')
+        result = subprocess.run([node, '-e', """
+            const assert = require('node:assert/strict');
+            const vm = require('node:vm');
+            const handlers = {};
+            const counts = [];
+            const notifications = [];
+            const self = {
+                navigator: {setAppBadge: async (count) => counts.push(count)},
+                addEventListener: (name, handler) => { handlers[name] = handler; },
+                registration: {showNotification: async (title) => notifications.push(title)},
+            };
+            vm.runInNewContext(require('node:fs').readFileSync(0, 'utf8'), {self});
+            async function push(payload) {
+                let pending;
+                handlers.push({
+                    data: {json: () => payload},
+                    waitUntil: (promise) => { pending = promise; },
+                });
+                await pending;
+            }
+            (async () => {
+                await push({title: 'Zakupy', app_badge: 3});
+                await push({title: 'Zadanie'});
+                await push({title: 'Zakupy', app_badge: 0});
+                self.navigator.setAppBadge = async () => { throw new Error('Odmowa systemu'); };
+                await push({title: 'Zakupy', app_badge: 1});
+                assert.deepEqual(counts, [3, 0]);
+                assert.deepEqual(notifications, ['Zakupy', 'Zadanie', 'Zakupy', 'Zakupy']);
+            })().catch((error) => {
+                console.error(error);
+                process.exitCode = 1;
+            });
+        """], input=worker, text=True, capture_output=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 class ShoppingItemUuidMigrationTests(TransactionTestCase):

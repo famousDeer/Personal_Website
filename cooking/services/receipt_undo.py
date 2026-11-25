@@ -135,7 +135,7 @@ def _remove_created_products(receipt, log):
     for product in PantryProduct.objects.filter(pk__in=log.get('products', [])):
         has_history = (
             product.current_quantity > 0 or product.movements.exists() or product.batches.exists()
-            or product.ratings.exists() or product.shopping_items.exists()
+            or product.shopping_items.exists()
             or product.receipt_lines.exclude(receipt=receipt).exists()
         )
         if has_history:

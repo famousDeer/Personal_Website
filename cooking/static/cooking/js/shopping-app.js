@@ -916,7 +916,7 @@
                 : (state.pushOn ? 'włączone na tym telefonie' : 'wyłączone')],
             ['Liczba na ikonie', !badgeSupported
                 ? 'niedostępna w tej przeglądarce'
-                : (badgeAllowed() ? 'włączona' : 'wyłączona')],
+                : (badgeAllowed() ? 'zgoda na powiadomienia przyznana' : 'wymaga zgody na powiadomienia')],
             ['Wersja aplikacji', config.version],
         ];
         const insecureUrl = secureVersionUrl();
@@ -1107,6 +1107,8 @@
     }
 
     function render() {
+        const view = currentView();
+        updateBadge(view);
         const active = document.activeElement;
         if (active && active.matches && active.matches('[data-quantity-input], [data-pantry-search]') && app.contains(active)) {
             // Nie przerysowujemy listy pod palcem, gdy ktoś wpisuje ilość.
@@ -1115,7 +1117,6 @@
             return;
         }
         state.renderDeferred = false;
-        const view = currentView();
         const list = selectedList(view);
         renderStatus();
         renderOfflineChip();
@@ -1159,7 +1160,6 @@
                         <i class="bi bi-journal-plus" aria-hidden="true"></i> Nowa lista
                     </button>
                 </div>` : (state.status === 'offline' ? '' : '<div class="sa-empty"><div class="sa-spinner" aria-hidden="true"></div><p>Pobieram listę…</p></div>');
-            updateBadge(view);
             return;
         }
 
@@ -1175,7 +1175,6 @@
             el('[data-scan-open]').classList.remove('is-icon');
             el('[data-scan-label]').textContent = 'Skanuj kod';
             renderScanner(view, list);
-            updateBadge(view);
             return;
         }
         const total = list.items.length;
@@ -1217,7 +1216,6 @@
         }
         container.innerHTML = sections.join('');
         renderScanner(view, list);
-        updateBadge(view);
 
         const completeButton = el('[data-complete-button]');
         el('[data-add-open]').hidden = false;
@@ -1722,7 +1720,7 @@
     }
 
     function updateBadge(view) {
-        if (!badgeSupported) {
+        if (!badgeSupported || (!state.snapshot && !state.outbox.length)) {
             return;
         }
         const left = view.lists.reduce(
@@ -1730,11 +1728,7 @@
             0,
         );
         try {
-            if (left > 0) {
-                navigator.setAppBadge(left).catch(() => null);
-            } else if (navigator.clearAppBadge) {
-                navigator.clearAppBadge().catch(() => null);
-            }
+            navigator.setAppBadge(left).catch(() => null);
         } catch (error) {
             /* iPhone pokazuje liczbę dopiero po zgodzie na powiadomienia */
         }
@@ -1789,7 +1783,6 @@
             const data = await postJson(config.pushSubscribeUrl, { subscription: subscription.toJSON() });
             await acceptServerData(data);
             state.pushOn = true;
-            updateBadge(currentView());
             toast(data.message || 'Powiadomienia włączone.', 'success');
         } catch (error) {
             toast('Nie udało się włączyć powiadomień: ' + ((error && error.message) || 'błąd'), 'warning');
@@ -1824,8 +1817,7 @@
         // iPhone pyta o zgodę tylko w odpowiedzi na dotknięcie przycisku.
         const result = await Notification.requestPermission().catch(() => 'denied');
         if (result === 'granted') {
-            updateBadge(currentView());
-            toast('Gotowe. Na ikonie zobaczysz, ile produktów zostało.', 'success');
+            toast('Zgoda przyznana. Wyświetlanie liczby zależy też od ustawień aplikacji w telefonie.', 'success');
         } else {
             toast('Bez zgody na powiadomienia iPhone nie pokaże liczby na ikonie.', 'warning');
         }
