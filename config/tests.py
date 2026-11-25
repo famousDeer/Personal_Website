@@ -35,7 +35,7 @@ class HomeSummaryTests(TestCase):
         response = self.client.get('/')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['summary'], {
-            'finance': None, 'cars': None, 'cooking': None, 'sport': None, 'timelog': None,
+            'finance': None, 'cars': None, 'cooking': None, 'sport': None, 'timelog': None, 'chores': 0,
         })
         self.assertContains(response, 'Budżet, wydatki, przychody i raporty.')
 

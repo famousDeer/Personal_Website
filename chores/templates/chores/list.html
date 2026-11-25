@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+{% load ui %}
+
+{% block title %}Zadania domowe{% endblock %}
+
+{% block content %}
+{% page_head title="Zadania domowe" %}
+    <a class="btn btn-primary" href="{% url 'chores:add' %}">
+        <i class="bi bi-plus-lg" aria-hidden="true"></i> Dodaj zadanie
+    </a>
+{% endpage_head %}
+
+{% if push_available %}
+<details class="u-card u-card-pad mb-3">
+    <summary class="fw-semibold">Przypomnienia na telefonie</summary>
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-2">
+        <span class="small text-muted">W aplikacji zakupów otwórz panel diagnostyki i włącz powiadomienia na tym urządzeniu.</span>
+        <a href="{% url 'cooking:shopping-app' %}" class="btn btn-outline-secondary btn-sm">Otwórz aplikację zakupów</a>
+    </div>
+</details>
+{% endif %}
+
+{% url 'chores:index' as chores_url %}
+<nav class="nav nav-pills gap-1 mb-3" aria-label="Widok zadań">
+    <a href="{{ chores_url }}" class="nav-link{% if view == 'otwarte' %} active{% endif %}"{% if view == 'otwarte' %} aria-current="page"{% endif %}>Do zrobienia</a>
+    <a href="{{ chores_url }}?widok=moje" class="nav-link{% if view == 'moje' %} active{% endif %}"{% if view == 'moje' %} aria-current="page"{% endif %}>Moje</a>
+    <a href="{{ chores_url }}?widok=wykonane" class="nav-link{% if view == 'wykonane' %} active{% endif %}"{% if view == 'wykonane' %} aria-current="page"{% endif %}>Wykonane</a>
+</nav>
+
+<ul class="list-unstyled d-grid gap-2">
+    {% for chore in chores %}
+    <li class="u-card u-card-pad">
+        <div class="d-flex flex-wrap justify-content-between gap-3">
+            <div class="text-break mw-100">
+                <h2 class="h5 mb-2">{{ chore.title }}</h2>
+                <div class="d-flex flex-wrap align-items-center gap-2 small">
+                    {% if chore.completed_at %}
+                        <span class="badge text-bg-success">Wykonano {{ chore.completed_at|date:"j.m.Y" }}</span>
+                    {% elif chore.due_on %}
+                        {% if chore.due_on < today %}
+                            <span class="badge text-bg-danger">Po terminie · {{ chore.due_on|date:"j.m.Y" }}</span>
+                        {% elif chore.due_on == today %}
+                            <span class="badge text-bg-warning">Na dziś</span>
+                        {% else %}
+                            <span class="text-muted"><i class="bi bi-calendar3" aria-hidden="true"></i> {{ chore.due_on|date:"j.m.Y" }}</span>
+                        {% endif %}
+                    {% endif %}
+                    <span class="text-muted"><i class="bi bi-people" aria-hidden="true"></i>
+                        <span class="visually-hidden">Odpowiedzialni</span>
+                        {% for person in chore.assignees.all %}{{ person.get_username }}{% if not forloop.last %}, {% endif %}{% empty %}Brak przypisanych osób{% endfor %}
+                    </span>
+                </div>
+                {% if chore.notes %}<p class="mt-2 mb-0">{{ chore.notes|linebreaksbr }}</p>{% endif %}
+            </div>
+            <div class="d-flex flex-wrap align-items-start gap-2">
+                <form method="post" action="{% url 'chores:status' chore.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="widok" value="{{ view }}">
+                    {% if chore.completed_at %}
+                        <button type="submit" name="stan" value="otwarte" class="btn btn-outline-secondary btn-sm">
+                            <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Otwórz ponownie
+                        </button>
+                    {% else %}
+                        <button type="submit" name="stan" value="wykonane" class="btn btn-outline-success btn-sm">
+                            <i class="bi bi-check2" aria-hidden="true"></i> Odhacz
+                        </button>
+                    {% endif %}
+                </form>
+                <a class="btn btn-outline-secondary btn-sm" href="{% url 'chores:edit' chore.pk %}">Edytuj</a>
+            </div>
+        </div>
+    </li>
+    {% empty %}
+    <li class="u-card u-card-pad text-muted">
+        {% if view == 'moje' %}Nie masz otwartych zadań.
+        {% elif view == 'wykonane' %}Nie ma jeszcze wykonanych zadań.
+        {% else %}Nie ma zadań do zrobienia.{% endif %}
+    </li>
+    {% endfor %}
+</ul>
+{% endblock %}

@@ -76,7 +76,7 @@
                nadpisywał ją po swojemu (z ikoną albo bez), a garaż i konto
                pokazywały zaślepkę "Moja Aplikacja". {% endcomment %}
             {% with ns=request.resolver_match.namespace %}
-                <span>{% if ns == 'finance' %}Finanse{% elif ns == 'cooking' %}Kuchnia{% elif ns == 'cars' %}Garaż{% elif ns == 'sport' %}Sport{% elif ns == 'timelog' %}Czas{% elif request.resolver_match.url_name == 'profile' or request.resolver_match.url_name == 'edit_shared_account' %}Konto{% else %}Dom{% endif %}</span>
+                <span>{% if ns == 'finance' %}Finanse{% elif ns == 'cooking' %}Kuchnia{% elif ns == 'cars' %}Garaż{% elif ns == 'sport' %}Sport{% elif ns == 'timelog' %}Czas{% elif ns == 'chores' %}Zadania{% elif request.resolver_match.url_name == 'profile' or request.resolver_match.url_name == 'edit_shared_account' %}Konto{% else %}Dom{% endif %}</span>
             {% endwith %}
         </a>
 
@@ -112,6 +112,10 @@
             <a class="app-nav-link {% if ns == 'timelog' %}is-active{% endif %}" href="{% url 'timelog:index' %}"
                {% if ns == 'timelog' %}aria-current="true"{% endif %}>
                 <i class="bi bi-hourglass-split" aria-hidden="true"></i> Czas
+            </a>
+            <a class="app-nav-link {% if ns == 'chores' %}is-active{% endif %}" href="{% url 'chores:index' %}"
+               {% if ns == 'chores' %}aria-current="true"{% endif %}>
+                <i class="bi bi-list-check" aria-hidden="true"></i> Zadania
             </a>
             {% endwith %}
 
@@ -171,12 +175,11 @@
 {% comment %} Dolna nawigacja na telefonie: Start i wszystkie moduły w zasięgu
    kciuka, w tej samej kolejności co górna nawigacja na komputerze. Moduł
    prowadzi na swoją stronę główną (kafelki z jego częściami). Konto jest
-   w ikonie osoby w prawym górnym rogu - szósty moduł nie zmieściłby się
-   obok niego. Dotknięcie zakładki, na której stronie głównej już jesteś,
+   w ikonie osoby w prawym górnym rogu. Dotknięcie zakładki, na której stronie głównej już jesteś,
    przewija na górę (static/js/app-actions.js). Na komputerze ukryta. {% endcomment %}
 <nav class="app-tabbar" aria-label="Nawigacja mobilna">
     {% with ns=request.resolver_match.namespace %}
-    {% url 'index' as home_url %}{% url 'finance:dashboard' as finance_url %}{% url 'cooking:index' as cooking_url %}{% url 'cars:garage' as cars_url %}{% url 'sport:index' as sport_url %}{% url 'timelog:index' as timelog_url %}
+    {% url 'index' as home_url %}{% url 'finance:dashboard' as finance_url %}{% url 'cooking:index' as cooking_url %}{% url 'cars:garage' as cars_url %}{% url 'sport:index' as sport_url %}{% url 'timelog:index' as timelog_url %}{% url 'chores:index' as chores_url %}
     <div class="app-tabbar-inner">
         <a class="app-tab {% if request.path == home_url %}is-active{% endif %}" href="{{ home_url }}"
            {% if request.path == home_url %}aria-current="page"{% endif %}>
@@ -201,6 +204,10 @@
         <a class="app-tab {% if ns == 'timelog' %}is-active{% endif %}" href="{{ timelog_url }}"
            {% if request.path == timelog_url %}aria-current="page"{% elif ns == 'timelog' %}aria-current="true"{% endif %}>
             <i class="bi bi-hourglass-split" aria-hidden="true"></i><span>Czas</span>
+        </a>
+        <a class="app-tab {% if ns == 'chores' %}is-active{% endif %}" href="{{ chores_url }}"
+           {% if request.path == chores_url %}aria-current="page"{% elif ns == 'chores' %}aria-current="true"{% endif %}>
+            <i class="bi bi-list-check" aria-hidden="true"></i><span>Zadania</span>
         </a>
     </div>
     {% endwith %}

@@ -753,8 +753,8 @@ h1, h2, h3, h4, h5, h6 {
 /* =========================================================================
    Dolna nawigacja mobilna
    -------------------------------------------------------------------------
-   Start i pięć modułów w zasięgu kciuka. Zaznaczona zakładka ma
-   pigułkę pod ikoną - przy sześciu wąskich zakładkach sam kolor napisu
+   Start i moduły w zasięgu kciuka. Zaznaczona zakładka ma
+   pigułkę pod ikoną - przy wąskich zakładkach sam kolor napisu
    był za słaby. Napisy krótkie, żeby zmieściły się na 320 px.
    ========================================================================= */
 .app-tabbar {
@@ -824,6 +824,10 @@ h1, h2, h3, h4, h5, h6 {
 
     /* Miejsce na pasek, żeby nie zasłaniał końca strony */
     body { padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom)); }
+}
+
+@media (max-width: 359.98px) {
+    .app-tab { font-size: 0.625rem; }
 }
 
 /* =========================================================================

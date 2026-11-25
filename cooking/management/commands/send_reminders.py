@@ -11,6 +11,8 @@ Co wysyła:
   gdy zmieni się zestaw produktów, więc nie przychodzi codziennie to samo;
 * "lista" - przypomnienie o aktywnej liście: ile pozycji zostało. Idzie codziennie
   (raz dziennie na listę), a w dzień typowych zakupów ma tylko inny tytuł.
+* "zadania" - zadania domowe na dziś lub po terminie, raz dziennie na osobę
+  odpowiedzialną z włączonymi powiadomieniami.
 
 Bez kluczy VAPID komenda tylko mówi, że powiadomienia są wyłączone.
 """
@@ -18,6 +20,7 @@ from django.core.management.base import BaseCommand
 from django.urls import reverse
 from django.utils import timezone
 
+from chores.reminders import send_chore_reminders
 from cooking.models import PushSubscription, ShoppingList
 from cooking.services.polish import polish_count
 from cooking.services.push import notify, prune_notification_log, push_enabled
@@ -26,12 +29,12 @@ MAX_NAMES = 4
 
 
 class Command(BaseCommand):
-    help = 'Wysyła powiadomienia o brakach w spiżarni i o liście zakupów.'
+    help = 'Wysyła powiadomienia o spiżarni, liście zakupów i zadaniach domowych.'
 
     def add_arguments(self, parser):
         parser.add_argument('--dry-run', action='store_true', help='Pokaż, co poszłoby na telefony.')
         parser.add_argument(
-            '--kind', choices=['spizarnia', 'lista', 'termin', 'wszystko'], default='wszystko',
+            '--kind', choices=['spizarnia', 'lista', 'termin', 'zadania', 'wszystko'], default='wszystko',
             help='Ogranicz do jednego rodzaju powiadomienia.',
         )
 
@@ -54,6 +57,8 @@ class Command(BaseCommand):
             sent += self.shopping_list_reminder(dry_run)
         if kind in ('termin', 'wszystko'):
             sent += self.expiry_reminder(dry_run)
+        if kind in ('zadania', 'wszystko'):
+            sent += send_chore_reminders(self.stdout.write, dry_run)
         if not dry_run:
             prune_notification_log()
         self.stdout.write(self.style.SUCCESS(

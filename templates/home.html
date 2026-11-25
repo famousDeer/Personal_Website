@@ -5,7 +5,7 @@
 
 {% block content %}
 {% if user.is_authenticated %}
-{% page_head title="Dzień dobry, "|add:user.username eyebrow="Panel domowy" icon="bi-house-heart" sub="Finanse, kuchnia, garaż, sport i czas w jednym miejscu." %}{% endpage_head %}
+{% page_head title="Dzień dobry, "|add:user.username eyebrow="Panel domowy" icon="bi-house-heart" sub="Finanse, kuchnia, garaż, sport, czas i zadania w jednym miejscu." %}{% endpage_head %}
 
 <div class="u-quick-actions">
     <a href="{% url 'finance:add_expense' %}" class="btn u-btn-expense">
@@ -32,7 +32,8 @@
         {% if summary.timelog %}<a href="{% url 'timelog:index' %}" class="home-today-item"><i class="bi bi-stopwatch" aria-hidden="true"></i><span><strong>Twój czas</strong><span>{{ summary.timelog }}</span></span></a>{% endif %}
         {% if summary.sport %}<a href="{% url 'sport:index' %}" class="home-today-item"><i class="bi bi-activity" aria-hidden="true"></i><span><strong>Cel sportowy</strong><span>{{ summary.sport }}</span></span></a>{% endif %}
         {% if summary.finance %}<a href="{% url 'finance:dashboard' %}" class="home-today-item"><i class="bi bi-wallet2" aria-hidden="true"></i><span><strong>Ten miesiąc</strong><span>{{ summary.finance }}</span></span></a>{% endif %}
-        {% if not summary.cooking and not summary.cars and not summary.timelog and not summary.sport and not summary.finance %}<p class="u-page-sub mb-0">Tutaj zobaczysz terminy, zakupy i postępy, gdy zaczniesz uzupełniać dane.</p>{% endif %}
+        {% if summary.chores %}<a href="{% url 'chores:index' %}?widok=moje" class="home-today-item"><i class="bi bi-list-check" aria-hidden="true"></i><span><strong>Moje zadania</strong><span>{{ summary.chores|pl:"zadanie,zadania,zadań" }} na dziś lub po terminie</span></span></a>{% endif %}
+        {% if not summary.chores and not summary.cooking and not summary.cars and not summary.timelog and not summary.sport and not summary.finance %}<p class="u-page-sub mb-0">Tutaj zobaczysz terminy, zakupy i postępy, gdy zaczniesz uzupełniać dane.</p>{% endif %}
     </div>
 </section>
 <h2 class="u-section-title mb-3">Twoje moduły</h2>
@@ -75,6 +76,14 @@
         <span class="u-tile-body">
             <span class="u-tile-title">Czas</span>
             <span class="u-tile-text">Na co idzie dzień: stoper, luki i strata czasu.</span>
+        </span>
+        <i class="bi bi-chevron-right u-tile-arrow"></i>
+    </a>
+    <a href="{% url 'chores:index' %}" class="u-tile">
+        <span class="u-tile-icon"><i class="bi bi-list-check"></i></span>
+        <span class="u-tile-body">
+            <span class="u-tile-title">Zadania domowe</span>
+            <span class="u-tile-text">Wspólna lista zadań, terminy i podział obowiązków.</span>
         </span>
         <i class="bi bi-chevron-right u-tile-arrow"></i>
     </a>

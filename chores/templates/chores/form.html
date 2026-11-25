@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% load ui %}
+
+{% block title %}{% if chore %}Edytuj zadanie{% else %}Dodaj zadanie{% endif %}{% endblock %}
+
+{% block content %}
+{% if chore %}
+    {% page_head title="Edytuj zadanie" %}{% endpage_head %}
+{% else %}
+    {% page_head title="Dodaj zadanie" %}{% endpage_head %}
+{% endif %}
+
+<div class="u-card u-card-pad">
+    <form method="post">
+        {% csrf_token %}
+        {{ form.non_field_errors }}
+        {% for field in form %}
+            {% if field.use_fieldset %}
+                <fieldset class="mb-3"{% if field.help_text %} aria-describedby="{{ field.auto_id }}_helptext"{% endif %}>
+                    {{ field.legend_tag }}
+                    {{ field.errors }}
+                    <div class="d-flex flex-wrap gap-3">
+                        {% for choice in field %}{{ choice }}{% endfor %}
+                    </div>
+                    {% if field.help_text %}<div class="form-text" id="{{ field.auto_id }}_helptext">{{ field.help_text }}</div>{% endif %}
+                </fieldset>
+            {% else %}
+                <div class="mb-3">
+                    {{ field.label_tag }}
+                    {{ field.errors }}
+                    {{ field }}
+                    {% if field.help_text %}<div class="form-text" id="{{ field.auto_id }}_helptext">{{ field.help_text }}</div>{% endif %}
+                </div>
+            {% endif %}
+        {% endfor %}
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">Zapisz</button>
+            <a href="{% url 'chores:index' %}" class="btn btn-outline-secondary">Anuluj</a>
+        </div>
+    </form>
+    {% if chore %}
+        <form class="mt-3" method="post" action="{% url 'chores:delete' chore.pk %}">
+            {% csrf_token %}
+            <button class="btn btn-outline-danger btn-sm" type="submit">Usuń zadanie</button>
+        </form>
+    {% endif %}
+</div>
+{% endblock %}

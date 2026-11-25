@@ -13,6 +13,7 @@ from django.utils.formats import date_format
 
 from accounts.templatetags.ui import pl, zl
 from cars.models import Cars
+from chores.models import Chore
 from cooking.models import PantryBatch, ShoppingList, ShoppingListItem
 from cooking.services.pantry_batches import EAT_FIRST_DAYS
 from finance.account_utils import get_active_finance_account
@@ -36,6 +37,9 @@ def home_summary(request):
         'cooking': _cooking(today),
         'sport': _sport(request.user, today),
         'timelog': _timelog(request.user, today),
+        'chores': Chore.objects.filter(
+            assignees=request.user, completed_at__isnull=True, due_on__lte=today,
+        ).count(),
     }
 
 

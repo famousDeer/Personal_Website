@@ -10,6 +10,7 @@ Stack: Python 3.12, Django 5.2, DRF, PostgreSQL 15, Gunicorn + WhiteNoise, Caddy
 - `cars/` – auta, tankowania, serwisy (PDF), opony → `cars/CLAUDE.md`.
 - `accounts/` – logowanie, rejestracja, profil, konta wspólne; tagi szablonów `ui` → `accounts/CLAUDE.md`.
 - `habits/` – moduł „Sport” (adres `/sport/`, namespace `sport`): aktywność fizyczna (pływanie, bieganie, siłownia), Garmin (treningi, zdrowie), Hevy, tryb offline → `habits/CLAUDE.md`.
+- `chores/` – zadania domowe, przypisania i przypomnienia → `chores/CLAUDE.md`.
 - `timelog/` – harmonogram dnia: stoper, luki, podsumowanie i „strata czasu”, sen i treningi z `habits`, API dla Skrótów iOS → `timelog/CLAUDE.md`.
 - `utils/` – `undo.py` (usuwanie z „Cofnij”), `navigation.py` (`redirect_back`), `tools.py` (`parse_decimal`, `parse_date_input`, `month_start`).
 - `templates/` – `base.html`, `partials/page_head.html`; `static/css/tokens.css` (kolory, motyw), `app.css`, `ui.css`; `static/js/charts.js` (`AppCharts`).
