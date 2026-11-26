@@ -1,0 +1,53 @@
+.chore-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 14rem;
+    align-items: start;
+    gap: var(--sp-4);
+    scroll-margin-top: calc(var(--nav-h) + var(--sp-4));
+}
+
+.chore-card-content {
+    overflow-wrap: anywhere;
+}
+
+.chore-card-title {
+    margin: 0 0 var(--sp-2);
+    color: var(--ink-1);
+    font-size: var(--fs-lead);
+    font-weight: 650;
+}
+
+.chore-card-notes {
+    margin: var(--sp-3) 0 0;
+    color: var(--ink-2);
+}
+
+.chore-card-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--sp-2);
+}
+
+.chore-card-actions .btn {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--sp-1);
+    min-height: 2.75rem;
+}
+
+.chore-card-actions form .btn {
+    width: 100%;
+}
+
+@media (max-width: 575.98px) {
+    .chore-card {
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--sp-3);
+    }
+
+    .chore-card-actions {
+        padding-top: var(--sp-3);
+        border-top: 1px solid var(--line-1);
+    }
+}

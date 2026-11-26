@@ -1,7 +1,11 @@
 {% extends 'base.html' %}
-{% load ui %}
+{% load static ui %}
 
 {% block title %}Zadania domowe{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'chores/css/list.css' %}">
+{% endblock %}
 
 {% block content %}
 {% page_head title="Zadania domowe" %}
@@ -9,16 +13,6 @@
         <i class="bi bi-plus-lg" aria-hidden="true"></i> Dodaj zadanie
     </a>
 {% endpage_head %}
-
-{% if push_available %}
-<details class="u-card u-card-pad mb-3">
-    <summary class="fw-semibold">Przypomnienia na telefonie</summary>
-    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-2">
-        <span class="small text-muted">W aplikacji zakupów otwórz panel diagnostyki i włącz powiadomienia na tym urządzeniu.</span>
-        <a href="{% url 'cooking:shopping-app' %}" class="btn btn-outline-secondary btn-sm">Otwórz aplikację zakupów</a>
-    </div>
-</details>
-{% endif %}
 
 {% url 'chores:index' as chores_url %}
 <nav class="nav nav-pills gap-1 mb-3" aria-label="Widok zadań">
@@ -29,37 +23,41 @@
 
 <ul class="list-unstyled d-grid gap-2">
     {% for chore in chores %}
-    <li class="u-card u-card-pad" id="zadanie-{{ chore.pk }}">
-        <div class="d-flex flex-wrap justify-content-between gap-3">
-            <div class="text-break mw-100">
-                <h2 class="h5 mb-2">{{ chore.title }}</h2>
-                <div class="d-flex flex-wrap align-items-center gap-2 small">
-                    {% if chore.completed_at %}
-                        <span class="badge text-bg-success">Wykonano {{ chore.completed_at|date:"j.m.Y" }}</span>
-                    {% endif %}
-                    <span class="text-muted"><i class="bi bi-people" aria-hidden="true"></i>
-                        <span class="visually-hidden">Odpowiedzialni</span>
-                        {% for person in chore.assignees.all %}{{ person.get_username }}{% if not forloop.last %}, {% endif %}{% empty %}Brak przypisanych osób{% endfor %}
+    <li class="u-card u-card-pad-sm chore-card" id="zadanie-{{ chore.pk }}">
+        <div class="chore-card-content">
+            <h2 class="chore-card-title">{{ chore.title }}</h2>
+            <div class="d-flex flex-wrap align-items-center gap-2 small">
+                {% if chore.completed_at %}
+                    <span class="u-chip is-income">
+                        <i class="bi bi-check2" aria-hidden="true"></i> Wykonano {{ chore.completed_at|date:"j.m.Y" }}
                     </span>
-                </div>
-                {% if chore.notes %}<p class="mt-2 mb-0">{{ chore.notes|linebreaksbr }}</p>{% endif %}
+                {% endif %}
+                <span class="text-muted">
+                    <i class="bi bi-people me-1" aria-hidden="true"></i>
+                    <span class="visually-hidden">Odpowiedzialni:</span>
+                    {% for person in chore.assignees.all %}{{ person.get_username }}{% if not forloop.last %}, {% endif %}{% empty %}Brak przypisanych osób{% endfor %}
+                </span>
             </div>
-            <div class="d-flex flex-wrap align-items-start gap-2">
-                <form method="post" action="{% url 'chores:status' chore.pk %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="widok" value="{{ view }}">
-                    {% if chore.completed_at %}
-                        <button type="submit" name="stan" value="otwarte" class="btn btn-outline-secondary btn-sm">
-                            <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Otwórz ponownie
-                        </button>
-                    {% else %}
-                        <button type="submit" name="stan" value="wykonane" class="btn btn-outline-success btn-sm">
-                            <i class="bi bi-check2" aria-hidden="true"></i> Odhacz
-                        </button>
-                    {% endif %}
-                </form>
-                <a class="btn btn-outline-secondary btn-sm" href="{% url 'chores:edit' chore.pk %}">Edytuj</a>
-            </div>
+            {% if chore.notes %}<p class="chore-card-notes">{{ chore.notes|linebreaksbr }}</p>{% endif %}
+        </div>
+        <div class="chore-card-actions">
+            <form method="post" action="{% url 'chores:status' chore.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="widok" value="{{ view }}">
+                {% if chore.completed_at %}
+                    <button type="submit" name="stan" value="otwarte" class="btn btn-outline-secondary btn-sm"
+                            aria-label="Otwórz ponownie: {{ chore.title }}">
+                        <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Otwórz ponownie
+                    </button>
+                {% else %}
+                    <button type="submit" name="stan" value="wykonane" class="btn btn-outline-success btn-sm"
+                            aria-label="Odhacz: {{ chore.title }}">
+                        <i class="bi bi-check2" aria-hidden="true"></i> Odhacz
+                    </button>
+                {% endif %}
+            </form>
+            <a class="btn btn-outline-secondary btn-sm" href="{% url 'chores:edit' chore.pk %}"
+               aria-label="Edytuj: {{ chore.title }}">Edytuj</a>
         </div>
     </li>
     {% empty %}
@@ -70,4 +68,14 @@
     </li>
     {% endfor %}
 </ul>
+
+{% if push_available %}
+<details class="u-card u-card-pad-sm mt-3">
+    <summary class="fw-semibold">Przypomnienia na telefonie</summary>
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-2">
+        <span class="small text-muted">W aplikacji zakupów otwórz panel diagnostyki i włącz powiadomienia na tym urządzeniu.</span>
+        <a href="{% url 'cooking:shopping-app' %}" class="btn btn-outline-secondary btn-sm">Otwórz aplikację zakupów</a>
+    </div>
+</details>
+{% endif %}
 {% endblock %}
