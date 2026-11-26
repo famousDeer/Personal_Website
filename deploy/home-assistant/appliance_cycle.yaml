@@ -1,0 +1,119 @@
+blueprint:
+  name: Koniec cyklu urządzenia
+  description: Wykrywa zakończenie cyklu po poborze mocy i zgłasza je do domowej strony.
+  domain: automation
+  homeassistant:
+    min_version: 2024.10.0
+  input:
+    power_sensor:
+      name: Czujnik mocy
+      selector:
+        entity:
+          filter:
+            domain: sensor
+            device_class: power
+    cycle_helper:
+      name: Stan cyklu (pomocnik tekstowy)
+      selector:
+        entity:
+          filter:
+            domain: input_text
+    appliance:
+      name: Urządzenie
+      selector:
+        select:
+          options:
+            - label: Pralka
+              value: washer
+            - label: Zmywarka
+              value: dishwasher
+    start_watts:
+      name: Próg rozpoczęcia
+      default: 20
+      selector:
+        number:
+          min: 1
+          max: 300
+          unit_of_measurement: W
+          mode: box
+    idle_watts:
+      name: Próg spoczynku
+      default: 3
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: W
+          mode: box
+    idle_minutes:
+      name: Czas spoczynku przed powiadomieniem
+      default: 10
+      selector:
+        number:
+          min: 2
+          max: 90
+          unit_of_measurement: min
+          mode: box
+
+mode: single
+triggers:
+  - trigger: time_pattern
+    minutes: "/1"
+
+variables:
+  power_sensor: !input power_sensor
+  cycle_helper: !input cycle_helper
+  start_watts: !input start_watts
+  idle_watts: !input idle_watts
+  idle_minutes: !input idle_minutes
+
+conditions:
+  - condition: template
+    value_template: "{{ start_watts > idle_watts }}"
+
+actions:
+  - variables:
+      sampled_at: "{{ now().timestamp() | int }}"
+      power: >-
+        {% set raw = states(power_sensor) %}
+        {% set unit = state_attr(power_sensor, 'unit_of_measurement') %}
+        {{ (raw | float) * (1000 if unit == 'kW' else 1)
+           if is_number(raw) and unit in ['W', 'kW'] else -1 }}
+      previous: "{{ states(cycle_helper)[6:] | from_json({}) }}"
+  - variables:
+      next_state: >-
+        {% set previous = previous if previous is mapping else {} %}
+        {% set cycle = previous.get('cycle', 0) %}
+        {% set continuous = 0 < sampled_at - previous.get('seen', 0) <= 90 %}
+        {% set high = previous.get('high', 0) if continuous else 0 %}
+        {% set low = previous.get('low', 0) if continuous else 0 %}
+        {% if power < 0 %}
+          {{ dict(cycle=cycle, seen=sampled_at) }}
+        {% elif not cycle and power >= start_watts %}
+          {{ dict(cycle=high, high=high or sampled_at, seen=sampled_at) }}
+        {% elif cycle and power <= idle_watts %}
+          {{ dict(cycle=cycle, low=low or sampled_at, seen=sampled_at) }}
+        {% else %}
+          {{ dict(cycle=cycle, seen=sampled_at) }}
+        {% endif %}
+  - action: input_text.set_value
+    target:
+      entity_id: !input cycle_helper
+    data:
+      value: "cycle:{{ next_state | to_json }}"
+  - condition: template
+    value_template: >-
+      {{ next_state.get('low', 0) > 0 and
+         sampled_at - next_state.low >= idle_minutes * 60 }}
+  - action: rest_command.website_finance_appliance_finished
+    data:
+      appliance: !input appliance
+      cycle_id: "{{ next_state.cycle }}"
+    response_variable: website_response
+  - condition: template
+    value_template: "{{ 200 <= website_response.status < 300 }}"
+  - action: input_text.set_value
+    target:
+      entity_id: !input cycle_helper
+    data:
+      value: idle

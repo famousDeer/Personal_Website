@@ -816,6 +816,8 @@ foreground, after each change and every 30 s while open.
 
 ## Push notifications
 
+For washer and dishwasher end-of-cycle alerts, see the [Home Assistant integration](deploy/home-assistant/README.md).
+
 The phone can be reminded about the pantry and the shopping list even outside the home
 network: the Pi does not reach the phone directly, it hands the notification to Apple's
 or Google's push service (the address stored in the subscription), and that service

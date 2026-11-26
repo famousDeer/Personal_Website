@@ -1,0 +1,37 @@
+input_text:
+  website_finance_washer_cycle:
+    name: Pralka – stan cyklu
+    max: 255
+  website_finance_dishwasher_cycle:
+    name: Zmywarka – stan cyklu
+    max: 255
+
+rest_command:
+  website_finance_appliance_finished:
+    url: !secret website_finance_appliance_url
+    method: POST
+    headers:
+      authorization: !secret website_finance_appliance_authorization
+    content_type: application/json
+    payload: '{{ {"cycle_id": cycle_id | int} | to_json }}'
+    timeout: 50
+
+automation:
+  - id: website_finance_washer_finished
+    alias: Pranie zakończone
+    use_blueprint:
+      path: website-finance/appliance_cycle.yaml
+      input:
+        appliance: washer
+        power_sensor: !secret website_finance_washer_power
+        cycle_helper: input_text.website_finance_washer_cycle
+        idle_minutes: 7
+  - id: website_finance_dishwasher_finished
+    alias: Zmywanie zakończone
+    use_blueprint:
+      path: website-finance/appliance_cycle.yaml
+      input:
+        appliance: dishwasher
+        power_sensor: !secret website_finance_dishwasher_power
+        cycle_helper: input_text.website_finance_dishwasher_cycle
+        idle_minutes: 15

@@ -2,6 +2,8 @@
 from django.urls import path
 from . import shopping_app_views, views, views_categories as category_views, views_diary as diary_views, views_receipts as receipt_views
 
+from .views_appliances import ApplianceFinishedView
+
 app_name = 'cooking'
 
 urlpatterns = [
@@ -63,6 +65,7 @@ urlpatterns = [
     path('pantry/batch/<int:batch_id>/expiry/', views.PantryBatchExpiryView.as_view(), name='pantry-batch-expiry'),
     path('pantry/<int:product_id>/movement/', views.PantryMovementView.as_view(), name='pantry-movement'),
     path('pantry/<int:product_id>/restock/', views.PantryRestockToggleView.as_view(), name='pantry-restock-toggle'),
+    path('api/appliances/<slug:appliance>/finished/', ApplianceFinishedView.as_view(), name='appliance-finished'),
     path('shopping/', views.ShoppingListView.as_view(), name='shopping-list'),
     # Tryb zakupów offline (PWA). Service worker leży pod /shopping/app/,
     # więc kontroluje tylko tę część strony.
