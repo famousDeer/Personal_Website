@@ -14,7 +14,8 @@
     'use strict';
 
     let list = document.querySelector('[data-pantry-list]');
-    const toolbar = document.querySelector('[data-pantry-toolbar]');
+    const brandGroups = document.querySelector('[data-brand-group-tools]');
+    const toolbar = brandGroups || document.querySelector('[data-pantry-toolbar]');
     if (!list || !toolbar) {
         return;
     }
@@ -46,7 +47,7 @@
 
     function save() {
         try {
-            window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            window.localStorage.setItem(STORAGE_KEY, JSON.stringify(brandGroups ? { ...loadSaved(), layout: state.layout } : {
                 status: state.status, categories: [...state.categories], sort: state.sort,
                 layout: state.layout, grouped: state.grouped,
             }));
@@ -63,7 +64,7 @@
         q: (searchInput?.value || '').trim().toLocaleLowerCase('pl'),
         status: serverStatus !== null ? (SERVER_STATUS[serverStatus] ?? serverStatus) : (saved.status || ''),
         categories: new Set(serverCategory ? [serverCategory] : (saved.categories || [])),
-        sort: [...sortSelect.options].some((option) => option.value === saved.sort) ? saved.sort : 'category',
+        sort: [...(sortSelect?.options || [])].some((option) => option.value === saved.sort) ? saved.sort : 'category',
         layout: saved.layout || 'list',
         grouped: saved.grouped !== false,
     };
@@ -156,9 +157,23 @@
         });
     }
 
+    function applyLayout() {
+        list.dataset.layout = state.layout;
+        selectAll('[data-filter-layout]', toolbar).forEach((button) => {
+            const active = button.dataset.filterLayout === state.layout;
+            button.classList.toggle('is-active', active);
+            button.setAttribute('aria-pressed', String(active));
+        });
+    }
+
     function apply() {
         if (!list) {
-            resultLine.textContent = '0 produktów';
+            if (resultLine) resultLine.textContent = '0 produktów';
+            return;
+        }
+        applyLayout();
+        if (brandGroups) {
+            save();
             return;
         }
         const total = homeIndex.size;
@@ -185,8 +200,6 @@
         });
         flatSection.hidden = state.grouped || visible === 0;
         emptyState.hidden = visible > 0;
-        list.dataset.layout = state.layout;
-
         const filtered = state.q || state.status || state.categories.size;
         resultLine.textContent = filtered
             ? `${visible} z ${total} ${plural(total, 'produktu', 'produktów', 'produktów')}`
@@ -206,11 +219,6 @@
         });
         selectAll('[data-preset]').forEach((item) => {
             item.classList.toggle('is-active', item.dataset.preset === state.status);
-        });
-        selectAll('[data-filter-layout]', toolbar).forEach((button) => {
-            const active = button.dataset.filterLayout === state.layout;
-            button.classList.toggle('is-active', active);
-            button.setAttribute('aria-pressed', String(active));
         });
         if (sortSelect.value !== state.sort) {
             sortSelect.value = state.sort;
@@ -255,11 +263,11 @@
             apply();
         }
     });
-    sortSelect.addEventListener('change', () => {
+    sortSelect?.addEventListener('change', () => {
         state.sort = sortSelect.value;
         apply();
     });
-    groupedBox.addEventListener('change', () => {
+    groupedBox?.addEventListener('change', () => {
         state.grouped = groupedBox.checked;
         apply();
     });
@@ -277,7 +285,7 @@
             return;
         }
         const preset = event.target.closest('[data-preset]');
-        if (preset) {
+        if (preset && !brandGroups) {
             event.preventDefault();
             state.status = state.status === preset.dataset.preset ? '' : preset.dataset.preset;
             apply();
@@ -295,10 +303,16 @@
 
     // --- panel szczegółów ---------------------------------------------------
     let openCardId = null;
+    let cardPosition = null;
 
     function returnCard() {
         if (!openCardId) {
             return;
+        }
+        if (cardPosition) {
+            const card = cardOf(openCardId);
+            if (card) cardPosition.replaceWith(card);
+            cardPosition = null;
         }
         openCardId = null;
         apply();
@@ -314,6 +328,10 @@
         detail.classList.toggle('offcanvas-bottom', !wide);
         detail.classList.toggle('offcanvas-end', wide);
         card.hidden = false;
+        if (brandGroups) {
+            cardPosition = document.createComment('Miejsce kafelka w grupie');
+            card.before(cardPosition);
+        }
         detailBody.replaceChildren(card);
         openCardId = id;
         const row = select(`[data-pantry-row="${CSS.escape(id)}"] .pt-name`, list);

@@ -1,0 +1,10 @@
+<ul class="pt-rows" data-section-rows>
+    {% for card in group.cards %}
+        {% with product=card.product %}{% include 'cooking/partials/pantry_row.html' %}{% endwith %}
+    {% endfor %}
+</ul>
+<div class="pantry-product-grid pt-tiles" data-section-tiles>
+    {% for card in group.cards %}
+        {% with product=card.product %}{% include 'cooking/partials/pantry_card.html' %}{% endwith %}
+    {% endfor %}
+</div>

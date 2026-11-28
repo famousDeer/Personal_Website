@@ -50,7 +50,8 @@
             <h3>Grupy marek</h3>
             <p>Grupa to ten sam produkt różnych firm — o braku decyduje jej łączny zapas.</p>
         </div>
-        <div class="pantry-view-tools">
+        <div class="pantry-view-tools" data-brand-group-tools>
+            {% if product_groups %}{% include 'cooking/partials/pantry_layout.html' %}{% endif %}
             <a class="btn btn-outline-primary btn-sm" href="{% url 'cooking:pantry' %}"><i class="bi bi-list-ul" aria-hidden="true"></i> Wróć do listy</a>
             <span class="pantry-section-count">{{ product_count }} prod.</span>
         </div>
@@ -156,7 +157,7 @@
     {% if product_groups and view_mode != 'grupy' %}
         {% include 'cooking/partials/pantry_list.html' %}
     {% elif product_groups %}
-        <div class="pantry-category-list animate-fade-in-up">
+        <div class="pantry-category-list pt-list animate-fade-in-up" data-pantry-list data-layout="tiles">
             {% for group in product_groups %}
                 <section class="pantry-category-panel">
                     <button class="pantry-category-header" type="button" data-bs-toggle="collapse"
@@ -257,13 +258,7 @@
                                 </form>
                             </div>
                         {% endif %}
-                        <div class="pantry-product-grid">
-                            {% for card in group.cards %}
-                                {% with product=card.product %}
-                                    {% include 'cooking/partials/pantry_card.html' %}
-                                {% endwith %}
-                            {% endfor %}
-                        </div>
+                        {% include 'cooking/partials/pantry_section_products.html' %}
                     </div>
                 </section>
             {% endfor %}

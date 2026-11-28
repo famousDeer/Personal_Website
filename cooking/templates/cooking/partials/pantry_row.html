@@ -7,7 +7,7 @@ Atrybuty data-* służą do filtrów i sortowania bez przeładowania.
 Kontekst: card (słownik z PantryListView), product = card.product.
 {% endcomment %}
 <li class="pt-row is-{{ card.level }}" id="pantry-row-{{ product.id }}" data-pantry-row="{{ product.id }}"
-    data-flags="{{ card.flags }}" data-category="{{ product.category|default:'Inne' }}" data-search="{{ card.search_text }}"
+    data-flags="{{ card.flags }}" data-group-id="{{ product.group_id|default_if_none:'' }}" data-category="{{ product.category|default:'Inne' }}" data-search="{{ card.search_text }}"
     data-name="{{ product.label|lower }}" data-days-left="{{ card.sort_days_left|unlocalize }}"
     data-expires="{{ card.sort_expires }}" data-buy="{{ card.sort_buy }}" data-last="{{ card.sort_last }}"
     data-usage="{{ card.sort_usage|unlocalize }}" data-price-change="{{ card.sort_price_change|unlocalize }}">
@@ -55,7 +55,7 @@ Kontekst: card (słownik z PantryListView), product = card.product.
     {% endif %}
     {% if product.tracks_packages %}
         <form method="post" action="{% url 'cooking:pantry-movement' product.id %}" class="pt-quick"
-              data-partial="#pantry-row-{{ product.id }}, #product-{{ product.id }}, #pantry-today{% if product.group_id %}, [data-group-id=&quot;{{ product.group_id }}&quot;]{% endif %}">
+              data-partial="#pantry-row-{{ product.id }}, #product-{{ product.id }}, #pantry-today{% if view_mode == 'grupy' %}, [data-panel-badges]{% endif %}{% if product.group_id %}, [data-group-id=&quot;{{ product.group_id }}&quot;]{% endif %}">
             {% csrf_token %}
             <input type="hidden" name="next" value="{{ request.get_full_path }}">
             <input type="hidden" name="operation_id_consume" value="{{ card.manual_consume_id }}">

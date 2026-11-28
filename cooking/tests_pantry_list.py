@@ -140,5 +140,10 @@ class PantryListTests(TestCase):
     def test_groups_view_keeps_accordion(self):
         page = self.client.get(reverse('cooking:pantry'), {'widok': 'grupy'})
         self.assertEqual(page.status_code, 200)
-        self.assertNotContains(page, 'data-pantry-list')
+        self.assertContains(page, 'data-bs-target="#pantry-category-1"')
+        self.assertContains(page, 'data-filter-layout="list"', count=1)
+        self.assertContains(page, 'data-filter-layout="tiles"', count=1)
+        for product in (self.yogurt, self.milk, self.rice):
+            self.assertContains(page, f'id="pantry-row-{product.pk}"', count=1)
+            self.assertContains(page, f'id="product-{product.pk}"', count=1)
         self.assertContains(page, 'Wróć do listy')
